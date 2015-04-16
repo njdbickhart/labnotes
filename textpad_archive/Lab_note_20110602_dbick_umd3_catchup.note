@@ -1,0 +1,13 @@
+06/02/2011
+# I am losing some confidence in the Cow4 assembly. I want to try to align all of the reads to the UMD3 genome and try it all from there
+
+# From my notes on the high density angus individuals:
+# Running against umd3
+		$ perl mrsfast_umd3_wrapper.pl an0626_fastq.list a high_den_ang/an0626
+		$ perl mrsfast_umd3_wrapper.pl an0828_fastq.list b high_den_ang/an0828
+		$ perl mrsfast_umd3_wrapper.pl an1717_fastq.list c high_den_ang/an1717
+		
+# I also have simulation reads for the UMD3 genome, making my job a bit easier in terms of creating the umd3 artifact file. (/mnt/gliu1_usb/dbickhart/alkan/umd3/combined_sim/)
+	# Going to intersect them with my combined_bed_hits.pl script, but first, I must make them into a singular file
+	$ cat *.bed > combined_umd3_sim.bed
+	# This will take up alot of space, so I need to gzip the remaining bed files and offload them from the server (or just delete them).

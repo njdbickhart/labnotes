@@ -1,0 +1,448 @@
+02/21/2013
+#these are my notes and commands for running the 100 bulls project
+
+# I am limited by computer hardware; most of this work will take place on blade14 (bfgl)
+
+# First, getting some files from lewis to start:
+	Blade14: /home/dbickhart/reference
+	$ scp dbickhar@lewis.rnet.missouri.edu:/ibfs7/asg2/bickhartd/reference/ucsc_nosoft_unmasked_umd3.fa dbickhart@172.16.0.114:/home/dbickhart/reference/ucsc_nosoft_unmasked_umd3.fa
+	# Damn, this didn't work
+	# Going to have to wget it from ucsc again
+	$ wget http://hgdownload.soe.ucsc.edu/goldenPath/bosTau6/bigZips/bosTau6.fa.gz
+	$ gunzip bosTau6.fa.gz
+	$ bwa index bosTau6.fa
+	$ perl ~/bin/convert_steve_fq_to_spreadsheet.pl list_of_sequence_files.txt
+	
+
+# I ran the file on Blade14 with only the alignment settings keyed in. 
+
+# I am running out of space on the server. Much of this has to do with the fact that I am not deleting the temp fastqs after I finish them, but I think that the sam files are taking up serious space as well
+# Since my programs can read bam files with the samjdk, I will try to convert them all to bams
+	Blade14: /home/dbickhart/vnx_gliu_7/100_base_run/BIBR08
+	$ perl ~/bin/convert_mrsfast_sams_to_bam.pl -i BIGI06 -r ~/reference/umd3_kary_nmask_hgap.fa.fai -b ~/bin -c 1
+	
+	# Each one takes about 1 second to process, but it still might be best to keep this as a separate program that is run in the folder after processing the rest of the files in the alignment
+	# I may also do this for the split read sams. 
+	
+	# First things first, here is the command to do the initial directories
+	$ for i in BIBR05 BIBR07 BIBR08 BIBR09 BIGI02 BIGI05 BIGI08 BINE09 BTAN01 BTAN03 BTHO02 BTHO04 BTHO20 BTHO25 BTHO32 BTHO42 BTHO46 BTHO47 BTHO49 BTHO52 BTHO53 BTHO57 BTJE04 BTJE08 BTLM01 BTLM9 BTRO01 BTRO05; do echo $i; perl ~/bin/convert_mrsfast_sams_to_bam.pl -i $i -r ~/reference/umd3_kary_nmask_hgap.fa.fai -b ~/bin -c 1; done
+	$ for i in BIBR05 BIBR07 BIBR08 BIBR09 BIGI02 BIGI05 BIGI08 BINE09 BTAN01 BTAN03 BTHO02 BTHO04 BTHO20 BTHO25 BTHO32 BTHO42 BTHO46 BTHO47 BTHO49 BTHO52 BTHO53 BTHO57 BTJE04 BTJE08 BTLM01 BTLM9 BTRO01 BTRO05; do echo $i; perl ~/bin/convert_mrsfast_sams_to_bam.pl -i $i/split_read -r ~/reference/umd3_kary_nmask_hgap.fa.fai -b ~/bin -c 1; done
+	
+	# Now do to more processing
+	$ for i in BIBR02 BIGI01 BINE01 BINE04 BINE10 BINE12 BINE13 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO07 BTHO08 BTHO10 BTHO19 BTHO22 BTHO29 BTHO44 BTHO48 BTHO54 BTHO56 BTJE02 BTJE03 BTJE05 BTJE07 BTJE09 BTJE10 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTRO04 BTRO06; do echo $i; perl ~/bin/convert_mrsfast_sams_to_bam.pl -i $i -r ~/reference/umd3_kary_nmask_hgap.fa.fai -b ~/bin -c 1; sh cleanup.sh; done
+	
+	# Now, the final processing step
+	$ for i in BTJE01 BINE07 BTHO50 BTHO09 BTHO51 BIBR03 BIBR04 BIGI07 BINE23; do echo $i; perl ~/bin/convert_mrsfast_sams_to_bam.pl -i $i -r ~/reference/umd3_kary_nmask_hgap.fa.fai -b ~/bin; done
+	$ for i in BTJE01 BINE07 BTHO50 BTHO09 BTHO51 BIBR03 BIBR04 BIGI07 BINE23; do echo $i; perl ~/bin/convert_mrsfast_sams_to_bam.pl -i $i/split_read -r ~/reference/umd3_kary_nmask_hgap.fa.fai -b ~/bin; done
+	
+	$ for i in BTJE01 BINE07 BTHO50 BTHO09 BTHO51 BIBR03 BIBR04 BIGI07 BINE23; do echo $i; rm $i/split_read/*.sam; done
+	
+# I wrote a program that fixes my initial error with the pipeline and generates accurate list files
+	Blade14: /home/dbickhart/vnx_gliu_7/100_base_run/
+	$ perl ~/bin/scan_directory_create_vhsr_lists.pl -i ../100_bulls_alignment_run_conf.txt -d BIBR07 -c ../100_bulls_alignment_run_conf_113_1_23_20_33.checkpoint -o BIBR07_vhsr.list -j 100_base_run
+	# This created a file in the same directory that looks correct. 
+	# I think that I'll try out my VHSR program to see if it can process the reads and make suitable output (in advance of the alignment finishing)
+	
+	$ ~/jdk1.7.0/bin/java -Xmx4g -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s 100_base_run/BIBR07_vhsr.list -c chr29 -g ~/reference/umd3_gaps_ftp.bed -o BIBR07_test
+	# OK, so it worked (and I could probably get away with 1.5 gigs of JVM memory (2gb to be safe)), but I am getting no split read pairing 
+		[VHSR INPUT] Finished loading 10092 discordant read pairs
+		[VHSR INPUT] Finished loading 124773 anchor keys
+		[VHSR INPUT] Finished loading 0 paired splits
+		
+	# Copied a folder over to the C drive to test it out on real data
+	pwd /home/dbickhart/share/test_software/test_files/testsplit
+	
+	# Now to start running everything on this and to generate the list files
+	Blade14:/mnt/iscsi/vnx_gliu_7/100_base_run
+	$ for i in *; do echo $i; perl ~/bin/scan_directory_create_vhsr_lists.pl -i ../100_bulls_alignment_run_conf.txt -d $i -c ../100_bulls_alignment_run_conf_113_1_23_20_33.checkpoint -o $i/split_read/$i.vhsr.list -j 100_base_run; done
+	
+	# Doing this the quick and fast way because I need to report the data to George on Monday
+	# Here goes nothing...
+		$ for i in 100_base_run/*; 
+			do 
+			an=`echo $i | cut -d '/' -f2`; 
+			echo $an; 
+			for c in chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chr23 chr24 chr25 chr26 chr27 chr29 chrX; 
+				do echo $c; 
+				mkdir $i/vhsr; 
+				~/jdk1.7.0/bin/java -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s $i/split_read/$an.vhsr.list -c $c -g ~/reference/umd3_gaps_ftp.bed -o $i/vhsr/$c.$an.events; 
+				done; 
+			done
+			
+	# Actually, I need to split this up if I'm ever going to get anywhere
+	Blade14: /mnt/iscsi/vnx_gliu_7/
+	$ for i in 100_base_run/*; do an=`echo $i | cut -d '/' -f2`; echo $an; for c in chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8; do echo $c; mkdir $i/vhsr; ~/jdk1.7.0/bin/java -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s $i/split_read/$an.vhsr.list -c $c -g ~/reference/umd3_gaps_ftp.bed -o $i/vhsr/$c.$an.events; done; done
+	$ for i in 100_base_run/*; do an=`echo $i | cut -d '/' -f2`; echo $an; for c in chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16; do echo $c; mkdir $i/vhsr; ~/jdk1.7.0/bin/java -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s $i/split_read/$an.vhsr.list -c $c -g ~/reference/umd3_gaps_ftp.bed -o $i/vhsr/$c.$an.events; done; done
+	$ for i in 100_base_run/*; do an=`echo $i | cut -d '/' -f2`; echo $an; for c in chr17 chr18 chr19 chr20 chr21 chr22 chr23 chr24; do echo $c; mkdir $i/vhsr; ~/jdk1.7.0/bin/java -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s $i/split_read/$an.vhsr.list -c $c -g ~/reference/umd3_gaps_ftp.bed -o $i/vhsr/$c.$an.events; done; done
+	$ for i in 100_base_run/*; do an=`echo $i | cut -d '/' -f2`; echo $an; for c in chr25 chr26 chr27 chr28 chr29 chrX; do echo $c; mkdir $i/vhsr; ~/jdk1.7.0/bin/java -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s $i/split_read/$an.vhsr.list -c $c -g ~/reference/umd3_gaps_ftp.bed -o $i/vhsr/$c.$an.events; done; done
+	
+	# Now I want to test out some filters for the data. There are clearly some one-off events that need to be filtered out of the data
+		Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/BIBR07/vhsr
+		$ grep BIBR07 ../../../100_bulls_alignment_run_conf_113_1_23_20_33.checkpoint | grep pfq1 | perl -e '$t; while(<>){chomp; @s = split(/\t/); shift(@s); shift(@s); shift(@s); $t += scalar(@s);} print "$t\n";'
+			416 <- this makes for a 2.97 x coverage (200,000 reads per split file, 100 bases total, 2.8 gb cattle genome)
+			
+		# So, let's use that as a base cutoff. Here are my criteria that I'm going to use for the filter
+			- Must have at least the X coverage in sum total support
+			- If split read only, must have at least one unbalanced split read in addition to balanced splits
+			- If divet only, must have a sum total support / discordant read count ratio greater than 25%
+			- I can improve this later with probabilistic estimates based on read depth coverage and the likelihood of finding reads for heterozygous and homozygous segments
+			
+		# Some filter tests on BIBR07:	
+			$ wc -l *.deletions
+				72838 total
+			$ for i in *.deletions; do perl -lane 'if($F[9] < 3.0){next;}elsif($F[6] && !$F[7] && !$F[8] && $F[9] / $F[6] < 0.25){next;}elsif($F[7] && !$F[8]){next;}else{print $_;}' < $i; done | wc -l
+				2354  <- substantial filtering! Much more manageable set of variants
+				
+			$ for i in *.deletions; do perl -lane 'if($F[9] < 3.0){next;}elsif($F[6] && !$F[7] && !$F[8] && $F[9] / $F[6] < 0.25){next;}elsif($F[7] && !$F[8]){next;}else{print $_;}' < $i; done > BIBR07_filtered_rpsr_variants.deletions.tab
+			
+			# Now to do this for the insertions
+			$ wc -l *.insertions
+				4545 total
+			$ for i in *.insertions; do perl -lane 'if($F[9] < 3.0){next;}elsif($F[9] / $F[6] < 0.25){next;}else{print $_;}' < $i; done | wc -l
+				185  <- still not bad for a technique that normally gave me NO insertions in the past!
+			$ for i in *.insertions; do perl -lane 'if($F[9] < 3.0){next;}elsif($F[9] / $F[6] < 0.25){next;}else{print $_;}' < $i; done > BIBR07_filtered_rpsr_variants.insertions.tab
+			
+			# Now for tandem duplications
+			$ wc -l *.tand
+				4400 total
+			$ for i in *.tand; do perl -lane 'if($F[9] < 3.0){next;}elsif($F[9] / $F[6] < 0.25){next;}else{print $_;}' < $i; done | wc -l
+				364  <- my thoughts: these should flank predicted duplications in the DOC analysis if they are correct predictions. 
+			$ for i in *.tand; do perl -lane 'if($F[9] < 3.0){next;}elsif($F[9] / $F[6] < 0.25){next;}else{print $_;}' < $i; done > BIBR07_filtered_rpsr_variants.tand.tab	
+			
+			# Finally inversions:
+			$ wc -l *.inversions
+				0 total
+			# I think that there is a bug that I have to squash for this first.
+			
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print $t . "\n";' < BIBR07_filtered_rpsr_variants.deletions.tab
+				7030566
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print $t . "\n";' < BIBR07_filtered_rpsr_variants.insertions.tab
+				8175
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print $t . "\n";' < BIBR07_filtered_rpsr_variants.tand.tab
+				477774
+				
+		# Let's try to filter the whole dataset for analysis later
+			$ for i in `ls`; do echo $i; for x in $i/vhsr/*.deletions; do echo $x; perl -lane 'if($F[9] < 3.0){next;}elsif($F[6] && !$F[7] && !$F[8] && $F[9] / $F[6] < 0.25){next;}elsif($F[7] && !$F[8]){next;}else{print $_;}' < $x >> $i/vhsr/$i.full.filtered.vhsr.deletoins.tab; done; done
+			# damn, I need a break from this crap, I just misspelled "deletions"
+			$ for i in `ls`; do echo $i; for x in $i/vhsr/*.insertions; do echo $x; perl -lane 'if($F[9] < 3.0){next;}elsif($F[6] && !$F[7] && !$F[8] && $F[9] / $F[6] < 0.25){next;}elsif($F[7] && !$F[8]){next;}else{print $_;}' < $x >> $i/vhsr/$i.full.filtered.vhsr.insertions.tab; done; done
+			$ for i in `ls`; do echo $i; for x in $i/vhsr/*.tand; do echo $x; perl -lane 'if($F[9] < 3.0){next;}elsif($F[6] && !$F[7] && !$F[8] && $F[9] / $F[6] < 0.25){next;}elsif($F[7] && !$F[8]){next;}else{print $_;}' < $x >> $i/vhsr/$i.full.filtered.vhsr.tand.tab; done; done
+			$ for i in `ls`; do echo $i; for x in $i/vhsr/*.inversions; do echo $x; perl -lane 'if($F[9] < 3.0){next;}elsif($F[6] && !$F[7] && !$F[8] && $F[9] / $F[6] < 0.25){next;}elsif($F[7] && !$F[8]){next;}else{print $_;}' < $x >> $i/vhsr/$i.full.filtered.vhsr.inversions.tab; done; done
+			
+# SNP calling
+	# Going to test out the GATK before I start running it on everything
+		Blade14: /home/dbickhart/vnx_gliu_7/
+		$ samtools merge 100_base_run/BIBR07/BIBR07.clean.sort.nodup.merge.bam 100_base_run/BIBR07/BIBR07.*.clean.sort.nodup.bam
+		$ samtools index 100_base_run/BIBR07/BIBR07.clean.sort.nodup.merge.bam
+		$ ~/jdk1.7.0/bin/java -Xmx8g -jar ~/GenomeAnalysisTK-1.6-11-g3b2fab9/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T RealignerTargetCreator -nt 6 -I 100_base_run/BIBR07/BIBR07.clean.sort.nodup.merge.bam -o 100_base_run/BIBR07/BIBR07_indels.targets
+		# This is annoying: the GATK needs the file extension to be exact for the interval file
+		$ mv 100_base_run/BIBR07/BIBR07_indels.targets 100_base_run/BIBR07/BIBR07_indels.targets.intervals
+		$ ~/jdk1.7.0/bin/java -Xmx8g -jar ~/GenomeAnalysisTK-1.6-11-g3b2fab9/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T IndelRealigner -I 100_base_run/BIBR07/BIBR07.clean.sort.nodup.merge.bam -o 100_base_run/BIBR07/BIBR07.clean.sort.nodup.merge.realign.bam -targetIntervals 100_base_run/BIBR07/BIBR07_indels.targets.interval
+		$ ~/jdk1.7.0/bin/java -Xmx8g -jar ~/GenomeAnalysisTK-1.6-11-g3b2fab9/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -nt 8 -T UnifiedGenotyper -I 100_base_run/BIBR07/BIBR07.clean.sort.nodup.merge.realign.bam -o 100_base_run/BIBR07/BIBR07.initial.raw.snps.vcf
+		
+	# Started merging all of the bams
+		
+		# Unfortunately, forks super is crapping out at random and some of the animals were not merged
+		# Here is how I am determining this:
+		Blade14: /home/dbickhart/
+		$ ls vnx_gliu_7/100_base_run > animal_folder_list.txt
+		$ ls vnx_gliu_7/100_base_run/*/*full*.rm | perl -ne '($v) = $_ =~ m{vnx_gliu_7/100_base_run/(.+)/.+}; print "$v\n";' | diff - animal_folder_list.txt
+			3a4
+			> BIBR05
+			4a6
+			> BIBR08
+			6a9,10
+			> BIGI02
+			> BIGI05
+			7a12,14
+			> BIGI07
+			> BIGI08
+			> BINE01
+			8a16,18
+			> BINE07
+			> BINE09
+			> BINE10
+			9a20
+			> BINE13
+			10a22,25
+			> BTAN01
+			> BTAN03
+			> BTAN04
+			> BTAN05
+			12a28
+			> BTAN08
+			13a30
+			> BTHO04
+			14a32
+			> BTHO08
+			36a55
+			> BTJE02
+			37a57,73
+			> BTJE04	<- These are all normal; they just haven't been dealt with by the pipeline yet
+			...
+			
+		# Running the ones that slipped through the cracks:
+		Blade14: /home/dbickhart/vnx_gliu_7/100_base_run/
+		$ for i in BIBR05 BIBR08 BIGI02 BIGI05 BIGI07 BIGI08 BINE01 BINE07 BINE09 BINE10 BINE13 BTAN01 BTAN03 BTAN04 BTAN05 BTAN08 BTHO04 BTHO08 BTJE02; do echo $i; perl ~/bin/merge_bams_sort_index.pl -l 200 -i $i/$i -b ~/bin -o $i/$i.full.sorted.merged.bam -p 10; done
+		
+		# Oops! Ran out of space right at BTAN03
+		# Restarting the conversion with all of the remaining animals now
+		$ for i in BTAN03 BTAN04 BTAN05 BTAN08 BTHO04 BTHO08 BTJE02 BTJE08 BTLM01 BTLM03 BTLM07 BTLM10 BTRO04 BTRO05 BTRO06; do echo $i; perl ~/bin/merge_bams_sort_index.pl -l 200 -i $i/$i -b ~/bin -o $i/$i.full.sorted.merged.bam -p 10; done
+		
+# Additional CNV calling
+	# Just for the 100 bulls, I'm going to call CNVs using GenomeStrip and CNVnator
+	# Some notes on CNVnator filtering from the 1000 genomes phase 2 paper
+		To! call! CNVs! with! CNVnator,! data! from! all! individuals! within! each! population!
+		were! pooled! together.! The! data! were! processed! with! CNVnator! software45
+		(version!0.2.2)!with!standard!settings!and!100!bp!and!50!bp!bins.!Additionally,!
+		CNVs! were! called! with! relaxed! parameters! to! call! for! lower! allele! frequency!
+		CNVs.! For! each! population,! overlapping! calls! were! merged! by! selecting! the!
+		largest!call!of!all!overlapping!ones.!Merged!calls!were!filtered.!A!CNV!call!passes!
+		the filter!if:!i)!it!does!not!overlap!a!gap!in! the!reference!genome! for!a!deletion,!
+		and!it!is!not!within!0.5!Mb!from!a!gap!in!the!reference!genome!for!a!duplication;!
+		ii)!a!deletion!must!have!at!least!two!pairedOend!reads!supporting!the!predictions!
+		(overlapping!by!50%!reciprocally)!or!read!depth!in!the!middle!part!(1!kb!away!
+		from! breakpoints)! of! the! called! region! should! be! statistically! different! from!
+		average! read! depth.! Statistical! testing!was! done! the! same!way! as!when! calling!
+		CNV!regions.
+	
+	
+	# Going to try CNVNATOR for myself
+	Blade14: /mnt/iscsi/vnx_gliu_7/
+	$ ./bin/cnvnator -genome umd3 -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02.root -tree 100_base_run/BIBR02/BIBR02.rg.rd.full.sorted.merged.bam
+		Writing histograms ...
+		Total of 137192513 reads were placed.
+		# Well, that's a good start
+	$ ./bin/cnvnator -genome umd3 -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02.root -his 500 -d /mnt/iscsi/vnx_gliu_7/reference/umd3_unmasked_chrs
+	
+	$ ./bin/cnvnator -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02.root -stat 500
+		 *** Break *** segmentation violation
+		
+		
+		
+		===========================================================
+		There was a crash.
+		This is the entire stack trace of all threads:
+		===========================================================
+		#0  0x00007f248c05c2fa in waitpid () from /lib64/libc.so.6
+		#1  0x00007f248bfe343e in do_system () from /lib64/libc.so.6
+		#2  0x00007f2490ec5fdd in TUnixSystem::StackTrace() () from /usr/lib64/root/libCore.so.5.32
+		#3  0x00007f2490ec8883 in TUnixSystem::DispatchSignals(ESignals) () from /usr/lib64/root/libCore.so.5.32
+		#4  <signal handler called>
+		#5  0x00007f248c1014f1 in __strlen_sse2_pminub () from /lib64/libc.so.6
+		#6  0x00007f2490e2f234 in TString::TString(char const*) () from /usr/lib64/root/libCore.so.5.32
+		#7  0x00007f248f5ed86d in TH1::DoIntegral(int, int, int, int, int, int, double&, char const*, bool) const () from /usr/lib64/root/libHist.so.5.32
+		#8  0x00007f248f5e784f in TH1::Integral(int, int, char const*) const () from /usr/lib64/root/libHist.so.5.32
+		#9  0x000000000071f174 in HisMaker::getMeanSigma(TH1*, double&, double&) ()
+		#10 0x0000000000a3453d in HisMaker::stat(std::string*, int, bool) ()
+		#11 0x000000000058ebfd in main ()
+		===========================================================
+		
+		
+		The lines below might hint at the cause of the crash.
+		If they do not help you then please submit a bug report at
+		http://root.cern.ch/bugs. Please post the ENTIRE stack trace
+		from above as an attachment in addition to anything else
+		that might help us fixing this issue.
+		===========================================================
+		#5  0x00007f248c1014f1 in __strlen_sse2_pminub () from /lib64/libc.so.6
+		#6  0x00007f2490e2f234 in TString::TString(char const*) () from /usr/lib64/root/libCore.so.5.32
+		#7  0x00007f248f5ed86d in TH1::DoIntegral(int, int, int, int, int, int, double&, char const*, bool) const () from /usr/lib64/root/libHist.so.5.32
+		#8  0x00007f248f5e784f in TH1::Integral(int, int, char const*) const () from /usr/lib64/root/libHist.so.5.32
+		#9  0x000000000071f174 in HisMaker::getMeanSigma(TH1*, double&, double&) ()
+		#10 0x0000000000a3453d in HisMaker::stat(std::string*, int, bool) ()
+		#11 0x000000000058ebfd in main ()
+		===========================================================
+		
+		# This is the same error that Jana encountered.
+		# I found a message on BioStar that hinted that the reference fasta must have 60bp length lines
+		# Going to try that and I will convert all bases into capital letters
+		
+	Blade14: /mnt/iscsi/vnx_gliu_7/reference/umd3_unmasked_chrs
+		$ for i in *.fa; do echo $i; perl -e '$last; $seq; while(<>){chomp; if($_ =~ />/){print "$_\n";}else{$seq .= $_;}} $seq = uc($seq); $seq =~ s/(.{60})/$1\n/g; print "$seq\n";' < $i > $i.tmp; done
+		
+	# OK let's try it again
+	Blade14: /mnt/iscsi/vnx_gliu_7
+		$ ./bin/cnvnator -genome umd3 -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02.root -his 500 -d /mnt/iscsi/vnx_gliu_7/reference/umd3_unmasked_chrs
+	
+		$ ./bin/cnvnator -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02.root -stat 500
+		# Same error, but it took longer to work this time
+		
+	# I downloaded the older version that I had used on the cow4 reference assembly. Going to see if that works instead
+	Blade14: /mnt/iscsi/vnx_gliu_7
+		$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02_old.root -tree 100_base_run/BIBR02/BIBR02.rg.rd.full.sorted.merged.bam
+			Filling and saving tree for 'chr1' ...
+			Filling and saving tree for 'chr2' ...
+			Filling and saving tree for 'chr3' ...
+			Filling and saving tree for 'chr4' ...
+			Filling and saving tree for 'chr5' ...
+			Filling and saving tree for 'chr6' ...
+			Filling and saving tree for 'chr7' ...
+			Filling and saving tree for 'chr8' ...
+			Filling and saving tree for 'chr9' ...
+			Filling and saving tree for 'chr10' ...
+			Filling and saving tree for 'chr11' ...
+			Filling and saving tree for 'chr12' ...
+			Filling and saving tree for 'chr13' ...
+			Filling and saving tree for 'chr14' ...
+			Filling and saving tree for 'chr15' ...
+			Filling and saving tree for 'chr16' ...
+			Filling and saving tree for 'chr17' ...
+			Filling and saving tree for 'chr18' ...
+			Filling and saving tree for 'chr19' ...
+			Filling and saving tree for 'chr20' ...
+			Filling and saving tree for 'chr21' ...
+			Filling and saving tree for 'chr22' ...
+			Filling and saving tree for 'chr23' ...
+			Filling and saving tree for 'chr24' ...
+			Filling and saving tree for 'chr25' ...
+			Filling and saving tree for 'chr26' ...
+			Filling and saving tree for 'chr27' ...
+			Filling and saving tree for 'chr28' ...
+			Filling and saving tree for 'chr29' ...
+			Filling and saving tree for 'chrX' ...
+			Writing histograms ...
+			Total of 137192513 reads were placed.
+			
+		$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02_old.root -his 500 -d /mnt/iscsi/vnx_gliu_7/reference/umd3_unmasked_chrs
+		
+		$ ~/CNVnator_v0.2.5/src/cnvnator -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02_old.root -stat 500
+			# This seemed to work!
+			Average RD per bin (1-22) is 23.4288 +- 13.7207 (before GC correction)
+			Average RD per bin (X,Y)  is 13.7228 +- 7.7294 (before GC correction)
+			Average RD per bin (1-22) is 24.0229 +- 8.13797 (after GC correction)
+			Average RD per bin (X,Y)  is 13.8958 +- 6.14488 (after GC correction)
+		
+		$ ~/CNVnator_v0.2.5/src/cnvnator -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02_old.root -partition 500
+		$ ~/CNVnator_v0.2.5/src/cnvnator -root /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02_old.root -call 500 > /mnt/iscsi/vnx_gliu_7/cnvnator_output/BIBR02_cnvnator.calls
+		
+		$ wc -l cnvnator_output/BIBR02_cnvnator.calls
+			2332 cnvnator_output/BIBR02_cnvnator.calls
+			# She worked! Now to start automating the process
+	
+	# Automated CNVnator calling
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/
+	$ for i in BT???? BI????; do echo $i; ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root ../cnvnator_output/$i.root -tree $i/$i.rg.rd.full.sorted.merged.bam; ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root ../cnvnator_output/$i.root -his 500 -d /mnt/iscsi/vnx_gliu_7/reference/umd3_unmasked_chrs ;   ~/CNVnator_v0.2.5/src/cnvnator -root ../cnvnator_output/$i.root -stat 500; ~/CNVnator_v0.2.5/src/cnvnator -root ../cnvnator_output/$i.root -partition 500; ~/CNVnator_v0.2.5/src/cnvnator -root ../cnvnator_output/$i.root -call 500 > ../cnvnator_output/$i.cnvnator.calls; done
+
+		
+# DOC CNV calling
+	# I'm going to run the data through my DOC caller to try to get some data for my poster
+	Blade14: /home/dbickhart/vnx_gliu_7/100_base_run
+	$ for i in `ls | grep -v "fork_gatk_runner.pl"`; do echo $i; ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I $i -i $i/$i.full.sorted.merged.bam -O $i_bwa5k_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -s '*.merged.bam'; done
+	
+	# Now to do MRSFast calling on all the files
+	$ for i in BIBR?? BIGI?? BINE?? BTAN?? BTHO?? BTJE?? BTLM?? BTRO??; do echo $i; ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I $i  -O $i.mrsfast5k.wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 5 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -s '*.mrsfast.bam'; done
+	
+	$ for i in BIBR?? BIGI?? BINE?? BTAN?? BTHO?? BTJE?? BTLM?? BTRO??; do echo $i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 $i/doc_wins/$i.mrsfast5k.wins.file1.bed -f2 $i/doc_wins/$i.mrsfast5k.wins.file2.bed -f3 $i/doc_wins/$i.mrsfast5k.wins.file3.bed -s1 $i/doc_wins/$i.mrsfast5k.wins.file1.stats -s2 $i/doc_wins/$i.mrsfast5k.wins.file2.stats -s3 $i/doc_wins/$i.mrsfast5k.wins.file3.stats -o $i/doc_wins/$i.mrsfast5k.calls -t 5 -w 5000; done
+	
+_________________________________________
+Poster Summary Stats
+_________________________________________
+
+# I need to prepare some stats for my poster for BARC poster day.
+# I'm going to give the average number of events for each species and create a histogram in R
+	Blade14: /home/dbickhart/vnx_gliu_7/100_bulls_final/vhsr
+	$ for i in BIGI BIBR BINE BTAN BTHO BTJE BTLM BTRO; do for x in $i*.deletions.tab; do wc -l $x; done | perl -e '$t; $v; while(<>){chomp; @s = split(/\s+/); $t += $s[0]; $v += 1;} print $t / $v . " ";'; echo $i; done
+		10066.6 	BIGI
+		4735.125	 BIBR
+		6398.625	 BINE
+		6138.14285714286	 BTAN
+		2700.16	 BTHO
+		3958.25	 BTJE
+		5186.42857142857	 BTLM
+		4352.5	 BTRO
+		
+	$ for i in BIGI BIBR BINE BTAN BTHO BTJE BTLM BTRO; do for x in $i*.insertions.tab; do wc -l $x; done | perl -e '$t; $v; while(<>){chomp; @s = split(/\s+/); $t += $s[0]; $v += 1;} print $t / $v . "\t";'; echo $i; done
+		29.4    BIGI
+		62.375  BIBR
+		19.75   BINE
+		9.42857142857143        BTAN
+		61.96   BTHO
+		40.75   BTJE
+		23.4285714285714        BTLM
+		11.5    BTRO
+		
+	$ for i in BIGI BIBR BINE BTAN BTHO BTJE BTLM BTRO; do for x in $i*.tand.tab; do wc -l $x; done | perl -e '$t; $v; while(<>){chomp; @s = split(/\s+/); $t += $s[0]; $v += 1;} print $t / $v . "\t";'; echo $i; done
+		547.6   BIGI
+		316.5   BIBR
+		500.875 BINE
+		449.714285714286        BTAN
+		251.76  BTHO
+		608     BTJE
+		375.142857142857        BTLM
+		418     BTRO
+		
+	$ for i in BIGI BIBR BINE BTAN BTHO BTJE BTLM BTRO; do for x in $i*/$i*.unfiltered.vcf; do wc -l $x; done | perl -e '$t; $v; while(<>){chomp; @s = split(/\s+/); if(!($s[0] =~ /\d+/)){next;} $t += $s[0]; $v += 1;} if($v){print $t / $v . "\t";}'; echo $i; done
+		8041054.83333333        BIGI
+		5759090.78571429        BIBR
+		6981318.75      BINE
+		3148330.78571429        BTAN
+		2952910.5       BTHO
+	
+	
+# Now to prepare a Histogram for the three different classes of mutations that I will report
+	pwd: /home/dbickhart/share/side_projects/barc_poster_day
+	$ R
+		> tab <- read.delim(file="summary_data.txt", header=FALSE, sep="\t")
+		> dtruth <- tab$V2 == "Deletions"
+		> del <- tab[dtruth,c(1,3)]
+		
+		> library(plyr)
+		> ins <- tab[tab$V2 == "Insertions", c(1,3)]
+		> ins["TandemDup"] <- tab[tab$V2 == "TandemDuplication", 3]
+		> ins <- rename(ins, c("V1"="Breed", "V3"="Insertion"))
+		> insmat <- data.matrix(ins[,c(2,3)])
+		
+		> snp <- tab[tab$V2 == "SNPs",c(1,3)]
+		
+		> pcolors = c("cadetblue3", "burlywood2", "aquamarine1", "darkorange", colors()[517], colors()[91], colors()[258], colors()[134])
+		> bcolors <- c("cadetblue3", "cadetblue2", "burlywood2", "burlywood1", "aquamarine1", "aquamarine", "darkorange", "darkorange1", "palegreen3", "palegreen2", "darkorange1", "darkorange2", "green4", "green3", "firebrick1", "firebrick")
+		
+		
+		> par(mfrow=c(3,1))
+		
+		> delplot <- barplot(del$V3, names.arg=del$V1, xlab="Breed", ylab="Number of Deletions (average)", col=pcolors, main="Average Number of Sequence Deletions per Breed", ylim=c(0,12000))	
+		> text(delplot, del$V3, labels=del$V3, pos=3)
+		> insplot <- barplot(insmat, beside=TRUE, names.arg=bnames, xlab="Breed", ylab="Number of Insertions (average)", col=pcolors, main="Average Number of Sequence Duplications/Insertions per Breed", ylim=c(0,850))
+		> vals <- c(ins$Insertion, ins$TandemDup)
+		> text(insplot, vals, labels=vals, pos=3)
+		> text(c(5,14), c(500,500), labels=c("Insertions", "TandemDups"), pos=3, cex=1.5)
+		> snplot <- barplot(snp$V3, names.arg=snp$V1, xlab="Breed", ylab="Number of SNPs (average)", col=pcolors, main="Average number of SNPs per Breed", ylim=c(0, 9000000))
+		> text(snplot, snp$V3, labels=snp$V3, pos=3)
+		
+
+# I may need to recall my SNPs at a breed level in order to make better calls (and eschew my custom filters!). The reason: the GATK takes multiple read groups into account with the bams and will correctly call single SNPs if they are present in multiple animals
+# I still think that keeping indicus separate from taurus is a necessity, as the SNP frequencies may be completely different. I need to do at least BIBR, BTAN and BTHO like this
+
+# Going to start on BIBR
+	$ mkdir BIBR_SNPS
+	$ perl ~/bin/run_gatk_walkers.pl -i BIBR02/BIBR02.rg.rd.full.sorted.merged.bam,BIBR03/BIBR03.rg.rd.full.sorted.merged.bam,BIBR04/BIBR04.rg.rd.full.sorted.merged.bam,BIBR05/BIBR05.rg.rd.full.sorted.merged.bam,BIBR07/BIBR07.rg.rd.full.sorted.merged.bam,BIBR08/BIBR08.rg.rd.full.sorted.merged.bam,BIBR09/BIBR09.rg.rd.full.sorted.merged.bam -o BIBR_SNPS/BIBR_snp_combined_calls -b ~/bin -p 2 -r ../reference/umd3_kary_unmask_ngap.fa -f 1 -j ~/jdk1.7.0/bin/java -g ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -t ../reference/umd3_training_set.txt -s '-Xmx15g' -u /mnt/iscsi/vnx_gliu_7/tmp
+		
+		
+# Going to try to run on both Angus and Holstein at the same time (going to be a HUGE file!)
+	$ mkdir BTAN_SNPS
+	$ perl ~/bin/run_gatk_walkers.pl -i BTAN01/BTAN01.rg.rd.full.sorted.merged.bam,BTAN03/BTAN03.rg.rd.full.sorted.merged.bam,BTAN04/BTAN04.rg.rd.full.sorted.merged.bam,BTAN05/BTAN05.rg.rd.full.sorted.merged.bam,BTAN06/BTAN06.rg.rd.full.sorted.merged.bam,BTAN08/BTAN08.rg.rd.full.sorted.merged.bam,BTHO02/BTHO02.rg.rd.full.sorted.merged.bam,BTHO04/BTHO04.rg.rd.full.sorted.merged.bam,BTHO07/BTHO07.rg.rd.full.sorted.merged.bam,BTHO08/BTHO08.rg.rd.full.sorted.merged.bam,BTHO09/BTHO09.rg.rd.full.sorted.merged.bam,BTHO10/BTHO10.rg.rd.full.sorted.merged.bam,BTHO19/BTHO19.rg.rd.full.sorted.merged.bam,BTHO20/BTHO20.rg.rd.full.sorted.merged.bam,BTHO22/BTHO22.rg.rd.full.sorted.merged.bam,BTHO25/BTHO25.rg.rd.full.sorted.merged.bam,BTHO29/BTHO29.rg.rd.full.sorted.merged.bam,BTHO32/BTHO32.rg.rd.full.sorted.merged.bam,BTHO42/BTHO42.rg.rd.full.sorted.merged.bam,BTHO44/BTHO44.rg.rd.full.sorted.merged.bam,BTHO46/BTHO46.rg.rd.full.sorted.merged.bam,BTHO47/BTHO47.rg.rd.full.sorted.merged.bam,BTHO48/BTHO48.rg.rd.full.sorted.merged.bam,BTHO49/BTHO49.rg.rd.full.sorted.merged.bam,BTHO50/BTHO50.rg.rd.full.sorted.merged.bam,BTHO51/BTHO51.rg.rd.full.sorted.merged.bam,BTHO52/BTHO52.rg.rd.full.sorted.merged.bam,BTHO53/BTHO53.rg.rd.full.sorted.merged.bam,BTHO54/BTHO54.rg.rd.full.sorted.merged.bam,BTHO56/BTHO56.rg.rd.full.sorted.merged.bam,BTHO57/BTHO57.rg.rd.full.sorted.merged.bam -o BTAN_SNPS/BTAN_snp_combined_calls -b ~/bin -p 2 -r ../reference/umd3_kary_unmask_ngap.fa -f 1 -j ~/jdk1.7.0/bin/java -g ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -t ../reference/umd3_training_set.txt -s '-Xmx25g' -u /mnt/iscsi/vnx_gliu_7/tmp
+	
+	# Damn realignment caused issues with the quality scores and the GATK crashes as soon as it finds a quality score above 40
+	# Going to have to do this manually
+	$  ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.5-2-gf57256b/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T BaseRecalibrator -I BTAN01/BTAN01.rg.rd.full.sorted.merged.bam -I BTAN03/BTAN03.rg.rd.full.sorted.merged.bam -I BTAN04/BTAN04.rg.rd.full.sorted.merged.bam -I BTAN05/BTAN05.rg.rd.full.sorted.merged.bam -I BTAN06/BTAN06.rg.rd.full.sorted.merged.bam -I BTAN08/BTAN08.rg.rd.full.sorted.merged.bam -I BTHO02/BTHO02.rg.rd.full.sorted.merged.bam -I BTHO04/BTHO04.rg.rd.full.sorted.merged.bam -I BTHO07/BTHO07.rg.rd.full.sorted.merged.bam -I BTHO08/BTHO08.rg.rd.full.sorted.merged.bam -I BTHO09/BTHO09.rg.rd.full.sorted.merged.bam -I BTHO10/BTHO10.rg.rd.full.sorted.merged.bam -I BTHO19/BTHO19.rg.rd.full.sorted.merged.bam -I BTHO20/BTHO20.rg.rd.full.sorted.merged.bam -I BTHO22/BTHO22.rg.rd.full.sorted.merged.bam -I BTHO25/BTHO25.rg.rd.full.sorted.merged.bam -I BTHO29/BTHO29.rg.rd.full.sorted.merged.bam -I BTHO32/BTHO32.rg.rd.full.sorted.merged.bam -I BTHO42/BTHO42.rg.rd.full.sorted.merged.bam -I BTHO44/BTHO44.rg.rd.full.sorted.merged.bam -I BTHO46/BTHO46.rg.rd.full.sorted.merged.bam -I BTHO47/BTHO47.rg.rd.full.sorted.merged.bam -I BTHO48/BTHO48.rg.rd.full.sorted.merged.bam -I BTHO49/BTHO49.rg.rd.full.sorted.merged.bam -I BTHO50/BTHO50.rg.rd.full.sorted.merged.bam -I BTHO51/BTHO51.rg.rd.full.sorted.merged.bam -I BTHO52/BTHO52.rg.rd.full.sorted.merged.bam -I BTHO53/BTHO53.rg.rd.full.sorted.merged.bam -I BTHO54/BTHO54.rg.rd.full.sorted.merged.bam -I BTHO56/BTHO56.rg.rd.full.sorted.merged.bam -I BTHO57/BTHO57.rg.rd.full.sorted.merged.bam -knownSites ~/reference/dbsnp_filtered_umd3_snps.vcf -o BTAN_SNPS/BTAN_BTHO_snp_combined_calls.recal.grp -nct 15 --allow_potentially_misencoded_quality_scores
+	
+	$ ~/jdk1.7.0/bin/java -Xmx20g -Djava.io.tmpdir=../tmp -jar ~/GenomeAnalysisTK-2.5-2-gf57256b/GenomeAnalysisTK.jar -T RealignerTargetCreator -R ~/reference/umd3_kary_unmask_ngap.fa -nt 15 -I BTAN01/BTAN01.rg.rd.full.sorted.merged.bam -I BTAN03/BTAN03.rg.rd.full.sorted.merged.bam -I BTAN04/BTAN04.rg.rd.full.sorted.merged.bam -I BTAN05/BTAN05.rg.rd.full.sorted.merged.bam -I BTAN06/BTAN06.rg.rd.full.sorted.merged.bam -I BTAN08/BTAN08.rg.rd.full.sorted.merged.bam -I BTHO02/BTHO02.rg.rd.full.sorted.merged.bam -I BTHO04/BTHO04.rg.rd.full.sorted.merged.bam -I BTHO07/BTHO07.rg.rd.full.sorted.merged.bam -I BTHO08/BTHO08.rg.rd.full.sorted.merged.bam -I BTHO09/BTHO09.rg.rd.full.sorted.merged.bam -I BTHO10/BTHO10.rg.rd.full.sorted.merged.bam -I BTHO19/BTHO19.rg.rd.full.sorted.merged.bam -I BTHO20/BTHO20.rg.rd.full.sorted.merged.bam -I BTHO22/BTHO22.rg.rd.full.sorted.merged.bam -I BTHO25/BTHO25.rg.rd.full.sorted.merged.bam -I BTHO29/BTHO29.rg.rd.full.sorted.merged.bam -I BTHO32/BTHO32.rg.rd.full.sorted.merged.bam -I BTHO42/BTHO42.rg.rd.full.sorted.merged.bam -I BTHO44/BTHO44.rg.rd.full.sorted.merged.bam -I BTHO46/BTHO46.rg.rd.full.sorted.merged.bam -I BTHO47/BTHO47.rg.rd.full.sorted.merged.bam -I BTHO48/BTHO48.rg.rd.full.sorted.merged.bam -I BTHO49/BTHO49.rg.rd.full.sorted.merged.bam -I BTHO50/BTHO50.rg.rd.full.sorted.merged.bam -I BTHO51/BTHO51.rg.rd.full.sorted.merged.bam -I BTHO52/BTHO52.rg.rd.full.sorted.merged.bam -I BTHO53/BTHO53.rg.rd.full.sorted.merged.bam -I BTHO54/BTHO54.rg.rd.full.sorted.merged.bam -I BTHO56/BTHO56.rg.rd.full.sorted.merged.bam -I BTHO57/BTHO57.rg.rd.full.sorted.merged.bam -o BTAN_SNPS/indels_realign_targets.intervals --allow_potentially_misencoded_quality_scores
+	$ ~/jdk1.7.0/bin/java -Xmx15g -Djava.io.tmpdir=../tmp/ -jar ~/GenomeAnalysisTK-2.5-2-gf57256b/GenomeAnalysisTK.jar -T IndelRealigner -R ~/reference/umd3_kary_unmask_ngap.fa -I BTAN01/BTAN01.rg.rd.full.sorted.merged.bam -I BTAN03/BTAN03.rg.rd.full.sorted.merged.bam -I BTAN04/BTAN04.rg.rd.full.sorted.merged.bam -I BTAN05/BTAN05.rg.rd.full.sorted.merged.bam -I BTAN06/BTAN06.rg.rd.full.sorted.merged.bam -I BTAN08/BTAN08.rg.rd.full.sorted.merged.bam -I BTHO02/BTHO02.rg.rd.full.sorted.merged.bam -I BTHO04/BTHO04.rg.rd.full.sorted.merged.bam -I BTHO07/BTHO07.rg.rd.full.sorted.merged.bam -I BTHO08/BTHO08.rg.rd.full.sorted.merged.bam -I BTHO09/BTHO09.rg.rd.full.sorted.merged.bam -I BTHO10/BTHO10.rg.rd.full.sorted.merged.bam -I BTHO19/BTHO19.rg.rd.full.sorted.merged.bam -I BTHO20/BTHO20.rg.rd.full.sorted.merged.bam -I BTHO22/BTHO22.rg.rd.full.sorted.merged.bam -I BTHO25/BTHO25.rg.rd.full.sorted.merged.bam -I BTHO29/BTHO29.rg.rd.full.sorted.merged.bam -I BTHO32/BTHO32.rg.rd.full.sorted.merged.bam -I BTHO42/BTHO42.rg.rd.full.sorted.merged.bam -I BTHO44/BTHO44.rg.rd.full.sorted.merged.bam -I BTHO46/BTHO46.rg.rd.full.sorted.merged.bam -I BTHO47/BTHO47.rg.rd.full.sorted.merged.bam -I BTHO48/BTHO48.rg.rd.full.sorted.merged.bam -I BTHO49/BTHO49.rg.rd.full.sorted.merged.bam -I BTHO50/BTHO50.rg.rd.full.sorted.merged.bam -I BTHO51/BTHO51.rg.rd.full.sorted.merged.bam -I BTHO52/BTHO52.rg.rd.full.sorted.merged.bam -I BTHO53/BTHO53.rg.rd.full.sorted.merged.bam -I BTHO54/BTHO54.rg.rd.full.sorted.merged.bam -I BTHO56/BTHO56.rg.rd.full.sorted.merged.bam -I BTHO57/BTHO57.rg.rd.full.sorted.merged.bam --allow_potentially_misencoded_quality_scores -targetIntervals BTAN_SNPS/indels_realign_targets.intervals -o BTAN_SNPS/BTAN_snp_combined_calls.realigned.bam
+	
+	# NOTE: the reducer step did not work (array index out of bounds: 33)
+	
+	$ ~/jdk1.7.0/bin/java -Xmx15g -Djava.io.tmpdir=../tmp/ -jar ~/GenomeAnalysisTK-2.5-2-gf57256b/GenomeAnalysisTK.jar -T UnifiedGenotyper -R ~/reference/umd3_kary_unmask_ngap.fa -nt 10 -I BTAN_snp_combined_calls.realigned.bam -allowPotentiallyMisencodedQuals -o BTAN_BTHO_snps_unfiltered.vcf
+	$ ~/jdk1.7.0/bin/java -Xmx15g -Djava.io.tmpdir=../tmp/ -jar ~/GenomeAnalysisTK-2.5-2-gf57256b/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T VariantRecalibrator -nt 10 -input BTAN_BTHO_snps_unfiltered.vcf -an QD -an HaplotypeScore -an MQRankSum -an ReadPosRankSum -an FS -an MQ -mode SNP -recalFile BTAN_BTHO_snps.recal -tranchesFile BTAN_BTHO_snps.tranches -rscriptFile BTAN_BTHO_snps.pdf -resource:dbsnp,known=false,training=true,truth=false,prior=15.0 /home/dbickhart/reference/dbsnp_filtered_umd3_snps.vcf -resource:validated,known=true,training=true,truth=true,prior=20.0 /home/dbickhart/reference/dbsnp_ld_filtered_sorted_known_snps.vcf
+	
+	$ ~/jdk1.7.0/bin/java -Xmx15g -Djava.io.tmpdir=../tmp/ -jar ~/GenomeAnalysisTK-2.5-2-gf57256b/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T ApplyRecalibration -nt 10 -input BTAN_BTHO_snps_unfiltered.vcf --ts_filter_level 99.0 -mode SNP  -o BTAN_BTHO_snps_filtered.vcf -recalFile BTAN_BTHO_snps.recal -tranchesFile BTAN_BTHO_snps.tranches
+	
+_______________________________________
+Space concerns
+_______________________________________
+
+# The divets take up a large amount of space! 
+# I am going to start zipping them up to conserve space for more programs
+	Blade14:/mnt/vnx_gliu_7/dbickhart/100_base_run/
+	$ for i in ./*/split_read; do echo $i; gzip $i/*.divet.vh; done
+	
+# I can also delete the split fastqs after the initial run, as the split bam file should contain the sequence I need

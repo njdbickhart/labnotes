@@ -1,0 +1,54 @@
+2010_12_10
+# I will attempt to run mrCaNaVaR and see if the results are both (a) meaningful and (b) congruent with Alkan's informal pipeline
+
+# First, I need to "prep" the file. I will use the steps that are listed in my 11/12/2010 note file to do that
+	$ ../../../dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i cow4_36bpextend_repeat.bed > cow4_36_merged_repeat.bed
+	$ ../../../dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi bosTau4_noUn.masked -bed cow4_36_merged_repeat.bed -fo cow4_36_noUn_masked.fa
+	
+	$ ./mrcanavar --prep -fasta /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/cow4_36_noUn_masked.fa -gaps ../alkan_files/cow4_reordered_cropped_gaps_nochrun.bed -conf cow4_36_nochrun.cnvr
+		Mode: Prepare genome...
+		Scanning the reference genome.
+		..............................
+		Total of 30 chromosomes in the reference genome, with 62160 gaps.
+		Longest chromosome is 161106252 bp
+		Reading the reference genome.
+		Chromosome chrX (88516663 bp). Counting windows ...
+		                LW: 58147       SW: 74976       CW: 30666
+		                Recalculating windows ...
+		Chromosome chr1 (161106252 bp). Counting windows ...
+		                LW: 112033      SW: 139007      CW: 63718
+		                Recalculating windows ...
+
+		# So it looks like it generates windows using the reference genome and masked gap regions.
+		# I am assuming that these are similar to the windows required by Alkan's other pipeline given the necessity of a gap file
+		# The output file is in binary, so I do not know how to check to see if that is true
+		# The secondary options for the program suggest that the windows are exactly the same and that the slide/absolute size can be modified
+	
+	# I need to convert a bam file into a sam in order to run the program.
+	$ ../../../samtools-0.1.8/samtools view BTAN01M_FC42PER_3_1_1_sort.bam > BTAN01M_FC42PER_3_1_1_sort.sam
+	$ ../../../samtools-0.1.8/samtools view BTAN01M_FC42PER_3_2_2_sort.bam > BTAN01M_FC42PER_3_2_2_sort.sam
+	
+	$ ./mrcanavar --read -conf cow4_36_nochrun.cnvr -samdir /mnt/gliu1_usb/dbickhart/breed_doc/angus/mrsfast/ -depth ./angus_test/two_sam_test.depth
+		Mode: Read SAM ...
+		Loading reference configuration, hold on ... [OK]. 30 chromosomes loaded.
+		Scanning the SAM directory: /mnt/gliu1_usb/dbickhart/breed_doc/angus/mrsfast/
+		Loading file 2 of 2: BTAN01M_FC42PER_3_2_2_sort.sam...
+		
+		2 files loaded.
+		Saving depth file ./angus_test/two_sam_test.depth.lw.txt
+		Saving depth file ./angus_test/two_sam_test.depth.sw.txt
+		Saving depth file ./angus_test/two_sam_test.depth.cw.txt
+		
+	$ ./mrcanavar --call --xx -conf cow4_36_nochrun.cnvr -depth ./angus_test/two_sam_test.depth -o ./angus_test/two_sam_test.final
+		Mode: Call copy numbers ...
+		Loading reference configuration, hold on ... [OK]. 30 chromosomes loaded.
+		[OK] depth file ./angus_test/two_sam_test.depth is loaded.
+		Control region cleanup...
+		Normalization completed.
+		Writing control regions to: ./angus_test/two_sam_test.final.cw_norm.bed.
+		Writing copy numbers to: ./angus_test/two_sam_test.final.copynumber.bed.
+		
+	# Yup, gives basically the same output as his less-packaged pipeline, but with less control and no output of bed files of detected CNV's.
+	
+	# One of the problems will be converting all of the bam files that I have back into sam files... probably not a possibility! 
+	# I should just use the informal pipeline for the time being.

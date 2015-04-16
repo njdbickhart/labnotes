@@ -1,0 +1,1176 @@
+05/21/2013
+# The following are my notes on how I analyzed the CNV and SNP calls from the 100 bulls project data
+
+# I need to convince myself that the calls are good. In order to do this, I want to check the overlaps of CNV calls from the different methods and to check CNV associations with genetic features
+
+______________________________
+Genetic feature correlation
+______________________________
+
+# I want to out-source this to Jana to get her involved in the process.
+# I need to divide the CNV calls into subsections based on call types, call programs and subspecies
+# This will serve as a good base for my Venn overlap comparision as well.
+
+
+______________________________
+Preprocessing data
+______________________________
+PWD: /home/dbickhart/share/100_bulls_project/cnv_calls
+	# File format: 
+		# Name: (datasettitle)_stuff.bed
+		# Columns: chr	start	end	(datasettitle)
+	# BWA doc CNV calls:
+	$ perl -e '@s = `ls ./bwa_doc/BI*`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> ./formatted_cnvs/BIgainbwa_doc_cnvs.bed"); open(LOSS, "> ./formatted_cnvs/BIlossbwa_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\t/); $outstr = "$b[0]\t$b[1]\t$b[2]"; if($b[3] eq "GAIN"){ print GAIN $outstr . "\tBIbwagain\n";}else{ print LOSS $outstr . "\tBIbwaloss\n";}} close IN;} close GAIN; close LOSS;'
+	$ perl -e '@s = `ls ./bwa_doc/BT*`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> ./formatted_cnvs/BTgainbwa_doc_cnvs.bed"); open(LOSS, "> ./formatted_cnvs/BTlossbwa_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\t/); $outstr = "$b[0]\t$b[1]\t$b[2]"; if($b[3] eq "GAIN"){ print GAIN $outstr . "\tBTbwagain\n";}else{ print LOSS $outstr . "\tBTbwaloss\n";}} close IN;} close GAIN; close LOSS;'
+	# NOTE: Some of the BT bwa loss calls were WAY too big! I think that the bam file that I used was missing data from some chromosomes!
+	
+	# Mrsfast doc CNV calls:
+	$ perl -e '@s = `ls ./mrsfast_doc/BT*`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> ./formatted_cnvs/BTgainmrsfast_doc_cnvs.bed"); open(LOSS, "> ./formatted_cnvs/BTlossmrsfast_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\t/); $outstr = "$b[0]\t$b[1]\t$b[2]"; if($b[3] eq "GAIN"){ print GAIN $outstr . "\tBTmrsfastgain\n";}else{ print LOSS $outstr . "\tBTmrsfastloss\n";}} close IN;} close GAIN; close LOSS;'
+	$ perl -e '@s = `ls ./mrsfast_doc/BI*`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> ./formatted_cnvs/BIgainmrsfast_doc_cnvs.bed"); open(LOSS, "> ./formatted_cnvs/BIlossmrsfast_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\t/); $outstr = "$b[0]\t$b[1]\t$b[2]"; if($b[3] eq "GAIN"){ print GAIN $outstr . "\tBImrsfastgain\n";}else{ print LOSS $outstr . "\tBImrsfastloss\n";}} close IN;} close GAIN; close LOSS;'
+	
+	# CNmops doc CNV calls:
+	$ perl -e 'open(IN, "< cnmops/BI_cnmops_cnvrs_table.tab"); open(GAIN, "> formatted_cnvs/BIgaincnmops_doc_cnvs.bed"); open(LOSS, "> formatted_cnvs/BIlosscnmops_doc_cnvs.bed"); $h = <IN>; while(<IN>){chomp; $_ =~ s/\"//g; @s = split(/\s+/); ($cn) = $s[8] =~ m/CN(\d+)/; $outstr = "$s[1]\t$s[2]\t$s[3]"; if($cn < 2){ print LOSS $outstr . "\tBIlosscnmops\n";}elsif($cn > 2){print GAIN $outstr . "\tBIgaincnmops\n";}}'
+	$ perl -e 'open(IN, "< cnmops/BT_cnmops_cnvr_table.tab"); open(GAIN, "> formatted_cnvs/BTgaincnmops_doc_cnvs.bed"); open(LOSS, "> formatted_cnvs/BTlosscnmops_doc_cnvs.bed"); $h = <IN>; while(<IN>){chomp; $_ =~ s/\"//g; @s = split(/\s+/); ($cn) = $s[8] =~ m/CN(\d+)/; $outstr = "$s[1]\t$s[2]\t$s[3]"; if($cn < 2){ print LOSS $outstr . "\tBTlosscnmops\n";}elsif($cn > 2){print GAIN $outstr . "\tBTgaincnmops\n";}}'
+	
+	# CNVnator doc CNV calls:
+	# Not sure if I should filter away bad p-value calls; I think that I'll be conservative and only filter calls that have p-values greater than 1
+	$ perl -e '@s = `ls ./cnvnator/BT*`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> ./formatted_cnvs/BTgaincnvnator_doc_cnvs.bed"); open(LOSS, "> ./formatted_cnvs/BTlosscnvnator_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\s+/); if($b[3] > 1 || $b[4] > 1){next;} ($chr, $start, $end) = $b[1] =~ m/(chr.+):(\d+)-(\d+)/; $outstr = "$chr\t$start\t$end"; if($b[0] eq "duplication"){ print GAIN $outstr . "\tBTcnvnatorgain\n";}else{ print LOSS $outstr . "\tBTcnvnatorloss\n";}} close IN;} close GAIN; close LOSS;'
+	$ perl -e '@s = `ls ./cnvnator/BI*`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> ./formatted_cnvs/BIgaincnvnator_doc_cnvs.bed"); open(LOSS, "> ./formatted_cnvs/BIlosscnvnator_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\s+/); if($b[3] > 1 || $b[4] > 1){next;} ($chr, $start, $end) = $b[1] =~ m/(chr.+):(\d+)-(\d+)/; $outstr = "$chr\t$start\t$end"; if($b[0] eq "duplication"){ print GAIN $outstr . "\tBIcnvnatorgain\n";}else{ print LOSS $outstr . "\tBIcnvnatorloss\n";}} close IN;} close GAIN; close LOSS;'
+	
+	# VHSR pem CNV calls:
+	$ perl -e '@files = `ls vhsr/BI*.deletions.tab`; open(OUT, "> formatted_cnvs/BIlossvhsr_pem_cnvs.bed") || die "could not create outfile!\n"; chomp @files; foreach $f (@files){ open(IN, "< $f"); while(<IN>){chomp; @s = split(/\t/); if($s[2] < $s[3]){print OUT "$s[0]\t$s[2]\t$s[3]\tBIlossvhsr\n";}} close IN;} close OUT;'
+	$ perl -e '@files = `ls vhsr/BT*.deletions.tab`; open(OUT, "> formatted_cnvs/BTlossvhsr_pem_cnvs.bed") || die "could not create outfile!\n"; chomp @files; foreach $f (@files){ open(IN, "< $f"); while(<IN>){chomp; @s = split(/\t/); if($s[2] < $s[3]){print OUT "$s[0]\t$s[2]\t$s[3]\tBTlossvhsr\n";}} close IN;} close OUT;'
+	
+	$ perl -e '@files = `ls vhsr/BT*.insertions.tab`; open(OUT, "> formatted_cnvs/BTinsvhsr_pem_cnvs.bed") || die "could not create outfile!\n"; chomp @files; foreach $f (@files){ open(IN, "< $f"); while(<IN>){chomp; @s = split(/\t/); if($s[2] < $s[3]){print OUT "$s[0]\t$s[2]\t$s[3]\tBTinsvhsr\n";}} close IN;} close OUT;'
+	$ perl -e '@files = `ls vhsr/BI*.insertions.tab`; open(OUT, "> formatted_cnvs/BIinsvhsr_pem_cnvs.bed") || die "could not create outfile!\n"; chomp @files; foreach $f (@files){ open(IN, "< $f"); while(<IN>){chomp; @s = split(/\t/); if($s[2] < $s[3]){print OUT "$s[0]\t$s[2]\t$s[3]\tBIinsvhsr\n";}} close IN;} close OUT;'
+	
+	$ perl -e '@files = `ls vhsr/BI*.tand.tab`; open(OUT, "> formatted_cnvs/BItandvhsr_pem_cnvs.bed") || die "could not create outfile!\n"; chomp @files; foreach $f (@files){ open(IN, "< $f"); while(<IN>){chomp; @s = split(/\t/); if($s[2] < $s[3]){print OUT "$s[0]\t$s[2]\t$s[3]\tBItandvhsr\n";}} close IN;} close OUT;'
+	$ perl -e '@files = `ls vhsr/BT*.tand.tab`; open(OUT, "> formatted_cnvs/BTtandvhsr_pem_cnvs.bed") || die "could not create outfile!\n"; chomp @files; foreach $f (@files){ open(IN, "< $f"); while(<IN>){chomp; @s = split(/\t/); if($s[2] < $s[3]){print OUT "$s[0]\t$s[2]\t$s[3]\tBTtandvhsr\n";}} close IN;} close OUT;'
+	
+	
+# Now, I need to sort the files by chromosome and start coordinate (or bedtools will throw a fit!)
+	PWD: /home/dbickhart/share/100_bulls_project/cnv_calls/formatted_cnvs
+	$ for i in ./*; do echo $i; cat $i | perl ../../../programs_source/Perl/sortBedFileSTDIN.pl > temp; mv temp $i; done
+	
+
+_________________________________
+Summary statistics and plots
+_________________________________
+# OK, now I just need to start doing the comparisons
+	pwd: /home/dbickhart/share/100_bulls_project/cnv_calls/formatted_cnvs
+	# DOC gain comparisons
+		$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BI_doc_gain_comp.png BIgainbwa_doc_cnvs.bed BIgaincnvnator_doc_cnvs.bed BIgaincnmops_doc_cnvs.bed BIgainmrsfast_doc_cnvs.bed
+		
+		# OK, so I found an issue with my analysis: I'm not doing this on CNVRs, so the shared space is not accurrate
+		# Making CNVRs real quick: 
+			pwd: /home/dbickhart/share/100_bulls_project/cnv_calls/
+			$ mkdir formatted_cnvrs
+			$ for i in formatted_cnvs/*; do echo $i; prefix=`echo $i | cut -d'/' -f2 | cut -d'_' -f1`; echo $prefix; mergeBed -i $i | perl -e 'chomp $ARGV[0]; while(<STDIN>){chomp; print "$_\t$ARGV[0]\n";}' $prefix > formatted_cnvrs/$prefix"_cnvrs.bed"; done
+	
+			$ for i in formatted_cnvs/*cnvnator*; do echo $i; prefix=`echo $i | cut -d'/' -f2 | cut -d'_' -f1`; echo $prefix; mergeBed -i $i | intersectBed -a stdin -b ../../test_software/test_files/umd3_simple_gap.bed -v | perl -e 'chomp $ARGV[0]; while(<STDIN>){chomp; print "$_\t$ARGV[0]\n";}' $prefix > formatted_cnvrs/$prefix"_no_gaps_cnvrs.bed"; done
+			
+	# Let's try this again for the CNVRs
+	pwd: /home/dbickhart/share/100_bulls_project/cnv_calls/formatted_cnvrs
+	$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BI_doc_gain_comp.png BIgainbwa_cnvrs.bed BIgaincnmops_cnvrs.bed BIgaincnvnator_cnvrs.bed BIgainmrsfast_cnvrs.bed
+	$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BT_doc_gain_comp.png BTgainbwa_cnvrs.bed BTgaincnmops_cnvrs.bed BTgaincnvnator_cnvrs.bed BTgainmrsfast_cnvrs.bed
+	
+	$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BI_doc_loss_comp.png BIlossbwa_cnvrs.bed BIlosscnmops_cnvrs.bed BIlosscnvnator_cnvrs.bed BIlossmrsfast_cnvrs.bed
+	$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BT_doc_loss_comp.png BTlossbwa_cnvrs.bed BTlosscnmops_cnvrs.bed BTlosscnvnator_cnvrs.bed BTlossmrsfast_cnvrs.bed
+	
+	$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BI_pem_loss_comp.png BIdeldelly_cnvrs.bed BIlossvhsr_cnvrs.bed
+	$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BT_pem_loss_comp.png BTdeldelly_cnvrs.bed BTlossvhsr_cnvrs.bed
+	$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BI_pem_ins_comp.png BIdupdelly_cnvrs.bed BIinsvhsr_cnvrs.bed BItandvhsr_cnvrs.bed
+	$ perl ~/bin/create_GD_venn_diagram.pl ../venn_comparisons/BT_pem_ins_comp.png BTdupdelly_cnvrs.bed BTinsvhsr_cnvrs.bed BTtandvhsr_cnvrs.bed
+			
+			
+# I am going to create tab delimited summaries for all of the files that I have now for easier comparison
+	pwd: /home/dbickhart/share/100_bulls_project/cnv_calls/formatted_cnvrs
+	$ for i in *.bed; do echo $i; cat $i | bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/cnvr_summary.tab
+	
+	$ cd ../formatted_cnvs
+	$ for i in *.bed; do echo $i; cat $i | bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/cnvs_summary.tab
+	
+	$ cd ../bwa_doc
+	$ for i in *.bed; do echo $i; cat $i | bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/bwa_alkan_summary.tab
+	
+	$ cd ../cnvnator
+	$ for i in *.calls; do echo $i; cat $i | perl -lane '($c, $s, $e) = $F[1] =~ /(chr.+):(\d+)-(\d+)/; print "$c\t$s\t$e";' | bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/cnvnator_summary.tab
+	
+	$ cd ../mrsfast_doc
+	$ for i in *.bed; do echo $i; cat $i | bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/mrsfast_alkan_summary.tab
+	
+	$ cd ../vhsr
+	$ for i in *deletions.tab; do echo $i; cat $i | perl -lane 'print "$F[0]\t$F[2]\t$F[3]";' | bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/vhsr_deletion_summary.tab
+	$ for i in *insertions.tab; do echo $i; cat $i | perl -lane 'print "$F[0]\t$F[2]\t$F[3]";' | bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/vhsr_insertion_summary.tab
+	$ for i in *tand.tab; do echo $i; cat $i | perl -lane 'print "$F[0]\t$F[2]\t$F[3]";' | bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/vhsr_tand_summary.tab
+	
+	$ for i in ../bedconvert/*.duplications.delly.named.bed; do basename $i; cat $i| bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/delly_duplication_summary.tab
+	$ for i in ../bedconvert/*.deletions.delly.named.bed; do basename $i; cat $i| bed_length_sum.pl ; done | perl -e '%h; while($an = <>){ chomp $an; $i = <>; $l = <>; $a = <>; $m = <>; $s = <>; ($num) = $i =~ /(\d+)/; ($len) = $l =~ /(\d+)/; ($avg) = $a =~ /(\d+)/; ($med) = $m =~ /(\d+)/; ($std) = $s =~ /(\d+)/; $h{$an} = [$num, $len, $avg, $med, $std];} print "dataset\tcount\ttotal_length\tavg_length\tmedian_length\tlength_stdev\n"; foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' > ../dataset_comparisons/delly_deletion_summary.tab
+	
+	
+	# Creating delly cnvrs
+	$ for i in ../bedconvert/BI*.deletions.delly.named.bed; do perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBIdellydeletions";' < $i; done | ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | perl -lane 'print "$_\tBIdellydeletions";' > BIdeldelly_cnvrs.bed
+	$ for i in ../bedconvert/BT*.deletions.delly.named.bed; do perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBTdellydeletions";' < $i; done | ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | perl -lane 'print "$_\tBTdellydeletions";' > BTdeldelly_cnvrs.bed
+	$ for i in ../bedconvert/BT*.duplications.delly.named.bed; do perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBTdellyduplications";' < $i; done | ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | perl -lane 'print "$_\tBTdellyduplications";' > BTdupdelly_cnvrs.bed
+	$ for i in ../bedconvert/BI*.duplications.delly.named.bed; do perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBIdellyduplications";' < $i; done | ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | perl -lane 'print "$_\tBIdellyduplications";' > BIdupdelly_cnvrs.bed
+	
+	
+	# Now to try to print out some summary figures quickly
+	$ cd ../dataset_comparisons/
+	$ R
+		> cnvr <- read.table("cnvr_summary.tab", header=TRUE, row.names=1, sep="\t")
+		> cnvr$category <- sub("_cnvrs.bed", "", row.names(cnvr))
+		> library(reshape2)
+		> library(ggplot2)
+		
+		> cnvr.melt <- melt(cnvr, value.name="count", variable.name="variable")
+		# Going to print just the indicus length statistics
+		> qplot(data=cnvr.melt[cnvr.melt$variable %in% c("avg_length", "median_length", "length_stdev") & cnvr.melt$category %in% cnvr.melt[grep("BI", cnvr.melt$category),1],], x=category, y=count, geom="bar", stat="identity", facets= ~variable, color=category) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+		> dev.copy2pdf(file="indicus_cnvr_sizes_diff_methods.pdf", useDingbats=FALSE)
+		
+		# Now for the taurus versions
+		> qplot(data=cnvr.melt[cnvr.melt$variable %in% c("avg_length", "median_length", "length_stdev") & cnvr.melt$category %in% cnvr.melt[grep("BT", cnvr.melt$category),1],], x=category, y=count, geom="bar", stat="identity", facets= ~variable, color=category) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+		> dev.copy2pdf(file="taurus_cnvr_sizes_diff_methods.pdf", useDingbats=FALSE)
+		
+		# Now to print the total lengths for each subspecies
+		> qplot(data=cnvr.melt[cnvr.melt$variable %in% c("total_length"),], x=category, y=count, geom="bar", stat="identity", facets= ~variable, color=category) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+		> dev.copy2pdf(file="taurus_cnvr_totallength_diff_methods.pdf", useDingbats=FALSE)
+		
+		
+	# OK, so I have redone the population DOC analysis and now I want to compare it back against the set window analysis that I had done previously:
+		pwd: /home/dbickhart/share/100_bulls_project/popdoc
+		$ cat oldschool/{indicus,ntaurus}/B*/*.calls.cnvcns.bed | sortBedFileSTDIN.pl | mergeBed -i stdin | bed_length_sum.pl 
+			Interval Numbers:	7741			<- This is the population data
+			Total Length:		205760885
+			Length Average:		26580.65947552
+			Length Median:		14573
+			Length Stdev:		76349.63102513
+			Smallest Length:	998
+			Largest Length:		3101646			<- The largest CNVR overlaps the entire OR gene cluster
+			
+		$ cat oldoldschool/*/*.calls.cnvs.bed | sortBedFileSTDIN.pl | mergeBed -i stdin | bed_length_sum.pl 
+			Interval Numbers:	9091			<- This is using the set windows to analyze the data
+			Total Length:		254658174
+			Length Average:		28012.1190188098
+			Length Median:		17998
+			Length Stdev:		33329.246718831
+			Smallest Length:	998
+			Largest Length:		539037
+			
+		# Now, comparing the overlap 
+		$ perl ~/bin/create_GD_venn_diagram.pl cnvr_comparison_twomethods.png popwin_cnvr_named.bed setwin_cnvr_named.bed
+			popwin	2416	0	75553555	0
+			popwin;setwin	5843	5843	130207330	130207330
+			setwin	0	3781	0	124450844
+		# About 70% of the pop windows bases/calls with the set windows calls, whereas only 50% of the setwindows bases and 60% overlap with the pop windows
+		# So the set windows events are smaller and exist in different locations in the genome. Still, not a bad overlap, all things considered
+		
+		# Now, let's try separating by subspecies
+		$ perl -e '@s = `ls ./oldoldschool/BI????/*.calls.cnvcns.bed`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> BIgainsetwin_doc_cnvs.bed"); open(LOSS, "> BIlosssetwin_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\t/); $outstr = "$b[0]\t$b[1]\t$b[2]"; if($b[3] eq "GAIN"){ print GAIN $outstr . "\tBIgainsetwin\n";}else{ print LOSS $outstr . "\tBIlosssetwin\n";}} close IN;} close GAIN; close LOSS;'; for i in BIgainsetwin_doc_cnvs.bed BIlosssetwin_doc_cnvs.bed; do echo $i; cat $i | sortBedFileSTDIN.pl | mergeBed -i stdin -nms | perl -lane '@s = split(/;/, $F[3]); print "$F[0]\t$F[1]\t$F[2]\t$s[0]";' > temp; mv temp $i; done;
+		$ perl -e '@s = `ls ./oldoldschool/BT????/*.calls.cnvcns.bed`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> BTgainsetwin_doc_cnvs.bed"); open(LOSS, "> BTlosssetwin_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\t/); $outstr = "$b[0]\t$b[1]\t$b[2]"; if($b[3] eq "GAIN"){ print GAIN $outstr . "\tBTgainsetwin\n";}else{ print LOSS $outstr . "\tBTlosssetwin\n";}} close IN;} close GAIN; close LOSS;'; for i in BTgainsetwin_doc_cnvs.bed BTlosssetwin_doc_cnvs.bed; do echo $i; cat $i | sortBedFileSTDIN.pl | mergeBed -i stdin -nms | perl -lane '@s = split(/;/, $F[3]); print "$F[0]\t$F[1]\t$F[2]\t$s[0]";' > temp; mv temp $i; done;
+		
+		$ perl -e '@s = `ls ./oldschool/ntaurus/BT????/*.calls.cnvcns.bed`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> BTgainpopwin_doc_cnvs.bed"); open(LOSS, "> BTlosspopwin_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\t/); $outstr = "$b[0]\t$b[1]\t$b[2]"; if($b[3] eq "GAIN"){ print GAIN $outstr . "\tBTgainpopwin\n";}else{ print LOSS $outstr . "\tBTlosspopwin\n";}} close IN;} close GAIN; close LOSS;'; for i in BTgainpopwin_doc_cnvs.bed BTlosspopwin_doc_cnvs.bed; do echo $i; cat $i | sortBedFileSTDIN.pl | mergeBed -i stdin -nms | perl -lane '@s = split(/;/, $F[3]); print "$F[0]\t$F[1]\t$F[2]\t$s[0]";' > temp; mv temp $i; done;
+		$ perl -e '@s = `ls ./oldschool/indicus/BI????/*.calls.cnvcns.bed`; chomp(@s); print "found: " .scalar(@s) . " files\n"; open(GAIN, "> BIgainpopwin_doc_cnvs.bed"); open(LOSS, "> BIlosspopwin_doc_cnvs.bed"); foreach  my $f (@s){open(IN, "< $f") || die "Could not open $f!\n"; while(<IN>){chomp; @b = split(/\t/); $outstr = "$b[0]\t$b[1]\t$b[2]"; if($b[3] eq "GAIN"){ print GAIN $outstr . "\tBIgainpopwin\n";}else{ print LOSS $outstr . "\tBIlosspopwin\n";}} close IN;} close GAIN; close LOSS;'; for i in BIgainpopwin_doc_cnvs.bed BIlosspopwin_doc_cnvs.bed; do echo $i; cat $i | sortBedFileSTDIN.pl | mergeBed -i stdin -nms | perl -lane '@s = split(/;/, $F[3]); print "$F[0]\t$F[1]\t$F[2]\t$s[0]";' > temp; mv temp $i; done;
+		
+		
+		# Now for the mrsfast based DOC comparisions
+		# First the gains
+		$ perl ~/bin/create_GD_venn_diagram.pl cnvr_gain_comparisons.png BIgainpopwin_doc_cnvs.bed BIgainsetwin_doc_cnvs.bed BTgainpopwin_doc_cnvs.bed BTgainsetwin_doc_cnvs.bed
+		
+		# Now the losses
+		$ perl ~/bin/create_GD_venn_diagram.pl cnvr_loss_comparisons.png BIlosspopwin_doc_cnvs.bed BIlosssetwin_doc_cnvs.bed BTlosspopwin_doc_cnvs.bed BTlosssetwin_doc_cnvs.bed
+		
+		
+		# OK, now for the cross method comparisons
+		$ perl ~/bin/create_GD_venn_diagram.pl BI_cnvr_loss_comparison_others.png BIlosscnvnator_no_gaps_cnvrs.bed BIlosscnmops_cnvrs.bed BIlosssetwin_doc_cnvs.bed BIlosspopwin_doc_cnvs.bed
+		$ perl ~/bin/create_GD_venn_diagram.pl BT_cnvr_loss_comparison_others.png BTlosscnvnator_no_gaps_cnvrs.bed BTlosssetwin_doc_cnvs.bed BTlosspopwin_doc_cnvs.bed
+		$ perl ~/bin/create_GD_venn_diagram.pl BT_cnvr_gain_comparison_others.png BTgaincnvnator_no_gaps_cnvrs.bed BTgainsetwin_doc_cnvs.bed BTgainpopwin_doc_cnvs.bed
+		$ perl ~/bin/create_GD_venn_diagram.pl BI_cnvr_gain_comparison_others.png BIgaincnvnator_no_gaps_cnvrs.bed BIgainsetwin_doc_cnvs.bed BIgainpopwin_doc_cnvs.bed
+		
+	# Heatmap generation
+		# I need to select genes for further analysis, so I will try using the heatmap plots to identify interesting features from my animal lists
+		# Hopefully the data load is not too large for R to handle!
+		
+		pwd: /home/dbickhart/share/100_bulls_project/popdoc/oldschool/heatmaps
+		
+		# The XDH gene region (Milk QTL gene)
+		$ perl ../../../../programs_source/R/extract_cn_for_heatmap_constant_int.pl -i ../nolow_cns_pop.txt -c chr11 -s 14176296 -e 14236376 -o test.out
+		$ R
+			> x <- read.delim("test.out.tab", header = TRUE, sep = "\t", quote = "\"'", dec = ".", row.names = 1)
+			> y <- as.matrix(x)
+			> source("../../../../programs_source/R/heatmap_template_creation_low_span.R")
+			
+		# I have refined my original R code to be a function instead that just takes the file name as input and produces the output automatically
+		$ perl ../../../../programs_source/R/extract_cn_for_heatmap_constant_int.pl -i ../nolow_cns_pop.txt -c chr7 -s 14395393 -e 14403789 -o cnvr_660
+			
+		# The results were nice from that last one, but the breed hierarchy was not supported by the CN windows. Instead I am going to automate the process
+		# I created a file called "heatmap_list_high_animals.list" that will contain all of the animals that had high CN
+		
+		$ perl -lane 'system("perl ../../../../programs_source/R/extract_cn_for_heatmap_constant_int.pl -i ../nolow_cns_pop.txt -c $F[1] -s $F[2] -e $F[3] -o cnvr_$F[0]");' < heatmap_region_high_animals.list
+		
+		# I have removed three animals from the list in the meantime, so I need to redo the program and check new CNVRs that seem interesting
+		# File is: final_cn_list_pop.txt
+		# Moved previous heatmaps to folder: /home/dbickhart/share/100_bulls_project/popdoc/oldschool/heatmaps/old
+		$ perl -lane 'system("perl ../../../../programs_source/R/extract_cn_for_heatmap_constant_int.pl -i ../final_cn_list_pop.txt -c $F[1] -s $F[2] -e $F[3] -o cnvr_$F[0]");' < heatmap_region_special.list
+		$ R
+			> source("../../../../programs_source/R/heatmap_template_creation_low_span.R")
+			# For each of the .out.tab files...
+				
+		
+_____________________________
+CNV annotation
+_____________________________
+# Now I am going to use my java program to do the annotation of CNVs with genetic features
+# Going to make some quick comparisons based on sub-species
+	Blade14:/home/dbickhart/vnx_gliu_7/100_bulls_final/cnv_calls
+	$ mkdir combined
+	$ cat BI*.full.filtered.vhsr.deletions.tab > combined/BI_vhsr_deletions.tab
+	$ cat BT*.full.filtered.vhsr.deletions.tab > combined/BT_vhsr_deletions.tab
+	$ cat BI*.mrsfast5k.calls.cnvs.bed > combined/BI_mrsfastbwa.bed
+	$ cat BT*.mrsfast5k.calls.cnvs.bed > combined/BT_mrsfastbwa.bed
+	$ cat BI*bwa5kbase.cnvs.bed > combined/BI_bwawssd.bed
+	$ cat BT*bwa5kbase.cnvs.bed > combined/BT_bwawssd.bed
+	$ mv combined/BI_mrsfastbwa.bed combined/BI_mrsfastwssd.bed
+	$ mv combined/BT_mrsfastbwa.bed combined/BT_mrsfastwssd.bed
+
+	$ for i in ../../100_base_run/*/delly/*delly.deletions.tab; do name=`basename $i`; echo $name; perl -lane 'if($F[0] =~ /^chr.+/){print $_;}' < $i > $name; done
+	$ for i in ../../100_base_run/*/delly/*duppy.duplications.tab; do name=`basename $i`; echo $name; perl -lane 'if($F[0] =~ /^chr.+/){print $_;}' < $i > $name; done
+	
+	$ cat BI*.delly.deletions.tab > combined/BI_dellydeletions.tab
+	$ cat BT*.delly.deletions.tab > combined/BT_dellydeletions.tab
+	$ cat BI*.duppy.duplications.tab > combined/BI_dellydups.tab
+	$ cat BT*.duppy.duplications.tab > combined/BT_dellydups.tab
+	
+	$ cat BI*.vhsr.insertions.tab > combined/BI_vhsr_insertions.tab
+	$ cat BT*.vhsr.insertions.tab > combined/BT_vhsr_insertions.tab
+	$ cat BI*.vhsr.tand.tab > combined/BI_vhsr_tand.tab
+	$ cat BT*.vhsr.tand.tab > combined/BT_vhsr_tand.tab
+	
+	Blade14: /home/dbickhart/vnx_gliu_7/umd3_tracks
+	$ perl -e 'print "/home/dbickhart/vnx_gliu_7/umd3_tracks/ensGene_umd3_coords.bed\tensGene\n/home/dbickhart/vnx_gliu_7/umd3_tracks/refGeneName_umd3_coords.bed\trefGeneName\n/home/dbickhart/vnx_gliu_7/umd3_tracks/refGeneNum_umd3_coords.bed\trefGeneNum\n/home/dbickhart/vnx_gliu_7/umd3_tracks/umd3_blasthg19_format.bed\tblasthg19\n/home/dbickhart/vnx_gliu_7/umd3_tracks/umd3_ensembl_gene_description_filtered.bed\tgeneDesc\n";' > genedb_list.txt
+	
+	Blade14: /home/dbickhart/vnx_gliu_7/100_bulls_final/cnv_calls/
+	$ cat BT*bwa5kbase.cnvs.bed | perl ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | ~/bin/bed_length_sum.pl
+	       Interval Numbers:  30
+	       Total Length:    2658930438
+	       Length Average:  88631014.6
+	       Length Median:   83353410
+       	 	Length Stdev:    31699249.2491136
+       	 
+       	 $ cat BT*mrsfast5k.calls.cnvs.bed | perl ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | ~/bin/bed_length_sum.pl
+	        Interval Numbers:  14108
+	        Total Length:    796500345
+	        Length Average:  56457.3536291466
+	        Length Median:   400245.5
+       		Length Stdev:    102711.680649062
+       	
+       	$ cat BI*bwa5kbase.cnvs.bed | perl ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | ~/bin/bed_length_sum.pl
+	       Interval Numbers:  4996
+	       Total Length:    214054418
+	       Length Average:  42845.1597277822
+	       Length Median:   48486.5
+       		Length Stdev:    49947.9716899942
+       		
+       	$ cat BI*mrsfast5k.calls.cnvs.bed | perl ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | ~/bin/bed_length_sum.pl
+	       Interval Numbers:  1809
+	       Total Length:    117537500
+	       Length Average:  64973.7423991155
+	       Length Median:   19963
+       		Length Stdev:    167069.419176772
+	
+	$ mkdir bedconvert
+	$ for i in *.cnvs.bed; do echo $i; name=`echo $i | cut -d'.' -f1`; type=`echo $i | cut -d'.' -f2`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(my $line = <IN>){chomp($line); @s = split(/\t/, $line); print "$s[0]\t$s[1]\t$s[2]\t$s[4]\t$ARGV[1]\n";}' > bedconvert/$name.$type.cnvs.named.bed; done
+	$ for i in *.vhsr*.tab; do echo $i; name=`echo $i | cut -d'.' -f1`; type=`echo $i | cut -d'.' -f5`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(my $line = <IN>){chomp($line); @s = split(/\t/, $line); print "$s[0]\t$s[2]\t$s[3]\t$s[9]\t$ARGV[1]\n";}' | ~/bin/sortBedFileSTDIN.pl > bedconvert/$name.$type.vhsr.named.bed; done
+	$ for i in B*.d*.*.tab; do echo $i; name=`echo $i | cut -d'.' -f1`; type=`echo $i | cut -d'.' -f3`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(my $line = <IN>){chomp($line); @s = split(/\t/, $line); print "$s[0]\t$s[2]\t$s[3]\t$s[5]\t$ARGV[1]\n";}' > bedconvert/$name.$type.delly.named.bed; done
+	$ for i in ../../cnvnator_output/*.calls; do echo $i; name=`basename $i | cut -d'.' -f1`; type=`basename $i | cut -d'.' -f2 `; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(my $line = <IN>){chomp($line); @s = split(/\t/, $line); ($chr, $start, $end) = $s[1] =~ /(chr.+):(\d+)-(\d+)/; print "$chr\t$start\t$end\t$s[3]\t$ARGV[1];$s[0]\n";}' $i $name > bedconvert/$name.$type.named.bed; done
+	
+	
+	# Now to start annotating files for George to view
+	pwd:/home/dbickhart/share/100_bulls_project/cnv_calls/formatted_cnvrs
+	$ ~/jdk1.7.0/bin/java -jar ../../../netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../../umd3_data/genedb/genedb_list.txt -i BIgainbwa_cnvrs.bed,BIgaincnmops_cnvrs.bed,BIgaincnvnator_cnvrs.bed,BIgainmrsfast_cnvrs.bed,BIinsvhsr_cnvrs.bed -o BI.gain.cnvrs
+	$ ~/jdk1.7.0/bin/jaorkspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../../umd3_data/genedb/genedb_list.txt -i BIlossbwa_cnvrs.bed,BIlosscnmops_cnvrs.bed,BIlosscnvnator_cnvrs.bed,BIlossmrsfast_cnvrs.bed,BItandvhsr_cnvrs.bed -o BI.loss.and.tand.cnvrs
+	# the vhsr loss cnvrs were too numerous for excel
+	$ ~/jdk1.7.0/bin/java -jar ../../../netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../../umd3_data/genedb/genedb_list.txt -i BIlossvhsr_cnvrs.bed -o BI.loss.vhsr.cnvrs -t
+	
+	$ ~/jdk1.7.0/bin/jaorkspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../../umd3_data/genedb/genedb_list.txt -i BTgainbwa_cnvrs.bed,BTgaincnmops_cnvrs.bed,BTgaincnvnator_cnvrs.bed,BTgainmrsfast_cnvrs.bed,BTtandvhsr_cnvrs.bed -o BT.gain.and.tand.cnvrs
+	$ ~/jdk1.7.0/bin/jaorkspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../../umd3_data/genedb/genedb_list.txt -i BTlossbwa_cnvrs.bed,BTlosscnmops_cnvrs.bed,BTlosscnvnator_cnvrs.bed,BTlossmrsfast_cnvrs.bed -o BT.loss.cnvrs
+	$ ~/jdk1.7.0/bin/java -jar ../../../netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../../umd3_data/genedb/genedb_list.txt -i BTlossvhsr_cnvrs.bed -o BT.loss.vhsr.cnvrs -t
+	
+	
+# Creating the CNVR copy number table
+	pwd: /home/dbickhart/share/100_bulls_project/cnv_calls
+	$ for i in mrsfast_doc/*.bed; do name=`echo $i | cut -d'/' -f2 | cut -d'.' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]_$s[3]\n";} close IN;' $i $name; done | sortBedFileSTDIN.pl | mergeBed -i stdin -nms > mrsfast_doc_named_merged.bed
+	$ perl ../../programs_source/Perl/bed_cnv_fig_table_pipeline/create_copynumber_gene_intersect_table.pl -i ../../umd3_data/genedb/genedb_list.txt -c ../cn/100_bulls_cn_list.txt -v mrsfast_doc_named_merged.bed
+	
+	# OK, so the memory requirements of my program are too great. I have to do this on the server
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_bulls_final/cn/
+	perl create_copynumber_gene_intersect_table.pl -i ../../umd3_tracks/genedb_list.txt -c 100_bulls_cn_list.txt -v mrsfast_doc_named_merged.bed
+	
+	
+	# Another method
+	PWD: /home/dbickhart/share/100_bulls_project/popdoc/oldschool/taurus
+	$ for i in BTHO??; do file=`echo $i"/$i.calls.cnvcns.bed"`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]_$s[3]\n";}' $file $i; done | sortBedFileSTDIN.pl | mergeBed -i stdin -nms > holstein_cnvr_named_typed.bed
+	$ for i in BTHO??; do file=`echo $i"/$i.calls.cnlist.bed"`; echo -e "$file\t$i"; done > holstein_cn_lists.txt
+	$ perl ../../../../programs_source/Perl/bed_cnv_fig_table_pipeline/create_copynumber_gene_intersect_table.pl -i ../../../../umd3_data/genedb/genedb_list.txt -c holstein_cn_lists.txt -v holstein_cnvr_named_typed.bed
+	
+	
+	# I have updated the taurus popdoc folder and I need to get the data analyzed
+	# I have also updated the AnnotateUsingGenomicInfo program to create CNV and CNVR tables automatically
+	PWD: /home/dbickhart/share/100_bulls_project/popdoc/oldschool/indicus
+	$ for i in BI????; do p=`pwd`; e=`echo -n "$p/$i/$i.calls.cnvcns.bed"`; echo -e "$e\t$i"; echo -e "$e\t$i" >> ../combined_cnvs_pop.txt; done
+	$ for i in BI????; do p=`pwd`; e=`echo -n "$p/$i/$i.calls.cnlist.bed"`; echo -e "$e\t$i"; echo -e "$e\t$i" >> ../combined_cns_pop.txt; done
+	
+	PWD: /home/dbickhart/share/100_bulls_project/popdoc/oldschool/ntaurus
+	$ for i in BT????; do p=`pwd`; e=`echo -n "$p/$i/$i.calls.cnvcns.bed"`; echo -e "$e\t$i"; echo -e "$e\t$i" >> ../combined_cnvs_pop.txt; done
+	$ for i in BT????; do p=`pwd`; e=`echo -n "$p/$i/$i.calls.cnlist.bed"`; echo -e "$e\t$i"; echo -e "$e\t$i" >> ../combined_cns_pop.txt; done
+	
+	$ ~/jdk1.7.0/bin/java -jar ../../../netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../../umd3_data/genedb/genedb_list.txt -i combined_cnvs_pop.txt -c combined_cns_pop.txt -o total_pop_doc
+	# NOTE: I had to remove BTHO56 from my analysis
+	
+# Identifying breed specific differences
+	# I created a script that processes my annotated CNVR file
+	# It identifies all of the breed/type specific CNVs that I designate and prints them out to a text file
+	pwd: /home/dbickhart/share/100_bulls_project/popdoc/oldschool
+	$ perl group_cnvrs_by_specificity_breed_animal.pl text_annotation_gene/total_text_pop_cnvrs.tab
+	
+	# Here are some interesting regions that I found:
+		beef	6115	chr21	50441099	50447466	6	BTAN07;BTRO01;BTRO05;BTRO06;BIBR04;BTLM11	mus Mir703 site
+		indicus	1654	chr5	58381482	58447806	16	BINE09;BINE07;BINE04;BINE12;BINE10;BINE13;BIBR07;BIBR08;BIBR03;BIBR04;BIGI07;BIGI08;BINE01;BIGI02;BIGI01;BIGI06	ENSBTAT00000064619;1.0	Deleted in indicus
+		indicus	7634	chrX	32881576	32909177	14	BINE09;BINE07;BIBR09;BINE04;BINE12;BIBR08;BIBR05;BIBR04;BIGI07;BIGI08;BIGI02;BIGI01;BIGI06;BIGI05	ENSBTAT00000063300;1.0	MAGEA gene families; implicated in dyskeratosis congenita (problems with skin formation and keratin in nails)
+		taurus	7301	chr28	25391864	25407830	19	BTHO42;BTHO44;BTAN08;BTAN04;BTHO02;BTAN01;BTRO04;BTRO05;BTRO06;BTHO52;BTHO07;BTJE02;BTJE01;BTLM10;BTHO25;BTHO20;BTJE08;BTJE10;BTLM01	ENSBTAT00000019351;0.3376334899615549	nucleolar RNA helicase 2  [Source:RefSeq peptide.Acc:NP_001076996];0.3376479131957794	NM_004728:DDX21;0.3536605657237937	Helicase involved in cellular growth and spermatogenesis
+		breed	5902	chr20	51987770	52037004	5	BTJE02;BTJE01;BTJE05;BTJE08;BTJE10	Deletion of AK123868
+		breed	1895	chr6	36140058	36160056	5	BTHO04;BTHO53;BTHO54;BTHO19;BTHO32	MMRN1 duplication
+		breed	2843	chr9	11804825	11820989	4	BTHO04;BTHO54;BTHO19;BTHO32	RIMS1 gene duplication
+		breed	3131	chr10	33083685	33099572	4	BTRO04;BTRO01;BTRO05;BTRO06	conserved region + repeats
+		dairy	192	chr1	88500632	88530337	4	BTHO09;BTHO10;BTJE02;BTJE05	ENSBTAT00000012168;0.9053246211594606 PIK3CA-201 deletion
+		dairy	5214	chr17	54326322	54345158	7	BTHO04;BTHO50;BTHO54;BTJE01;BTHO19;BTHO29;BTHO32	ENSBTAT00000029669;1.0	TMED2 gene duplication
+		
+_______________________________
+Creating figures and tables
+_______________________________
+# Now to start doing the comparison work that I need for the manuscript.
+# George had mentioned several things that he wants me to calculate for the paper:
+	1. Venn diagram of control windows BT:BI;
+	2. CNVnator call histogram by length;
+	3. CNV freq by breeds/purpose/susspecies;
+	4. CNV vs. aCGH;
+	5. Heatmap;
+	6. qPCR and ddPCR.
+
+# Let's start with a Venn diagram	
+	$ for i in AN0219 AN0342 AN0447 AN0458 AN0544 AN0626 AN0728 AN0828 AN1717 AN1776 AN4517 BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO51 BTHO52 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTLM9 BTRO01 BTRO04 BTRO05 BTRO06 chairman chief elevation ivanhoe starbuck; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]\n";}' ntaurus/$i/$i.calls.cnvcns.bed $i; done | sortBedFileSTDIN.pl | mergeBed -i stdin -nms > taurus_nolow_cnvrs.bed
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]\n";}' indicus/$i/$i.calls.cnvcns.bed $i; done | sortBedFileSTDIN.pl | mergeBed -i stdin -nms > indicus_nolow_cnvrs.bed
+	
+	
+	
+	
+# Now for the control window venn
+	# I messed up here, since I tested out the other control window generation criteria and overwrote my previous control windows
+	# I am going to regenerate it on Blade14
+		Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/
+		$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO19 -I BTHO20 -I BTHO22 -I BTHO25  -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO51 -I BTHO52 -I BTHO54 -I BTHO56 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06
+		$ cd doc_oldschool
+		$ mkdir ltaurus; for i in BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO51 BTHO52 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTLM9 BTRO01 BTRO04 BTRO05 BTRO06; do echo $i; mkdir ltaurus/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o ltaurus/$i/$i.calls -w 5000 -t 4 -p; done
+		
+		# Damn, I forgot to remove 56 and 19
+		$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO20 -I BTHO22 -I BTHO25  -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO51 -I BTHO52 -I BTHO54 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06
+		
+		$ perl ~/bin/table_bed_length_sum.pl ltaurus/BTAN01/BTAN01.calls.cnvs.bed ltaurus/BTAN03/BTAN03.calls.cnvs.bed ltaurus/BTAN04/BTAN04.calls.cnvs.bed ltaurus/BTAN05/BTAN05.calls.cnvs.bed ltaurus/BTAN06/BTAN06.calls.cnvs.bed ltaurus/BTAN07/BTAN07.calls.cnvs.bed ltaurus/BTAN08/BTAN08.calls.cnvs.bed ltaurus/BTHO02/BTHO02.calls.cnvs.bed ltaurus/BTHO04/BTHO04.calls.cnvs.bed ltaurus/BTHO07/BTHO07.calls.cnvs.bed ltaurus/BTHO08/BTHO08.calls.cnvs.bed ltaurus/BTHO09/BTHO09.calls.cnvs.bed ltaurus/BTHO10/BTHO10.calls.cnvs.bed ltaurus/BTHO19/BTHO19.calls.cnvs.bed ltaurus/BTHO20/BTHO20.calls.cnvs.bed ltaurus/BTHO22/BTHO22.calls.cnvs.bed ltaurus/BTHO25/BTHO25.calls.cnvs.bed ltaurus/BTHO32/BTHO32.calls.cnvs.bed ltaurus/BTHO42/BTHO42.calls.cnvs.bed ltaurus/BTHO44/BTHO44.calls.cnvs.bed ltaurus/BTHO46/BTHO46.calls.cnvs.bed ltaurus/BTHO47/BTHO47.calls.cnvs.bed ltaurus/BTHO51/BTHO51.calls.cnvs.bed ltaurus/BTHO52/BTHO52.calls.cnvs.bed ltaurus/BTHO54/BTHO54.calls.cnvs.bed ltaurus/BTHO57/BTHO57.calls.cnvs.bed ltaurus/BTJE01/BTJE01.calls.cnvs.bed ltaurus/BTJE02/BTJE02.calls.cnvs.bed ltaurus/BTJE03/BTJE03.calls.cnvs.bed ltaurus/BTJE04/BTJE04.calls.cnvs.bed ltaurus/BTJE05/BTJE05.calls.cnvs.bed ltaurus/BTJE08/BTJE08.calls.cnvs.bed ltaurus/BTJE09/BTJE09.calls.cnvs.bed ltaurus/BTJE10/BTJE10.calls.cnvs.bed ltaurus/BTLM01/BTLM01.calls.cnvs.bed ltaurus/BTLM03/BTLM03.calls.cnvs.bed ltaurus/BTLM04/BTLM04.calls.cnvs.bed ltaurus/BTLM07/BTLM07.calls.cnvs.bed ltaurus/BTLM10/BTLM10.calls.cnvs.bed ltaurus/BTLM11/BTLM11.calls.cnvs.bed ltaurus/BTLM9/BTLM9.calls.cnvs.bed ltaurus/BTRO01/BTRO01.calls.cnvs.bed ltaurus/BTRO04/BTRO04.calls.cnvs.bed ltaurus/BTRO05/BTRO05.calls.cnvs.bed ltaurus/BTRO06/BTRO06.calls.cnvs.bed
+			FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+			ltaurus/BTAN01/BTAN01.calls.cnvs.bed    665     39885828        59978.6887218045        142670.564061188        17646   998     1544385
+			ltaurus/BTAN03/BTAN03.calls.cnvs.bed    730     43236691        59228.3438356164        137749.175338569        18203   998     1460289
+			ltaurus/BTAN04/BTAN04.calls.cnvs.bed    686     41794086        60924.3236151603        128863.475105884        17998   998     1412821
+			ltaurus/BTAN05/BTAN05.calls.cnvs.bed    660     40247951        60981.7439393939        132124.153480627        18830   998     1483289
+			ltaurus/BTAN06/BTAN06.calls.cnvs.bed    557     36030996        64687.60502693  161050.726926297        19086   998     1716676
+			ltaurus/BTAN07/BTAN07.calls.cnvs.bed    670     37193070        55512.0447761194        125624.786007835        16100   998     1459289
+			ltaurus/BTAN08/BTAN08.calls.cnvs.bed    641     37723244        58850.6146645866        135554.170691416        16859   998     1455853
+			ltaurus/BTHO02/BTHO02.calls.cnvs.bed    674     37541657        55699.7878338279        130194.758742025        15982   998     1445611
+			ltaurus/BTHO04/BTHO04.calls.cnvs.bed    444     22696575        51118.4121621622        127929.137761778        16586   1998    1716676
+			ltaurus/BTHO07/BTHO07.calls.cnvs.bed    614     36046221        58707.2003257329        136561.188323118        18009.5 998     1487289
+			ltaurus/BTHO08/BTHO08.calls.cnvs.bed    700     42333584        60476.5485714286        136933.248612158        17998   998     1412821
+			ltaurus/BTHO09/BTHO09.calls.cnvs.bed    612     37118748        60651.5490196078        134355.559539927        19017   998     1412821
+			ltaurus/BTHO10/BTHO10.calls.cnvs.bed    590     34566866        58587.9084745763        125472.500313902        18013   998     1400821
+			ltaurus/BTHO20/BTHO20.calls.cnvs.bed    594     36986319        62266.5303030303        136139.234248301        18936.5 998     1400821
+			ltaurus/BTHO22/BTHO22.calls.cnvs.bed    648     33990996        52455.2407407407        128119.888059723        15398.5 998     1448611
+			ltaurus/BTHO25/BTHO25.calls.cnvs.bed    527     32174076        61051.3776091082        138367.800424611        18376   998     1399821
+			ltaurus/BTHO32/BTHO32.calls.cnvs.bed    458     22860018        49912.7030567686        105801.306754686        17012   1440    1266571
+			ltaurus/BTHO42/BTHO42.calls.cnvs.bed    554     33680312        60794.7870036101        132506.883801857        17211.5 998     1412821
+			ltaurus/BTHO44/BTHO44.calls.cnvs.bed    566     32462101        57353.535335689 129693.842272214        15745.5 998     1412821
+			ltaurus/BTHO46/BTHO46.calls.cnvs.bed    634     36292396        57243.5268138801        132878.864843728        17998   998     1434611
+			ltaurus/BTHO47/BTHO47.calls.cnvs.bed    656     39466398        60162.1920731707        135559.073253678        18424.5 998     1460289
+			ltaurus/BTHO51/BTHO51.calls.cnvs.bed    615     40621499        66051.2178861789        147922.48810163 18945   998     1459289
+			ltaurus/BTHO52/BTHO52.calls.cnvs.bed    535     33882757        63332.2560747664        149891.08594141 18197   998     1459289
+			ltaurus/BTHO54/BTHO54.calls.cnvs.bed    440     20131740        45753.9545454545        102858.580535023        15998   1265    1160956
+			ltaurus/BTHO57/BTHO57.calls.cnvs.bed    502     28903907        57577.5039840637        125656.644523065        18455.5 998     1385908
+			ltaurus/BTJE01/BTJE01.calls.cnvs.bed    525     32666500        62221.9047619048        138260.923356517        21066   998     1399821
+			ltaurus/BTJE02/BTJE02.calls.cnvs.bed    626     40869045        65286.0143769968        144200.622529635        18998   998     1412821
+			ltaurus/BTJE03/BTJE03.calls.cnvs.bed    618     37578101        60805.9886731392        139263.681462041        17998   998     1459289
+			ltaurus/BTJE04/BTJE04.calls.cnvs.bed    1194    52964498        44358.8760469012        101697.918089482        15777   998     1459289
+			ltaurus/BTJE05/BTJE05.calls.cnvs.bed    510     21781031        42707.9039215686        96618.9654598412        16386.5 998     1266571
+			ltaurus/BTJE08/BTJE08.calls.cnvs.bed    667     41512471        62237.5877061469        151865.512624802        16558   998     1544385
+			ltaurus/BTJE09/BTJE09.calls.cnvs.bed    588     38293931        65125.7329931973        156006.614453741        18952.5 998     1544385
+			ltaurus/BTJE10/BTJE10.calls.cnvs.bed    547     36244496        66260.5045703839        150426.369663124        18334   1066    1412821
+			ltaurus/BTLM01/BTLM01.calls.cnvs.bed    605     40807341        67450.1504132231        169600.342963298        19421   998     1988689
+			ltaurus/BTLM03/BTLM03.calls.cnvs.bed    619     36922337        59648.3634894992        129193.936003499        17570   998     1412821
+			ltaurus/BTLM04/BTLM04.calls.cnvs.bed    565     37411872        66215.7026548673        160573.475931638        19600   1440    1984689
+			ltaurus/BTLM07/BTLM07.calls.cnvs.bed    668     42667499        63873.501497006 153829.778596377        17233   998     1544385
+			ltaurus/BTLM10/BTLM10.calls.cnvs.bed    611     36709791        60081.4909983633        139284.598431534        17985   998     1400821
+			ltaurus/BTLM11/BTLM11.calls.cnvs.bed    692     41065875        59343.75        142939.328748632        17023   998     1456853
+			ltaurus/BTLM9/BTLM9.calls.cnvs.bed      593     38022005        64118.0522765599        151391.976426046        18875   998     1459289
+			ltaurus/BTRO01/BTRO01.calls.cnvs.bed    663     39562886        59672.5279034691        132184.368662196        16882   998     1483289
+			ltaurus/BTRO04/BTRO04.calls.cnvs.bed    711     41729321        58691.0281293952        136019.718671797        16465   998     1459289
+			ltaurus/BTRO05/BTRO05.calls.cnvs.bed    682     40137700        58852.9325513196        128922.995760893        17146.5 998     1459289
+			ltaurus/BTRO06/BTRO06.calls.cnvs.bed    699     41361892        59172.9499284692        134808.267431973        16394   998     1412821
+		
+	# Creating a simple table summarizing the data from my cnv calling for George
+		pwd: /home/dbickhart/share/100_bulls_project/popdoc/oldschool
+		$ echo -e "animal\tcnv#\tcnvlength\tgain#\tloss#"; for i in text_annotation_indiv/*.anno; do b=`echo $i | cut -d'_' -f6`; name=`echo $b | cut -d'.' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $t += $s[2] - $s[1]; $c++; if($s[3] eq "GAIN"){$g++;}elsif($s[3] eq "LOSS"){$l++;}} close IN; print "$ARGV[1]\t$c\t$t\t$g\t$l\n";' $i $name; done 
+		animal	cnv#	cnvlength	gain#	loss#
+		AN0219	715	43087058	708	7
+		AN0342	769	46258226	760	9
+		AN0447	725	41275600	724	1
+		AN0458	781	46281942	776	5
+		AN0544	738	45890900	728	10
+		AN0626	733	44299318	728	5
+		AN0728	762	47320076	758	4
+		AN0828	730	43965410	723	7
+		AN1717	750	45057495	746	4
+		AN1776	759	42881036	754	5
+		AN4517	798	46308763	790	8
+		BIBR02	564	35526243	537	27
+		BIBR03	476	28395999	438	38
+		BIBR04	648	40612077	635	13
+		BIBR05	527	34203009	506	21
+		BIBR07	401	25574221	393	8
+		BIBR08	607	42106588	593	14
+		BIBR09	613	40018467	604	9
+		BIGI01	579	36362547	561	18
+		BIGI02	661	41178269	649	12
+		BIGI05	639	39893642	610	29
+		BIGI06	603	39109250	596	7
+		BIGI07	638	38157104	619	19
+		BIGI08	604	34487694	591	13
+		BINE01	610	34800890	575	35
+		BINE04	610	38192600	590	20
+		BINE07	598	38511061	575	23
+		BINE09	665	39380191	650	15
+		BINE10	594	39526117	583	11
+		BINE12	566	34240227	562	4
+		BINE13	655	39462669	607	48
+		BTAN01	665	39885828	636	29
+		BTAN03	731	43241862	719	12
+		BTAN04	686	41794086	672	14
+		BTAN05	660	40247951	640	20
+		BTAN06	557	36030996	541	16
+		BTAN07	670	37193070	659	11
+		BTAN08	642	37738586	616	26
+		BTHO02	674	37541657	661	13
+		BTHO04	444	22696575	443	1
+		BTHO07	614	36046221	601	13
+		BTHO08	701	42338755	693	8
+		BTHO09	612	37118748	602	10
+		BTHO10	590	34566866	553	37
+		BTHO20	594	36986319	558	36
+		BTHO22	649	33990996	625	24
+		BTHO25	527	32174076	499	28
+		BTHO32	458	22860018	454	4
+		BTHO42	555	33685483	555	
+		BTHO44	566	32462101	565	1
+		BTHO46	635	36297567	628	7
+		BTHO47	656	39466398	648	8
+		BTHO51	615	40621499	608	7
+		BTHO52	535	33882757	530	5
+		BTHO54	440	20131740	387	53
+		BTHO57	503	28912164	478	25
+		BTJE01	525	32666500	486	39
+		BTJE02	626	40869045	598	28
+		BTJE03	619	37651128	604	15
+		BTJE04	1195	52965496	1179	16
+		BTJE05	510	21781031	414	96
+		BTJE08	667	41512471	649	18
+		BTJE09	588	38293931	579	9
+		BTJE10	547	36244496	539	8
+		BTLM01	605	40807341	592	13
+		BTLM03	619	36922337	595	24
+		BTLM04	565	37411872	540	25
+		BTLM07	668	42667499	655	13
+		BTLM10	611	36709791	573	38
+		BTLM11	693	41071046	688	5
+		BTRO01	664	39575057	654	10
+		BTRO04	712	41771037	698	14
+		BTRO05	683	40142871	674	9
+		BTRO06	700	41367063	685	15
+		chairman	582	33801028	578	4
+		chief	641	41900809	625	16
+		elevation	497	30005210	493	4
+		ivanhoe	760	31934777	749	11
+		starbuck	630	40543006	620	10
+	# Creating the files for my venn program
+		pwd: /home/dbickhart/share/100_bulls_project/pop_doc/oldschool/control_comp
+		$ mergeBed -i Normalized.BIBR02.file1.control.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tindfile1";' > indfile1_controls.bed
+		$ mergeBed -i Normalized.BTAN01.file1.control.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\ttaufile1";' > taufile1_controls.bed
+	
+		$ perl ~/bin/create_GD_venn_diagram.pl file1_controls_comp.png indfile1_controls.bed taufile1_controls.bed
+		
+		$ mergeBed -i Normalized.BIBR02.file2.control.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tindfile2";' > indfile2_controls.bed
+		$ mergeBed -i Normalized.BTAN01.file2.control.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\ttaufile2";' > taufile2_controls.bed
+		
+		$ perl ~/bin/create_GD_venn_diagram.pl file2_controls_comp.png indfile2_controls.bed taufile2_controls.bed
+		
+		$ mergeBed -i Normalized.BTAN01.file3.control.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\ttaufile3";' > taufile3_controls.bed
+		$ mergeBed -i Normalized.BIBR02.file3.control.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tindfile3";' > indfile3_controls.bed
+		
+		$ perl ~/bin/create_GD_venn_diagram.pl file3_controls_comp.png indfile3_controls.bed taufile3_controls.bed
+		
+# Creating control window length histograms
+	# Since R has way too many commands, I am going to massage the data with Perl first and then try simple histograms instead
+		pwd: /home/dbickhart/share/100_bulls_project/pop_doc/
+		$ perl -e 'my %h; while(<>){chomp; @s = split(/\t/); $l = $s[2] - $s[1]; $b = int($l / 1000); $h{$b} += 1;} foreach my $k (sort {$a <=> $b} keys(%h)){my $t = ($k * 1000) . "-" . ($k * 1000 + 1000); print "$t\t$h{$k}\n";}' < BTlosscnvnator_no_gaps_cnvrs.bed > BTlosscnvnator_no_gaps_cnvr_lengths.tab
+		> btlosscnvnator <- read.table(file="BTlosscnvnator_no_gaps_cnvr_lengths.tab", sep="\t", header=FALSE)
+		
+		
+# Creating the heatmaps
+	pwd: /home/dbickhart/share/100_bulls_project/popdoc/oldschool/heatmaps
+	> source("../../../../programs_source/R/heatmap_template_creation_low_span.R")
+	> cnv_heatmap("cnvr_1829.tab")
+	
+	# I have quite a few CNVRs like this, so I just need to scroll through and check them all
+	> for(i in list.files(pattern = "cnvr_\\d+.tab")){
+		base <- substr(i, 1, nchar(i) - 4)
+		print(base)
+		pdf(file=paste0(base, ".pdf"), useDingbats=FALSE)
+		cnv_heatmap(i)
+		dev.off()
+	}
+	
+	# Unfortunately, some files did not work. I removed them manually when possible. Not 100% sure what caused the errors
+	
+# Calculating the qPCR validation rate
+	
+	
+# Futuro run:
+	Blade14: /mnt/iscsi/vnx_gliu_7/
+	$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.bam' -O 100_base_run/doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl reference/umd3_assembly_blacklist.bed -I futuro
+	$ ~/jdk1.7.0/bin/java -Xmx90g -jar bin/DocCNVCaller.jar -f1 100_base_run/doc_oldschool/Normalized.futuro.file1.bed -f2 100_base_run/doc_oldschool/Normalized.futuro.file2.bed -f3 100_base_run/doc_oldschool/Normalized.futuro.file3.bed -s1 100_base_run/doc_oldschool/Normalized.futuro.file1.control.bed.stats -s2 100_base_run/doc_oldschool/Normalized.futuro.file2.control.bed.stats -s3 100_base_run/doc_oldschool/Normalized.futuro.file3.control.bed.stats -o futuro/futuro.calls -w 5000 -t 10 -p
+
+# Angus run:
+	Lewis: /home/dbickhar/asg0/angus_full
+	$ bsub -J doccnv -oo pop_doc_newrun.out -R 'rusage[mem=20000] span[hosts=1]' -n 4 '/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -Xmx19g -jar /home/dbickhar/bin/GeneratePopulationDocFragWindows.jar -S *.sorted.bam -O new_docrun -R /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -n 4 -w 5000 -g /ibfs7/asg2/bickhartd/reference/gms/fake_gms_list.txt -ng -rl 100 -bl /ibfs7/asg2/bickhartd/reference/umd3_assembly_blacklist.bed -I AN0219 -I AN0342 -I AN0447 -I AN0458 -I AN0544 -I AN0626 -I AN0728 -I AN0828 -I AN1717 -I AN1776 -I AN4517'
+	$ for i in AN0219 AN0342 AN0447 AN0458 AN0544 AN0626 AN0728 AN0828 AN1717 AN1776 AN4517; do echo $i; bsub -J $i -oo $i.caller.out -R 'rusage[mem=4000] span[hosts=1]' -n 4 "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -Xmx4g -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o calls/$i.calls -w 5000 -t 4 -p"; done
+
+# Lewin run:
+	3850: /POD1_1/users/bickhart/lewin_out
+	$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.bam' -O doc_data -R  /POD1_1/users/bickhart/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ../reference/gmslist.txt -ng -rl 100 -bl ../reference/umd3_assembly_blacklist.bed -I chairman -I chief -I starbuck -I elevation -I ivanhoe
+	$ for i in chairman chief starbuck elevation ivanhoe; do echo $i; ~/jdk1.7.0/bin/java -Xmx4g -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o calls/$i.calls -w 5000 -t 4 -p; done
+	
+_______________________________
+Validating the data
+_______________________________
+# Creating qPCR regions from George's data
+	# George sent me his file with the hand-picked qPCR regions
+	# My goal is to cross reference them with CNVnator, select the regions that have the most animal coverages and update them with "gain"/"loss" annotation
+	# I will write a perl script to do all of this
+	
+# Fine window mapping qPCR coords
+	# So the qPCR regions may have been selected within regions that are not representative of the CNV
+	# I will create new windows to finely map variant regions within a 200 bp region
+	# I had to rewite my GeneratePopDocFragWindows program in order to take in the condensed readdepth information for each read
+	
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+	$ for i in `ls -d B?????`; do echo -n "-C $i,$i/mrsfast.$i.map.hits.gz "; done; echo
+	$ ~/jdk1.7.0/bin/java -Xmx45g -jar ~/bin/GeneratePopulationDocFragWindows.jar -O doc_fine_wins -R ../reference/umd3_kary_nmask_hgap.fa -n 4 -w 2000 -rl 100 -g ~/reference/gms/gms_simplified_list.txt -ng -bl ../reference/umd3_assembly_blacklist.bed -S nope -C BIBR02,BIBR02/mrsfast.BIBR02.map.hits.gz -C BIBR03,BIBR03/mrsfast.BIBR03.map.hits.gz -C BIBR04,BIBR04/mrsfast.BIBR04.map.hits.gz -C BIBR05,BIBR05/mrsfast.BIBR05.map.hits.gz -C BIBR07,BIBR07/mrsfast.BIBR07.map.hits.gz -C BIBR08,BIBR08/mrsfast.BIBR08.map.hits.gz -C BIBR09,BIBR09/mrsfast.BIBR09.map.hits.gz -C BIGI01,BIGI01/mrsfast.BIGI01.map.hits.gz -C BIGI02,BIGI02/mrsfast.BIGI02.map.hits.gz -C BIGI05,BIGI05/mrsfast.BIGI05.map.hits.gz -C BIGI06,BIGI06/mrsfast.BIGI06.map.hits.gz -C BIGI07,BIGI07/mrsfast.BIGI07.map.hits.gz -C BIGI08,BIGI08/mrsfast.BIGI08.map.hits.gz -C BINE01,BINE01/mrsfast.BINE01.map.hits.gz -C BINE04,BINE04/mrsfast.BINE04.map.hits.gz -C BINE07,BINE07/mrsfast.BINE07.map.hits.gz -C BINE09,BINE09/mrsfast.BINE09.map.hits.gz -C BINE10,BINE10/mrsfast.BINE10.map.hits.gz -C BINE12,BINE12/mrsfast.BINE12.map.hits.gz -C BINE13,BINE13/mrsfast.BINE13.map.hits.gz -C BINE23,BINE23/mrsfast.BINE23.map.hits.gz -C BTAN01,BTAN01/mrsfast.BTAN01.map.hits.gz -C BTAN03,BTAN03/mrsfast.BTAN03.map.hits.gz -C BTAN04,BTAN04/mrsfast.BTAN04.map.hits.gz -C BTAN05,BTAN05/mrsfast.BTAN05.map.hits.gz -C BTAN06,BTAN06/mrsfast.BTAN06.map.hits.gz -C BTAN07,BTAN07/mrsfast.BTAN07.map.hits.gz -C BTAN08,BTAN08/mrsfast.BTAN08.map.hits.gz -C BTHO02,BTHO02/mrsfast.BTHO02.map.hits.gz -C BTHO04,BTHO04/mrsfast.BTHO04.map.hits.gz -C BTHO07,BTHO07/mrsfast.BTHO07.map.hits.gz -C BTHO08,BTHO08/mrsfast.BTHO08.map.hits.gz -C BTHO09,BTHO09/mrsfast.BTHO09.map.hits.gz -C BTHO10,BTHO10/mrsfast.BTHO10.map.hits.gz -C BTHO19,BTHO19/mrsfast.BTHO19.map.hits.gz -C BTHO20,BTHO20/mrsfast.BTHO20.map.hits.gz -C BTHO22,BTHO22/mrsfast.BTHO22.map.hits.gz -C BTHO25,BTHO25/mrsfast.BTHO25.map.hits.gz -C BTHO29,BTHO29/mrsfast.BTHO29.map.hits.gz -C BTHO32,BTHO32/mrsfast.BTHO32.map.hits.gz -C BTHO42,BTHO42/mrsfast.BTHO42.map.hits.gz -C BTHO44,BTHO44/mrsfast.BTHO44.map.hits.gz -C BTHO46,BTHO46/mrsfast.BTHO46.map.hits.gz -C BTHO47,BTHO47/mrsfast.BTHO47.map.hits.gz -C BTHO48,BTHO48/mrsfast.BTHO48.map.hits.gz -C BTHO49,BTHO49/mrsfast.BTHO49.map.hits.gz -C BTHO50,BTHO50/mrsfast.BTHO50.map.hits.gz -C BTHO51,BTHO51/mrsfast.BTHO51.map.hits.gz -C BTHO52,BTHO52/mrsfast.BTHO52.map.hits.gz -C BTHO53,BTHO53/mrsfast.BTHO53.map.hits.gz -C BTHO54,BTHO54/mrsfast.BTHO54.map.hits.gz -C BTHO56,BTHO56/mrsfast.BTHO56.map.hits.gz -C BTHO57,BTHO57/mrsfast.BTHO57.map.hits.gz -C BTJE01,BTJE01/mrsfast.BTJE01.map.hits.gz -C BTJE02,BTJE02/mrsfast.BTJE02.map.hits.gz -C BTJE03,BTJE03/mrsfast.BTJE03.map.hits.gz -C BTJE04,BTJE04/mrsfast.BTJE04.map.hits.gz -C BTJE05,BTJE05/mrsfast.BTJE05.map.hits.gz -C BTJE07,BTJE07/mrsfast.BTJE07.map.hits.gz -C BTJE08,BTJE08/mrsfast.BTJE08.map.hits.gz -C BTJE09,BTJE09/mrsfast.BTJE09.map.hits.gz -C BTJE10,BTJE10/mrsfast.BTJE10.map.hits.gz -C BTLM01,BTLM01/mrsfast.BTLM01.map.hits.gz -C BTLM03,BTLM03/mrsfast.BTLM03.map.hits.gz -C BTLM04,BTLM04/mrsfast.BTLM04.map.hits.gz -C BTLM07,BTLM07/mrsfast.BTLM07.map.hits.gz -C BTLM10,BTLM10/mrsfast.BTLM10.map.hits.gz -C BTLM11,BTLM11/mrsfast.BTLM11.map.hits.gz -C BTRO01,BTRO01/mrsfast.BTRO01.map.hits.gz -C BTRO04,BTRO04/mrsfast.BTRO04.map.hits.gz -C BTRO05,BTRO05/mrsfast.BTRO05.map.hits.gz -C BTRO06,BTRO06/mrsfast.BTRO06.map.hits.gz
+	
+	
+	# OK, that didn't work as well as I hoped because of the convolution of the read values assigned to each nucleotide
+	# Going to use a different program that I wrote to get the exact values for each nucleotide in the amplicon region
+	# Also going to thread it so that it doesnt take much time to get done
+	
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+	$ perl ~/bin/fork_primer_region_java_program_discovery.pl -c condensed_files.list -o output_files.list -r short_amplicon_regions.tab -m 20
+	
+	# This script forks the java program (CalcAvgStdevFromCondensed.jar) on each animals in the directory
+	
+	
+	# OK, something fishy was going on with the data. Three animals were contributing a high amount of novel CNVs. I don't trust them. Probably a library issue
+	# Removing them from the analysis
+	pwd: /cygdrive/c/SharedFolders/100_bulls_project/popdoc/oldschool
+	$ perl remove_high_minorfreq_cnv_carriers.pl > final_cnvrs.tab
+	$ perl bin_taurine_vs_indicine_frequencies.pl > animal_freqs.tab 2> taurus_freqs.tab
+	
+	# Rerunning the fine window analysis to quickly identify SD and AVG values
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+	$ head condensed_files.list > short_condensed_files.list
+	$ head output_files.list > short_output_files.list
+	$ perl ~/bin/fork_primer_region_java_program_discovery.pl -c short_condensed_files.list -o short_output_files.list -r short_amplicon_regions.tab -m 20
+	
+# ACGH single channel
+	# Sudmant did two steps:
+		1. Generate median reference intensity values for probes in regions of diploid copy and then divide each target probe intensity by that median value
+			- create a log2 ratio of the test vs reference intensities and then divide by the median reference intensity value
+			- compare acgh related CN estimates against NGS derived CN estimates
+		2. Create rCV values to see if the array has enough power to detect CNVs at loci
+			- pull all raw intensity values from a region and create the ratio from the stdev divided by the mean of the intensities.
+			- Determine correlation of estimated CNs from array probes derived from these CNVs against the NGS cns
+			
+	# 1. Generate the reference probe intensities
+		Blade14: /mnt/iscsi/vnx_gliu_7/acgh_100_bulls
+		$ perl -lane 'if($F[0] eq "FEATURES"){$b = 1;}elsif($b){$F[21] =~ s/e\+0+/e/g; print "$F[9]\t$F[21]";}' < ./batch2a/US83800207_255144910004_S01_CGH_1105_Oct12.txt > 255144910004_S01_refsignal.txt
+		$ perl -lane 'if($F[0] eq "FEATURES"){$b = 1;}elsif($b){$F[21] =~ s/e\+0+/e/g; print "$F[9]\t$F[21]";}' < ./batch2a/US83800207_255144910005_S01_CGH_1105_Oct12.txt > 255144910005_S01_refsignal.txt
+		$ perl -lane 'if($F[0] eq "FEATURES"){$b = 1;}elsif($b){$F[21] =~ s/e\+0+/e/g; print "$F[9]\t$F[21]";}' < ./batch2a/US83800207_255144910006_S01_CGH_1105_Oct12.txt > 255144910006_S01_refsignal.txt
+		$ perl -lane 'if($F[0] eq "FEATURES"){$b = 1;}elsif($b){$F[21] =~ s/e\+0+/e/g; print "$F[9]\t$F[21]";}' < ./batch2a/US83800207_255144910007_S01_CGH_1105_Oct12.txt > 255144910007_S01_refsignal.txt; 
+		$ perl -lane 'if($F[0] eq "FEATURES"){$b = 1;}elsif($b){$F[21] =~ s/e\+0+/e/g; print "$F[9]\t$F[21]";}' < ./batch2a/US83800207_255144910008_S01_CGH_1105_Oct12.txt > 255144910008_S01_refsignal.txt; 
+		$ perl -lane 'if($F[0] eq "FEATURES"){$b = 1;}elsif($b){$F[21] =~ s/e\+0+/e/g; print "$F[9]\t$F[21]";}' < ./batch2a/US83800207_255144910009_S01_CGH_1105_Oct12.txt > 255144910009_S01_refsignal.txt;
+		
+		$ perl create_median_signal_ratio_per_probe.pl 255144910004_S01_refsignal.txt 255144910005_S01_refsignal.txt 255144910006_S01_refsignal.txt 255144910007_S01_refsignal.txt 255144910008_S01_refsignal.txt 255144910009_S01_refsignal.txt > median_refsignal_perprobe.tab
+		
+		# OK, now I need to generate "Smr" from the median values within a region of diploid copy.
+		# I extracted the list of non-X regions on the array and now I will find probes that do not intersect with my CNVRs using bedtools
+		$ perl -lane 'if($F[0] =~ /GT_Bovine_SP_(chr\d+)\:(\d+)-(\d+)\_.+/){ $c = $1; $s = $2; $e = $3; print "$c\t$s\t$e";}' < 255144910004_S01_refsignal.txt > acgh_ref_regions.bed
+		
+		pwd: /home/dbickhart/share/100_bulls_project/acgh
+		$ perl -lane 'if($F[0] =~ /CNVR\#/){next;}else{print "$F[1]\t$F[2]\t$F[3]";}' < nolow_lewin_taylor_cnvrs.tab > simple_cnvr_list.bed
+		$ intersectBed -a acgh_ref_regions.bed -b simple_cnvr_list.bed -v | wc -l
+			827936	<- only a reduction of ~ 20,000 probes. Let's try this again sorted
+		
+		$ cat acgh_ref_regions.bed | sortBedFileSTDIN.pl > acgh_ref_regions_sorted.bed
+		$ intersectBed -a acgh_ref_regions_sorted.bed -b simple_cnvr_list.bed -v | wc -l
+			827936	<- Same amount
+			
+		# Let's create a list of probes that should be CN variable
+		$ intersectBed -a acgh_ref_regions_sorted.bed -b simple_cnvr_list.bed -wa > acgh_cnvariable_probes.bed
+		
+		# I selected just the BTF3 region, and I'm going to take the entire probeset too to estimate SMR for both
+		$ intersectBed -a acgh_ref_regions_sorted.bed -b simple_cnvr_list.bed -v | perl -lane 'if($F[0] eq "chr20" && $F[2] > 8015073 && $F[1] < 8071704){print $_;}' > btf3_acgh_probes.bed
+		$ intersectBed -a acgh_ref_regions_sorted.bed -b simple_cnvr_list.bed -v  > noncnv_acgh_probes.bed
+
+		# I modified the create_median_signal_ratio_per_probe.pl script to take a bed file of probes to use to calculate the SMR
+		$ perl create_smr_from_list.pl btf3_acgh_probes.bed 255144910004_S01_refsignal.txt 255144910005_S01_refsignal.txt 255144910006_S01_refsignal.txt 255144910007_S01_refsignal.txt 255144910008_S01_refsignal.txt 255144910009_S01_refsignal.txt
+			1068.215
+		$ perl create_smr_from_list.pl noncnv_acgh_probes.bed 255144910004_S01_refsignal.txt 255144910005_S01_refsignal.txt 255144910006_S01_refsignal.txt 255144910007_S01_refsignal.txt 255144910008_S01_refsignal.txt 255144910009_S01_refsignal.txt
+			872.6585
+		
+		# Then I have a script to process the array data against the median intensity value for the whole dataset (generate_array_cn_values.pl)
+		# BTF3 first
+		$ perl calculate_reference_copy_number.pl BIGI01ngs_calls.bed 1068.215 255144910004_S01_refsignal.txt 255144910005_S01_refsignal.txt 255144910006_S01_refsignal.txt 255144910007_S01_refsignal.txt 255144910008_S01_refsignal.txt 255144910009_S01_refsignal.txt > BIGI01_reference_CN_estimate.tab
+		$ perl calculate_target_region_copy_number.pl BIGI01ngs_calls.bed ./batch2a/US83800207_255144910004_S01_CGH_1105_Oct12.txt BIGI01_reference_CN_estimate.tab
+		
+		$ perl calculate_reference_copy_number.pl BIGI07ngs_calls.bed 1068.215 255144910004_S01_refsignal.txt 255144910005_S01_refsignal.txt 255144910006_S01_refsignal.txt 255144910007_S01_refsignal.txt 255144910008_S01_refsignal.txt 255144910009_S01_refsignal.txt > BIGI07_reference_CN_estimate.tab
+		$ perl calculate_target_region_copy_number.pl BIGI07ngs_calls.bed ./batch2a/US83800207_255144910008_S01_CGH_1105_Oct12.txt BIGI07_reference_CN_estimate.tab > BIGI07_sudmant_rcv_section.tab
+		
+		# Sudmant's method is giving me nothing but crap, really. Perhaps if I had the nimblegen data? Even so, the log2 ratio calculation doesn't make sense
+		# I noted that a fairly large deletion is missed by the aCGH array in BIGI07. In fact, they estimate probe signal where qPCR predicts a homozygous deletion.
+		
+		# I will try to refine my acgh overlap with my NGS calls instead
+		
+		# Second try; I'm going to try to use the NimbleGen data to refine the signal for that callset and try again.
+		# The coordinates are all going to be on Btau4.0, so I need to use liftover, probably on the CNVR side
+		# Dominette is Cy5 or 635
+		
+		# OK, I need to extract the coordinates from the pair files. The 8th column apparently contains the hybridization information.
+		$ for i in *_635.pair; do echo $i; perl -lane 'if($F[0] =~ /^#/){next;}else{print "$F[2];$F[4]\t$F[8]";}' < $i > $i.sig; done
+		# Generating the list of acgh probe list
+		$ perl -lane 'if($F[0] =~ /RANDOM/ || $F[0] =~ /SEQ_ID/){next;}else{($c, $s) = $F[0] =~ /(chr.+):\d+-\d+;(\d+)/; $e = $s + 1; print "$c\t$s\t$e";}' < 42273702_635.pair.sig | perl ~/bin/sortBedFileSTDIN.pl > Nimblegen_btau4_acgh_probe_coords.bed
+		$ perl -lane 'if($F[0] eq "chr20" && $F[2] > 8451021 && $F[1] < 8516540){print $_;}' < Nimblegen_btau4_acgh_probe_coords.bed > btf3_nimblegen_probe_coords.bed
+		
+		$ perl create_smr_nimblegen.pl btf3_nimblegen_probe_coords.bed 42273702_635.pair.sig 42328402_635.pair.sig 42331102_635.pair.sig 42333902_635.pair.sig 42336702_635.pair.sig 42337802_635.pair.sig 42338102_635.pair.sig 42338402_635.pair.sig 42338702_635.pair.sig 42353902_635.pair.sig 42361102_635.pair.sig 42363802_635.pair.sig 42364102_635.pair.sig 42365502_635.pair.sig 42365802_635.pair.sig 42366102_635.pair.sig 42366802_635.pair.sig 42367102_635.pair.sig 42367702_635.pair.sig 42368002_635.pair.sig 42368302_635.pair.sig 42370602_635.pair.sig 42370902_635.pair.sig 42371202_635.pair.sig 42372702_635.pair.sig 42373402_635.pair.sig 42375502_635.pair.sig 42376102_635.pair.sig 42376402_635.pair.sig 42408902_635.pair.sig 42409202_635.pair.sig 42409502_635.pair.sig 42413602_635.pair.sig 42413902_635.pair.sig 42414202_635.pair.sig 42421702_635.pair.sig 42442002_635.pair.sig 42442602_635.pair.sig 42592302_635.pair.sig 42592602_635.pair.sig 42626702_635.pair.sig 42627702_635.pair.sig 42645302_635.pair.sig 43570102_635.pair.sig 43570402_635.pair.sig 43575202_635.pair.sig 43575502_635.pair.sig 43576702_635.pair.sig 43726602_635.pair.sig 48194802_635.pair.sig 48195102_635.pair.sig 48202902_635.pair.sig 48207202_635.pair.sig 48238402_635.pair.sig 48242702_635.pair.sig 48247202_635.pair.sig 48247502_635.pair.sig 48270902_635.pair.sig 49487902_635.pair.sig 49488202_635.pair.sig
+			2271.5
+		
+		### NOTE: RCV values above 1 show higher degrees of variance that allow for better determination of signal. Sudmant had greater correlations above 2 and 3 RCV ###
+		
+		$ perl create_nimblegen_reference_probeset.pl ../simple_cnvr_to_btau4.bed 2271.5 42273702_635.pair.sig 42328402_635.pair.sig 42331102_635.pair.sig 42333902_635.pair.sig 42336702_635.pair.sig 42337802_635.pair.sig 42338102_635.pair.sig 42338402_635.pair.sig 42338702_635.pair.sig 42353902_635.pair.sig 42361102_635.pair.sig 42363802_635.pair.sig 42364102_635.pair.sig 42365502_635.pair.sig 42365802_635.pair.sig 42366102_635.pair.sig 42366802_635.pair.sig 42367102_635.pair.sig 42367702_635.pair.sig 42368002_635.pair.sig 42368302_635.pair.sig 42370602_635.pair.sig 42370902_635.pair.sig 42371202_635.pair.sig 42372702_635.pair.sig 42373402_635.pair.sig 42375502_635.pair.sig 42376102_635.pair.sig 42376402_635.pair.sig 42408902_635.pair.sig 42409202_635.pair.sig 42409502_635.pair.sig 42413602_635.pair.sig 42413902_635.pair.sig 42414202_635.pair.sig 42421702_635.pair.sig 42442002_635.pair.sig 42442602_635.pair.sig 42592302_635.pair.sig 42592602_635.pair.sig 42626702_635.pair.sig 42627702_635.pair.sig 42645302_635.pair.sig 43570102_635.pair.sig 43570402_635.pair.sig 43575202_635.pair.sig 43575502_635.pair.sig 43576702_635.pair.sig 43726602_635.pair.sig 48194802_635.pair.sig 48195102_635.pair.sig 48202902_635.pair.sig 48207202_635.pair.sig 48238402_635.pair.sig 48242702_635.pair.sig 48247202_635.pair.sig 48247502_635.pair.sig 48270902_635.pair.sig 49487902_635.pair.sig 49488202_635.pair.sig > median_signal_per_probe_nimblegen_635.sig > simple_cnvr_to_btau4_reference_cn.bed
+		$ perl calculate_target_region_cn.pl ../simple_cnvr_to_btau4.bed 42273702_532.pair 42273702_635.pair simple_cnvr_to_btau4_reference_cn.bed
+		$ perl calculate_target_region_cn.pl ../simple_cnvr_to_btau4.bed 42333902_532.pair 42333902_635.pair simple_cnvr_to_btau4_reference_cn.bed > cnvr_results_for_42333902.bed
+		$ perl calculate_target_region_cn.pl ../simple_cnvr_to_btau4.bed 42376102_532.pair 42376102_635.pair simple_cnvr_to_btau4_reference_cn.bed > cnvr_results_for_42376102.bed
+		
+		# Now lets create an SMR from all probes that do not intersect with CNVR coords
+		$ cd ../
+		$ ../reference/liftOver simple_cnvr_list.bed ../reference/bosTau6ToBosTau4.over.chain simple_cnvr_to_btau4.bed simple_cnvr_to_btau4.unmapped
+		$ cd Nimblegen_raw_data
+		$ intersectBed -a Nimblegen_btau4_acgh_probe_coords.bed -b ../simple_cnvr_to_btau4.bed -v > Nimblegen_btau4_acgh_probe_coords_minusCNVR.bed
+		
+		$ perl create_smr_nimblegen.pl Nimblegen_btau4_acgh_probe_coords_minusCNVR.bed 42273702_635.pair.sig 42328402_635.pair.sig 42331102_635.pair.sig 42333902_635.pair.sig 42336702_635.pair.sig 42337802_635.pair.sig 42338102_635.pair.sig 42338402_635.pair.sig 42338702_635.pair.sig 42353902_635.pair.sig 42361102_635.pair.sig 42363802_635.pair.sig 42364102_635.pair.sig 42365502_635.pair.sig 42365802_635.pair.sig 42366102_635.pair.sig 42366802_635.pair.sig 42367102_635.pair.sig 42367702_635.pair.sig 42368002_635.pair.sig 42368302_635.pair.sig 42370602_635.pair.sig 42370902_635.pair.sig 42371202_635.pair.sig 42372702_635.pair.sig 42373402_635.pair.sig 42375502_635.pair.sig 42376102_635.pair.sig 42376402_635.pair.sig 42408902_635.pair.sig 42409202_635.pair.sig 42409502_635.pair.sig 42413602_635.pair.sig 42413902_635.pair.sig 42414202_635.pair.sig 42421702_635.pair.sig 42442002_635.pair.sig 42442602_635.pair.sig 42592302_635.pair.sig 42592602_635.pair.sig 42626702_635.pair.sig 42627702_635.pair.sig 42645302_635.pair.sig 43570102_635.pair.sig 43570402_635.pair.sig 43575202_635.pair.sig 43575502_635.pair.sig 43576702_635.pair.sig 43726602_635.pair.sig 48194802_635.pair.sig 48195102_635.pair.sig 48202902_635.pair.sig 48207202_635.pair.sig 48238402_635.pair.sig 48242702_635.pair.sig 48247202_635.pair.sig 48247502_635.pair.sig 48270902_635.pair.sig 49487902_635.pair.sig 49488202_635.pair.sig
+			2922
+		
+		
+# Rarefaction curves
+	# I emailed Pascal Lapierre for some advice on how to estimate the rarity of CNVs in my sample set. Here are his emails:
+	
+		Pascal Lapierre <pxl10@wadsworth.org>
+		10:01 AM (23 hours ago)
+		
+		to me 
+		Yo D!
+		
+		I dont think you have to go the same route as we did in out Trends paper.  Search around for rarefraction curves (http://en.wikipedia.org/wiki/Rarefaction_(ecology)) techniques maybe.  There are a few programs that can do rarefraction (Qiime, Mothur).  Take a look and see if this can apply to your problem...no need to put me as an author.
+		
+		Master P.
+		
+		
+		Pascal Lapierre <pxl10@wadsworth.org>
+		12:30 PM (20 hours ago)
+		
+		to me 
+		There is also a formula to estimate the number of genomes to sequence you need to see particular events :
+		
+		for example, to see 95% of a mutation (or 5% chance of not being see) which is present in 10% of the genomes =
+		
+		Log (0.05) / Log (0.9) =~ 28 genomes will need to be sequenced
+		
+	# So, I think that his a priori estimate of the number of genomes to be sequenced might be a good counterbalance to the rarefaction curve.
+	
+	$ perl convert_cnvrs_tab_to_observation_matrix.pl nolow_lewin_taylor_cnvrs.tab > cnvr_table.biom
+	$ biom convert -i cnvr_table.biom -o cnvr_table.tab -b
+	
+	$ validate_mapping_file.py -m cnvr_mapping_file.txt -o validate_mapping_output
+	$ export QIIME_CONFIG_FP=/home/dbickhart/share/100_bulls_project/rarefaction/qiime_config
+	$ alpha_rarefaction.py -i cnvr_table.biom -m cnvr_mapping_file.txt -o arare100/ -e 100
+	
+	
+	# Instead I have asked John Cole to calculate ascertainment estimates
+	# He needs to calculate a false negative rate; however, so I need to give him data from our aCGH studies
+	Blade2: /mnt/iscsi/vnx_gliu/data110/gliu/cgh_hd/28378
+	$ perl -e '%con; $h = <>; while(<>){chomp; @s = split(/\t/); $con{$s[3]} = "BT$s[7]";} @files = `ls 0.5_3/*.CNV`; foreach $f (@files){chomp $f; @base = split(/\//, $f); @name = split(/[\.\_]/, $base[-1]); if(exists($con{$name[4]})){$new = "acgh_" . $con{$name[4]} . "_cnvs.tab"; system("cp $f ../../lingyang/Derek/acgh_data/$new");} }' < OID28378_Experimental_report.txt  //
+	
+	Blade2: /mnt/iscsi/vnx_gliu/data110/gliu/cgh_hd/28377
+	$ perl -e '%con; $h = <>; while(<>){chomp; @s = split(/\t/); $con{$s[3]} = "BT$s[7]";} @files = `ls 0.5_3/*.CNV`; foreach $f (@files){chomp $f; @base = split(/\//, $f); @name = split(/[\.\_]/, $base[-1]); if(exists($con{$name[4]})){$new = "acgh_" . $con{$name[4]} . "_cnvs.tab"; system("cp $f ../../lingyang/Derek/acgh_data/$new");} }' < OID28377_Experimental_report.txt  //
+	# I just need to change the BR's to BIBR and then I am ok for the CGH data
+	
+	# OK, I did the liftover of the coordinates and now I'm going to calculate the false negative rate for each file
+	pwd: /home/dbickhart/share/100_bulls_project/acgh/acgh_data/umd3_coords
+	$ for i in acgh_BI*cnvs.tab.bed.lift; do name=`echo $i | cut -d'_' -f2`; echo -n "$name "; intersectBed -a $i -b ../../../popdoc/oldschool/indicus/$name/$name.calls.cnvcns.bed -wa -c | perl -e '$total; $pos; while(<>){chomp; @s = split(/\t/); if($s[3] eq "loss"){next;} $total++; if($s[4]){$pos++;}} print ($pos / $total); print "\t$pos\t$total\n";'; done > acgh_only_gains_discoveryrate.tab
+	$ for i in acgh_BT*cnvs.tab.bed.lift; do name=`echo $i | cut -d'_' -f2`; echo -n "$name "; intersectBed -a $i -b ../../../popdoc/oldschool/ntaurus/$name/$name.calls.cnvcns.bed -wa -c | perl -e '$total; $pos; while(<>){chomp; @s = split(/\t/); if($s[3] eq "loss"){next;} $total++; if($s[4]){$pos++;}} print ($pos / $total); print "\t$pos\t$total\n";'; done >> acgh_only_gains_discoveryrate.tab
+	
+	$ for i in acgh_BI*cnvs.tab.bed.lift; do name=`echo $i | cut -d'_' -f2`; echo -n "$name "; intersectBed -a $i -b ../../../popdoc/oldschool/indicus/$name/$name.calls.cnvcns.bed -wa -c | perl -e '$total; $pos; while(<>){chomp; @s = split(/\t/); if($s[3] eq "loss"){} $total++; if($s[4]){$pos++;}} print ($pos / $total); print "\t$pos\t$total\n";'; done > acgh_both_discoveryrate.tab
+	$ for i in acgh_BT*cnvs.tab.bed.lift; do name=`echo $i | cut -d'_' -f2`; echo -n "$name "; intersectBed -a $i -b ../../../popdoc/oldschool/ntaurus/$name/$name.calls.cnvcns.bed -wa -c | perl -e '$total; $pos; while(<>){chomp; @s = split(/\t/); if($s[3] eq "loss"){} $total++; if($s[4]){$pos++;}} print ($pos / $total); print "\t$pos\t$total\n";'; done >> acgh_both_discoveryrate.tab
+	
+	# Now to generate the overlaps as bins, and as a "both" and "gain" statistic
+	# I need to estimate the deciles for CNV length for each bin
+	$ for i in ../../../popdoc/oldschool/ntaurus/*/*.cnvcns.bed; do cat $i; done | perl -e '@lengths; while(<STDIN>){chomp; @s = split(/\t/); push(@lengths, $s[2] - $s[1]);} @lengths = sort {$a <=> $b} @lengths; $d = scalar(@lengths) / 10; for($x = 0; $x < scalar(@lengths); $x += $d){ print $lengths[$x] . "\n"; if($x + $d > scalar(@lengths)){print $lengths[-1] . "\n";}} print $lengths[-1] . "\n"'
+		0
+		3253
+		5364
+		8124
+		11602
+		15683
+		21519
+		31029
+		51183
+		107949
+		1984689
+_______________________________
+Population analysis prep
+_______________________________
+# Working on calling SNPs on all of the samples
+	# 100 bulls local
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+	$ perl ~/bin/samtoolsSNPFork.pl -r ../reference/umd3_kary_nmask_hgap.fa -i ./BIBR02/BIBR02.rg.rd.full.sorted.merged.bam,./BIBR03/BIBR03.rg.rd.full.sorted.merged.bam,./BIBR04/BIBR04.rg.rd.full.sorted.merged.bam,./BIBR05/BIBR05.rg.rd.full.sorted.merged.bam,./BIBR07/BIBR07.rg.rd.full.sorted.merged.bam,./BIBR08/BIBR08.rg.rd.full.sorted.merged.bam,./BIBR09/BIBR09.rg.rd.full.sorted.merged.bam,./BIGI01/BIGI01.rg.rd.full.sorted.merged.bam,./BIGI02/BIGI02.rg.rd.full.sorted.merged.bam,./BIGI05/BIGI05.rg.rd.full.sorted.merged.bam,./BIGI06/BIGI06.rg.rd.full.sorted.merged.bam,./BIGI07/BIGI07.rg.rd.full.sorted.merged.bam,./BIGI08/BIGI08.rg.rd.full.sorted.merged.bam,./BINE01/BINE01.rg.rd.full.sorted.merged.bam,./BINE04/BINE04.rg.rd.full.sorted.merged.bam,./BINE07/BINE07.rg.rd.full.sorted.merged.bam,./BINE09/BINE09.rg.rd.full.sorted.merged.bam,./BINE10/BINE10.rg.rd.full.sorted.merged.bam,./BINE12/BINE12.rg.rd.full.sorted.merged.bam,./BINE13/BINE13.rg.rd.full.sorted.merged.bam,./BINE23/BINE23.rg.rd.full.sorted.merged.bam,./BTAN01/BTAN01.rg.rd.full.sorted.merged.bam,./BTAN03/BTAN03.rg.rd.full.sorted.merged.bam,./BTAN04/BTAN04.rg.rd.full.sorted.merged.bam,./BTAN05/BTAN05.rg.rd.full.sorted.merged.bam,./BTAN06/BTAN06.rg.rd.full.sorted.merged.bam,./BTAN07/BTAN07.rg.rd.full.sorted.merged.bam,./BTAN08/BTAN08.rg.rd.full.sorted.merged.bam,./BTHO02/BTHO02.rg.rd.full.sorted.merged.bam,./BTHO04/BTHO04.rg.rd.full.sorted.merged.bam,./BTHO07/BTHO07.rg.rd.full.sorted.merged.bam,./BTHO08/BTHO08.rg.rd.full.sorted.merged.bam,./BTHO09/BTHO09.rg.rd.full.sorted.merged.bam,./BTHO10/BTHO10.rg.rd.full.sorted.merged.bam,./BTHO19/BTHO19.rg.rd.full.sorted.merged.bam,./BTHO20/BTHO20.rg.rd.full.sorted.merged.bam,./BTHO22/BTHO22.rg.rd.full.sorted.merged.bam,./BTHO25/BTHO25.rg.rd.full.sorted.merged.bam,./BTHO29/BTHO29.rg.rd.full.sorted.merged.bam,./BTHO32/BTHO32.rg.rd.full.sorted.merged.bam,./BTHO42/BTHO42.rg.rd.full.sorted.merged.bam,./BTHO44/BTHO44.rg.rd.full.sorted.merged.bam,./BTHO46/BTHO46.rg.rd.full.sorted.merged.bam,./BTHO47/BTHO47.rg.rd.full.sorted.merged.bam,./BTHO48/BTHO48.rg.rd.full.sorted.merged.bam,./BTHO49/BTHO49.rg.rd.full.sorted.merged.bam,./BTHO50/BTHO50.rg.rd.full.sorted.merged.bam,./BTHO51/BTHO51.rg.rd.full.sorted.merged.bam,./BTHO52/BTHO52.rg.rd.full.sorted.merged.bam,./BTHO53/BTHO53.rg.rd.full.sorted.merged.bam,./BTHO54/BTHO54.rg.rd.full.sorted.merged.bam,./BTHO56/BTHO56.rg.rd.full.sorted.merged.bam,./BTHO57/BTHO57.rg.rd.full.sorted.merged.bam,./BTJE01/BTJE01.rg.rd.full.sorted.merged.bam,./BTJE02/BTJE02.rg.rd.full.sorted.merged.bam,./BTJE03/BTJE03.rg.rd.full.sorted.merged.bam,./BTJE04/BTJE04.rg.rd.full.sorted.merged.bam,./BTJE05/BTJE05.rg.rd.full.sorted.merged.bam,./BTJE08/BTJE08.rg.rd.full.sorted.merged.bam,./BTJE09/BTJE09.rg.rd.full.sorted.merged.bam,./BTJE10/BTJE10.rg.rd.full.sorted.merged.bam,./BTLM01/BTLM01.rg.rd.full.sorted.merged.bam,./BTLM03/BTLM03.rg.rd.full.sorted.merged.bam,./BTLM04/BTLM04.rg.rd.full.sorted.merged.bam,./BTLM07/BTLM07.rg.rd.full.sorted.merged.bam,./BTLM10/BTLM10.rg.rd.full.sorted.merged.bam,./BTLM11/BTLM11.rg.rd.full.sorted.merged.bam,./BTLM9/BTLM9.rg.rd.full.sorted.merged.bam,./BTRO01/BTRO01.rg.rd.full.sorted.merged.bam,./BTRO04/BTRO04.rg.rd.full.sorted.merged.bam,./BTRO05/BTRO05.rg.rd.full.sorted.merged.bam,./BTRO06/BTRO06.rg.rd.full.sorted.merged.bam -o ./samtools_snps/56_animals_combined -s ../reference/samtools_chr_segs.txt -n 15
+	
+	
+	# I need to run bwa and snp calling on the lewin samples:
+	3850: /POD_1/users/bickhart/
+	# I created a script that automatically generates all of the files from a sample spreadsheet: lewin_just_fastqs.txt
+	perl lewin_bwa_processing_script.pl
+	$ for i in chairman chief elevation ivanhoe starbuck valiant; do for d in $i/*sorted.bam; do name=`echo $d | cut -d'.' -f1`; echo $name; ~/jdk1.7.0/bin/java -jar ~/picard-tools-1.88/AddOrReplaceReadGroups.jar INPUT=$d OUTPUT=$name.rg.bam RGLB=$i RGPL=ILLUMINA RGSM=$i RGPU=$i VALIDATION_STRINGENCY=LENIENT; done; done
+	$ for i in ./*/*.rg.bam; do samtools index $i; done; echo
+	
+	
+	# Now to take care of the angus on the Lewis cluster:
+	# I need to write another script to do this as well.
+	Lewis: /ibfs7/asg2/bickhartd
+	$ sleep 4h; perl ~/bin/lewis_bwa_processing_script.pl
+	# I need to create readgroups for the reads prior to merger 
+	$ for i in */*_sorted.bam; do name=`echo $i | cut -d'/' -f1`; echo $name; lib=`echo $i | cut -d'/' -f2 | cut -d'.' -f3`; num=`echo $i | cut -d'/' -f2 | cut -d'.' -f4`; echo "$name.$lib.$num"; bsub -J $i -oo $i.rg.out -R 'rusage[mem=2500] span[hosts=1]' -n 3 "../jdk1.7.0/bin/java -Xmx2500m -XX:ParallelGCThreads=2 -jar ~/picard-tools-1.53/AddOrReplaceReadGroups.jar INPUT=$i OUTPUT=$name/$name.$lib.$num.sorted.rg.bam RGID=$name.$lib.$num RGLB=$name.$lib RGPL=ILLUMINA RGSM=$name RGPU=$name.$lib VALIDATION_STRINGENCY=LENIENT"; done
+	
+	# OK, now to index them before proceeding
+	$ for i in ./*/*.sorted.rg.bam; do echo $i; bsub -J $i -oo $i.out samtools index $i; done
+	bsub -J samrunner -oo samtoolsrunner.out 'perl ../bin/samtoolsSNPForkLSF.pl -r ../reference/umd3_kary_unmask_ngap.fa -i ./AN1717/AN1717.AP.05.sorted.rg.bam,./AN1717/AN1717.AP.06.sorted.rg.bam,./AN1717/AN1717.AP.07.sorted.rg.bam,./AN1717/AN1717.AP.08.sorted.rg.bam,./AN1717/AN1717.BP.02.sorted.rg.bam,./AN1717/AN1717.BP.03.sorted.rg.bam,./AN1717/AN1717.BP.04.sorted.rg.bam,./AN1776/AN1776.DP.01.sorted.rg.bam,./AN219/AN219.DP.01.sorted.rg.bam,./AN219/AN219.DP.02.sorted.rg.bam,./AN447/AN447.GP.01.sorted.rg.bam,./AN447/AN447.GP.02.sorted.rg.bam,./AN447/AN447.GP.03.sorted.rg.bam,./AN447/AN447.GP.04.sorted.rg.bam,./AN4517/AN4517.BP.01.sorted.rg.bam,./AN458/AN458.EP.01.sorted.rg.bam,./AN458/AN458.EP.02.sorted.rg.bam,./AN458/AN458.EP.03.sorted.rg.bam,./AN458/AN458.EP.04.sorted.rg.bam,./AN626/AN626.AP.06.sorted.rg.bam,./AN626/AN626.AP.07.sorted.rg.bam,./AN626/AN626.AP.08.sorted.rg.bam,./AN626/AN626.BP.02.sorted.rg.bam,./AN626/AN626.BP.03.sorted.rg.bam,./AN626/AN626.BP.04.sorted.rg.bam,./AN626/AN626.BP.05.sorted.rg.bam,./AN728/AN728.BP.01.sorted.rg.bam,./AN828/AN828.AP.06.sorted.rg.bam,./AN828/AN828.AP.07.sorted.rg.bam,./AN828/AN828.AP.08.sorted.rg.bam,./AN828/AN828.AP.09.sorted.rg.bam,./AN828/AN828.AP.10.sorted.rg.bam,./AN828/AN828.AP.14.sorted.rg.bam,./AN828/AN828.AP.15.sorted.rg.bam,./AN828/AN828.BP.02.sorted.rg.bam,./AN828/AN828.BP.03.sorted.rg.bam,./AN828/AN828.BP.04.sorted.rg.bam,./AN828/AN828.DM.01.sorted.rg.bam -o combined_angus_bwa -n 48 -s ../reference/samtools_chr_segs.txt'
+	
+# I am creating my own Fst analysis program to detect CNVs that show decreased heterozygosity with respect to a target population
+	# first, on the raw CNVR data
+	pwd: /home/dbickhart/share/100_bulls_project
+	$ perl ../programs_source/Perl/calculate_vst_differences_cnvs.pl -c popdoc/oldschool/final_cnvrs.tab -p population_analysis/ind_taurus_pop_struct.txt -o population_analysis/ind_taurus_cnv_vst.txt
+	$ perl ../programs_source/Perl/calculate_vst_differences_cnvs.pl -c popdoc/oldschool/final_cnvrs.tab -p population_analysis/hol_ang_pop_struct.txt -o population_analysis/hol_ang_cnv_vst.txt	
+	
+	# Now, let's see if we can adapt the script to pick out CNVs based on the CN data
+	# I do not think that Fst can work on CN values, so I have to write my own Vst script
+	$ perl ../programs_source/Perl/calculate_vst_differences_cn.pl -c popdoc/oldschool/final_cngenes_RefseqName.tab  -p ./population_analysis/ind_taurus_pop_struct.txt -o ./population_analysis/ind_taurus_genecn_vst.bed
+	$ perl -lane 'if($F[3] > 0.2){print $_;}' < ./population_analysis/ind_taurus_genecn_vst.bed
+		chr1	133401646	133439465	0.25154905460508
+		chr2	132587723	132600988	0.205264857881137
+		chr2	133789484	133926172	0.200617283950618
+		chr3	15480724	15480820	0.308385867174901
+		chr3	20961926	20975445	0.488782182625201
+		chr3	20961926	20975445	0.488782182625201
+		chr4	106869242	106883852	0.219703985532775
+		chr5	44443586	44448198	0.439371369920594
+		chr5	114494261	114530242	0.200617283950618
+		chr5	116616199	116695694	0.238683127572016
+		chr6	71051155	71053533	0.333306864961481
+		chr7	5517842	5526391	0.200617283950618
+		chr8	10002971	10091175	0.233464798948276
+		chr8	10095869	10128675	0.373219254955597
+		chr8	74374392	74374459	0.311190056334282
+		chr14	21164876	21192688	0.365203157340813
+		chr14	79520632	79530892	0.363152010004046
+		chr15	46902642	46904086	0.272377007193604
+		chr15	83455512	83469280	0.426168931099679
+		chr15	83472190	83493607	0.429880487614851
+		chr16	50480285	50494637	0.203237200313223
+		chr16	60651007	60652602	0.238570256278847
+		chr16	75539495	75540404	0.250106340331904
+		chr18	45337458	45339636	0.302716280506349
+		chr18	53531932	53544923	0.218015799733251
+		chr18	55660424	55696084	0.348656342714066
+		chr19	42101853	42103421	0.447375850533898
+		chr19	57112191	57121003	0.239723888846696
+		chr19	62368394	62401914	0.200617283950618
+		chr21	22859904	22859978	0.224824727902396
+		chr24	62364701	62383823	0.218068286264959
+		chr25	27413136	27418950	0.200617283950618
+		chr29	7723699	7725004	0.298149016441127
+		chr29	45655688	45676864	0.205264857881137
+
+	# The whole X chromosome is showing high Vst values so I will ignore it. These are the best autosomes
+	
+	# OK, George brought up a very good point: relatedness of individuals in our Holstein and Jersey populations could cause issues with the Vst
+	# I will remove some of these animals from consideration based on the pedigree files that Jana gave me
+	$ perl ../programs_source/Perl/calculate_vst_differences_cn.pl -c popdoc/oldschool/final_cngenes_RefseqName.tab  -p ./population_analysis/ind_taurus_pop_struct.txt -o ./population_analysis/ind_taurus_genecn_vst.bed -s BTJE05,BTJE08,BTJE03,BTHO04,BTHO19,BTHO22,BTHO25,BTHO32,BTHO42,BTHO44,BTHO57,BTHO07
+	$ perl -lane 'if($F[3] > 0.2){print $_;}' < ./population_analysis/ind_taurus_genecn_vst.bed
+		chr1	133401646	133439465	0.27369022900304
+		chr2	47998596	47999635	0.252491390607383	<- new
+		chr2	86438978	86449023	0.206560246150371	<- new
+		chr2	86438983	86449011	0.206560246150371	<- new
+		chr3	15480724	15480820	0.323384500453567	
+		chr3	20961926	20975445	0.461576464976368
+		chr3	20961926	20975445	0.461576464976368
+		chr3	95045040	95045116	0.206521962338541	<- new
+		chr4	70184736	70195742	0.2009040417398		<- new
+		chr4	106638734	106904802	0.27713331726963	<- new
+		chr4	106869242	106883852	0.282117384939113	
+		chr5	44443586	44448198	0.453682071397921
+		chr5	116616199	116695694	0.206611570247934
+		chr6	60210359	60215120	0.229598617756513	<- new
+		chr6	70027864	70027928	0.225012922636482	<- new
+		chr6	71051155	71053533	0.343324555724834
+		chr8	10002971	10091175	0.345706196917269
+		chr8	10095869	10128675	0.427347321826929
+		chr8	74374392	74374459	0.30265992426132
+		chr10	40529289	40530338	0.224386246128258	<- new
+		chr13	44064652	44085030	0.206611570247934	<- new
+		chr14	21164876	21192688	0.343893254673253
+		chr14	79520632	79530892	0.369643418433276
+		chr15	46902642	46904086	0.285545106234762
+		chr15	52255759	52259541	0.258215148980072	<- new
+		chr15	52268974	52271897	0.202606183539247	<- new
+		chr15	81869682	81873727	0.217690308543871	<- new
+		chr15	81920283	81926082	0.240410452471551	<- new
+		chr15	83455512	83469280	0.504607318065013
+		chr15	83472190	83493607	0.451107725830407
+		chr16	60651007	60652602	0.278046015847237
+		chr16	75539495	75540404	0.264324892052749
+		chr17	6163840	6163905	0.205180437072047			<- new
+		chr17	64491185	64494524	0.208844389791885	<- new
+		chr18	2944864	2960921	0.217716851483155			<- new
+		chr18	45337458	45339636	0.381988007270055
+		chr18	53531932	53544923	0.206731562448441
+		chr18	55660424	55696084	0.36277475297439
+		chr18	56725591	56729591	0.238277511961722	<- new
+		chr18	63736357	64015516	0.231209134752855	<- new
+		chr18	63759274	63763437	0.23928027109098	<- new
+		chr19	42101853	42103421	0.533876888388482
+		chr21	20176382	20183768	0.203540513749151	<- new
+		chr21	22859904	22859978	0.245627881859344
+		chr21	23705959	23711316	0.336373895930682	<- new
+		chr24	62364701	62383823	0.261173200068276
+		chr24	62364701	62371668	0.230139031999464
+		chr26	43270655	43272421	0.22180553759501	<- new
+		chr27	41930643	41934590	0.222878310144863	<- new
+		chr29	7723699	7725004	0.36290278431673
+	
+__________________________________
+New aCGH validation strategy
+__________________________________
+# OK, I'm going to estimate false positive rate and false negative rates in different ways.
+# I'm already just about finished with the false negative rates so I can publish that
+	# False negative
+	$ for i in acgh_gain_3253_discoveryrate.tab acgh_gain_3253_5364_discoveryrate.tab acgh_gain_5364_8124_discoveryrate.tab acgh_gain_8124_11602_discoveryrate.tab acgh_gain_11602_15682_discoveryrate.tab acgh_gain_15682_21519_discoveryrate.tab acgh_gain_21519_31029_discoveryrate.tab acgh_gain_31029_51183_discoveryrate.tab acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'                       
+		0.544285820388762	<- whole data
+	$ for i in acgh_gain_3253_5364_discoveryrate.tab acgh_gain_5364_8124_discoveryrate.tab acgh_gain_8124_11602_discoveryrate.tab acgh_gain_11602_15682_discoveryrate.tab acgh_gain_15682_21519_discoveryrate.tab acgh_gain_21519_31029_discoveryrate.tab acgh_gain_31029_51183_discoveryrate.tab acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'
+		0.545481601731602	<- > 3253bp
+	$ for i in acgh_gain_5364_8124_discoveryrate.tab acgh_gain_8124_11602_discoveryrate.tab acgh_gain_11602_15682_discoveryrate.tab acgh_gain_15682_21519_discoveryrate.tab acgh_gain_21519_31029_discoveryrate.tab acgh_gain_31029_51183_discoveryrate.tab acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'
+		0.577251376741173	<- > 5364bp
+	$ for i in acgh_gain_8124_11602_discoveryrate.tab acgh_gain_11602_15682_discoveryrate.tab acgh_gain_15682_21519_discoveryrate.tab acgh_gain_21519_31029_discoveryrate.tab acgh_gain_31029_51183_discoveryrate.tab acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'             
+		0.640728410008071	<- > 8124bp
+	$ for i in acgh_gain_11602_15682_discoveryrate.tab acgh_gain_15682_21519_discoveryrate.tab acgh_gain_21519_31029_discoveryrate.tab acgh_gain_31029_51183_discoveryrate.tab acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'
+		0.643181818181818	<- > 11602bp
+	$ for i in acgh_gain_15682_21519_discoveryrate.tab acgh_gain_21519_31029_discoveryrate.tab acgh_gain_31029_51183_discoveryrate.tab acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'
+		0.684871794871795	<- > 15682bp
+	$ for i in acgh_gain_21519_31029_discoveryrate.tab acgh_gain_31029_51183_discoveryrate.tab acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'            
+		0.748397435897436 	<- > 21519bp
+	$ for i in acgh_gain_31029_51183_discoveryrate.tab acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'
+		0.797297297297297	<- > 31029bp
+	$ for i in acgh_gain_51183_107949_discoveryrate.tab acgh_gain_107949_discoveryrate.tab; do cat $i ; done | perl -e '$c; $sum; while(<>){chomp; @s = split(/[\s\t]/); if($s[3] > 0){$sum += $s[1]; $c++;}} $final = $sum / $c; print "$final\n";'
+		0.45			<- > 51183bp
+		
+	# So a 20% false negative rate for acgh gain predictions vs ngs gain predictions
+	
+# Let's work on false positive rates by checking for aCGH log2 ratios using Sudmants method
+	# My idea: calculate a per-probe log2 ratio based on the reference SMR
+	# This is the reference CN based on the SMRs I calculated above
+	Blade14:/mnt/iscsi/vnx_gliu_7/acgh_100_bulls/Nimblegen_raw_data/
+	$ perl generate_reference_smr_perprobe_nimblegen.pl 2271.5 nimblegen_reference_probe_smr.btf3.bed 42328402_635.pair.sig 42333902_635.pair.sig 42338102_635.pair.sig 42338702_635.pair.sig 42366802_635.pair.sig 42368002_635.pair.sig 42373402_635.pair.sig 42376102_635.pair.sig 42414202_635.pair.sig 42592302_635.pair.sig 56240802_635.pair.sig 56241402_635.pair.sig 56242302_635.pair.sig 56242602_635.pair.sig 56242902_635.pair.sig 56243202_635.pair.sig 56280902_635.pair.sig 56281502_635.pair.sig 56282902_635.pair.sig 56283202_635.pair.sig 56283502_635.pair.sig 56289802_635.pair.sig 56290102_635.pair.sig 56290402_635.pair.sig 56290802_635.pair.sig 56292002_635.pair.sig 56292302_635.pair.sig 56292802_635.pair.sig 56293102_635.pair.sig 56314002_635.pair.sig 56314302_635.pair.sig 56314602_635.pair.sig 56318602_635.pair.sig 56318902_635.pair.sig 56369302_635.pair.sig 56370802_635.pair.sig 56371102_635.pair.sig 56371402_635.pair.sig 56423202_635.pair.sig 56427202_635.pair.sig 56429802_635.pair.sig 56430102_635.pair.sig 56430402_635.pair.sig 56433402_635.pair.sig 56587902_635.pair.sig
+	$ perl generate_reference_smr_perprobe_nimblegen.pl 2922 nimblegen_reference_probe_smr.nocnv.bed 42328402_635.pair.sig 42333902_635.pair.sig 42338102_635.pair.sig 42338702_635.pair.sig 42366802_635.pair.sig 42368002_635.pair.sig 42373402_635.pair.sig 42376102_635.pair.sig 42414202_635.pair.sig 42592302_635.pair.sig 56240802_635.pair.sig 56241402_635.pair.sig 56242302_635.pair.sig 56242602_635.pair.sig 56242902_635.pair.sig 56243202_635.pair.sig 56280902_635.pair.sig 56281502_635.pair.sig 56282902_635.pair.sig 56283202_635.pair.sig 56283502_635.pair.sig 56289802_635.pair.sig 56290102_635.pair.sig 56290402_635.pair.sig 56290802_635.pair.sig 56292002_635.pair.sig 56292302_635.pair.sig 56292802_635.pair.sig 56293102_635.pair.sig 56314002_635.pair.sig 56314302_635.pair.sig 56314602_635.pair.sig 56318602_635.pair.sig 56318902_635.pair.sig 56369302_635.pair.sig 56370802_635.pair.sig 56371102_635.pair.sig 56371402_635.pair.sig 56423202_635.pair.sig 56427202_635.pair.sig 56429802_635.pair.sig 56430102_635.pair.sig 56430402_635.pair.sig 56433402_635.pair.sig 56587902_635.pair.sig
+	
+	# Now to sort them by chr and position
+	$ cat nimblegen_reference_probe_smr.btf3.bed | ~/bin/sortBedFileSTDIN.pl | perl -lane 'if($F[0] == 5){next;}else{print $_;}' > nimblegen_reference_probe_smr.btf3.sorted.bed
+	$ cat nimblegen_reference_probe_smr.nocnv.bed | ~/bin/sortBedFileSTDIN.pl | perl -lane 'if($F[0] == 5){next;}else{print $_;}' > nimblegen_reference_probe_smr.nocnv.sorted.bed
+	
+	$ cat nimblegen_reference_probe_smr.btf3.bed | cut -f4 | statStd.pl
+	total   2166464
+	Minimum 0.0596522121945851
+	Maximum 28.774818401937
+	Average 1.910619
+	Median  1.4851419766674
+	Standard Deviation      1.662922
+	Mode(Highest Distributed Value) 1.01959057891261
+
+	$ cat nimblegen_reference_probe_smr.nocnv.bed | cut -f4 | statStd.pl
+	total   2166464
+	Minimum 0.04637234770705
+	Maximum 22.3689253935661
+	Average 1.485275
+	Median  1.15451745379877
+	Standard Deviation      1.292720
+	Mode(Highest Distributed Value) 0.792607802874743
+	
+	# I think that I should stick with BTF3
+	
+	# OK, now I can calculate log2ratios for CN windows based on the average reference copy number within each CNV region
+	$ perl ~/bin/calculate_log2ratio_cnv_from_reference_cgh_single_channel.pl ngs_bed_locs.list nimblegen_reference_probe_smr.btf3.sorted.bed 10
+	
+	# Then I should get a good estimate of the correlation across the entire dataset
+	# OK, I created a script that calculates the correlation automatically:
+	$ perl ~/bin/produce_correlation_acgh_ngs_log2.pl
+		RCV     Corr    Size
+		0       0.3758  15281
+		1       0.3739  4131
+		2       0.7200  81
+		3       0.8454  32
+		
+	# I added more rCV cutoffs to check
+	$ perl ~/bin/produce_correlation_acgh_ngs_log2.pl
+		RCV     Corr    Size
+		0       0.3758  15281
+		0.5     0.3324  14962
+		1       0.3739  4131
+		1.5     0.6023  174
+		1.75    0.7670  109	<- bingo!
+		2       0.7200  81
+		2.5     0.7663  54
+		3       0.8454  32
+	
+	# First, let's try a backup plan and calculate the SMR based single channel ratios for the non-liftover coordinates
+	Blade14:/mnt/iscsi/vnx_gliu_7/acgh_100_bulls/Nimblegen_raw_data/
+	$ perl process_files_umd3.pl
+	
+# OK, now for the agilent data
+	Blade14: /mnt/iscsi/vnx_gliu_7/acgh_100_bulls/Agilent_single_data
+	$ perl -lane 'if($F[0] eq "chr20" && $F[2] > 8015073 && $F[1] < 8071704){print "$F[0]\t$F[1]\t$F[2]";}' < BIGI01_agilent_singlechannel.bed > agilent_btf3_probes.bed
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' < BIGI01_agilent_singlechannel.bed > agilent_all_probes.bed
+	
+	$ perl create_smr_from_list_agilent.pl agilent_btf3_probes.bed BIGI01_agilent_singlechannel.bed BIGI02_agilent_singlechannel.bed BIGI05_agilent_singlechannel.bed BIGI06_agilent_singlechannel.bed BIGI07_agilent_singlechannel.bed BIGI08_agilent_singlechannel.bed BTRO01_agilent_singlechannel.bed BTRO04_agilent_singlechannel.bed BTRO05_agilent_singlechannel.bed BTRO06_agilent_singlechannel.bed BTRO11_agilent_singlechannel.bed chief_agilent_singlechannel.bed create_smr_from_list_agilent.pl juror_agilent_singlechannel.bed mark_agilent_singlechannel.bed starbuck_agilent_singlechannel.bed valiant_agilent_singlechannel.bed
+		996.3018
+	$ perl create_smr_from_list_agilent.pl agilent_all_probes.bed BIGI01_agilent_singlechannel.bed BIGI02_agilent_singlechannel.bed BIGI05_agilent_singlechannel.bed BIGI06_agilent_singlechannel.bed BIGI07_agilent_singlechannel.bed BIGI08_agilent_singlechannel.bed BTRO01_agilent_singlechannel.bed BTRO04_agilent_singlechannel.bed BTRO05_agilent_singlechannel.bed BTRO06_agilent_singlechannel.bed BTRO11_agilent_singlechannel.bed chief_agilent_singlechannel.bed create_smr_from_list_agilent.pl juror_agilent_singlechannel.bed mark_agilent_singlechannel.bed starbuck_agilent_singlechannel.bed valiant_agilent_singlechannel.bed
+		904.31805
+		
+	# I'll use btf3 again here
+	$ perl generate_reference_smr_perprobe_agilent.pl 996.3018 agilent_reference_probe_smr.bed BIGI01_agilent_singlechannel.bed BIGI02_agilent_singlechannel.bed BIGI05_agilent_singlechannel.bed BIGI06_agilent_singlechannel.bed BIGI07_agilent_singlechannel.bed BIGI08_agilent_singlechannel.bed BTRO01_agilent_singlechannel.bed BTRO04_agilent_singlechannel.bed BTRO05_agilent_singlechannel.bed BTRO06_agilent_singlechannel.bed BTRO11_agilent_singlechannel.bed chief_agilent_singlechannel.bed juror_agilent_singlechannel.bed mark_agilent_singlechannel.bed starbuck_agilent_singlechannel.bed valiant_agilent_singlechannel.bed
+	$ cat agilent_reference_probe_smr.bed | cut -f4 | statStd.pl
+		total   943981
+		Minimum 0.0118322179082684
+		Maximum 323.514722145438		<- This is super high! I don't think that the agilent data is very clean
+		Average 2.441404
+		Median  0.927543541525269
+		Standard Deviation      8.813477
+		Mode(Highest Distributed Value) 0.0160264590508619
+
+	
+	# I'm going to work on this in my local virtualbox for easier access to cn files
+	pwd: /home/dbickhart/share/100_less bulls_project/acgh/Agilent_single_data
+	$ perl ../calculate_log2ratio_cnv_from_reference_cgh_single_channel.pl agilent_ngs_beds.list agilent_reference_probe_smr.bed 3
+	
+	# OK, I lied, I'm going to have to do this on the server because I can't get forks::super to install
+	
+	$ mkdir acgh_cns
+	$ perl ~/bin/calculate_log2ratio_cnv_from_reference_cgh_single_channel.pl agilent_ngs_bed_locs.list agilent_reference_probe_smr.bed 15
+	$ for i in BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BTRO01 BTRO04 BTRO05 BTRO06 starbuck chief; do echo $i; perl create_refCN_cnvregions_agilent.pl ngs_beds/${i}.calls.cnvcns.bed 996.3018 BIGI01_agilent_singlechannel.bed BIGI02_agilent_singlechannel.bed BIGI05_agilent_singlechannel.bed BIGI06_agilent_singlechannel.bed BIGI07_agilent_singlechannel.bed BIGI08_agilent_singlechannel.bed BTRO01_agilent_singlechannel.bed BTRO04_agilent_singlechannel.bed BTRO05_agilent_singlechannel.bed BTRO06_agilent_singlechannel.bed chief_agilent_singlechannel.bed starbuck_agilent_singlechannel.bed > ref_cns/${i}.btf3.refcn.bed; done
+	$ for i in BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BTRO01 BTRO04 BTRO05 BTRO06 starbuck chief; do echo $i; perl create_acgh_cns_agilent.pl ngs_beds/${i}.calls.cnvcns.bed ${i}"_agilent_singlechannel.bed" ref_cns/${i}.btf3.refcn.bed > acgh_cns/${i}.btf3.acghcn.bed; done
+	
+	$ perl ~/bin/produce_correlation_acgh_ngs_log2.pl
+		RCV     Corr    Size
+		0       -0.0499 6544
+		0.5     0.0555  5622
+		1       0.0282  3294
+		1.5     0.3874  217
+		1.75    0.4413  139
+		2       0.5274  95
+		2.5     0.4989  55
+		3       0.5371  39
+	
+# For the combined data
+	Blade14: /mnt/iscsi/vnx_gliu_7/acgh_100_bulls/combined
+	$ perl ~/bin/produce_correlation_acgh_ngs_log2.pl
+		RCV     Corr    Size
+		0       0.0339  21383
+		0.5     0.1243  20149
+		1       0.0801  7313
+		1.5     0.4054  387
+		1.75    0.4805  246
+		2       0.5640  175
+		2.5     0.5512  108
+		3       0.5384  70
+
+# George wants me to try to use the Agilent data, even if is just for the 2 copy region validation method from the GR paper
+# I will attempt to write a script for that if I can.
+	Blade14: /mnt/iscsi/vnx_gliu_7/acgh_100_bulls
+	$ perl digital_acgh_twocopy_region_comparision.pl simple_cnvr_list.bed ngs_cn_list.list Agilent_single_data/agilent_reference_probe_smr.bed agilent_single_channel.list
+	
+	# OK, my script is giving me too many problems. I just can't focus
+	# Time to do it the old fashioned way
+	$ perl digital_acgh_twocopy_region_comparision_bedtools.pl simple_cnvr_list.bed ngs_cn_list.list Agilent_single_data/agilent_reference_probe_smr.nocnvr.bed agilent_single_channel.list
+		Working on arraylog2 of animal: BTRO11!
+		Working on NGS CN of animal: BIGI08!
+		Total Stdev: 1.67828343303475
+		Number of values: 10359172
+		PerAnimal stdevs
+		Stdev   num     percent
+		1       3365292 0.324861098937251
+		2       787593  0.0760285667618995
+		3       137091  0.0132337796881836
+		
+		Total value stdevs
+		Stdev   num     percent
+		1       3327352 0.321198644061514
+		2       813388  0.0785186306395917
+		3       146904  0.0141810561693541
+	
+	# Preparing Nimblegen data
+	$ intersectBed -a nimblegen_reference_probe_smr.btf3.sorted.bed -b ../simple_cnvr_list.bed -v > nimblegen_reference_probe_smr.btf3.sorted.nocnvr.bed
+	$ perl process_files_to_channel.pl
+	$ for i in `ls Nimblegen_raw_data/B*.nimblegen.intensities.bed | grep -v BTBR`; do name=`echo $i | cut -d'/' -f2 | cut -d'.' -f1`; echo -e "$i\t$name"; done > nimblegen_intensity_files.list
+	$ perl digital_acgh_twocopy_region_comparision_bedtools.pl simple_cnvr_list.bed ngs_cn_list.list Nimblegen_raw_data/nimblegen_reference_probe_smr.btf3.sorted.nocnvr.bed nimblegen_intensity_files.list
+		Working on arraylog2 of animal: BTLM11!
+		Working on NGS CN of animal: BTLM11!
+		Total Stdev: 0.865774965624388
+		Number of values: 78111483
+		PerAnimal stdevs
+		Stdev   num     percent
+		1       11713969        0.149964749741085
+		2       1938524 0.0248174010471674
+		3       224154  0.00286966770301877
+		
+		Total value stdevs
+		Stdev   num     percent
+		1       12308440        0.157575295299412
+		2       2682181 0.034337857853755
+  		3       276595  0.00354102866028033
+
+	$ mv deviationvalues.txt nimblegen_deviationvalues.txt
+	$ cat nimblegen_deviationvalues.txt | statStd.pl
+		total   78107056
+		Minimum -13.2410158573599
+		Maximum 15.0049362533343
+		Average 0.033853
+		Median  -0.0619277491432017
+		Standard Deviation      0.865799
+		Mode(Highest Distributed Value) 0
+	$ perl -e '$t = 0; $c = 0; while(<>){chomp; if(abs($_) > 1.73){$c++;} $t++;} print "$c\t$t\n"; print ($c / $t) . "\n";' < nimblegen_deviationvalues.txt
+		4801548 78111483
+		0.0614704498697074
+	$ mv deviationvalues.txt agilent_deviationvalues.txt
+	$ cat agilent_deviationvalues.txt |statStd.pl
+		total   10358512
+		Minimum -12.6660357860925
+		Maximum 11.2658021196309
+		Average 1.035262
+		Median  0.945176479366664
+		Standard Deviation      1.678317
+	$ perl -e '$t = 0; $c = 0; while(<>){chomp; if(abs($_) > 3.357){$c++;} $t++;} print "$c\t$t\n"; print ($c / $t); print "\n";' < agilent_deviationvalues.txt
+		944809  10359172
+		0.0912050692854603
+		
+	# Now for the total
+	$ cat nimblegen_deviationvalues.txt agilent_deviationvalues.txt | statStd.pl
+		total   88465568
+		Minimum -13.2410158573599
+		Maximum 15.0049362533343
+		Average 0.151109
+		Median  -0.017426552768008
+		Standard Deviation      1.046577
+		Mode(Highest Distributed Value) 0
+		
+	$ cat agilent_deviationvalues.txt nimblegen_deviationvalues.txt | perl -e '$t = 0; $c = 0; while(<>){chomp; if(abs($_) > 2){$c++;} $t++;} print "$c\t$t\n"; print ($c / $t); print "\n";'
+		5650329 88470655
+		0.0638667024676148
+		
+	# OK, quick pearson's correlations for the finale
+	$ perl acgh_quick_correlation.pl agilent_acghvalues.txt
+		correlation: 0.1294
+	$ perl acgh_quick_correlation.pl nimblegen_acghvalues.txt
+		correlation: 0.2683
+	$ perl acgh_quick_correlation.pl all_array_acghvalues.txt
+		correlation: 0.1686
+
+	$ cat all_array_acghvalues.txt | cut -f1 | statStd.pl
+		total   62372711
+		Minimum -13.0599816194595
+		Maximum 15.3310294855288
+		Average 0.360633
+		Median  0.324371971346823
+		Standard Deviation      1.241817
+		
+	$ cat all_array_acghvalues.txt | cut -f2 | statStd.pl
+		total   87900907
+		Minimum -9.309492307928
+		Maximum 10.906262024059
+		Average 0.103818
+		Median  0.124743857329799
+		Standard Deviation      0.291311
+		Mode(Highest Distributed Value) 0
+		
+	$ perl -e '$c = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if(abs($s[0]) > 0.6 && abs($s[1]) > 0.6){$c++;} $t++;} print "$c\t$t\n"; print ($c / $t); print "\n";' < all_array_acghvalues.txt
+		2200757 88470655
+		0.0248755590201067
+	$ perl -e '$c = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if(abs($s[0]) > 0.6 || abs($s[1]) > 0.6){$c++;} $t++;} print "$c\t$t\n"; print ($c / $t); print "\n";' < all_array_acghvalues.txt
+		39631475        88470655
+		0.447961812874563
+		
+	$ perl -e '$c = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if(abs($s[0]) > 2 || abs($s[1]) > 2){$c++;} $t++;} print "$c\t$t\n"; print ($c / $t); print "\n";' < all_array_acghvalues.txt
+		6607140 88470655
+		0.0746817122581493
+		
+	$ perl -e '$c = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if(abs($s[0]) > 1 || abs($s[1]) > 1){$c++;} $t++;} print "$c\t$t\n"; print ($c / $t); print "\n";' < all_array_acghvalues.txt
+		25007100        88470655
+		0.282659826583176
+		
+	# Let's test just the Nimblegen data
+		$ perl -lane 'if(!defined($F[0])){next;}else{print "$F[0]";}' < nimblegen_acghvalues.txt | statStd.pl
+		total   78107370
+		Minimum -13.0599816194595
+		Maximum 15.3310294855288
+		Average 0.192587
+		Median  0.159305719040199
+		Standard Deviation      0.907775
+		Mode(Highest Distributed Value) 0
+		
+		$ perl -lane 'if(!defined($F[0])){next;}else{print "$F[1]";}' < nimblegen_acghvalues.txt | statStd.pl
+		total   53043083
+		Minimum -5.89558636507321
+		Maximum 6.8200688960378
+		Average 0.129424
+		Median  0.13901025500009
+		Standard Deviation      0.252218
+		Mode(Highest Distributed Value) 0
+		
+		
+	

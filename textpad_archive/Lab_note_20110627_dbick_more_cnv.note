@@ -1,0 +1,286 @@
+06/27/2011
+# The previous CNV manuscript notefile was getting too long, so I am organizing the rest of the notes in this file. 
+# I will continue with the figure and table design here
+
+____________________________________
+Circos Diagram
+____________________________________
+
+# I am going to create a large Circos figure using merged CNVRs by method plotted per animal.
+# In order to do this, I will use my table 2 data separated into animals (shared/cow4_doc/hd_animals/major_table_2.tab)
+	$ perl turn_table2_into_circos.pl major_table_2.tab
+	# This script creates separate files per animal and creates circos plot histogram files with a value of "one" per span
+	# I can get more elaborate with it later; right now it does not distinguish between gains or losses (or both!)
+	
+	$ mv *.conf ../../backup/circos-0.52/
+	# that didn't work, I'll have to troubleshoot it later
+	
+____________________________________
+Storing data in MySQL
+____________________________________
+
+# I created a script to process my named bed files and input all of the CNVs into a MySQL database on my Ubuntu virtualbox
+# The script name is insert_cnvs_into_mysql_db.pl
+# it takes named bed files and stores them into the raw_calls table in the raw_cnv_hd_animals database
+# This will be useful for future data dumps, query requests and tables.
+
+pwd: /home/derek/share/cow4_doc/hd_animals
+$ for i in *all.bed; do perl insert_cnvs_into_mysql_db.pl $i; done
+
+____________________________________
+Creating Venn diagrams with R
+____________________________________
+
+# After looking up the venn function in the limma bioconductor package, I realized that I could create some venn diagrams in addition to creating major table formats 1 and 3 as well
+# I have three scripts that I need to merge into one file (with some additions with the R calling and processing) in order to do this
+# The scripts are: bed_tag_animal_merge_table.pl create_contribution_table.pl and combine_CNVRs_full_table.pl
+# I need to do some cleanup of combine_CNVRs_full_table.pl as well
+
+# I finally finished! Turns out that Statistics::R is far too buggy of a module to use here.
+# I used a blunt-force method to finish it (basically, print out an R script and then run it using command line input with R)
+# The Venn diagram generating script is not bed_create_tables_1_3.pl but rather bed_create_tables_2_4.pl
+
+____________________________________
+More qpcr primer design
+____________________________________
+
+# Some of the probes that I chose to give to Reuben did not yield any primers
+# I am going to give him a new list of positions from cnvrs 14 to 34
+# I will give him 8 probes from each of those positions (downstream of the previous ones) using the check_priority_bed.pl script
+
+pwd: /home/derek/share/cow4_doc/hd_animals/
+# The cnvr positions that I need to redo are found in the redo_probe_pos.bed file
+$ perl check_priority_bed.pl acgh_hd_probes.bed redo_probe_pos.bed > cnvrs_14_34.pos
+
+# I split the file into two new files and asked Reuben to run both simultaneously on separate screens.
+
+____________________________________
+Repeatmasking problems
+____________________________________
+
+# I just downloaded the cow4 repeatmasker out file from repbase, and there are thousands of repeats missed by the UCSC browser repeatmasker file! 
+# I am going to test out a newly masked genome on all of the nelore sequence to see how that turns out
+# If there is a significant difference, I believe that I can turn out aligned sequences within a week and make new CNV calls
+
+# Here are some of my testing steps
+	
+	 2007  perl convert_rmout_bed.pl bosTau4.fa.out
+	 2008  perl convert_rmout_bed.pl bosTau4_old.fa.old.out
+	 2009  BEDTools-Version-2.10.1/bin/intersectBed -a bosTau4.bed -b bosTau4_old.fa..bed -v 
+	 2010  head bosTau4.bed
+	 2011  head bosTau4_old.fa..bed
+	 2012  BEDTools-Version-2.10.1/bin/intersectBed -a bosTau4.bed -b bosTau4_old.fa..bed -v | wc; wc bosTau4.bed; wc bosTau4_old.fa..bed 
+	 2013  BEDTools-Version-2.10.1/bin/intersectBed -a bosTau4.bed -b bosTau4_old.fa..bed -v | perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $h{$s[0]} += 1;} foreach $k (keys(%h)){ print "$k\t$h{$k}\n";}'
+	 2014  grep -v chrUn bosTau4.bed | BEDTools-Version-2.10.1/bin/intersectBed -a stdin -b bosTau4_old.fa..bed -v | perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $h{$s[0]} += 1;} foreach $k (keys(%h)){ print "$k\t$h{$k}\n";}'
+	 2015  grep -v chrUn bosTau4.bed > cow4_repeats_new_nochrun_noextend.bed
+
+	
+	
+	chr7	3799
+	chr23	2046
+	chr20	2333
+	chr26	1544
+	chr22	2047
+	chr14	2867
+	chr19	2680
+	chr8	3650
+	chr1	5590
+	chr29	2058
+	chr11	3653
+	chr6	4072
+	chr17	3218
+	chr24	2091
+	chr21	2659
+	chr16	2961
+	chr25	1980
+	chr18	3112
+	chr3	4330
+	chr12	3095
+	chr15	3000
+	chrX	3166
+	chr4	4045
+	chr2	4588
+	chr9	3492
+	chr28	1644
+	chr27	1930
+	chr13	2874
+	chr10	3326
+	chr5	4537
+	
+	
+# Now to transfer the new repeat file to the server, run trf on the genome and bedtools mask it
+	pwd: /mnt/data110/dbickhart/reference/
+	$ cp /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4.fa.gz ./
+	$ gunzip bosTau4.fa.gz
+	
+	$ perl -e '$s = 0; while(<>){if($s == 1){last;}elsif($_ =~ />chrUn/){$s = 1;}else{print $_;}}' < bosTau4.fa > bosTau4_nochrun.fa
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi bosTau4_nochrun.fa -bed cow4_repeats_new_nochrun_noextend.bed -fo cow4_nochrun_autosomes.fa
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi cow4_nochrun_autosomes.fa -bed bosTau4.trf.bed -fo temp_auto.fa
+	$ perl -ne 'if ($_ =~ />chr/){print $_; next;}else{ $_ =~ s/[acgt]/N/g; print $_;}' < temp_auto.fa > temp_auto_1.fa
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi temp_auto_1.fa -bed /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed -fo temp_auto_2.fa -soft
+	
+	# This is just to see if the gap file was weird or messed up.
+	# All gaps should be "N'ed" out already
+	$ perl -e 'while(<>){chomp; if ($_ =~ />/){next;}else{$n = ($_ =~ tr/n/N/); $N += $n; $b = ($_ =~ tr/acgt/N/); $T += $b;}} print "$N\t$T\n";' < temp_auto_2.fa
+	
+		167379942       0
+	
+	$ perl -ne 'if($_ =~ />chr/){print $_; next;}else{$_ =~ s/n/X/g; print $_;}' < temp_auto_2.fa > cow4_repeats_new_nochrun_noextend.bed
+	$ rm temp*
+	
+	# I am going to try out this new masked file and see how the alignment goes.
+	# But first, how about I rerun TRF on it?
+	$ /mnt/gliu1_usb/dbickhart/alkan_files/umd3/trf404.linux64.exe ../cow4_repeats_new_nochrun_noextend.bed 2 7 7 80 10 50 500 -d -m
+	
+	# That gave a segmentation fault. Going to have to split the chromosomes and redo it
+	$ perl split_fasta.pl ../cow4_repeats_new_nochrun_noextend.bed
+	$ for i in chr*.fa; do /mnt/gliu1_usb/dbickhart/alkan_files/umd3/trf404.linux64.exe $i 2 7 7 80 10 50 500 -m; done
+	
+	$ cat *.mask > cow4_trf_nochrun_new_repeats.fa
+	$ calculate_base_composition_fasta.pl cow4_trf_nochrun_new_repeats.fa
+	Total Counts:
+	A:      376963576
+	C:      264551778
+	G:      264954553
+	T:      377771524
+	X:      167379795
+	N:      1182792098
+	total autosomal:        1284241431      total repetitive:       1350171893      perc auto:       48.7486689844877
+	
+	# OK, lets give it a go
+	
+	
+# Diagnostics of fastas:
+	$ calculate_base_composition_fasta.pl cow4_nochrun_autosomes.fa	
+	Total Counts:
+	A:      378587062
+	C:      265993875
+	G:      266384904
+	T:      379402918
+	X:      0
+	N:      1337546965
+	total autosomal:        1290368759      total repetitive:       1337546965      perc auto:       49.1023645551276
+	
+	$ calculate_base_composition_fasta.pl temp_auto.fa
+	Total Counts:
+	A:      378587062
+	C:      265993875
+	G:      266384904
+	T:      379402918
+	X:      0
+	N:      1338092097
+	total autosomal:        1290368759      total repetitive:       1338092097      perc auto:       49.092180926129
+	
+	$ calculate_base_composition_fasta.pl temp_auto_1.fa
+	Total Counts:
+	A:      378587062
+	C:      265993875
+	G:      266384904
+	T:      379402918
+	X:      0
+	N:      1344040265
+	total autosomal:        1290368759      total repetitive:       1344040265      perc auto:       48.9813368859763
+	
+	$ calculate_base_composition_fasta.pl temp_auto_2.fa
+	Total Counts:
+	A:      378587062
+	C:      265993875
+	G:      266384904
+	T:      379402918
+	X:      0
+	N:      1176664623
+	total autosomal:        1290368759      total repetitive:       1176664623      perc auto:       52.3044709656061
+	
+	$ calculate_base_composition_fasta.pl cow4_repeats_new_nochrun_noextend.bed <- at the end
+	Total Counts:
+	A:      378587062
+	C:      265993875
+	G:      266384904
+	T:      379402918
+	X:      167379942
+	N:      1176664623
+	total autosomal:        1290368759      total repetitive:       1344044565      perc auto:       48.9812569365824
+	
+# Preparing for the run:
+	$ cp trf/cow4_trf_nochrun_new_repeats.fa ./
+	$ cp cow4_trf_nochrun_new_repeats.fa cow4_trf_nochrun_new_repeats_b.fa
+	$ cp cow4_trf_nochrun_new_repeats_b.fa cow4_trf_nochrun_new_repeats_c.fa
+	$ cp cow4_trf_nochrun_new_repeats_c.fa cow4_trf_nochrun_new_repeats_d.fa
+	$ mv cow4_trf_nochrun_new_repeats.fa cow4_trf_nochrun_new_repeats_a.fa
+	
+	$ for i in cow4_trf*.fa; do /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --index $i; done
+	
+# Now the runs:
+	$ perl mrsfast_cow4_se_letter_wrapper.pl nelore_hd_list_1.txt a nelore_hd_1
+	$ perl mrsfast_cow4_se_letter_wrapper.pl nelore_hd_list_2.txt b nelore_hd_2
+	$ perl mrsfast_cow4_se_letter_wrapper.pl nelore_hd_list_3.txt c nelore_hd_3
+	$ perl mrsfast_cow4_se_letter_wrapper.pl nelore_hd_list_4.txt d nelore_hd_4
+	
+	$ for i in *.sam; do perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' < $i >> combined_hits.bed; done
+	$ for i in *.sam; do perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' < $i >> combined_hits.bed; done
+	
+# Finally, it is time to generate the windows. 
+# Since window generation is time-consuming, and I do not have a pipeline to do this, how about I revist MrCanavar? 
+# I will also test it on the previous output
+	pwd: /mnt/gliu1_usb/dbickhart/mrcanavar-0.3.1
+	$ make
+	
+	# First, I'm going to use the new repeatmasked genome
+	# Making the windows:
+	$ ./mrcanavar --prep -fasta /mnt/data110/dbickhart/reference/cow4_trf_nochrun_new_repeats_a.fa -gaps /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed -conf cow4_new_repeats.cnvr
+	
+	# copying the sam files 
+	$ for i in ./nelore_hd_*/*.sam; do mv $i hd_nelore_comp/; done
+	
+	$ /mnt/gliu1_usb/dbickhart/mrcanavar-0.3.1/mrcanavar --read -conf /mnt/gliu1_usb/dbickhart/mrcanavar-0.3.1/cow4_new_repeats.cnvr -samdir ./hd_nelore_comp/ -depth nelore_hd_calls.depth
+	$ /mnt/gliu1_usb/dbickhart/mrcanavar-0.3.1/mrcanavar --call -conf /mnt/gliu1_usb/dbickhart/mrcanavar-0.3.1/cow4_new_repeats.cnvr  -depth nelore_hd_calls.depth -o nelore_hd_cnv
+	
+	# At this stage, the program cuts out after generating the normalized windows and leaves you to detect the CNVs yourself!
+	# I removed the first two lines from nelore_hd_cnv.lw_norm.bed and nelore_hd_cnv.sw_norm.bed using nano
+	# Now I need to take the average and stdev values from the .log file and calculate the autocut and refined window cut values (average + 4 stdevs  and average + 4 stdevs / 5 respectively)
+		LW Average Read Depth: 1008.572449, Standard Deviation: 81.678238
+		# So, 1332 for the autocut and 266 for the refined
+	# I am going to use the wssd_picker.pl script from Alkan's original files to get the CNVs now
+	$ /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/wssd_picker.pl -f nelore_hd_cnv.lw_norm.bed -w 7 -s 6 -c 1332 -b 4 -k nelore_hd_cnv.sw_norm.bed -n 5 -i 1 -t 266 -o nelore_hd_cnv_gain.bed
+	$ wc nelore_hd_cnv_gain.bed
+		 21680  65040 508164 nelore_hd_cnv_gain.bed
+	# Too many! I need to increase the stringency.
+	# Checking to see if the log file was correct in estimating the stdev, or if that was from the control file
+	$ perl -lane 'print $F[4];' < nelore_hd_cnv.lw_norm.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		total   1943837
+		Minimum 0.000000
+		Maximum 10152111.000000
+		Average 3126.850706
+		Median  1044.119141
+		Standard Deviation  70317.668010
+		Mode(Highest Distributed Value) 996.566772
+		
+		# Yeah, that's not good.
+		# apparently there are STILL some repeat windows coming up!
+		$ perl -lane 'if($F[4] > 1000000){print $_;}' < nelore_hd_cnv.lw_norm.bed | wc
+		    152     912    7273
+		$ perl -lane 'if($F[4] > 500000){print $_;}' < nelore_hd_cnv.lw_norm.bed | wc
+		    182    1092    8670
+		$ perl -lane 'if($F[4] > 100000){print $_;}' < nelore_hd_cnv.lw_norm.bed | wc
+		    786    4716   36818
+		    
+		$ perl -lane 'if($F[4] > 100000){print "$F[0]\t$F[1]\t$F[2]";}' < nelore_hd_cnv.lw_norm.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin
+		$ perl -lane 'system("/home/dbickhart/bin/extract_seq_from_fasta.pl --in /mnt/data110/dbickhart/reference/cow4_trf_nochrun_new_repeats_a.fa --out $F[0]_$F[1]_$F[2].fa --chr $F[0] --s $F[1] --e $F[2]");' < repeat_intervals.bed
+		
+		# Just to add a fasta "carrot" to each file:
+		$ for i in *.fa; do prefix=`echo $i | cut -d '.' -f1`; echo $prefix; sed -i -e"1 i >$prefix" $i; done
+		
+$ perl -e '@f = `ls nelore_mapped_list*.txt`; foreach $g (@f){ chomp $g; open (IN, "< $g"); while(<IN>){chomp; @a = split(/\s/); $t += $a[1];} close IN;} print "$t\n";'
+	4062669767
+	
+______________________________________
+Interesting gene locii
+______________________________________
+	chr3	112088691	112101975	13284	loss	2	20	SCMH1	BTHO:1	SCMH1
+	chr21	59037222	59052109	14887	gain	2	80	IFI27	BTAN:3;BTHO:1	IFI27
+	chr8	46730437	46743081	12644	loss	2	20	PGM5	BTHO:1	PGM5
+	chr2	93443668	93475287	31619	gain	2	20	AOX1	BINE:1	AOX1
+	chr2	137063203	137123235	60032	both	2	100	PLA2G2D1;PLA2G2D5;PLA2G2D4;PLA2G2D3	BINE:1;BTAN:3;BTHO:1
+	chr29	40197766	40354055	156289	both	2	40	PAG1;PAG16;PAG11;PAG21	BINE:1;BTHO:1
+	
+	

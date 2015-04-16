@@ -1,0 +1,79 @@
+2011_01_20
+# A forray into metabolomics, geneID conversion and qPCR data processing
+
+# My big goal is to do the following with DAVID:
+	1. Convert cow4 geneID's to human
+	2. Obtain metabolic enrichment analysis
+	3. Peform the above two steps with the new Angus qPCR/aCGH data
+	4. Perform the above two steps with my sequencing data.
+	
+# As a trial run, I think that I will try using DAVID on my sequencing data, specifically, the intersected bed file with the refgene list
+	- Gene conversion
+		# First I went to the following URL:
+		http://david.abcc.ncifcrf.gov/conversion.jsp
+		
+		# Next, I opened my angus refgene bed file (on the S:/ drive)
+		# Copied the gene accession IDs and pasted them into the box
+		# Selected "Genbank accession" then hit "submit"
+		
+		# Selected "Bos taurus" then hit "select species"
+		
+		# That didn't work quite the way I wanted to... it skipped the "gene conversion step" and did a metabolic analysis
+		
+		# Selected the gene conversion tool from the list of tools 
+		
+		# It only converged the genbank accessions from Cow4 to other accessions within Cow4
+		# The metabolic analysis was pretty spot on, even without the human conversion. Perhaps George does not need the human ID conversions?
+		
+		# Saved the metabolic analysis on the S drive (file: DAVID_angus_refgene_cluster.txt)
+
+
+___________________________________
+QPCR data processing
+___________________________________
+
+# So, Jessica and Reuben are finishing up on the qPCR plates.
+# Here is a summary of the data:
+	- 34 loci (33 loci have 2 qPCR amplicon regions)
+	- Standard curves for all of the primers
+	
+# I am attempting to get the R package: qPCR installed and running, but I am running into errors with Rcpp and dependent packages
+# I think that my version of R (from 2009!) was too old; reinstalling
+	gpg --keyserver pgpkeys.mit.edu --recv-key  <public key> 
+	gpg -a --export <public key> | sudo apt-key add -
+	
+	# I also had to install mesa and OpenGL drivers to install "rgl"
+	# finally! It works!
+	
+# OK, so, the qPCR package for R is based off of raw fluorescence data. This is WAY too complex (and extravagant) for our analysis
+
+# Instead, I am creating a tabular spreadsheet of all of the qPCR data (that will include primer efficiencies). tabular_angus_data.xlsx on the S drive.
+# My secondary strategy will be to use R to draw plots of the data and make a linear regression curve.
+
+___________________________________
+Yali's paper
+___________________________________
+
+# Yali's paper on the bovinesnp50 chip snps was accepted on two small conditions!
+
+# The first condition is to design a supplemental figure for one of the SNP locations
+	# Here is my goal: make a graph showing the CNVR location, the qpcr primer locations and the SNP locations
+	# Panel 2 will be a histogram of the observed qpcr copy number in the two locations for the animal and in Dominette
+	
+	# In order to make the first panel, I am going to make a "skeleton" in UCSC
+		# two bed files: SNP locations and qpcr locations
+		# Screen grab and edit in "photoshop"
+		# remove grid lines and add in a plot for the copy number
+		
+	# R commands to make a whiskerplot
+		max <- read.table("./share/snp_fig/qpcr_data.txt", sep="\t", header=TRUE)
+		max
+		boxplot(max)
+		help(boxplot)
+		boxplot(max, col = "blue")
+		setwd('share/snp_fig/')
+		png('whiskerplot.png')
+		boxplot(max, col = "blue")
+		dev.off()
+		q()
+		history()

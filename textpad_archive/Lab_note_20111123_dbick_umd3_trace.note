@@ -1,0 +1,491 @@
+11/23/2011
+# So the UMD3 genome was created using far more trace reads than I previously thought. 
+# This means that I must download far more reads in order to get a more accurate trace WSSD set
+
+
+# Trace downloading:
+	# Downloaded the query_tracedb script from the trace archive to my linux virtualbox image
+	pwd: /home/dbickhart/share/cow4_trace
+	$ perl query_tracedb usage
+	Queries can be performed to obtain either a TI or a set of TIs.
+	The list of TIs resulting from a query can be used to obtain the data
+	(trace, fasta, quality score) corresponding to the list of TIs.
+	
+	The result of queries can be either in text or binary mode.
+	
+	If any statement contains more then one word it must be double quoted.
+	All symbolic names must be single quoted.
+	
+	The 'query_tracedb' script takes query text from concatenated command line
+	arguments or, if no arguments provided, from standard input.
+	
+	The resulting output of queries or retrievals goes to stdout.
+	
+	To optimize the loading of the server all result sets are limited to 40000 
+	records. Please use page qualifiers if you need to obtain query results chunk
+	by chunk by cycling through pages (page_number allows to skip previous pages)
+	
+	Some queries might take a while until the data starts coming out.
+	
+	1. Query TI(s)
+	
+	   a. search by trace_name:
+	   query_tracedb "query text trace_name in ('jea17d09.b1','jeb67f06.b1',
+	                                             'jdy11d11.g1')"
+	
+	   b. narrow the search by center_name, trace_type_code, and load_date:
+	   query_tracedb "query text center_name='GSC' and trace_type_code='CLONEEND'
+	                  and load_date>'Jan 18 2002'"
+	
+	   c. using page qualifiers:
+	   query_tracedb "query page_size 40000 page_number 10 text species_code='mus musculus'"
+	   NOTE: Page size (number of returned items) cannot exceed 40000
+	         Pages numbered in C style: 0 - is the fisrt page, 1 - second, etc.
+	
+	   d. counting the data
+	   query_tracedb "query count species_code='mus musculus'"
+	   This will return the number of records complying to the query
+	
+	2. Retrieve data
+	   Retrieval of the data requires format specification(s) and TI numbers.
+	   TI numbers can be delimited by comma, or dash if applied as a range.
+	   Data can be retrieved in one of the following forms:
+	
+	   a. plain form:
+	   query_tracedb "retrieve fasta 5728631,5728633,5728634"
+	   query_tracedb "retrieve quality 5728631-5728634"
+	
+	   b. gzip(ed) form:
+	   query_tracedb "retrieve_gz xml_info 5728631,5728633,5728634" > myfile.gz
+	   query_tracedb "retrieve_gz fasta 5728631-5728634" > myfile.gz
+	
+	   c. tar(ed) submission form:
+	   query_tracedb "retrieve_tar xml fasta 5728631,5728633,5728634" > myfile.tar
+	   query_tracedb "retrieve_tar fasta quality scf 5728631-5728634" > myfile.tar
+	
+	   d. tar(ed) and then gzip(ed) submission form:
+	   query_tracedb "retrieve_tar_gz scf fasta quality xml 5728631,5728633,5728634"
+	                  > myfile.tgz
+	   query_tracedb "retrieve_tgz fasta quality 5728631-5728634" > myfile.tgz
+	
+	3. Other useful features:
+	
+	   a. use stdin.
+	   echo retrieve_tgz scf 1-10 > myquery.txt; query_tracedb < myquery.txt > my.tgz
+	
+	   b. use in a pipeline.
+	   echo retrieve_tgz scf 1-10 | query_tracedb | gzip -dc | tar xfv -
+	
+	Output forms:
+	   fasta       - retrieve sequence in fasta format
+	   quality     - retrieve quality scores
+	   single      - retrieve into a single fasta/quality file
+	   peak        - retrieve peak indecies
+	   [xml_]info  - retrieve ancillary data
+	   xml         - retrieve ancillary submission file in xml form
+	   scf         - retrieve as scf file
+	   rcf         - retrieve data in compressed form as it exists in the archive
+	   mate_pair   - retrieve mate pair(s) for requested ti(s)
+	   all         - retrieve fasta, quality, scf, mate pair(s), and xml for requested ti(s)
+	   sid=N       - retrieve either data for a whole submission
+	
+	4. Tracking submissions by name or submission IDs:
+	
+	   query_tracedb "track sid  in (1,2,3,4,5,6)"
+	   query_tracedb "track name in ('GBF_EC_CH241-149_ass.0_060926_1241_trc.tar.gz')"
+	
+	
+	# Obtaining the total number of records
+	$ perl query_tracedb "query count species_code='BOS TAURUS'"
+   		38226165   / 40000 = 955.654125 
+   	# So, I need to make about 956 requests.
+   	$ for ((a=0; a <= 956 ; a++)); do echo $a; (echo -n "retrieve_tgz all 0b"; perl query_tracedb "query page_size 40000 page_number $a binary species_code='BOS TAURUS'") | perl query_tracedb > umd3_trace$a.tgz; done
+   	# That command coupled the page query and download of the read datasets.
+   	# Oops! I made a mistake and started to download ALL of the information! I just want the fastas.
+   	# Also, I just want the entries that are not "hereford" breed in origin
+   	$ perl query_tracedb "query count species_code='BOS TAURUS' and strain=null"
+	   25,996,836	/ 40000 = 650 requests
+	$ for ((a=0; a <= 650 ; a++)); do echo $a; (echo -n "retrieve_tgz single 0b"; perl query_tracedb "query page_size 40000 page_number $a binary species_code='BOS TAURUS' and strain=null") | perl query_tracedb > umd3_trace$a.tgz; done
+	# Did not work. They do not have "single" files that contain the quality scores and the fasta
+	
+	$ for ((a=0; a <= 650 ; a++)); do echo $a; (echo -n "retrieve_tgz fasta 0b"; perl query_tracedb "query page_size 40000 page_number $a binary species_code='BOS TAURUS' and strain=null") | perl query_tracedb > umd3_trace$a.tgz; done
+	# This worked and was much more reasonable in terms of file size and speed
+	
+	# Unzipping
+	$ for i in *tgz; do tar -xzf $i; echo $i; done
+	
+	# Now, what to do with all the files!
+	# Trying this, but it might take a LONG time!
+	$ find ./*/BOS_TAURUS/*/fasta/ -type f -name '*.fasta' -exec cat {} \; | gzip > remainder_trace_sanger_fasta.gz
+	
+	# OK, trying this instead
+	$ find ./*/BOS_TAURUS/*/fasta/ -type f -name '*.fasta' > fasta_file_list.txt
+	
+	#Instead of that, hopefully this will cut down on the file size by catting all the files
+	$ for i in 2011*; do find $i/BOS_TAURUS/*/fasta/ -type f -name '*.fasta' -exec cat > $i/all_fasta {} \;; echo $i; done
+	
+#Including my dog run
+	pwd: /home/dbickhart/share/UMC_dog/dog_2_trace
+	$ perl query_tracedb "query count species_code='CANIS FAMILIARIS' and load_date <= '5/01/2005'"
+	   36348041 / 100000 = 363 requests
+	$ for ((a=0; a <= 363 ; a++)); do echo $a; (echo -n "retrieve_tgz fasta 0b"; perl query_tracedb "query page_size 100000 page_number $a binary species_code='CANIS FAMILIARIS' and load_date <= '5/01/2005'") | perl query_tracedb > can_fam_2_trace$a.tgz; done
+	$ for i in *.tgz; do tar -xzf $i; echo $i; done
+	$ find ./2011*/CANIS_FAMILIARIS/*/fasta/ -type f -name '*.fasta' > fasta_file_list.txt
+	
+	# On server 3
+	Server3: /mnt/data110/dbickhart/dog_trace
+	$ perl chunk_trace_wgs_36bp.pl dog_2_full_trace.fasta
+	$ perl chunk_trace_wgs_36bp.pl second_dog_2_full_trace.fasta
+	
+	$ for i in dog*.fq; do echo $i; gzip $i; done
+	$ for i in second*.fq; do echo $i; gzip $i; done
+	$ mkdir dog_trace_bams
+	$ perl mrsfast_fork_letter_wrapper.pl 'ls *.fq.gz' dog_trace_bams /mnt/data110/dbickhart/reference/can_fam_2_combined_full_masked_a.fa
+	$ for i in *.bam; do echo $i; ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> dog_trace_hits.bed; done
+	$ mkdir dog_trace_windows
+	$ combine_bed_hits_lowmem.pl dog_trace_hits.bed dog_trace_windows /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	$ run_dog_wssd_pipeline.pl --File1 dog_trace_hits_dog_template_file1.bed --File1_c dog_trace_hits_dog_template_file1_control_3.bed --File2 dog_trace_hits_dog_template_file2.bed --File3 dog_trace_hits_dog_template_file3.bed --File3_c dog_trace_hits_dog_template_file3_control_3.bed
+	$ wc -l dog_trace_hits_dog_template_file1.bed.final.wssd
+		1692 dog_trace_hits_dog_template_file1.bed.final.wssd
+	$ intersectBed -a dog_trace_hits_dog_template_file1.bed.final.wssd -b /mnt/data110/dbickhart/dog_2_windows/dog_wssd_previous.bed -v | wc
+	   1258    3774   29411
+	$ intersectBed -b dog_trace_hits_dog_template_file1.bed.final.wssd -a /mnt/data110/dbickhart/dog_2_windows/dog_wssd_previous.bed -v | wc
+	   8340   25020  199193
+	# I might have a repeat problem
+	
+	
+	
+	$ ../RepeatMasker/RepeatMasker -s -species dog -dir . -pa 4 can_fam_2_combined_full_masked_a.fa
+	$ perl -lane 'print "$F[4]\t$F[5]\t$F[6]";' < can_fam_2_combined_full_masked_a.fa.out | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+		3432526
+	# So about 3 mb of extra repeats.
+	$ perl -lane 'print "$F[4]\t$F[5]\t$F[6]";' < can_fam_2_combined_full_masked_a.fa.out > extra_repeats_can_fam_2.bed
+	
+	# Before masking
+		total autosomal:        1220072080      total repetitive:       1311585750      perc auto:       48.1926137704004
+	# After masking
+		total autosomal:        1216656067      total repetitive:       1315001763      perc auto:       48.0576819103552
+		
+	# Running a java version of window maker on the new reference:
+	$ ~/jre1.6.0_27/bin/java -jar ~/winmaker_full_fasta.jar can_fam_2_final_masked_a.fa
+	
+	# Remaking the windows
+	$ cp can_fam_2_final_template_file*.bed ../dog_2_windows/
+	Server3: /mnt/data110/dbickhart/dog_2_windows/
+	$ cp can_fam_2_final_template_file*.bed ../dog_2_sim/bams/
+	$ cd ../dog_2_sim/bams/
+	$ mkdir dog_win_two
+	$ combine_bed_hits_lowmem.pl dog_pre_sim.bed dog_win_two can_fam_2_final_template_file1.bed can_fam_2_final_template_file3.bed
+	
+	# Now to remake the controls.
+	# I need to intersect the windows with my simulated dataset, then remove the previous dog WSSD intervals (within the dog_2_windows folder) and remove the high simulated dataset intersected windows
+	# For the "third tier" controls that I had before, I used 1/3rd of the average as the lowend cutoff and 2x the stdev plus the average as the high end cutoff
+		$ cut -f4 dog_pre_sim_can_fam_2_final_template_file1.bed | statStd.pl
+			total   2121582
+			Minimum 1870
+			Maximum 4839072
+			Average 4464.983380
+			Median  2383
+			Standard Deviation      29412.876153
+			Mode(Highest Distributed Value) 2408
+		$ cut -f4 dog_pre_sim_can_fam_2_final_template_file3.bed | statStd.pl
+			total   1203786
+			Minimum 302
+			Maximum 3324581
+			Average 832.301013
+			Median  495
+			Standard Deviation      5917.455296
+			Mode(Highest Distributed Value) 517
+		# I realize that I forgot to remove the repeat regions from the bed file. No matter: I will remove the bad regions from these windows regardless
+	# Cutoffs for file1 and file3:
+		- File1  7149 (<- median times three)  upper and 794 (<- median divided by three)
+		- File3  1485 upper and 165
+		
+	Server3: /mnt/data110/dbickhart/dog_2_sim/bams/dog_win_two
+	$ perl -lane 'if($F[3] > 7149 || $F[3] < 794){next;}else{print $_;}' < dog_pre_sim_can_fam_2_final_template_file1.bed | wc -l
+		2081557   <- about 50 thousand less than the full file
+	$ perl -lane 'if($F[3] > 7149 || $F[3] < 794){next;}else{print $_;}' < dog_pre_sim_can_fam_2_final_template_file1.bed | cut -f4 | statStd.pl
+		total   2081557
+		Minimum 1870
+		Maximum 7149
+		Average 2448.852597
+		Median  2380
+		Standard Deviation      389.611374
+		Mode(Highest Distributed Value) 2408
+	# Since these are control reads and do not have GC bias, lets see if we can tighten the range further without losing too many windows
+	# New upper range: 3615 (average plus three stdevs)
+	$ perl -lane 'if($F[3] > 3615 || $F[3] < 794){next;}else{print $_;}' < dog_pre_sim_can_fam_2_final_template_file1.bed | cut -f4 | statStd.pl
+		total   2041335    <- removed about 40,000 more windows
+		Minimum 1870
+		Maximum 3615
+		Average 2401.887000
+		Median  2379
+		Standard Deviation      148.487258	<- much better
+		Mode(Highest Distributed Value) 2408
+	
+	# Now for file3
+	$ perl -lane 'if($F[3] > 1485 || $F[3] < 165){next;}else{print $_;}' < dog_pre_sim_can_fam_2_final_template_file3.bed | cut -f4 | statStd.pl
+		total   1184395	<- removed about 20,000 windows
+		Minimum 302
+		Maximum 1485
+		Average 500.342336
+		Median  493
+		Standard Deviation      76.292600
+		Mode(Highest Distributed Value) 517
+	# Tightening the cropping...
+	# New upper range: 728 (average plus three stdevs)
+	$ perl -lane 'if($F[3] > 728 || $F[3] < 165){next;}else{print $_;}' < dog_pre_sim_can_fam_2_final_template_file3.bed | cut -f4 | statStd.pl
+		total   1163759		<- removed 20,000 more windows
+		Minimum 302
+		Maximum 728
+		Average 491.815530
+		Median  490
+		Standard Deviation      32.308573	<- again, even better
+		Mode(Highest Distributed Value) 517
+	
+	# Creating the files
+	$ perl -lane 'if($F[3] > 3615 || $F[3] < 794){next;}else{print "$F[0]\t$F[1]\t$F[2]";}' < dog_pre_sim_can_fam_2_final_template_file1.bed > can_fam_2_final_template_file1_control.bed
+	$ perl -lane 'if($F[3] > 728 || $F[3] < 165){next;}else{print "$F[0]\t$F[1]\t$F[2]";}' < dog_pre_sim_can_fam_2_final_template_file3.bed > can_fam_2_final_template_file3_control.bed
+	$ cp can_fam_2_final_template_file*.bed ../../../dog_2_windows/
+	
+	# Making the GC windows
+	$ perl GC_intervals.pl --path /mnt/data110/dbickhart/reference/dog_pre --name gc_can_fam_2
+	# Oops! That was an older and less adaptable script.
+	# Using a new script:
+	$ perl GC_intervals_utility.pl --genome /mnt/data110/dbickhart/reference/can_fam_2_final_masked_a.fa --name gc_win --ls 'ls can_fam_2_final_template_file*'
+	# Creating GC tab files
+	$ for i in gc_win_can_fam_2_final_template_file1.bed gc_win_can_fam_2_final_template_file2.bed gc_win_can_fam_2_final_template_file3.bed; do awk '{print $1"-"$2"-"$3"\t"$4}' $i | sort -k 1,1 > $i.tab; done
+	
+	
+	
+	# Changed the dog_separate_pipeline.sh script to have the updated GC files and windows.
+	# Removing repeat sequences from the bed file and then rerunning the window intersection and pipeline.
+	Server 3: /mnt/data110/dbickhart/dog_trace/dog_trace_bams/
+	$ intersectBed -a dog_trace_hits.bed -b /mnt/data110/dbickhart/reference/extra_repeats_can_fam_2.bed -v > dog_trace_hits_r.bed
+		$ wc -l dog_trace_hits_r.bed dog_trace_hits.bed
+		  	304484376 dog_trace_hits_r.bed
+		  	305043792 dog_trace_hits.bed
+  			609528168 total
+  	$ combine_bed_hits_lowmem.pl dog_trace_hits_r.bed dog_redo_windows /mnt/data110/dbickhart/dog_2_windows/can_fam_2_final_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/can_fam_2_final_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/can_fam_2_final_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/can_fam_2_final_template_file1_control.bed /mnt/data110/dbickhart/dog_2_windows/can_fam_2_final_template_file3_control.bed
+  	$ cd dog_redo_windows/
+  	$ cut -f4 dog_trace_hits_r_can_fam_2_final_template_file1_control.bed | statStd.pl
+		total   2041335
+		Minimum 124
+		Maximum 31918
+		Average 646.774036
+		Median  628
+		Standard Deviation      191.563901
+		Mode(Highest Distributed Value) 618
+	$ cut -f4 dog_trace_hits_r_can_fam_2_final_template_file3_control.bed | statStd.pl
+		total   1163759
+		Minimum 2
+		Maximum 31434
+		Average 131.836637
+		Median  126
+		Standard Deviation      59.255801
+		Mode(Highest Distributed Value) 122
+	# These are just too high, going to remove more windows from the controls
+	# Upper limit for file1 controls: 1410 (avg + 4 stdevs)
+	# Upper limit for file3 controls: 367 (avg + 4 stdevs)
+	$ perl -lane 'if($F[3] > 1410){next;}else{print $_;}' < dog_trace_hits_r_can_fam_2_final_template_file1_control.bed | wc -l
+		2024304
+	$ perl -lane 'if($F[3] > 1410){next;}else{print $_;}' < dog_trace_hits_r_can_fam_2_final_template_file1_control.bed | cut -f4 | statStd.pl
+		total   2024304
+		Minimum 124
+		Maximum 1410
+		Average 636.125339
+		Median  627
+		Standard Deviation      134.253588
+		Mode(Highest Distributed Value) 618
+	# Much better
+	$ perl -lane 'if($F[3] > 1410){print $_;}' < dog_trace_hits_r_can_fam_2_final_template_file1_control.bed > dog_trace_removal_windows_file1_control.bed
+	
+	# File 3 control
+	$ perl -lane 'if($F[3] > 367){next;}else{print $_;}' < dog_trace_hits_r_can_fam_2_final_template_file3_control.bed | wc -l
+		1158402
+	$ perl -lane 'if($F[3] > 367){next;}else{print $_;}' < dog_trace_hits_r_can_fam_2_final_template_file3_control.bed | cut -f4 | statStd.pl
+		total   1158402
+		Minimum 2
+		Maximum 367
+		Average 130.216465
+		Median  126
+		Standard Deviation      44.915450
+		Mode(Highest Distributed Value) 122
+
+	$ perl -lane 'if($F[3] > 367){next;}else{print $_;}' < dog_trace_hits_r_can_fam_2_final_template_file3_control.bed > dog_trace_removal_windows_file3_control.bed
+	$ perl -lane 'if($F[3] > 367){print $_;}' < dog_trace_hits_r_can_fam_2_final_template_file3_control.bed > dog_trace_removal_windows_file3_control.bed
+	
+	$ cp dog_trace_removal_windows_file*.bed ../../../dog_2_windows/
+	Server 3: /mnt/data110/dbickhart/dog_2_windows
+	$ intersectBed -a can_fam_2_final_template_file1_control.bed -b dog_trace_removal_windows_file1_control.bed -v > temp_file1_control.bed
+	$ intersectBed -a can_fam_2_final_template_file3_control.bed -b dog_trace_removal_windows_file3_control.bed -v > temp_file3_control.bed
+	$ mv temp_file1_control.bed can_fam_2_final_template_file1_control.bed
+	$ mv temp_file3_control.bed can_fam_2_final_template_file3_control.bed
+	
+	$ intersectBed -a gc_win_can_fam_2_final_template_file1_control.bed -b dog_trace_removal_windows_file1_control.bed -v > temp_file1_control.bed
+	$ intersectBed -a gc_win_can_fam_2_final_template_file3_control.bed -b dog_trace_removal_windows_file3_control.bed -v > temp_file3_control.bed
+	$ mv temp_file1_control.bed gc_win_can_fam_2_final_template_file1_control.bed
+	$ mv temp_file3_control.bed gc_win_can_fam_2_final_template_file3_control.bed
+	
+	# Trying it again
+	Server 3: /mnt/data110/dbickhart/dog_trace/dog_trace_bams/dog_redo_windows
+	$ intersectBed -a dog_trace_hits_r_can_fam_2_final_template_file1_control.bed -b dog_trace_removal_windows_file1_control.bed -v > dog_trace_file1_control_fixed.bed
+	$ intersectBed -a dog_trace_hits_r_can_fam_2_final_template_file3_control.bed -b dog_trace_removal_windows_file3_control.bed -v > dog_trace_file3_control_fixed.bed
+	$ run_dog_wssd_pipeline.pl --File1 dog_trace_hits_r_can_fam_2_final_template_file1.bed --File2 dog_trace_hits_r_can_fam_2_final_template_file2.bed --File3 dog_trace_hits_r_can_fam_2_final_template_file3.bed --File1_c dog_trace_file1_control_fixed.bed --File3_c dog_trace_file3_control_fixed.bed
+		Autosome average depth 634.241821
+		X chromosome average depth 626.930826
+		Un chromosome average depth  596.842579
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		Avg:  634.241821  std:  121.663844  AutoCut:  1120.897197  AutoCut2:  999.233353  Del:  269.250289
+		SexA:  43.304487  std:  73.644796  AutoCut:  264.238875  AutoCut2:  190.594079  Del:  -103.985105
+		UnA:  54.444529  std:  93.525610  AutoCut:  428.546969  AutoCut2:  335.021359  Del:  -226.132301
+		
+		$ wc -l dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.deletions.tab dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.un.wssd dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd dog_trace_hits_r_can_fam_2_final_template_file1.bed.unall.deletions.tab
+		   64 dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.deletions.tab
+		    0 dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.un.wssd
+		 2003 dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd
+		    0 dog_trace_hits_r_can_fam_2_final_template_file1.bed.unall.deletions.tab
+		 2067 total
+		 
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $h{$s[0]} += 1;} foreach $k (keys(%h)){print "$k\t$h{$k}\n";}' < dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd
+			chr7    71
+			chr23   40
+			chr20   53
+			chr26   49
+			chr22   41
+			chr14   95
+			chr19   40
+			chr8    71
+			chr1    114
+			chr29   32
+			chr11   87
+			chr6    82
+			chr17   58
+			chr24   28
+			chr21   57
+			chr16   70
+			chr25   54
+			chr18   69
+			chr3    72
+			chr12   72
+			chr15   54
+			chrX    199	<- again, the X chromosome is terrible
+			chr4    67
+			chr2    95
+			chr9    68
+			chr28   31
+			chr27   58
+			chr13   51
+			chr10   69
+			chr5    56
+		$ perl -e '$t = 0; while(<>){chomp; @s = split(/\t/); if ($s[0] =~ /chrX/){next;}else{$t += $s[2] - $s[1];}} print "$t\n";' < dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd
+			71,796,965  <- w/o ChrX
+		$ perl -e '$t = 0; while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd
+			194,200,102  <- w/ ChrX 
+		# So, ChrX is junk. Probably an assembly error in the genome project.
+		# Checking the intersection of my WSSD with the previous study.
+		$ intersectBed -a dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd -b ../../../dog_2_windows/dog_wssd_previous.bed | wc -l
+			1024  <- So, quite a few
+		$ intersectBed -b dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd -a ../../../dog_2_windows/dog_wssd_previous.bed | wc -l
+			1024  <- Reversed still has the same number
+		$ intersectBed -a dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd -b ../../../dog_2_windows/dog_wssd_previous.bed -v | wc -l
+			1500  <- Not the best, but still ok.
+		$ intersectBed -a dog_trace_hits_r_can_fam_2_final_template_file1.bed.final.wssd -b ../../../dog_2_windows/dog_wssd_previous.bed -v | perl -e 'while(<>){chomp; @s = split(/\t/); if ($s[0] =~ /chrX/){next;} $t += $s[2] - $s[1];} print "$t\n";'
+			41,980,358	<- putative artifacts, so about 41 Mb of sequence.
+			
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' <  ../../../dog_2_windows/dog_wssd_previous.bed
+			103,987,879	<- the previous wssd results including chrX
+			
+		# I think that I messed up the control windows by not excluding previous wssd results first
+		# Going to remake the controls
+		Server 3: /mnt/data110/dbickhart/dog_trace/dog_trace_bams/dog_redo_windows
+		$ intersectBed -a dog_trace_hits_r_can_fam_2_final_template_file1.bed -b ../../../dog_2_windows/dog_wssd_previous.bed -v | wc -l
+			2,070,447
+		$ intersectBed -a dog_trace_hits_r_can_fam_2_final_template_file1.bed -b ../../../dog_2_windows/dog_wssd_previous.bed -v | cut -f4 | statStd.pl
+			total   2070447
+			Minimum 124
+			Maximum 125684
+			Average 691.290529
+			Median  631
+			Standard Deviation      734.121252	<- not the best, but its a start
+			Mode(Highest Distributed Value) 618
+		# using 2893 (average + 3 stdevs) as the upper and 230 (average / 3) as the lower
+		$ intersectBed -a dog_trace_hits_r_can_fam_2_final_template_file1.bed -b ../../../dog_2_windows/dog_wssd_previous.bed -v | perl -lane 'if($F[3] > 2893 || $F[3] < 230){next;}else{print $_;}' | cut -f4 | statStd.pl
+			total   2059552
+			Minimum 230
+			Maximum 2893
+			Average 656.762129
+			Median  630
+			Standard Deviation      206.889716
+			Mode(Highest Distributed Value) 618
+		# ok, lets just reduce the upper end even further, down to 1256 (average + 3 stdevs)
+		# That gives me the same average and stdev as before. I think I will have to live with this setup
+		
+# Or not. Turns out that I have a heterogenous mix of fastas from different institutes
+# Just extracting fasta from the Broad institute
+	$ find ./2011*/CANIS_FAMILIARIS/BI/fasta/ -type f -name '*.fasta' > bi_fasta_file_list.txt
+	$ perl cat_indiv_fastas_to_gzip.pl bi_fasta_file_list.txt
+	
+	# Transferred the files to server three
+	Server3: /mnt/data110/dbickhart/dog_trace
+	$ perl chunk_trace_wgs_36bp.pl dog_2_full_trace.fasta.gz
+	$ gzip *.fq
+	$ perl mrsfast_fork_letter_wrapper.pl 'ls dog_2_full_*fq.gz' dog_bi_trace_bams /mnt/data110/dbickhart/reference/can_fam_2_combined_full_masked_a.fa
+	
+	Server3: /mnt/data110/dbickhart/dog_trace/dog_bi_trace_bams
+	$ for i in *.bam; do samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> dog_2_full_trace_hits.bed; done
+	$ combine_bed_hits_lowmem.pl dog_2_full_trace_hits.bed dog_trace_win /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	$ run_dog_wssd_pipeline.pl --File1 dog_2_full_trace_hits_dog_template_file1.bed --File2 dog_2_full_trace_hits_dog_template_file2.bed --File3 dog_2_full_trace_hits_dog_template_file3.bed --File1_c dog_2_full_trace_hits_dog_template_file1_control_3.bed --File3_c dog_2_full_trace_hits_dog_template_file3_control_3.bed
+	$ wc -l dog_2_full_trace_hits_dog_template_file1.bed.final.deletions.tab dog_2_full_trace_hits_dog_template_file1.bed.final.un.wssd dog_2_full_trace_hits_dog_template_file1.bed.final.wssd dog_2_full_trace_hits_dog_template_file1.bed.unall.deletions.tab
+	   18 dog_2_full_trace_hits_dog_template_file1.bed.final.deletions.tab
+	    0 dog_2_full_trace_hits_dog_template_file1.bed.final.un.wssd
+	 1544 dog_2_full_trace_hits_dog_template_file1.bed.final.wssd
+	    0 dog_2_full_trace_hits_dog_template_file1.bed.unall.deletions.tab
+ 	 1562 total
+ 	
+ 	# Current dog wssd results
+ 	$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < dog_2_full_trace_hits_dog_template_file1.bed.final.wssd
+		158,422,664	<- with chrX
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); if ($s[0] eq 'chrX'){next;}$t += $s[2] - $s[1];} print "$t\n";' < dog_2_full_trace_hits_dog_template_file1.bed.final.wssd
+		37,697,553	<- w/o chrX
+		
+	$ more dog_2_full_trace_hits_dog_template_file1.bed.final.deletions.tab
+		chr13   28102839        28116091
+		chr16   30386183        30397182
+		chr17   9686634 9701039
+		chr18   4042365 4056149
+		chr2    26545947        26557946
+		chr24   29153120        29165579
+		chr25   12230023        12243395
+		chr26   15021018        15023575
+		chr26   15023575        15034882
+		chr27   8813672 8829671
+		chr30   9709955 9722954
+		chr32   20435909        20447409
+		chr32   26763957        26777205
+		chr34   12184201        12194334
+		chr37   29881093        29893418
+		chr5    20464354        20476868
+		chr7    27034021        27045202
+		chr8    49197240        49218517
+	$ perl -lane 'if($F[0] ne "chrX"){print $_;}' < dog_2_full_trace_hits_dog_template_file1.bed.final.wssd > dog_2_full_trace_autosome.bed.final.wssd
+	
+	# Previous dog wssd intervals
+	$ perl -lane 'if($F[0] ne "chrX" && !($F[0] =~ /chrUn/)){print $_;}'< /mnt/data110/dbickhart/dog_2_windows/dog_wssd_previous.bed | wc -l
+		1501 <- previous dog wssd autosome intervals
+	$ perl -lane 'if($F[0] ne "chrX" && !($F[0] =~ /chrUn/)){print $_;}'< /mnt/data110/dbickhart/dog_2_windows/dog_wssd_previous.bed |perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+		31,074,664 <- previous dog wssd autosome bases
+	
+	# Intersection of previous dog wssd with my intervals
+	$ perl -lane 'if($F[0] ne "chrX" && !($F[0] =~ /chrUn/)){print $_;}'< /mnt/data110/dbickhart/dog_2_windows/dog_wssd_previous.bed | intersectBed -a stdin -b dog_2_full_trace_autosome.bed.final.wssd | wc -l
+		693
+	$ perl -lane 'if($F[0] ne "chrX" && !($F[0] =~ /chrUn/)){print $_;}'< /mnt/data110/dbickhart/dog_2_windows/dog_wssd_previous.bed | intersectBed -a stdin -b dog_2_full_trace_autosome.bed.final.wssd | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+		18,695,074	<- ~60% of the total bases
+	
+	# Putative artifact regions
+	$ perl -lane 'if($F[0] ne "chrX" && !($F[0] =~ /chrUn/)){print $_;}'< /mnt/data110/dbickhart/dog_2_windows/dog_wssd_previous.bed | intersectBed -b stdin -a dog_2_full_trace_autosome.bed.final.wssd -v | wc -l
+		902
+	$ perl -lane 'if($F[0] ne "chrX" && !($F[0] =~ /chrUn/)){print $_;}'< /mnt/data110/dbickhart/dog_2_windows/dog_wssd_previous.bed | intersectBed -b stdin -a dog_2_full_trace_autosome.bed.final.wssd -v | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+		14,870,370	<- this is substatially better

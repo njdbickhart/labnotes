@@ -1,0 +1,23 @@
+03/23/2011
+# My goal today is to confirm that there are only 36 animals in all three datasets, provide their CNV calls and choose 4 of them to check on the array
+# I think I can approach this using a simple script, designed in a table-like format:
+	NGS	acgh	SNP
+animal	#	#	#
+
+
+Then:
+	NGS	acgh	SNP
+animal	y	y	y
+
+# Created a script to do this: (create_table_common_animals.pl)
+# Script takes ARGV input and creates a final table listing number of CNV's per dataset
+# Cating files
+	$ cat acgh_gain_retag.bed acgh_loss_retag.bed > acgh_cat
+	$ cat snp_gain_retag.bed snp_loss_retag.bed > snp_cat
+	$ cat final_doc_deletions.bed final_doc_insertions.bed unmerged_pem_filtered_name.bed > ngs_cat
+	
+# Running the script:
+	$ perl create_table_common_animals.pl ngs_cat acgh_cat snp_cat
+	# great; it produced the results fast and without too much hassle.
+	
+

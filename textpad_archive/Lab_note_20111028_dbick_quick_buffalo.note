@@ -1,0 +1,723 @@
+10/28/2011
+# George needs data from the Water Buffalo sequencing project to present in his talk
+# In order to get him quick data, I'm going to align all of the reads using mrsfast on the blade 2 server.
+
+# Blade 2 IP: 172.16.0.102
+# Blade 2 pass: same as server 3
+
+# I transferred all the files over and re "made" them
+# Now, to prepare for the alignment
+	pwd: /home/dbickhart/iscsi_4/dbickhart/reference
+	$ mrsfast --index cow4_36_noun_rmask_a.fa
+	
+	# splitting the files
+	pwd: /home/dbickhart/iscsi_4/schroeder/Project_WaterBuffalo
+	$ simple_split_fastq.pl 'ls ./*/*.gz' 36 /mnt/iscsi/md3200i_4/dbickhart/Buffalo
+	
+	# Due to an alteration of the split script, I did not print the sequence files if they were all "N's".
+	# Many of the sequence files were simply all "N" sequences, but they still left nearly empty files
+	# This was to remove them
+	$ ls -al *.gz | perl -lane 'if($F[4] < 200){system("rm $F[8]");}'
+	
+# Alignment of the files
+	# I am going to test something, and try to use the same reference for all the files
+	$ mrsfast_fork_letter_wrapper.pl 'ls *.gz' bams
+	
+	# Alot of the files were compromised in some way; many sequences were just "N's".
+	# I will get the full stats from the bams using my script
+	pwd: /home/dbickhart/iscsi_4/dbickhart/Buffalo/bams
+	$ for i in *.bam; do echo $i; echo $i >> stats_of_bams.txt; gunzip -c $i >> stats_of_bams.txt; done
+	# Oops! I wasn't thinking clearly
+	
+	$ for i in *.bam; do echo $i; echo $i >> stats_of_bams.txt; samtools view $i | sam_stats.pl >> stats_of_bams.txt; done
+	# Processing the stat file to get the full dataset read mappings
+	$ perl -e 'while(<>){chomp; @a = split(/\t/); if($a[0] =~ /Total mappings/){$m += $a[-1];}elsif($a[0] =~ /Unique read names/){$u += $a[-1];}} print "Total mappings:\t$m\nUnique reads:\t$u\n";' < stats_of_bams.txt
+		Total mappings: 351,740,499    -> 14.10 X coverage ((351740499 * 36) / 900000000)
+		Unique reads:   323,652,835    -> 12.95 X coverage ((323652835 * 36) / 900000000)
+	
+# Preparing for the Mrsfast WSSD run
+	# I have uploaded all of the files necessary to run the wssd pipeline on the cow4 reference on Blade2.
+	# Here are the necessary folder paths:
+		- Alkan files: 	/mnt/iscsi/md3200i_4/dbickhart/alkan_files/wssd-package/
+		- Cow4 windows: /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/
+		
+	# Now, I need to determine which bam file corresponds to which animal and if I just simply have a huge collection of all the same animal!
+	
+	# Note #
+	# Steve told me that one index was "off" (PC1_CGATGT) and might be the PhiX control.
+	# Since there are so few of them, I will exclude them from my analysis for now.
+	# Otherwise, all the sequence files are for the same animal
+	
+	# Converting the bams into a merged bed
+	pwd: /home/dbickhart/iscsi_4/dbickhart/Buffalo/bams
+	$ for i in `ls *.bam | grep -v PC1_CGATGT_L00`; do echo $i; samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> buffalo_merge_hits.bed; done
+	
+	# Creating the intersected windows
+	$ mkdir hiseq_buff_windows
+	$ combine_bed_hits_lowmem.pl buffalo_merge_hits.bed hiseq_buff_windows ../../Cow4_windows/template_file1_rmask.bed ../../Cow4_windows/template_file2_rmask.bed ../../Cow4_windows/template_file3_rmask.bed ../../Cow4_windows/final_sub_file1_control_rmask.bed ../../Cow4_windows/final_sub_file3_control_rmask.bed
+	
+	# Running the pipeline
+	$ run_alkan_pipeline.pl --File1 buffalo_merge_hits_template_file1_rmask.bed --File2 buffalo_merge_hits_template_file2_rmask.bed --File3 buffalo_merge_hits_template_file3_rmask.bed --File1_c buffalo_merge_hits_final_sub_file1_control_rmask.bed --File3_c buffalo_merge_hits_final_sub_file3_control_rmask.bed
+		Recalculating averages
+		Avg:  1679.853896  std:  691.196158  AutoCut:  4444.638528  AutoCut2:  3753.442370  Del:  -393.734578
+		SexA:  293.857501  std:  1059.206901  AutoCut:  3471.478204  AutoCut2:  2412.271303  Del:  -1824.556301
+	
+		$ wc buffalo_merge_hits_template_file1_rmask.bed.final.wssd buffalo_merge_hits_template_file1_rmask.bed.final.deletions.tab
+		  499  1497 11536 buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+		    0     0     0 buffalo_merge_hits_template_file1_rmask.bed.final.deletions.tab
+  		  499  1497 11536 total
+  		  
+  		# Total megabases
+  		$ perl -e 'while(<>){chomp; split(/\t/); $t += $_[2]-$_[1];} print "$t\n";' < buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+			27857824
+			
+	# Generating some figures/tables
+		pwd: /home/dbickhart/share/cow4_doc/hd_an_trace_art/named_beds
+		# two way comparison (dttrace and buffalo)
+		$ perl ../create_GD_venn_diagram.pl buffalo_dttrace_comp.png buffalo_all_chr_both_named.bed dttrace_all_chr_both_named.bed
+			buffalo	91	0	5500908	0
+			buffalo;dttrace	418	418	22356916	22356916
+			dttrace	0	284	0	14081034
+		# Four way comparison (one angus, blackstar, dttrace and buffalo)
+		$ perl ../create_GD_venn_diagram.pl buffalo_dttrace_angus_blackstar_comp.png buffalo_all_chr_both_named.bed dttrace_all_chr_both_named.bed btan09_all_chr_both_named.bed btho11_all_chr_both_named.bed 
+			btan09	0	0	124	0	0	0	4002232	0
+			btan09;btho11	0	0	75	75	0	0	1988386	1988386
+			btan09;btho11;buffalo	12	0	4	10	368899	0	151434	264890
+			btan09;btho11;buffalo;dttrace	63	90	30	38	3512702	5748623	1571182	2149142
+			btan09;btho11;dttrace	0	90	80	93	0	3528431	3371568	4143530
+			btan09;buffalo	10	0	10	0	142114	0	142114	0
+			btan09;buffalo;dttrace	1	2	2	0	23641	38840	66260	0
+			btan09;dttrace	0	44	44	0	0	1083442	1083442	0
+			btho11	0	0	0	92	0	0	0	2082420
+			btho11;buffalo	3	0	0	3	36086	0	0	36086
+			btho11;buffalo;dttrace	4	3	0	5	169037	123829	0	181822
+			btho11;dttrace	0	10	0	10	0	146230	0	146230
+			buffalo	55	0	0	0	3861386	0	0	0
+			buffalo;dttrace	11	11	0	0	234370	234370	0	0
+			dttrace	0	51	0	0	0	2254555	0	0
+		# Five way comparison (one angus, blackstar, dttrace, nelore and buffalo)
+		$ perl ../create_GD_venn_diagram.pl buffalo_dttrace_angus_blackstar_nelore_comp.png buffalo_all_chr_both_named.bed dttrace_all_chr_both_named.bed btan09_all_chr_both_named.bed btho11_all_chr_both_named.bed bine12_all_chr_both_named.bed
+			bine12	0	0	0	0	236	0	0	0	0	5607160
+			bine12;btan09	0	0	36	0	38	0	0	691149	0	770776
+			bine12;btan09;btho11	0	0	29	23	30	0	0	919310	555192	992507
+			bine12;btan09;btho11;buffalo	2	0	1	1	1	118533	0	61813	34855	34855
+			bine12;btan09;btho11;buffalo;dttrace	11	13	10	10	18	764825	635758	267299	282038	900450
+			bine12;btan09;btho11;dttrace	0	16	21	21	29	0	598124	872854	684879	1277285
+			bine12;btan09;buffalo	3	0	3	0	2	51387	0	41152	0	33506
+			bine12;btan09;buffalo;dttrace	0	0	0	0	0	0	0	0	0	0
+			bine12;btan09;dttrace	0	7	5	0	8	0	145790	121673	0	216983
+			bine12;btho11	0	0	0	13	13	0	0	0	240840	240840
+			bine12;btho11;buffalo	0	0	0	2	2	0	0	0	30918	30918
+			bine12;btho11;buffalo;dttrace	1	0	0	2	1	59393	0	0	71623	72329
+			bine12;btho11;dttrace	0	2	0	1	2	0	35375	0	11145	35289
+			bine12;buffalo	9	0	0	0	8	142672	0	0	0	119356
+			bine12;buffalo;dttrace	1	1	0	0	2	20800	19800	0	0	56157
+			bine12;dttrace	0	8	0	0	7	0	100200	0	0	95902
+			btan09	0	0	86	0	0	0	0	2728731	0	0
+			btan09;btho11	0	0	26	27	0	0	0	529112	554162	0
+			btan09;btho11;buffalo	9	0	5	8	0	268605	0	96302	161913	0
+			btan09;btho11;buffalo;dttrace	10	12	4	5	0	249679	336062	92905	125477	0
+			btan09;btho11;dttrace	0	30	15	21	0	0	704772	377163	561449	0
+			btan09;buffalo	9	0	6	0	0	122502	0	82245	0	0
+			btan09;buffalo;dttrace	3	3	2	0	0	80150	107486	66260	0	0
+			btan09;dttrace	0	31	31	0	0	0	670717	675484	0	0
+			btho11	0	0	0	79	0	0	0	0	1747980	0
+			btho11;buffalo	2	0	0	1	0	60338	0	0	15168	0
+			btho11;buffalo;dttrace	0	1	0	0	0	0	64808	0	0	0
+			btho11;dttrace	0	8	0	6	0	0	157946	0	89220	0
+			buffalo	47	0	0	0	0	3599814	0	0	0	0
+			buffalo;dttrace	8	6	0	0	0	142242	114443	0	0	0
+			dttrace	0	44	0	0	0	0	1824683	0	0	0
+		
+		# Generating the gene database list
+		pwd: /home/dbickhart/share/backup
+		$ ls /home/dbickhart/share/cow4_doc/hd_an_trace_art/named_beds/buffalo_all_chr_both_named.bed > buffalo_cnv_loc.list
+		$ ls /home/dbickhart/share/cow4_doc/hd_an_trace_art/named_beds/buffalo_raw_call.CN > buffalo_cn_loc.list
+		# Since I use bedtools merge, I need to include another file to ensure that I am getting a merged result back
+		$ perl create_copynumber_gene_intersect_table.pl -i gene_databases.list -c buffalo_cn_loc.list -v buffalo_cnv_loc.list -p refseq
+		
+# Generating figures and tables for George's talk and abstract
+	# George sent me the following request as a top priority:
+		Fig. 1 landscape, 
+		Fig. 5 cluster, 
+		Tables 1 and 2. Add Buffalo as a new row or column, 
+		Table S2. Btau_4.0 Buffalo CNV regions and frequencies (Tables_S2_CNVs.xlsx)	3
+		Table S3: Btau_4.0 nonredundant measure of Buffalo CNV and SD sequence by chromosome	4
+		Table S7: CNV and RefSeq gene overlaps (Table_S7_CNVR_RefSeq.xlsx)	9
+		Table S8: Over/Underrepresentation of PANTHER function terms (Table_S8_Panther.xls)	10
+		Table S9: Integrated Pathway Analysis of enriched biological themes (Table_S9_IPA.xls)	11
+		Table S10: OMIM and QTL CNVR intersections (Table_S10_OMIM_QTL.xlsx)	12
+		Figure S2: A comparison of CNV content across individual animals	16
+	
+	
+	# Fig. 1 landscape
+		- This is obviously the parasight image of the whole chromosome
+		- I will use my parasight conversion script to generate the appropriate files from the buffalo entries on server 3
+			pwd: /mnt/data8/dbickhart/major_tables/
+			# Generating the cn cnv files
+			$ echo buffalo_all_chr_both_named.bed >> cnv_list.txt
+			$ echo buffalo_hd.CN >> cn_1k_list.txt
+			$ echo buffalo_hd.CN >> cn_5k_list.txt
+			$ perl create_copynumber_indiv_cnv_table.pl -i cnv_list.txt -c cn_1k_list.txt -v cn_5k_list.txt
+			# The chrX copynumber estimates were not appended to the CN file, so I did this quickly on blade 2: $ cat buffalo_merge_hits_template_file3_rmask.bed.gc.depth.normalized.CN sex > buffalo_hd.CN
+			$ perl create_copynumber_indiv_cnv_table.pl -i cnv_list.txt -c cn_1k_list.txt -v cn_5k_list.txt
+			# The script automatically created a new bed file: BUFFALO_cnv_cn.bed
+			
+			# Creating a CNVR merger (and calculating the values for George)
+			$ cat ../doc_files/*all_chr_both_named.bed buffalo_all_chr_both_named.bed | mergeBed -i stdin | wc
+			   1297    3891   30195
+			$ cat ../doc_files/*all_chr_both_named.bed buffalo_all_chr_both_named.bed | mergeBed -i stdin > cnvr_with_buffalo.bed
+			
+			# Now to fiddle around with the offset and width values for the CNVS
+			# Here were my previous commands:
+						$ perl create_parasight_format_file.pl -i DTTRACE_cnv_cn.bed -o dttrace_cnv.extra -w 4 -f 14
+						$ perl create_parasight_format_file.pl -i BTHO11_cnv_cn.bed -o btho11_cnv.extra -w 4 -f 26
+						$ perl create_parasight_format_file.pl -i BTAN10_cnv_cn.bed -o btan10_cnv.extra -w 4 -f 44
+						$ perl create_parasight_format_file.pl -i BTAN09_cnv_cn.bed -o btan09_cnv.extra -w 4 -f 38
+						$ perl create_parasight_format_file.pl -i BTAN02_cnv_cn.bed -o btan02_cnv.extra -w 4 -f 32
+						$ perl create_parasight_format_file.pl -i BINE12_cnv_cn.bed -o bine12_cnv.extra -w 4 -f 20
+			# Here are the new commands:
+				$ perl create_parasight_format_file.pl -i DTTRACE_cnv_cn.bed -o dttrace_cnvb.extra -w 3 -f 8
+				$ perl create_parasight_format_file.pl -i cnvr_with_buffalo.bed -o merged_cnvrb.extra -w 3 -f 13
+				$ perl create_parasight_format_file.pl -i BUFFALO_cnv_cn.bed -o buffalo_cnvb.extra -w 3 -f 18
+				$ perl create_parasight_format_file.pl -i BINE12_cnv_cn.bed -o bine12_cnvb.extra -w 3 -f 23
+				$ perl create_parasight_format_file.pl -i BTHO11_cnv_cn.bed -o btho11_cnvb.extra -w 3 -f 28
+				$ perl create_parasight_format_file.pl -i BTAN02_cnv_cn.bed -o btan02_cnvb.extra -w 3 -f 33
+				$ perl create_parasight_format_file.pl -i BTAN09_cnv_cn.bed -o btan09_cnvb.extra -w 3 -f 38
+				$ perl create_parasight_format_file.pl -i BTAN10_cnv_cn.bed -o btan10_cnvb.extra -w 3 -f 43
+				
+			# Copying files over
+			pwd: /mnt/data8/dbickhart/major_tables/parasight/autosome_map
+			$ cp 1867_ge_5k_SD.extra ../buf_autosome_map/
+			$ cp gap5k.extra ../buf_autosome_map/
+			$ cp globalview10k.pst ../buf_autosome_map/
+			$ cp intra.xw.al_01 ../buf_autosome_map/
+			
+			pwd: /mnt/data8/dbickhart/major_tables/parasight/buf_autosome_map
+			$ cp ../../*cnvb.extra ./
+			$ cp ../../merged_cnvrb.extra ./
+			
+			$ cp ../autosome_map/command ./
+			# I altered the "command" file to take in the altered extra files
+			$ ./command
+			
+			# Now, just editting it in inkscape to give George the final overview
+			# Final file: hd_animals_with_buffalo_full_genome_cnvs.pdf
+			
+			# George wants an image without buffalo's cnvs merged in the CNVR track
+			Server3: /mnt/data8/dbickhart/major_tables
+			$ cat ../doc_files/*all_chr_both_named.bed | mergeBed -i stdin > cnvr_merged_wo_buffalo.bed
+			$ perl create_parasight_format_file.pl -i cnvr_merged_wo_buffalo.bed -c brown -o merged_cnvrb.extra -w 3 -f 13
+			$ cd parasight/buf_autosome_map/
+			$ cp ../../merged_cnvrb.extra ./
+			$ ./command
+			
+	# Figure 5 Cluster:
+		- Now I need to do a trial and error to identify locations to generate heatmap clusters
+		- I'll test out the old favorites and see if they have good clustering scores
+			pwd: /home/dbickhart/share/cow4_doc/hd_an_trace_art/cn_intervals
+			# Testing it out first on CATHL4
+			$ perl extract_cn_for_heatmap_constant_int.pl -c chr22 -s 52745014 -e 52882413 -o buf_cathl4_52745014_52882413
+			
+			# In R
+			> library(gplots)
+			> x <- read.delim("buf_cathl4_52745014_52882413.tab", header = TRUE, sep = "\t", row.names = 1)
+			> y <- as.matrix(x)
+			> y <- round(y)
+			> source("heatmap_template_creation_low_span.R")
+			
+			# CATHL4 was not good. Let's try AOX1
+			$ perl extract_cn_for_heatmap_constant_int.pl -c chr2 -s 93376314 -e 93484307 -o buf_aox1_93376314_93484307
+			> x <- read.delim("buf_aox1_93376314_93484307.tab", header = TRUE, sep = "\t", row.names = 1)
+			...
+			> dev.copy2pdf(file = "buf_aox1_cn.pdf", useDingbats = FALSE)
+			
+			# Trying ULBP7
+			$ perl extract_cn_for_heatmap_constant_int.pl -c chr9 -s 90251002 -e 90402846 -o buf_ULBP7_90251002_90402846
+			> x <- read.delim("buf_ULBP7_90251002_90402846.tab", header = TRUE, sep = "\t", row.names = 1)
+			...
+			# It doesn't look that great, but I'll save it anyways
+			> dev.copy2pdf(file = "buf_ulbp17_cn.pdf", useDingbats = FALSE)
+			
+			# Trying APOL3
+			$ perl extract_cn_for_heatmap_constant_int.pl -c chr5 -s 79979819 -e 80356885 -o buf_apol3_79979819_80356885
+			> x <- read.delim("buf_apol3_79979819_80356885.tab", header = TRUE, sep = "\t", row.names = 1)
+			...
+			# This one was good
+			> dev.copy2pdf(file = "buf_apol3_cn.pdf", useDingbats = FALSE)
+	
+	# Tables 1 and 2
+		- For this, I just need to get the table information from the paper and add the dataset stats
+		- The good news: my scripts kept tabs of the sequence statistics
+		- The bad news: alot of the buffalo reads were terrible, so much of my file calculations are off
+		- I am going to assume that 50% of my reads were "N's" (which is a conservative assumption given the fact that the second paired end read failed most of the time)
+			Blade 2: /home/dbickhart/iscsi_4/dbickhart/Buffalo
+			$ perl -e 'while(<>){chomp; ($num) = $_ =~ /reads x splits (\d+)/; $t += $num;} print "Reads: $t\nBases: " . $t * 36 . "\n";' < sequence_log_file.log
+				Reads: 3162518464
+				Bases: 113850664704		<- without removing 50% of the reads
+			$ perl -e 'while(<>){chomp; ($num) = $_ =~ /reads x splits (\d+)/; $t += $num;} $t /=2; print "Reads: $t\nBases: " . $t * 36 . "\n";' < sequence_log_file.log
+				Reads: 1581259232
+				Bases: 56925332352		<- probably closer to the truth
+				= 22.77 X coverage
+				
+			Blade 2: /home/dbickhart/iscsi_4/dbickhart/Buffalo/bams
+			$ perl -e 'while(<>){chomp; if($_ =~ /Unique read names:\t+(\d+)/){$t += $1;}} print "$t\n";' < stats_of_bams.txt
+				323652835  / 1581259232  = 20% of the reads mapped, assuming that my "Reads:" number is correct
+				# I think this is very close to the truth
+				
+			Blade 2: /home/dbickhart/iscsi_4/dbickhart/Buffalo/bams/hiseq_buff_windows
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+				27857824
+				
+		- Now to generate Table 2
+		- This will also take care of one of the supplemental tables George wants (Table S7)
+			pwd: /home/dbickhart/share/backup
+			$ echo ../cow4_doc/hd_an_trace_art/named_beds/buffalo_all_chr_both_named.bed >> cnv_file_list.txt
+			$ echo ../cow4_doc/hd_an_trace_art/cn_intervals/buffalo_hd.CN >> cn_file_list.txt
+			# manually editted the 5kb cn file
+			$ perl create_copynumber_gene_intersect_table.pl -i gene_databases.list -c cn_file_list.txt -v cnv_file_list.txt
+			# The file with the CN values is gene_list_cn_buffalo.xls
+			# I just created stdev values, sorted the table based on the values, and transferred the results to a word document
+			
+	# Table S2. Btau_4.0 Buffalo CNV regions and frequencies (Tables_S2_CNVs.xlsx)
+		- I remember using a script to generate this, now I just need to find it!
+		- my script create_copynumber_cnvr_table.pl generates the first tab of the excel spreadsheet. The remainder can be easily generated by the separate excel files I already created by using 
+		- my other script create_copynumber_indiv_cnv_table.pl
+			pwd: /home/dbickhart/share/backup
+			$ perl create_copynumber_cnvr_table.pl -i cnv_file_list.txt -c cn_file_list.txt
+			# modified cnvr_cn_table_buf.tab (output) using excel
+			# I forgot to get the individual cnv window files. Running the script now
+			$ perl create_copynumber_indiv_cnv_table.pl -i cnv_file_list.txt -c cn_file_list.txt -v cn_5kb_file.list
+		- Added all the data to a central excel file by hand
+		
+	# Table S10: OMIM and QTL CNVR intersections (Table_S10_OMIM_QTL.xlsx)
+		- This shouldn't be too bad, particularly since I have already generated a script to perform this
+			pwd: /home/dbickhart/share/backup
+			$ perl create_omim_lookup_cross_reference.pl
+			# OK, I cannot create this yet.
+			# It turns out that I need Yali to intersect my CNVRs from the buffalo addition with the QTLS, and then that will create a "qtl.txt" file that I need to link to before running the script
+			
+	# Figure S2: A comparison of CNV content across individual animals
+		- Already created this for George
+		- Still, could be spruced up a bit and turned into a pdf/image for his talk
+		
+	# Table S8: Over/Underrepresentation of PANTHER function terms (Table_S8_Panther.xls)
+		- This is going to be difficult to make.
+		- Going to refer to my notes from the time that I initially ran Panther on the files
+		- Logging on under George's user name on Server2 
+			# Scratch that: I have to do this under my username.
+			pwd: /mnt/data6/gliu/dbickhart/Panther
+			$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' < buffalo_all_chr_both_named.bed > buffalo_all_chr.bed
+			$ ./auto_panther.sh buffalo_all_chr.bed
+			# I assume that the other files are all properly set up for the Panther pipeline, so I will just update the process by running steps on Buffalo
+			# To see the process for the other animals, read Lab_note_20110728_dbick_gene_selection.txt
+			# Now I logged into george's account
+			pwd: /mnt/data10/gliu/pantherScore1.02
+			$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/buffalo_all_chr.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o buffalo_ensGene2_pantherscore.txt
+			
+			# Then I logged into the Panther website
+			Tools -> Gene data expression analysis -> compare gene lists
+			# I uploaded the dttrace file and used the following data as a reference list:
+			Server 2: /mnt/data10/gliu/pantherScore1.02/panther_ref_7.0
+			
+			# All files were downloaded here:
+			pwd: /home/dbickhart/share/cow4_doc/hd_an_trace_art/buffalo_project/
+			# Now to make a merged Panther xls file for Buffalo
+			$ perl merge_panther_separate_animal_tables.pl 'ls Buffalo*'  (output was "Buffalo_.xls")
+			
+			pwd: /home/derek/share/cow4_doc/hd_an_trace_art/buffalo_project/panther
+			$ perl merge_panther_summary_tables.pl 'ls *.txt'
+			# This generated a filtered spreadsheet
+			# I sorted the xls file with respect to buffalo and highlighted the differences
+			
+	# Table S3: Btau_4.0 nonredundant measure of Buffalo CNV and SD sequence by chromosome
+		- Given the different karyotypes of Buffalo compared to cattle, I think that this comparison would be better made between the following:
+			- DTTRACE CNVs
+			- DTTRACE SDs
+			- Buffalo CNVs
+		- This threefold table should be a better indicator of unique chromosome bias in SDs within buffalo compared to the reference cow
+			Server3: /mnt/data8/dbickhart/major_tables
+			$ perl -e '%count; %length; while(<>){chomp; @s = split(/\t/); $count{$s[0]} += 1; $length{$s[0]} += $s[2] - $s[1];} foreach $k (sort {$a cmp $b} keys(%count)){print "$k\t$count{$k}\t$length{$k}\n";}' < buffalo_all_chr_both_named.bed
+			$ perl -e '%count; %length; while(<>){chomp; @s = split(/\t/); $count{$s[0]} += 1; $length{$s[0]} += $s[2] - $s[1];} foreach $k (sort {$a cmp $b} keys(%count)){print "$k\t$count{$k}\t$length{$k}\n";}' < dttrace_all_chr_both_named.bed
+			# I took my old table (with the CNVR data by chromosome contrasted with the SD data), removed the CNVR data and added in the Buffalo and DTTRACE cnvs
+			
+			
+#################################
+#				#
+#	New Buffalo Controls	#
+#				#
+#################################
+
+# I believe that some of the windows that we used on the taurine and indicine animals are no longer suitable controls for buffalo
+# I need to crop out windows that are significantly skewed on Buffalo and rerun the analysis.
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/Buffalo/bams/hiseq_buff_windows/
+	$ cut -f4 buffalo_merge_hits_final_sub_file3_control_rmask.bed | statStd.pl
+		total   831348
+		Minimum 0
+		Maximum 48586
+		Average 343.961448
+		Median  351
+		Standard Deviation      172.486522
+		Mode(Highest Distributed Value) 362
+		
+	$ perl -lane 'if($F[3] > 10000){print $_;}' < buffalo_merge_hits_final_sub_file3_control_rmask.bed | wc
+	     22      88     647
+	$ perl -lane 'if($F[3] > 5000){print $_;}' < buffalo_merge_hits_final_sub_file3_control_rmask.bed | wc
+	     46     184    1330
+	# So, there are only a few bad intervals. Now to pick an objective criteria for removing those bad windows
+	# How about we go with an old standby: average + 5 x STDEV  = 1203
+	$ perl -lane 'if($F[3] > 1203){print $_;}' < buffalo_merge_hits_final_sub_file3_control_rmask.bed | wc
+	    727    2908   20272   <- A little bit much... lets try 6 STDEVS
+	$ perl -lane 'if($F[3] > 1375){print $_;}' < buffalo_merge_hits_final_sub_file3_control_rmask.bed | wc
+	    504    2016   14059
+	$ perl -lane 'if($F[3] > 1547){print $_;}' < buffalo_merge_hits_final_sub_file3_control_rmask.bed | wc
+	    380    1520   10604  <- 7 stdevs looks like the magic number here
+	    
+	# Now for the file1 controls
+	$ cut -f4 buffalo_merge_hits_final_sub_file1_control_rmask.bed | statStd.pl
+		total   1676517
+		Minimum 0
+		Maximum 239994
+		Average 1688.528411
+		Median  1744
+		Standard Deviation      598.360944
+		Mode(Highest Distributed Value) 1790
+		
+	# Lets try the same 7 stdev cutoff: 5874
+	$ perl -lane 'if($F[3] > 5874){print $_;}' < buffalo_merge_hits_final_sub_file1_control_rmask.bed | wc
+	   1855    7420   52744
+	$ perl -lane 'if($F[3] > 7668){print $_;}' < buffalo_merge_hits_final_sub_file1_control_rmask.bed | wc
+	    919    3676   26474   <- 10 STDEVs looks like the magic number
+	    
+	# Removing the intervals and reformatting everything
+		Blade2: /home/dbickhart/iscsi_4/dbickhart/Buffalo/bams/hiseq_buff_windows/
+		$ perl -lane 'if($F[3] > 7668){print "$F[0]\t$F[1]\t$F[2]";}' < buffalo_merge_hits_final_sub_file1_control_rmask.bed > buffalo_file1_control_removal_windows.bed
+		$ perl -lane 'if($F[3] > 1547){print "$F[0]\t$F[1]\t$F[2]";}' < buffalo_merge_hits_final_sub_file3_control_rmask.bed > buffalo_file3_control_removal_windows.bed
+		$ cp *removal_windows.bed ../../../Cow4_windows/
+		
+		Blade2: /home/dbickhart/iscsi_4/dbickhart/Cow4_windows/
+		$ intersectBed -a final_sub_file1_control_rmask.bed -b buffalo_file1_control_removal_windows.bed -v > buffalo_file1_control_rmask.bed
+		$ intersectBed -a final_sub_file3_control_rmask.bed -b buffalo_file3_control_removal_windows.bed -v > buffalo_file3_control_rmask.bed
+		
+		# Let's try running the pipeline after just removing those initial windows and see if the control-gc files are able to be merged into the control window files
+		Blade2: /home/dbickhart/iscsi_4/dbickhart/Buffalo/bams/hiseq_buff_windows
+		$ intersectBed -a buffalo_merge_hits_final_sub_file1_control_rmask.bed -b buffalo_file1_control_removal_windows.bed -v > buffalo_test_file1_control_windows.bed
+		$ intersectBed -a buffalo_merge_hits_final_sub_file3_control_rmask.bed -b buffalo_file3_control_removal_windows.bed -v > buffalo_test_file3_control_windows.bed
+		
+		$ run_alkan_pipeline.pl --File1 buffalo_merge_hits_template_file1_rmask.bed --File1_c buffalo_test_file1_control_windows.bed --File2 buffalo_merge_hits_template_file2_rmask.bed --File3 buffalo_merge_hits_template_file3_rmask.bed --File3_c buffalo_test_file3_control_windows.bed
+			Avg:  1673.424330  std:  322.480053  AutoCut:  2963.344542  AutoCut2:  2640.864489  Del:  705.984171  <-- much better stdev! 
+			SexA:  241.829361  std:  378.805392  AutoCut:  1378.245537  AutoCut2:  999.440145  Del:  -515.781423
+			
+		$ wc buffalo_merge_hits_template_file1_rmask.bed.final.wssd buffalo_merge_hits_template_file1_rmask.bed.final.deletions.tab
+			 1414  4242 32711 buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+			  103   309  2364 buffalo_merge_hits_template_file1_rmask.bed.final.deletions.tab
+			 1517  4551 35075 total
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+			121,135,819
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < buffalo_merge_hits_template_file1_rmask.bed.final.deletions.tab
+			2,729,921
+		# Total: 123,865,740
+		
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $h{$s[0]} += $s[2] - $s[1];} foreach $k (sort{$a cmp $b} keys(%h)){print "$k\t$h{$k}\n";}' < buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+			chr1    937881
+			chr10   2273959
+			chr11   982777
+			chr12   1138394
+			chr13   1859097
+			chr14   417704
+			chr15   4055592
+			chr16   1552358
+			chr17   623285
+			chr18   3405797
+			chr19   999194
+			chr2    1050109
+			chr20   464666
+			chr21   1289319
+			chr22   169322
+			chr23   1557376
+			chr24   506607
+			chr25   669409
+			chr26   804857
+			chr27   911756
+			chr28   396309
+			chr29   2180810
+			chr3    2858349
+			chr4    1684540
+			chr5    4443176
+			chr6    1264983
+			chr7    1093138
+			chr8    2759736
+			chr9    1133449
+			chrX    77651870  <- there is the problem
+			# If we just count the autosomes, then we only have: 46,213,870bp of duplicated sequence. 48,943,791 bp of total variant sequence (counting deletions)
+			
+		# now to check and see why I am getting so many false positives with the X chromosome
+		# Checking the original file1
+		$ perl -lane 'if($F[0] eq "chrX"){print $F[2] - $F[1];}' < buffalo_merge_hits_template_file1_rmask.bed | statStd.pl
+			total   54327
+			Minimum 5020
+			Maximum 86749
+			Average 16946.805769
+			Median  14566
+			Standard Deviation      9176.199544
+			Mode(Highest Distributed Value) 10441
+		# Old control windows
+		$ perl -lane 'if($F[0] eq "chrX"){print $F[2] - $F[1];}' < buffalo_merge_hits_final_sub_file1_control_rmask.bed | statStd.pl
+			total   48888
+			Minimum 195
+			Maximum 86749
+			Average 16769.180924
+			Median  14337
+			Standard Deviation      9396.550245
+			Mode(Highest Distributed Value) 1000
+		# New control windows
+		$ perl -lane 'if($F[0] eq "chrX"){print $F[2] - $F[1];}' < buffalo_test_file1_control_windows.bed | statStd.pl
+			total   48267
+			Minimum 195
+			Maximum 86749
+			Average 16762.949013
+			Median  14334
+			Standard Deviation      9380.589321
+			Mode(Highest Distributed Value) 1000
+			
+		# Maybe I shouldn't remove the X control windows? The GC normalization is flatlining the RD values on the X chromosome, so perhaps I should not remove more intervals from the chromosome
+		$ perl -lane 'if($F[0] ne "chrX"){print $_;}' < buffalo_file1_control_removal_windows.bed > buffalo_file1_control_removal_part2.bed
+		$ perl -lane 'if($F[0] ne "chrX"){print $_;}' < buffalo_file3_control_removal_windows.bed > buffalo_file3_control_removal_part2.bed
+		$ intersectBed -a buffalo_merge_hits_final_sub_file1_control_rmask.bed -b buffalo_file1_control_removal_part2.bed -v > buffalo_test_file1_control_windows.bed
+		$ intersectBed -a buffalo_merge_hits_final_sub_file3_control_rmask.bed -b buffalo_file3_control_removal_part2.bed -v > buffalo_test_file3_control_windows.bed
+		
+		$ run_alkan_pipeline.pl --File1 buffalo_merge_hits_template_file1_rmask.bed --File1_c buffalo_test_file1_control_windows.bed --File2 buffalo_merge_hits_template_file2_rmask.bed --File3 buffalo_merge_hits_template_file3_rmask.bed --File3_c buffalo_test_file3_control_windows.bed
+			Avg:  1673.424330  std:  322.480053  AutoCut:  2963.344542  AutoCut2:  2640.864489  Del:  705.984171
+			SexA:  302.718214  std:  1059.815502  AutoCut:  3482.164720  AutoCut2:  2422.349218  Del:  -1816.912790
+			# Perhaps not the most sound way to do it, but the X chromosome is a real issue with this type of analysis across breeds
+			
+			$ wc buffalo_merge_hits_template_file1_rmask.bed.final.deletions.tab buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+				  103   309  2364 buffalo_merge_hits_template_file1_rmask.bed.final.deletions.tab
+				 1047  3141 24360 buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+				 1150  3450 26724 total
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+				48,199,614 <- much more agreeable
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $h{$s[0]} += $s[2] - $s[1];} foreach $k (sort{$a cmp $b} keys(%h)){print "$k\t$h{$k}\n";}' < buffalo_merge_hits_template_file1_rmask.bed.final.wssd
+				chr1    937881
+				chr10   2273959
+				chr11   982777
+				chr12   1138394
+				chr13   1859097
+				chr14   417704
+				chr15   4055592
+				chr16   1552358
+				chr17   623285
+				chr18   3405797
+				chr19   999194
+				chr2    1050109
+				chr20   464666
+				chr21   1289319
+				chr22   169322
+				chr23   1557376
+				chr24   506607
+				chr25   669409
+				chr26   804857
+				chr27   911756
+				chr28   396309
+				chr29   2180810
+				chr3    2858349
+				chr4    1684540
+				chr5    4443176
+				chr6    1264983
+				chr7    1093138
+				chr8    2759736
+				chr9    1133449
+				chrX    4715665
+				
+
+#################################
+#				#
+#	Indian Reads		#
+#				#
+#################################
+# An Indian group did an abortive assembly of Water Buffalo
+# The assembly is unusable, but I can get their reads and perform my NGS analysis
+# The reads are uploaded to the SRA under the following accessions: SRX016621   SRX015182
+# Here is the Indian group's project webpage: http://210.212.93.84/
+# Downloading:
+	$ wget ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX016/SRX016621/SRR035526/SRR035526.sra
+	$ wget ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX016/SRX016621/SRR060735/SRR060735.sra
+	$ wget ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX015/SRX015182/SRR032564/SRR032564.sra
+	$ wget ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX015/SRX015182/SRR034148/SRR034148.sra; wget ftp://ftp-trace.ncbi.nlm.nih.gov/sra/sra-instant/reads/ByExp/sra/SRX/SRX015/SRX015182/SRR034232/SRR034232.sra
+	
+	# Now to convert them using the SRA toolkit
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/Buffalo/Indian
+	$ for i in SRR032564.sra SRR034148.sra SRR034232.sra SRR035526.sra SRR060735.sra; do echo $i; /home/dbickhart/iscsi_4/dbickhart/sra_sdk-2.1.7/bin/bin64/fastq-dump $i; done
+	
+	# Testing the quality of the fastqs
+	$ perl -e 'while(<>){$s = <>; $p = <>; $q = <>; if($s =~ /^N+$/){$b++;}else{$g++;}} print "Bad: $b\nGood: $g\n";' < SRR032564.fastq
+		Bad: 7610
+		Good: 206409925
+	$ perl -e 'while(<>){$s = <>; $p = <>; $q = <>; if($s =~ /^N+$/){$b++;}else{$g++;}} print "Bad: $b\nGood: $g\n";' < SRR034148.fastq
+		Bad: 298333
+		Good: 209074790
+	# Most of them look like trash. Still going to gzip them and move them to a folder for Steve
+	$ gzip *.fastq
+	
+#################################
+#				#
+#	Individuals		#
+#				#
+#################################
+# Now I need to align and process the individual Buffalo samples
+# I am going to split them the same way as before
+	Blade 2: /home/dbickhart/iscsi_4/schroeder/Project_WaterBuffalo/
+	# Steve has already sectioned all of the reads into 4 million chunks, so all that is left for me to do is split them into 36 mers. 
+	$ for i in Sample_ITWB*; do mkdir /mnt/iscsi/md3200i_4/dbickhart/Buffalo/$i; simple_split_fastq.pl "ls $i/*.gz" 36 /mnt/iscsi/md3200i_4/dbickhart/Buffalo/$i ; done
+	
+	# Moving the high coverage individual's bams to a new folder
+	Blade 2: /home/dbickhart/iscsi_4/dbickhart/Buffalo/bams
+	$ mkdir high_cov_buff
+	$ mv *.bam high_cov_buff
+	$ mv stats_of_bams.txt high_cov_buff/
+	
+	# Now to do the alignment
+	Blade 2: /home/dbickhart/iscsi_4/dbickhart/Buffalo
+	$ for i in Sample_ITWB*; do echo $i; mrsfast_fork_letter_wrapper.pl "ls $i/*.gz" "bams/$i" /home/dbickhart/iscsi_4/dbickhart/reference/cow4_36_noun_rmask_a.fa ; done
+	
+	# Now, to convert each alignment into bed files
+	Blade 2: /mnt/iscsi/md3200i_4/dbickhart/Buffalo/bams
+	$ for i in Sample*; do echo $i; for x in $i/*.bam; do ~/bin/samtools view $x | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> $i/$i.hits.bed; echo $x; done; done
+	# This should place all of the buffalo reads into hits files that can found in each individual folder.
+	
+	# Now to find out how many hits we are dealing with
+	$ for i in Sample*; do wc -l $i/*.bed; done
+		118492164 Sample_ITWB1/Sample_ITWB1.hits.bed		
+		110106051 Sample_ITWB10/Sample_ITWB10.hits.bed
+		103178292 Sample_ITWB11/Sample_ITWB11.hits.bed
+		102179242 Sample_ITWB12/Sample_ITWB12.hits.bed
+		103890121 Sample_ITWB13/Sample_ITWB13.hits.bed
+		71407686 Sample_ITWB14/Sample_ITWB14.hits.bed
+		113683884 Sample_ITWB15/Sample_ITWB15.hits.bed
+		138044436 Sample_ITWB2/Sample_ITWB2.hits.bed
+		123471748 Sample_ITWB3/Sample_ITWB3.hits.bed
+		135519177 Sample_ITWB4/Sample_ITWB4.hits.bed
+		113662132 Sample_ITWB5/Sample_ITWB5.hits.bed
+		70004982 Sample_ITWB6/Sample_ITWB6.hits.bed
+		132047308 Sample_ITWB7/Sample_ITWB7.hits.bed
+		114797322 Sample_ITWB8/Sample_ITWB8.hits.bed
+		3467517 Sample_ITWB9/Sample_ITWB9.hits.bed
+	# Calculating raw X coverage
+	$ for i in Sample*; do wc -l $i/*.bed | perl -lane '@s = split(/\s/); @a = split(/\//, $s[1]); $x = ($s[0] * 36)/ 900000000; print "$a[0]\t$s[0]\t$x";'; done
+		Sample_ITWB1    118492164       4.73968656
+		Sample_ITWB10   110106051       4.40424204
+		Sample_ITWB11   103178292       4.12713168
+		Sample_ITWB12   102179242       4.08716968
+		Sample_ITWB13   103890121       4.15560484
+		Sample_ITWB14   71407686        2.85630744
+		Sample_ITWB15   113683884       4.54735536
+		Sample_ITWB2    138044436       5.52177744
+		Sample_ITWB3    123471748       4.93886992
+		Sample_ITWB4    135519177       5.42076708
+		Sample_ITWB5    113662132       4.54648528
+		Sample_ITWB6    70004982        2.80019928
+		Sample_ITWB7    132047308       5.28189232
+		Sample_ITWB8    114797322       4.59189288
+		Sample_ITWB9    3467517 0.13870068
+	
+# Now to create the windows files for each individual buffalo 
+	Blade 2: /mnt/iscsi/md3200i_4/dbickhart/Buffalo/bams
+	$ for i in Sample*; do echo $i; mkdir indiv_buff_windows/$i ; ~/bin/combine_bed_hits_lowmem.pl $i/$i.hits.bed indiv_buff_windows/$i /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file1_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file2_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file3_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/buffalo_file1_control_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/buffalo_file3_control_rmask.bed; echo "$i is done"; done
+	$ ~/bin/combine_bed_hits_lowmem.pl Sample_ITWB2/Sample_ITWB2.hits.bed indiv_buff_windows/Sample_ITWB2 /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file1_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file2_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file3_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/buffalo_file1_control_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/buffalo_file3_control_rmask.bed
+	$ ~/bin/combine_bed_hits_lowmem.pl Sample_ITWB3/Sample_ITWB3.hits.bed indiv_buff_windows/Sample_ITWB3 /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file1_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file2_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/template_file3_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/buffalo_file1_control_rmask.bed /mnt/iscsi/md3200i_4/dbickhart/Cow4_windows/buffalo_file3_control_rmask.bed
+	
+# Now to run the pipeline on them
+	Blade 2: /mnt/iscsi/md3200i_4/dbickhart/Buffalo/bams/indiv_buff_windows
+	$ for i in Sample_ITWB*; do cd $i; echo $i.hits_template_file1_rmask.bed; ~/bin/run_alkan_pipeline.pl --File1 "$i.hits_template_file1_rmask.bed" --File2 "$i.hits_template_file2_rmask.bed" --File3 "$i.hits_template_file3_rmask.bed" --File1_c "$i.hits_buffalo_file1_control_rmask.bed" --File3_c "$i.hits_buffalo_file3_control_rmask.bed" ; echo $i; cd .. ; done
+
+# Finally, I am going to generate the named bed files and start processing them using my pipeline scripts
+	$ for i in Sample_ITWB*; do echo $i; cd $i; out=`echo $i"_named_all_cnv.bed"`; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $t = $ARGV[2]; chomp($f, $p, $t); @y = split(/\_/, $p); open(IN, "< $f"); $l = "$y[1]\_$t\_buff"; while(<IN>){chomp; print "$_\t$l\n";} close IN;' $i*.final.wssd $i gain > $out; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $t = $ARGV[2]; chomp($f, $p, $t); @y = split(/\_/, $p); open(IN, "< $f"); $l = "$y[1]\_$t\_dog"; while(<IN>){chomp; print "$_\t$l\n";} close IN;' $i*.final.deletions.tab $i loss >> $out; cd .. ; done
+	$ wc -l Sample_ITWB*/*_named_all_cnv.bed
+		  1482 Sample_ITWB10/Sample_ITWB10_named_all_cnv.bed
+		  1483 Sample_ITWB11/Sample_ITWB11_named_all_cnv.bed
+		  1230 Sample_ITWB12/Sample_ITWB12_named_all_cnv.bed
+		  1441 Sample_ITWB13/Sample_ITWB13_named_all_cnv.bed
+		  1253 Sample_ITWB14/Sample_ITWB14_named_all_cnv.bed
+		  1462 Sample_ITWB15/Sample_ITWB15_named_all_cnv.bed
+		  1475 Sample_ITWB1/Sample_ITWB1_named_all_cnv.bed
+		  1393 Sample_ITWB2/Sample_ITWB2_named_all_cnv.bed
+		  1499 Sample_ITWB3/Sample_ITWB3_named_all_cnv.bed
+		  1478 Sample_ITWB4/Sample_ITWB4_named_all_cnv.bed
+		  1474 Sample_ITWB5/Sample_ITWB5_named_all_cnv.bed
+		  1321 Sample_ITWB6/Sample_ITWB6_named_all_cnv.bed
+		  1492 Sample_ITWB7/Sample_ITWB7_named_all_cnv.bed
+		  1515 Sample_ITWB8/Sample_ITWB8_named_all_cnv.bed
+		     0 Sample_ITWB9/Sample_ITWB9_named_all_cnv.bed
+		 19998 total
+	 
+	$ for i in Sample_ITWB*/*_named_all_cnv.bed; do echo $i; perl -e 'while(<>){chomp; @s = split(/\t/); $t+= $s[2] - $s[1];} print "$t\n";' < $i; done
+		Sample_ITWB10/Sample_ITWB10_named_all_cnv.bed
+		121,970,914
+		Sample_ITWB11/Sample_ITWB11_named_all_cnv.bed
+		122,395,060
+		Sample_ITWB12/Sample_ITWB12_named_all_cnv.bed
+		56,004,266
+		Sample_ITWB13/Sample_ITWB13_named_all_cnv.bed
+		120,725,651
+		Sample_ITWB14/Sample_ITWB14_named_all_cnv.bed
+		55,429,269
+		Sample_ITWB15/Sample_ITWB15_named_all_cnv.bed
+		120,876,666
+		Sample_ITWB1/Sample_ITWB1_named_all_cnv.bed
+		120,889,950
+		Sample_ITWB2/Sample_ITWB2_named_all_cnv.bed
+		120,040,846
+		Sample_ITWB3/Sample_ITWB3_named_all_cnv.bed
+		123,084,095
+		Sample_ITWB4/Sample_ITWB4_named_all_cnv.bed
+		121,943,118
+		Sample_ITWB5/Sample_ITWB5_named_all_cnv.bed
+		121,455,004
+		Sample_ITWB6/Sample_ITWB6_named_all_cnv.bed
+		115,392,011
+		Sample_ITWB7/Sample_ITWB7_named_all_cnv.bed
+		123,225,458
+		Sample_ITWB8/Sample_ITWB8_named_all_cnv.bed
+		123,479,302
+		Sample_ITWB9/Sample_ITWB9_named_all_cnv.bed
+	
+	# That is pretty high! I think I found the reason though:
+		Blade2: /mnt/iscsi/md3200i_4/dbickhart/Buffalo/bams/indiv_buff_windows/Sample_ITWB1
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1]; } print "$t\n";' < Sample_ITWB1.hits_template_file1_rmask.bed.final.wssd
+			118,118,547		<- with X chromosome
+		$ more Sample_ITWB1.hits_template_file1_rmask.bed_gccorr.log
+			Avg:  563.715876  std:  113.836944  AutoCut:  1019.063652  AutoCut2:  905.226708  Del:  222.205044
+			SexA:  85.111019  std:  123.065791  AutoCut:  454.308392  AutoCut2:  331.242601  Del:  -161.020563
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); if ($s[0] eq "chrX"){next;} $t += $s[2] - $s[1]; } print "$t\n";' < Sample_ITWB1.hits_template_file1_rmask.bed.final.wssd
+			40,545,540		<- That is without X chromosome
+			
+		Blade2: /mnt/iscsi/md3200i_4/dbickhart/Buffalo/bams/indiv_buff_windows/Sample_ITWB12
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1]; } print "$t\n";' < Sample_ITWB12.hits_template_file1_rmask.bed.final.wssd
+			52,833,894
+		$ more Sample_ITWB12.hits_template_file1_rmask.bed_gccorr.log
+			Avg:  498.147182  std:  100.563875  AutoCut:  900.402682  AutoCut2:  799.838807  Del:  196.455557
+			SexA:  4.955362  std:  53.446447  AutoCut:  165.294703  AutoCut2:  111.848256  Del:  -101.937532
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); if ($s[0] eq "chrX"){next;} $t += $s[2] - $s[1]; } print "$t\n";' < Sample_ITWB12.hits_template_file1_rmask.bed.final.wssd
+			39,545,201
+		# I think that the "bulls" might have less coverage and therefore have fewer X chromosome false positives.
+	# Turning the high coverage buffalo into named bed files
+		Blade2: /mnt/iscsi/md3200i_4/dbickhart/Buffalo/bams/hiseq_buff_windows
+		$ perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $t = $ARGV[2]; chomp($f, $p, $t); open(IN, "< $f"); $l = "$p\_$t\_buff"; while(<IN>){chomp; print "$_\t$l\n";} close IN;' buffalo_merge_hits_template_file1_rmask.bed.final.wssd HIWB gain > HIWB_named_all_cnv.bed; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $t = $ARGV[2]; chomp($f, $p, $t); open(IN, "< $f"); $l = "$p\_$t\_buff"; while(<IN>){chomp; print "$_\t$l\n";} close IN;' buffalo_merge_hits_template_file1_rmask.bed.final.deletions.tab HIWB loss >> HIWB_named_all_cnv.bed;
+		
+# Now for the pipeline analysis
+	# Since the X chromosome is such a problem for me, I am going to remove it before running the analysis scripts
+	pwd: /home/dbickhart/share/bed_cnv_fig_table_pipeline/buffalo
+	$ for i in Sample_ITWB*; do pre=`echo $i | cut -d'_' -f2`; echo $pre; perl -e 'chomp @ARGV; open(IN, "< $ARGV[0]"); open (OUT, "> $ARGV[1]_named_all_cnv_no_X.bed"); while(<IN>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} else{print OUT "$_\n";}}' $i $pre; done
+	$ for i in HIWB*; do pre=`echo $i | cut -d'_' -f1`; echo $pre; perl -e 'chomp @ARGV; open(IN, "< $ARGV[0]"); open (OUT, "> $ARGV[1]_named_all_cnv_no_X.bed"); while(<IN>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} else{print OUT "$_\n";}}' $i $pre; done
+	
+	# Now to start running the scripts
+	# Some prep work:
+	$ ls *_no_X.bed > buffalo_no_X_cnv_list
+	# Convert CN files into a shorter name format
+	$ for i in Sample*.normalized.CN; do pre=`echo $i | cut -d'_' -f2`; out=`echo $pre"_1kb.CN"`; echo $out; mv $i $out ; done
+	$ ls *.CN > buffalo_cn_files.txt
+	
+	$ perl ../bed_create_tables_1_3.pl '*_named_all_cnv_no_X.bed'
+	$ perl ../create_copynumber_cnvr_table.pl -i buffalo_no_X_cnv_list -c buffalo_cn_files.txt
+	$ perl ../create_copynumber_gene_intersect_table.pl -i ../cow4_gene_databases.list -c buffalo_cn_files.txt -v buffalo_no_X_cnv_list
+	$ perl ../create_copynumber_indiv_cnv_table.pl -i buffalo_no_X_cnv_list -c buffalo_cn_files.txt -o buffalo

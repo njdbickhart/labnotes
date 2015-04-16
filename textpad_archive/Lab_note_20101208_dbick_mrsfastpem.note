@@ -1,0 +1,652 @@
+2010_12_08 - 2010_12_16
+# This is going to be a note section for my attempts at running mrsfast on PEM data
+
+# My goals are to time how fast mrsfast can process the PEM data, and then see how I can parse out the data downstream
+
+# My two options for downstream parsing are:
+	1. Hydra-sv 
+	2. variationhunter-sc
+	
+# With my previous experiences with variationhunter-sc, I would prefer working with the Hydra-sv option.
+
+# Since mrsfast does a SW alignment, I am unsure if I want to pre-align reads using BWA.
+	- I will run mrsfast without a tier 1 alignment and time it
+	- Then I will run BWA then mrsfast on the same reads and time it as well
+	
+# My reference genome will be the carefully masked reference genome that I created on 11/12/2010 (cow4 genome)
+
+# Command line arguments:
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa --pe --seq1 BTAN01M.FC42PER.3.1.15.fq --seq2 BTAN01M.FC42PER.3.2.15.fq --min 150 --max 250 -o BTAN01M.FC42PER.3.15.sam
+	# note: I should use my calculate_MAD.pl script to determine the median absolute deviation or at least the standard deviation of read lengths prior to running
+	
+	|     Genome Name |    Loading Time |    Mapping Time | Memory Usage(M) |  Total Mappings    Mapped reads |
+	-----------------------------------------------------------------------------------------------------------
+	|            chrX |           17.38 |          476.10 |        11960.98 |               0               0 |
+	|            chr1 |           34.27 |          740.83 |        11974.22 |               0               0 |
+	|            chr2 |           30.77 |          643.29 |        11992.44 |               0               0 |
+	|            chr3 |           26.52 |          557.03 |        12010.99 |               0               0 |
+	|            chr4 |           28.45 |          713.78 |        12025.90 |               0               0 |
+	|            chr5 |           28.28 |          624.75 |        12037.98 |               0               0 |
+	|            chr6 |           25.16 |          671.12 |        12052.09 |               0               0 |
+	|            chr7 |           24.79 |          620.31 |        12068.98 |               0               0 |
+	|            chr8 |           25.31 |          696.92 |        12077.81 |               0               0 |
+	|            chr9 |           21.53 |          596.71 |        12092.37 |               0               0 |
+	|           chr10 |           23.94 |          657.89 |        12110.12 |               0               0 |
+	|           chr11 |           26.51 |          573.01 |        12121.78 |               0               0 |
+	|           chr12 |           17.54 |          340.43 |        12133.84 |               0               0 |
+	|           chr13 |           25.10 |          340.29 |        12143.09 |               0               0 |
+	|           chr14 |           14.68 |          313.62 |        12155.70 |               0               0 |
+	|           chr15 |           24.07 |          306.44 |        12164.67 |               0               0 |
+	|           chr16 |           16.93 |          309.93 |        12173.15 |               0               0 |
+	|           chr17 |           14.25 |          277.58 |        12183.53 |               0               0 |
+	|           chr18 |           16.74 |          260.01 |        12189.58 |               0               0 |
+	|           chr19 |           14.89 |          272.07 |        12202.76 |               0               0 |
+	|           chr20 |           13.60 |          280.19 |        12214.37 |               0               0 |
+	|           chr21 |           11.89 |          251.25 |        12220.07 |               0               0 |
+	|           chr22 |           11.67 |          250.28 |        12230.68 |               0               0 |
+	|           chr23 |           10.35 |          227.25 |        12236.01 |               0               0 |
+	|           chr24 |           12.14 |          257.97 |        12244.66 |               0               0 |
+	|           chr25 |            8.57 |          179.31 |        12254.13 |               0               0 |
+	|           chr26 |            9.36 |          216.36 |        12257.08 |               0               0 |
+	|           chr27 |            8.71 |          205.55 |        12264.93 |               0               0 |
+	|           chr28 |            8.01 |          189.94 |        12272.19 |               0               0 |
+	|           chr29 |            8.59 |          198.45 |        12275.37 |               0               0 |
+	Segmentation fault
+
+	# Looks like the memory usage was just too high.
+	# Maybe if I did the BWA alignment first?
+	
+	$ ../bwa-0.5.8a/bwa index -p cow4_36_finalcombined_bwa -a bwtsw cow4_36_finalcombined.fa
+	
+	$ ../../../bwa-0.5.8a/bwa aln ../../../alkan_files/cow4_36_finalcombined_bwa BTAN01M.FC42PER.3.1.15.fq > BTAN01M.FC42PER.3.1.15.sai
+	$ ../../../bwa-0.5.8a/bwa aln ../../../alkan_files/cow4_36_finalcombined_bwa BTAN01M.FC42PER.3.2.15.fq > BTAN01M.FC42PER.3.2.15.sai
+	$ ../../../bwa-0.5.8a/bwa sampe ../../../alkan_files/cow4_36_finalcombined_bwa BTAN01M.FC42PER.3.1.15.sai BTAN01M.FC42PER.3.2.15.sai BTAN01M.FC42PER.3.1.15.fq BTAN01M.FC42PER.3.2.15.fq > BTAN01M_tier1_3_15.sam
+	
+	$ ../../../samtools-0.1.8/samtools view -bS -o BTAN01M_tier1_3_15.bam BTAN01M_tier1_3_15.sam
+	$ ../../../samtools-0.1.8/samtools sort -n BTAN01M_tier1_3_15.bam BTAN01M_tier1_3_15_sort
+	$ ../../../samtools-0.1.8/samtools view -bF 0x2 BTAN01M_tier1_3_15_sort.bam | ../../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 BTAN01M_tier2_3_1_15.fq -fq2 BTAN01M_tier2_3_2_15.fq
+	
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa --pe --seq1 BTAN01M_tier2_3_1_15.fq --seq2 BTAN01M_tier2_3_2_15.fq --min 150 --max 250 -o BTAN01M_tier2_3_15.sam
+
+	29380746 sequences are read in 174.58. (30433 discarded) [Mem:8407.23 M]
+	-----------------------------------------------------------------------------------------------------------
+	|     Genome Name |    Loading Time |    Mapping Time | Memory Usage(M) |  Total Mappings    Mapped reads |
+	-----------------------------------------------------------------------------------------------------------
+	|            chrX |           14.89 |          330.71 |        10337.53 |               0               0 |
+	|            chr1 |           33.37 |          473.02 |        10340.69 |               0               0 |
+	|            chr2 |           27.44 |          421.45 |        10348.83 |               0               0 |
+	|            chr3 |           23.35 |          379.04 |        10357.06 |               0               0 |
+	|            chr4 |           26.36 |          390.81 |        10362.16 |               0               0 |
+	|            chr5 |           26.33 |          374.73 |        10367.51 |               0               0 |
+	|            chr6 |           22.82 |          349.26 |        10371.14 |               0               0 |
+	|            chr7 |           22.31 |          347.16 |        10378.73 |               0               0 |
+	|            chr8 |           24.29 |          355.94 |        10381.81 |               0               0 |
+	|            chr9 |           22.81 |          324.07 |        10387.44 |               0               0 |
+	|           chr10 |           21.97 |          331.27 |        10394.69 |               0               0 |
+	|           chr11 |           24.13 |          353.72 |        10399.20 |               0               0 |
+	|           chr12 |           17.29 |          275.28 |        10404.21 |               0               0 |
+	|           chr13 |           20.38 |          288.54 |        10405.87 |               0               0 |
+	|           chr14 |           16.28 |          270.74 |        10411.52 |               0               0 |
+	|           chr15 |           16.74 |          265.43 |        10415.07 |               0               0 |
+	|           chr16 |           15.99 |          261.23 |        10419.47 |               0               0 |
+	|           chr17 |           13.26 |          240.28 |        10421.16 |               0               0 |
+	|           chr18 |           14.70 |          224.03 |        10423.68 |               0               0 |
+	|           chr19 |           15.46 |          234.36 |        10427.25 |               0               0 |
+	|           chr20 |           14.09 |          245.94 |        10433.56 |               0               0 |
+	|           chr21 |           13.63 |          220.67 |        10435.90 |               0               0 |
+	|           chr22 |           13.96 |          219.50 |        10440.95 |               0               0 |
+	|           chr23 |           11.93 |          197.80 |        10440.57 |               0               0 |
+	|           chr24 |           13.96 |          223.72 |        10444.49 |               0               0 |
+	|           chr25 |            9.70 |          155.00 |        10448.29 |               0               0 |
+	|           chr26 |           11.16 |          186.87 |        10447.52 |               0               0 |
+	|           chr27 |           10.23 |          178.96 |        10450.84 |               0               0 |
+	|           chr28 |           10.01 |          164.99 |        10454.02 |               0               0 |
+	|           chr29 |           11.04 |          171.53 |        10453.81 |               0               0 |
+	Segmentation fault
+
+	# Crap! Another segmentation fault... I will have to chunk the reads using the Unix split command.
+	$ split -l 14720806 BTAN01M_tier2_3_1_15.fq BTAN01M_tier2_3_1_15
+	# Nope, that didn't work... let's use a flat multiple of four
+	$ split -l 14720808 BTAN01M_tier2_3_1_15.fq BTAN01M_tier2_3_1_15
+	$ split -l 14720808 BTAN01M_tier2_3_2_15.fq BTAN01M_tier2_3_2_15
+
+	# Let's try this again...
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa --pe --seq1 BTAN01M_tier2_3_1_15aa --seq2 BTAN01M_tier2_3_2_15aa --min 150 --max 300 -o BTAN01M_tier2_3_15aa.sam
+	# Another segmentation fault... maybe it's my chrUnall? Going to remove it
+	$ perl -e '$a = 1; while(<>){if ($_ =~ />chrUnall/){$a = 0; last;}else{print $_;}}' < cow4_36_finalcombined.fa > cow4_36_noun_final.fa
+	
+	$ ../mrsfast-2.3.0.2/mrsfast --index cow4_36_noun_final.fa
+		Generating Index from cow4_36_noun_final.fa
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN01M_tier2_3_1_15aa --seq2 BTAN01M_tier2_3_2_15aa --min 150 --max 300 -o BTAN01M_tier2_3_15aa.sam
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN01M_tier2_3_1_15ab --seq2 BTAN01M_tier2_3_2_15ab --min 150 --max 300 -o BTAN01M_tier2_3_15ab.sam
+	
+	# Stop the presses! Mrsfast has the --discordant-vh option! I can create output that can be run directly in variation hunter
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN01M_tier2_3_1_15.fq --seq2 BTAN01M_tier2_3_2_15.fq --discordant-vh --min 150 --max 300 -o BTAN01M_tier2_3_15.sam
+		29380746 sequences are read in 232.15. (30433 discarded) [Mem:8407.23 M]
+		-----------------------------------------------------------------------------------------------------------
+		|     Genome Name |    Loading Time |    Mapping Time | Memory Usage(M) |  Total Mappings    Mapped reads |
+		-----------------------------------------------------------------------------------------------------------
+		|            chrX |            4.02 |          392.11 |        10337.53 |               0               0 |
+		|            chr1 |            7.43 |          592.53 |        10340.69 |               0               0 |
+		|            chr2 |            6.49 |          523.30 |        10348.83 |               0               0 |
+		|            chr3 |            6.27 |          470.46 |        10357.06 |               0               0 |
+		|            chr4 |            6.28 |          485.40 |        10362.16 |               0               0 |
+		|            chr5 |            6.07 |          466.40 |        10367.51 |               0               0 |
+		|            chr6 |            5.59 |          432.80 |        10371.14 |               0               0 |
+		|            chr7 |            5.70 |          430.89 |        10378.73 |               0               0 |
+		|            chr8 |            6.55 |          444.31 |        10381.81 |               0               0 |
+		|            chr9 |            5.13 |          401.40 |        10387.44 |               0               0 |
+		|           chr10 |            5.85 |          412.40 |        10394.69 |               0               0 |
+		|           chr11 |            5.72 |          438.87 |        10399.20 |               0               0 |
+		|           chr12 |            4.75 |          344.27 |        10404.21 |               0               0 |
+		|           chr13 |            4.64 |          352.35 |        10405.87 |               0               0 |
+		|           chr14 |            4.28 |          317.59 |        10411.52 |               0               0 |
+		|           chr15 |            4.17 |          306.62 |        10415.07 |               0               0 |
+		|           chr16 |            4.12 |          301.18 |        10419.47 |               0               0 |
+		|           chr17 |            3.88 |          276.50 |        10421.16 |               0               0 |
+		|           chr18 |            3.75 |          257.72 |        10423.68 |               0               0 |
+		|           chr19 |            4.45 |          268.64 |        10427.25 |               0               0 |
+		|           chr20 |            6.45 |          280.50 |        10433.56 |               0               0 |
+		|           chr21 |            7.86 |          252.41 |        10435.90 |               0               0 |
+		|           chr22 |            6.43 |          251.68 |        10440.95 |               0               0 |
+		|           chr23 |            7.32 |          228.89 |        10440.57 |               0               0 |
+		|           chr24 |            8.25 |          256.76 |        10444.49 |               0               0 |
+		|           chr25 |            5.77 |          178.39 |        10448.29 |               0               0 |
+		|           chr26 |            7.75 |          216.09 |        10447.52 |               0               0 |
+		|           chr27 |            9.72 |          205.57 |        10450.84 |               0               0 |
+		|           chr28 |            6.65 |          190.12 |        10454.02 |               0               0 |
+		|           chr29 |            7.47 |          196.28 |        10453.81 |               0               0 |
+		-----------------------------------------------------------------------------------------------------------
+		             Total:          410.93          10172.44
+		Post Processing Time:               0.34
+		Total Time:                     10583.37
+		Total No. of Reads:             29380746
+		Total No. of Mappings:                 0
+		Avg No. of locations verified:       661
+		
+	$ wc BTAN01M_tier2_3_15.sam_DIVET.vh
+  		72232  939016 8009920 BTAN01M_tier2_3_15.sam_DIVET.vh
+  		
+  	# This worked extremely well! I think that I should start processing more Angus sequences over the weekend just to get a head start in case George decides this is the way to go!
+  	# I created a really crude wrapper program (angus_mrsfast_pem_wrapper.pl) that just does a system call for mrsfast per every pair of reads.
+  	ln26: system("$mrs_dir/mrsfast --search $ref_gen --pe --seq1 $fq1 --seq2 $fq2 --discordant-vh --min 150 --max 300 -o $out_file\_$out_num.sam");
+  	
+  	# None of the reads were put into the sam file... This means that the insert size was far larger than the --min and --max values that I specified. Crap! Now I have to recalculate them.
+  	# Redrafted divet_read_stats.pl from generate_alkans_numbers.pl to do just that
+  		$  for i in *_DIVET.vh; do  perl divet_read_stats.pl $i >> angus_divet_stats.txt; done
+  		
+  	# OK, since the cycles for the angus fastqs were 75 bp, that means that the insert size maximum should be set for, ~450 + 3 MAD and the minimum should be ~450 - 3 MAD.	
+  	# Taking the average of the MAD from the angus_divet_stats.txt (the values that were under 845), the MAD average is about 111.2
+  	# So, the mrsfast --pe --min should be 117 and the --max should be 783
+  	
+  	# Let's test this out on the first two fastqs...
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN01M.FC42PER.3.1.15.fq --seq2 BTAN01M.FC42PER.3.2.15.fq --discordant-vh --min 117 --max 783 -o ../BTAN01M.FC42PER.3.15.sam
+	
+	# I think that I've identified the problem: some of the angus reads are from mate-pair libraries. Let's cancel that last one and try a paired end run
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN01P.FC42N19.3.1.15.fq --seq2 BTAN01P.FC42N19.3.2.15.fq --discordant-vh --min 117 --max 783 -o ../BTAN01P.FC42N19.3.15.sam
+	
+	# The DIVET file still only has 8803 lines... which is a very good sign. I will test a run of mrsfast on blackstar (especially since I know the min and max values to use)
+	# Attempting it on blackstar...
+		$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTHO11P.EAS174090409.5.1.13.fq --seq2 BTHO11P.EAS174090409.5.2.13.fq --discordant-vh --min 150 --max 300 -o ../BTHO11P.EAS174090409.5.13.sam
+		
+	# OK, that still didn't map any reads... going to test out 20000 reads to see if I can get any of them to map. Siphoned the reads off of the first two new_blackstar_fq files using this command:
+		$ perl -e '$a = 0; while(<>){if($a < 80000){print $_;}else{last;} $a++;}' < BTHO11P.EAS174090409.5.1.13.fq > test_black_1.fq
+		$ perl -e '$a = 0; while(<>){if($a < 80000){print $_;}else{last;} $a++;}' < BTHO11P.EAS174090409.5.2.13.fq > test_black_2.fq
+	
+	# Now to see how many reads map in single end mode...
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --seq test_black_1.fq -o test_black_1_se.sam
+			Total Time:                       463.89
+			Total No. of Reads:                19993
+			Total No. of Mappings:              2433
+			Avg No. of locations verified:       654
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --seq test_black_2.fq -o test_black_2_se.sam
+			Total Time:                       143.34
+			Total No. of Reads:                19976
+			Total No. of Mappings:              4299
+			Avg No. of locations verified:       648
+			
+		# Now for paired end mode
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 test_black_1.fq --seq2 test_black_2.fq --min 10 --max 500 -o test_black_10_500_pe.sam
+			Total Time:                       320.55
+			Total No. of Reads:                39952
+			Total No. of Mappings:                 0
+			Avg No. of locations verified:       436
+		# There's nothing in the sam file... but there is a problem: the first blackstar fastq contains 76bp sequences and the second has 36!!
+		# Removing the last 36bp...
+			$ perl -ne 'if($_ !~ /^@{1}.*/ || $_ !~ /^\+{1}/){@a = split(//); for ($x = 0; $x < 36; $x++){print $a[$x];} print "\n";} else{ print $_;}' < test_black_1.fq > test_form_black_1.fq
+			
+		# Trying mrsfast again with new, very less stringent conditions
+			$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 test_form_black_1.fq --seq2 test_black_2.fq --min 10 --max 100000 -o test_black_10_100000_pe.sam
+			Total Time:                       299.21
+			Total No. of Reads:                39952
+			Total No. of Mappings:                 0
+			Avg No. of locations verified:       655
+
+			# This time, it worked and reported quite a few paired end reads. Reducing the stringency to see if I can't remove some of those pairings
+			$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 test_form_black_1.fq --seq2 test_black_2.fq --min 10 --max 500 -o test_black_10_500f_pe.sam
+			
+			# That worked too! It must by the cycle number that messes things up! There are two possibilities:
+				(a) if the cycle numbers are different between paired end files, mrsfast shuts down
+				(b) if the cycle nubmers are above 36bp, then mrsfast shuts down
+				
+			# Let's take a look at angus again...
+			$ more BTAN01P.FC42N19.3.2.15.fq
+				# revealed a TON of B's! This means that most of the "paired" reads are crap!
+				# Wow.. so alot of the angus reads are junk! Going to mark off the paired end reads that are worthless
+				
+				BTAN01P.FC42N19.3.1.15.fq
+				BTAN01P.FC42N19.3.2.15.fq	all junk
+				BTAN02P.FC42HEA.7.1.15.fq
+				BTAN02P.FC42HEA.7.2.15.fq	all junk
+				BTAN03P.FC42N19.6.1.15.fq
+				BTAN03P.FC42N19.6.2.15.fq	mostly junk
+				BTAN04P.FC42HEA.8.1.15.fq
+				BTAN04P.FC42HEA.8.2.15.fq	all junk
+				BTAN05P.FC42N19.1.1.15.fq
+				BTAN05P.FC42N19.1.2.15.fq	good
+				BTAN06P.FC42MVF.8.1.15.fq
+				BTAN06P.FC42MVF.8.2.15.fq	good
+				BTAN07P.FC42HMD.1.1.14.fq
+				BTAN07P.FC42HMD.1.2.14.fq	mostly junk
+				BTAN08P.FC42HMD.2.1.14.fq
+				BTAN08P.FC42HMD.2.2.14.fq	all junk
+				BTAN09P.FC42HMD.3.1.14.fq
+				BTAN09P.FC42HMD.3.2.14.fq	all junk
+				BTAN10P.FC42HMD.4.1.14.fq
+				BTAN10P.FC42HMD.4.2.14.fq	all junk
+			
+	# Going to try mrsfast on the 1.15.fq run (good)
+		
+	$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN05P.FC42N19.1.1.15.fq --seq2 BTAN05P.FC42N19.1.2.15.fq --min 100 --max 700 -o ../BTAN05P_1_15_test.sam
+	# That produced a sam file... lets see if the variation hunter option screws up the output...
+	
+	$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN05P.FC42N19.1.1.15.fq --seq2 BTAN05P.FC42N19.1.2.15.fq --discordant-vh --min 100 --max 700 -o ../BTAN05P_1_15_disc.sam
+	
+	# Now I can check to see if that reduced the number of discordant reads...
+		$ ls -l *DIVET*
+			-rw-rw-r--+ 1 dbickhart mapping 1305458 2010-12-14 18:09 BTAN05P_1_15_disc.sam_DIVET.vh <- recently created
+			11972  155636 1305458 BTAN05P_1_15_disc.sam_DIVET.vh
+			
+		$ ls -l *DIVET*
+			-rw-rw-r--+ 1 dbickhart mapping 56789310 2010-12-12 00:40 BTAN05P.FC42N19.1.1_15.sam_DIVET.vh <- previous run
+			520398  6765174 56789310 ./PEM/BTAN05P.FC42N19.1.1_15.sam_DIVET.vh
+			
+		# So that did make a huge difference.	
+		# I like some of the results of the recently created file; There are some problems with X, but I believe that it is an issue with either (a) the assembly or (b) mapping to the Y chromosome (ie. deletions larger than 2Mb)
+		# I just need to standardize a method in order to calculate the average and standard deviation of the insert size
+		# Perhaps run mrsfast without the --discordant-vh option, then calculate it and feed it into mrsfast?
+		# Also, I should not run the fastqs marked "all junk" in my list above.
+		
+	# OK, now I have a decent way of estimating average and standard deviations of the dataset: use one of my perl scripts on a completed sam file
+		$ perl sam_avg_stdev.pl BTAN05P_1_15_test.sam
+			Average: 303.717937308367
+			Standard Deviation: 60.6242736389829
+			Average + 3 Standard Deviations: 485.590758225315
+			Average - 3 Standard Deviations: 121.845116391418
+			
+		$ variable=`perl sam_avg_stdev.pl BTAN05P_1_15_test.sam | grep 'Average +' | awk '{print $6}'`  <- a good way to get the averages if I create a shell script wrapper
+
+	# I rewrote the angus_mrsfast_pem_wrapper.pl script with those averages, and I cropped the list of paired end files (I removed all the "all junk" files from the list). 
+	$ perl angus_mrsfast_pem_wrapper.pl qpem_angus_list.txt
+
+	# It looks like it worked! Here are the stats for the combined divet file:
+		$ perl -e '%x = (); while(<>){split(/\t/); $x{$_[9]} += 1;} foreach $k (keys(%x)){ print "$k\t$x{$k}\n";}' < BTAN_combined_pem_DIVET.vh
+			D       25527
+			I       186363
+			E       86599
+			V       24506
+			
+		# The inversion and eversion rate was a bit higher in the combined dataset, so I took another look at the files that I had and ran the same one-liner for the largest divet file
+		$ perl -e '%x = (); while(<>){split(/\t/); $x{$_[9]} += 1;} foreach $k (keys(%x)){ print "$k\t$x{$k}\n";}' < BTAN07M.FC42PGC.7.1_15.sam_DIVET.vh
+			D       19019
+			I       128966
+			E       77378
+			V       19754
+		# So, that's the reason why!
+		# This was a mate pair library that "snuck" into the dataset...
+			$ ls -l *.vh
+			-rw-rw-r--+ 1 dbickhart mapping  1356207 2010-12-16 12:59 BTAN03P.FC42N19.6.1_15.sam_DIVET.vh
+			-rw-rw-r--+ 1 dbickhart mapping  2199999 2010-12-16 17:12 BTAN05P.FC42N19.1.1_15.sam_DIVET.vh
+			-rw-rw-r--+ 1 dbickhart mapping  3408520 2010-12-16 21:40 BTAN06P.FC42MVF.8.1_15.sam_DIVET.vh
+			-rw-rw-r--+ 1 dbickhart mapping 26711475 2010-12-17 01:35 BTAN07M.FC42PGC.7.1_15.sam_DIVET.vh
+			-rw-rw-r--+ 1 dbickhart mapping  1518507 2010-12-17 05:02 BTAN07P.FC42HMD.1.1_14.sam_DIVET.vh
+			-rw-rw-r--+ 1 dbickhart mapping 35194708 2010-12-17 08:39 BTAN_combined_pem_DIVET.vh
+			
+		# This was more like it:
+			$ perl -e '%x = (); while(<>){split(/\t/); $x{$_[9]} += 1;} foreach $k (keys(%x)){ print "$k\t$x{$k}\n";}' < BTAN03P.FC42N19.6.1_15.sam_DIVET.vh
+				D       1281
+				I       8284
+				E       1818
+				V       1085
+				
+	# I am unsure if I have to sort the file before running it; I will try it with sorting (by field 2) then reformat it (using my perl script)
+		$ sort -k 2,3 BTAN_combined_pem_DIVET.vh > BTAN_combined_sorted_DIVET.vh
+		$ perl sort_unique_divet.pl BTAN_combined_sorted_DIVET.vh > BTAN_combined_sorted_cDIVET.vh
+		$ ./VariationHunter_SC
+			Please enter the minimum paired-end insert size:
+			121
+			Please enter the maximum paired-end insert size:
+			485
+			Please enter the pre-processing mapping prune probability:
+			0.05
+			Please enter the name of the input file:
+			/mnt/gliu1_usb/dbickhart/breed_doc/angus/PEM/BTAN_combined_sorted_cDIVET.vh
+			Please enter the minimum support for a cluster:
+			2
+		
+		# That worked, but there are no detected insertions or inversions. I believe that I have to decipher what the SVtypes indicate
+			SVtype: 1 	Insertion
+			SVtype: 2	Deletion
+			SVtype: 3	Inversion (both FF and RR reads as support)
+			SVtype: 4	Inversion (only FF reads as support)
+			SVtype: 5	Invesrion (only RR reads as support)
+			
+	# Let's compare this with predictions from hydra-sv
+		$ ../../samtools-0.1.8/samtools view -bt /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa.fai BTAN05P_1_15_test.sam > BTAN05P_1_15_test.bam
+		$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i BTAN05P_1_15_test.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra -z 485 -y 121 > BTAN05P_1_15_test.bedpe
+		$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i BTAN05P_1_15_test.bedpe -s 3 > BTAN05P_1_15_test_disc.bedpe
+		$ ../../Hydra-Version-0.5.3/bin/hydra -in BTAN05P_1_15_test_disc.bedpe -out BTAN_breaks -mld 500 -mno 1500
+			# supported by hydra and variationhunter:
+			Inside_Start:16670681 Inside_End:16670948 OutSide_Start:16671606 Oustide_End:16671652 chro:chr3 SVtype:2 sup:4 Avg_Span:760 sumProb:3.434199
+			Inside_Start:107392511 Inside_End:107392650 OutSide_Start:107392855 Oustide_End:107393047 chro:chr9 SVtype:2 sup:3 Avg_Span:368 sumProb:3.000000
+			Inside_Start:6072992 Inside_End:6073275 OutSide_Start:6073348 Oustide_End:6073642 chro:chr18 SVtype:2 sup:6 Avg_Span:362 sumProb:5.500000
+			Inside_Start:43208062 Inside_End:43208144 OutSide_Start:43208840 Oustide_End:43208906 chro:chr28 SVtype:2 sup:105 Avg_Span:745 sumProb:78.964417   <- Wow! That's alot of support!
+			
+			# supported by hydra only:
+			chr11	97309889	97309965	chr11	97310306	97310459
+			chr15	34359825	34359915	chr15	34360392	34360474
+			chr20	67148304	67148396	chr20	67148872	67148950
+			chr3	36121587	36121675	chr3	36122165	36122248
+			chr7	4908847	4908957	chr7	4909334	4909437
+			chr7	101579281	101579400	chr7	101579714	101579840
+
+# Running it on Jersey now... 
+# Used a modified pem wrapper (jersey_mrsfast_pem_wrapper.pl)
+	$ gunzip *.gz; find *.fq > jersey_pem.txt; perl jersey_mrsfast_pem_wrapper.pl jersey_pem.txt
+
+	# Server 3 crashed midway through the processing, so I restarted where the wrapper left off:
+	$ perl jersey_mrsfast_pem_wrapper.pl jersey_pem.txt
+	
+# Modified the wrapper to work on the Holstein sequence...
+	$ gunzip *.gz; find BTHO*P.*.fq > holstein_pem_list.txt
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTHO01P.FC42FPG.1.1.15.fq --seq2 BTHO01P.FC42FPG.1.2.15.fq --min 100 --max 600 -o BTHO01P.FC42FPG.1.15.sam
+	# Determining the minimum and maximum values...
+	$ perl ../../angus/sam_avg_stdev.pl BTHO01P.FC42FPG.1.15.sam
+		Splice counter: 2164
+		Average: 250.393183754976
+		Standard Deviation: 59.4566438067849
+		Average + 3 Standard Deviations: 428.763115175331
+		Average - 3 Standard Deviations: 72.0232523346217
+		Median: 247
+		MAD: 21
+		Median + 3 MAD: 310
+		Median - 3 MAD: 184
+		After splicing...
+		Average: 249.056878537871
+		Standard Deviation: 56.1879524558727
+		A + 3 Stdevs: 417.62073590549
+		A - 3 Stdevs: 80.4930211702533
+
+	# Changed the holstein wrapper script to the "spliced" average +/- stdev values
+	$ perl holstein_mrsfast_pem_wrapper.pl holstein_pem_list.txt
+
+# Used the Holstein wrapper, modified, on the Limousin sequence
+$ perl limousin_mrsfast_pem_wrapper.pl limousin_list.txt
+
+# Starting on Brahman...
+	$ gunzip *.gz ; find B*P.*.fq > brahman_pe_list.txt
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BIBR01P.FC42HMD.6.1.14.fq --seq2 BIBR01P.FC42HMD.6.2.14.fq --min 100 --max 600 -o BIBR01P.FC42HMD.6.14.sam
+	$ perl ../../angus/sam_avg_stdev.pl BIBR01P.FC42HMD.6.14.sam 
+		Splice counter: 1732
+		Average: 288.571107992633
+		Standard Deviation: 50.3148166254057
+		Average + 3 Standard Deviations: 439.51555786885
+		Average - 3 Standard Deviations: 137.626658116416
+		Median: 284
+		MAD: 25
+		Median + 3 MAD: 359
+		Median - 3 MAD: 209
+		After splicing...
+		Average: 288.024816104915
+		Standard Deviation: 48.9625446212376
+		A + 3 Stdevs: 434.912449968628
+		A - 3 Stdevs: 141.137182241202
+	# Changed and renamed the holstein wrapper script
+	$ perl brahman_mrsfast_pem_wrapper.pl brahman_pe_list.txt
+
+# Now Romagnola...
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTRO05P.FC42T7D.4.1.15.fq --seq2 BTRO05P.FC42T7D.4.2.15.fq --min 100 --max 600 -o BTRO05P.FC42T7D.4.15.sam
+	$ perl ../../angus/sam_avg_stdev.pl BTRO05P.FC42T7D.4.15.sam
+		Splice counter: 6269
+		Average: 254.696617329083
+		Standard Deviation: 48.3353458623386
+		Average + 3 Standard Deviations: 399.702654916099
+		Average - 3 Standard Deviations: 109.690579742067
+		Median: 249
+		MAD: 24
+		Median + 3 MAD: 321
+		Median - 3 MAD: 177
+		After splicing...
+		Average: 252.846760371783
+		Standard Deviation: 42.9835862128496
+		A + 3 Stdevs: 381.797519010331
+		A - 3 Stdevs: 123.896001733234
+	# Changed and renamed the Holstein wrapper script
+	$ perl romagnola_mrsfast_pem_wrapper.pl romagnola_list.txt
+		
+# Now Nelore:
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BINE01P.FC42H7G.3.1.15.fq --seq2 BINE01P.FC42H7G.3.2.15.fq --min 100 --max 600 -o BINE01P.FC42H7G.3.15.sam
+	$ perl ../../angus/sam_avg_stdev.pl BINE01P.FC42H7G.3.15.sam
+		Splice counter: 1243
+		Average: 235.34292595374
+		Standard Deviation: 53.2511595591985
+		Average + 3 Standard Deviations: 395.096404631336
+		Average - 3 Standard Deviations: 75.5894472761447
+		Median: 232
+		MAD: 28
+		Median + 3 MAD: 316
+		Median - 3 MAD: 148
+		After splicing...
+		Average: 234.774316508076
+		Standard Deviation: 51.7567415033982
+		A + 3 Stdevs: 390.04454101827
+		A - 3 Stdevs: 79.5040919978815
+	# Changed and renamed the Romagnola wrapper script
+	$ perl nelore_mrsfast_pem_wrapper.pl nelore_pem_list.txt
+	
+# Gir had only one intact pair of sequences
+	# Ran the command manually
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search ../../../alkan_files/cow4_36_noun_final.fa --pe --discordant-vh --seq1 BIGI10P.FC42T6N.7.1.15.fq --seq2 BIGI10P.FC42T6N.7.2.15.fq --min 100 --max 600 -o ../PEM/BIGI10P.FC42T6N.7.15.sam
+	
+__________________________________________
+Getting Variation hunter to work
+__________________________________________
+
+# From what I recall, Variation hunter was a piecemeal implementation designed for the human genome
+
+# I am going to scour all of the component programs to try to set it up to work for the cow4 genome assembly
+
+# List of modifications:
+	# compare.cpp
+		- changed chromosome "strcmp" entries
+	# createSetsDelAsInsNoGapInvRLProb.alpha.cpp
+		- changed maxChrosize to 200000000
+		- changed gapStartEnd to a larger index count: int gapStartEnd[65000][2];
+	# tableGapBuild36
+		- This is a gaps file called by createSetsDelAsInsNoGapInvRLProb.alpha
+		- I need to replace it with a cow4 gap table (simple bed format) before running the program
+		$ mv cow4_reordered_cropped_gaps_nochrun.bed tableGapBuild36
+	# VariationHunter_SC.cpp
+		- changed the for loop count to equal 31
+		
+# I reran the "make" command in order to recompile the files that I modified. Had to compile compare.cpp separately
+
+# Let's give it a shot with the BTAN05P_1_15_disc.sam_DIVET.vh file
+	$ ../../Variationhunter/VariationHunter_SC
+		Please enter the minimum paired-end insert size:
+		121
+		Please enter the maximum paired-end insert size:
+		485
+		Please enter the pre-processing mapping prune probability:
+		0.05
+		Please enter the name of the input file:
+		BTAN05P_1_15_disc.sam_DIVET.vh
+		Please enter the minimum support for a cluster:
+		2
+	# OK, so I have to run the damn thing in its root directory... that's a pain! I will change it later to access its own directory with system commands
+	
+	$ ./VariationHunter_SC
+		Please enter the minimum paired-end insert size:
+		121
+		Please enter the maximum paired-end insert size:
+		485
+		Please enter the pre-processing mapping prune probability:
+		0.05
+		Please enter the name of the input file:
+		/mnt/gliu1_usb/dbickhart/breed_doc/angus/BTAN05P_1_15_disc.sam_DIVET.vh
+		Please enter the minimum support for a cluster:
+		2
+		
+		# The program hangs on calProbMinEditRead
+		
+		# I found out why: if there are more than one listing per entry in the DIVET outfile, then a loop to find the exact heading
+		# I tried making each read entry unique, but that didn't help... there's something else...
+		
+		# The cut command in VariationHunter.cpp screwed up (it should have cut the 11th and 13th entry)
+		# Ah, but VariationHunter actually assumes that the two reads mapped on the same chromosome. I will have to remove that field from the entry to standardize everything.
+		
+		# Oh God... the SV type field output by mrsfast has to be converted to a different string as well...
+			V and E = Inversion (Eversion)
+			D = deletion
+			I = insertion
+			
+		# The conversions from the mrsfast DIVET output were all done by my script: sort_unique_divet.pl	
+		
+		(<>) I have an idea: the eversions indicate that the primer pairs are F R or R F and point out from each other. This could be an indication of paired end contamination in the matepair libraries
+		(<>) So, I would just have to reverse compliment the mate pair sequences, then filter out the "E" calls from the mrsfast PEM module. Problem solved.
+
+__________________________________________
+Testing the viability of mate-pair analysis
+__________________________________________
+
+# First, I need to reverse complement the fastqs
+# Trying that out on the first two fastqs for the mate pair libaries
+
+# I developed a perl script that uses two threads to convert files from normal fastqs to reverse complemented fastqs. 
+
+$ perl rev_comp_matepair.pl -in test_angus_mate.txt
+
+# Now to try to map them. Since I do not know how large the average mapping interval is, I am running them without discordant-vh
+	$ ../../../mrsfast-2.3.0.2/mrsfast --search ../../../alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN01M.FC42PER.3.1.15_rc.fq --seq2 BTAN01M.FC42PER.3.2.15_rc.fq --min 300 --max 3000 -o BTAN01M_FC42PER_3_15_rc.sam
+	# Based on the Illumina suggested interval size, the fragments should be around 400 to 600bp long, but since they're revcomp'ed, the intervals should be around 2 - 2.5kb
+	
+	$ ../sam_avg_stdev.pl BTAN01M_FC42PER_3_15_rc.sam
+		Average: 482.611054653813
+		Standard Deviation: 454.286912332344
+		Average + 3 Standard Deviations: 1845.47179165085
+		Average - 3 Standard Deviations: -880.249682343219
+		
+		# Hmm... not quite what I wanted... lets find out the median and MAD to see how that changes things
+		Average: 482.611054653813
+		Standard Deviation: 454.286912332344
+		Average + 3 Standard Deviations: 1845.47179165085
+		Average - 3 Standard Deviations: -880.249682343219
+		Median: 354
+		MAD: 38
+		Median + 3 MAD: 468
+		Median - 3 MAD: 240
+		
+		# Still not happy with this... What I might want to do is splice out the overwhelmingly high and low values and return them at the end
+		
+		$ perl ../sam_avg_stdev.pl BTAN01M_FC42PER_3_15_rc.sam
+			Splice counter: 6122
+			Average: 482.611054653813
+			Standard Deviation: 454.286912332344
+			Average + 3 Standard Deviations: 1845.47179165085
+			Average - 3 Standard Deviations: -880.249682343219
+			Median: 354
+			MAD: 38
+			Median + 3 MAD: 468
+			Median - 3 MAD: 240
+			After splicing...
+			Average: 426.952198082775
+			Standard Deviation: 292.596572463645
+			A + 3 Stdevs: 1304.74191547371
+			A - 3 Stdevs: -450.837519308159
+			
+			# While I like the breadth of numbers that I can generate... I am still not happy about this.
+			# I believe that my alignment conditions screwed things over; my minimum value was WAY too low!
+			# So, I likely have a sam file that is loaded with technical insertions (~ 400bp or less)!
+			
+			$ wc BTAN01M_FC42PER_3_15_rc.sam                                                       
+				493982   6421766 117410029 BTAN01M_FC42PER_3_15_rc.sam
+			
+		# Rerunning with a higher range variance (- 500bp from lowest suggested cutoff and + 500bp from highest suggested cutoff)
+		$ ../../../mrsfast-2.3.0.2/mrsfast --search ../../../alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN01M.FC42PER.3.1.15_rc.fq --seq2 BTAN01M.FC42PER.3.2.15_rc.fq --min 1500 --max 5500 -o BTAN01M_FC42PER_3_15_rc.sam
+		
+			$ wc *.sam
+  				126590  1645670 30158686 BTAN01M_FC42PER_3_15_rc.sam
+  				
+  			$ perl ../sam_avg_stdev.pl BTAN01M_FC42PER_3_15_rc.sam
+				Splice counter: 0
+				Average: 4099.79753535034
+				Standard Deviation: 1071.13431610067
+				Average + 3 Standard Deviations: 7313.20048365234
+				Average - 3 Standard Deviations: 886.394587048346
+				Median: 4447
+				MAD: 735
+				Median + 3 MAD: 6652
+				Median - 3 MAD: 2242
+				After splicing...
+				Average: 4099.79753535034
+				Standard Deviation: 1071.13431610067
+				A + 3 Stdevs: 7313.20048365234
+				A - 3 Stdevs: 886.394587048346	
+
+	# It is a very small amount of data... I will try to run the paired end mrsfast first (since I know that works) and revisit this later
+	
+	
+###############################################
+#                                             #
+#		Procedure		      #
+#                                             #
+###############################################	
+
+#Running Variation Hunter on paired end files#
+	# Preliminary test of mrsFast alignment to determine optimal interval lengths
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN05P.FC42N19.1.1.15.fq --seq2 BTAN05P.FC42N19.1.2.15.fq --min 100 --max 700 -o ../BTAN05P_1_15_test.sam
+		
+		$ perl sam_avg_stdev.pl BTAN05P_1_15_test.sam
+		
+	# Running mrsFast using the --discordant-vh option
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN05P.FC42N19.1.1.15.fq --seq2 BTAN05P.FC42N19.1.2.15.fq --discordant-vh --min 100 --max 700 -o ../BTAN05P_1_15_disc.sam
+		
+		#optional#
+		$ ../../samtools-0.1.8/samtools view -bt /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa.fai BTAN05P_1_15_test.sam > BTAN05P_1_15_test.bam
+		
+	# Combining and sorting DIVET file
+		#optional test#
+		$ perl -e '%x = (); while(<>){split(/\t/); $x{$_[9]} += 1;} foreach $k (keys(%x)){ print "$k\t$x{$k}\n";}' < BTAN_combined_pem_DIVET.vh
+			D       25527
+			I       186363
+			E       86599
+			V       24506
+			
+		$ cat DIVET > combined_DIVET
+		
+		$ sort -k 2,3 BTAN_combined_pem_DIVET.vh > BTAN_combined_sorted_DIVET.vh
+		$ perl sort_unique_divet.pl BTAN_combined_sorted_DIVET.vh > BTAN_combined_sorted_cDIVET.vh
+		
+	# Running VariationHunter-sc
+		# move to variation hunter folder
+		$ ./VariationHunter_SC
+				Please enter the minimum paired-end insert size:
+				121
+				Please enter the maximum paired-end insert size:
+				485
+				Please enter the pre-processing mapping prune probability:
+				0.05
+				Please enter the name of the input file:
+				/mnt/gliu1_usb/dbickhart/breed_doc/angus/BTAN05P_1_15_disc.sam_DIVET.vh
+				Please enter the minimum support for a cluster:
+				2

@@ -1,0 +1,50 @@
+05/29/2013
+# These are my commands on how to process the snps from the Slick dataset
+
+pwd:/home/dbickhart/share/side_projects/heather_slick
+	perl split_vcf.pl SLICK-Chr20-raw-snps-indels.vcf              ? I highly suggest running this script yourself just to see how the data is processed
+
+	perl allele_filter.pl HO7130.vcf hetero
+	perl allele_filter.pl HO8064.vcf homo
+	perl allele_filter.pl HO8174.vcf hetero
+	perl allele_filter.pl SE0020.vcf hetero
+	perl allele_filter.pl SE6720.vcf homo
+	
+	java -jar snpEff.jar download UMD3.1.68
+	
+	java -jar snpEff.jar eff -s HO7130.filtered.stats.html HO7130.vcf.filtered.vcf > HO7130.filtered.stats.stdout
+	… (repeat for each animal.vcf.filtered.vcf)
+	
+	grep "NON_SYNONYMOUS_CODING" HO7130.filtered.stats.stdout > HO7130.non_synonymous.snps
+	grep "NON_SYNONYMOUS_CODING" HO8064.filtered.stats.stdout > HO8064.non_synonymous.snps
+	grep "NON_SYNONYMOUS_CODING" HO8174.filtered.stats.stdout > HO8174.non_synonymous.snps
+	grep "NON_SYNONYMOUS_CODING" SE0020.filtered.stats.stdout > SE0020.non_synonymous.snps
+	grep "NON_SYNONYMOUS_CODING" SE6720.filtered.stats.stdout > SE6720.non_synonymous.snps
+	
+	perl find_common_snps.pl HO7130.non_synonymous.snps HO8064.non_synonymous.snps HO8174.non_synonymous.snps SE0020.non_synonymous.snps SE6720.non_synonymous.snps > common_nonsynon_snps.txt
+
+
+# Now to do the upstream and UTR
+	$ for i in *filtered.stats.stdout; do echo $i; animal=`echo $i | cut -d'.' -f1`; grep UTR $i | perl -lane 'if($F[1] > 36000000 && $F[1] < 48000000){print $_;}' > $animal.utr.snps;  done
+	$ perl find_common_snps.pl HO7130.utr.snps HO8064.utr.snps HO8174.utr.snps SE0020.utr.snps SE6720.utr.snps > common_utr_snps.txt
+	
+	$ for i in *filtered.stats.stdout; do echo $i; animal=`echo $i | cut -d'.' -f1`; grep UPSTREAM $i | perl -lane 'if($F[1] > 36000000 && $F[1] < 48000000){print $_;}' > $animal.upstream.snps;  done
+	$ perl find_common_snps.pl HO7130.upstream.snps HO8064.upstream.snps HO8174.upstream.snps SE0020.upstream.snps SE6720.upstream.snps > common_upstream_snps.txt
+	
+	$ for i in *filtered.stats.stdout; do echo $i; animal=`echo $i | cut -d'.' -f1`; grep miRNA $i | perl -lane 'if($F[1] > 36000000 && $F[1] < 48000000){print $_;}' > $animal.mirna.snps;  done
+	$ perl find_common_snps.pl HO7130.mirna.snps HO8064.mirna.snps HO8174.mirna.snps SE0020.mirna.snps SE6720.mirna.snps > common_mirna_snps.txt
+	
+# Now to print out the data that Tad wants:
+	$ perl -ne 'chomp; @s = split(/:/); $s[1] -= 100; $e = $s[1] + 200; open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $s[0]:$s[1]\-$e |"); $c = 0; while(<IN>){chomp; if($_ =~ />/){print $_ . "\n";}else{@v = split(//); foreach $n (@v){if($c == 100){print "[$n]";}else{print $n;}$c++;}print "\n";}} close IN;' < snppos.txt > eleven_nssnps_100.fa
+	
+	$ perl -e 'while($h =<>){$v = <>; <>; <>; <>; <>; ($n) = $h =~ /Common loc at (\d+)/; @y = split(/\t/, $v); @b = split(/,/, $y[3]); ($gene, $ens) = $b[1] =~ /.+\(MODIFIER\|.*\|.*\|.*\|.*\|(.+)\|.*\|.*\|(.+)\|.*\)/; print "chr20\t$n\tSNP\tUPSTREAM\t$gene\t$ens\n";}' < common_upstream_snps.txt > common_upstream_snps.tab
+	$ perl -e 'while($h =<>){$v = <>; <>; <>; <>; <>; ($n) = $h =~ /Common loc at (\d+)/; @y = split(/\t/, $v); @b = split(/,/, $y[3]); ($gene, $ens) = $b[0] =~ /.+\(MODIFIER\|.*\|.*\|.*\|.*\|(.+)\|.*\|.*\|(.+)\|.*\)/; print "chr20\t$n\tSNP\tUPSTREAM\t$gene\t$ens\n";}' < common_utr_snps.txt > common_utr_snps.tab
+	
+	$ perl -ne 'chomp; @s = split(/\t/); $s[1] -= 100; $e = $s[1] + 200; open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $s[0]:$s[1]\-$e |"); $c = 0; while(<IN>){chomp; if($_ =~ />/){print $_ . " $s[3] $s[5]\n";}else{@v = split(//); foreach $n (@v){if($c == 100){print "[$n]";}else{print $n;}$c++;}print "\n";}} close IN;' < common_upstream_snps.tab > common_upstreamsnps_100bp.fa
+	$ perl -ne 'chomp; @s = split(/\t/); $s[1] -= 100; $e = $s[1] + 200; open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $s[0]:$s[1]\-$e |"); $c = 0; while(<IN>){chomp; if($_ =~ />/){print $_ . " $s[3] $s[5]\n";}else{@v = split(//); foreach $n (@v){if($c == 100){print "[$n]";}else{print $n;}$c++;}print "\n";}} close IN;' < common_utr_snps.tab > common_utrsnps_100bp.fa
+	
+	
+	# Tad wants the data formatted a different way (no newlines in the sequence format and brackets with the ref and alt allele inside separated by slashes)
+	$ perl process_fasta_vcf_to_reference.pl HO7130.vcf.filtered.vcf common_nssnps_100bp.fa common_nonsynon_snps.txt
+	$ perl process_fasta_vcf_to_reference.pl HO7130.vcf.filtered.vcf common_upstreamsnps_100bp.fa common_upstream_snps.txt
+	

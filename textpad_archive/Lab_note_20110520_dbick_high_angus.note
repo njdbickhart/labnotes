@@ -1,0 +1,163 @@
+5/20/2011
+# I will use this note file to document the commands and settings that I will use to process the high density angus sequences
+# I plan on using the same 36bp partitioning system that I used in the past, using the same masked cow4 reference.
+
+# This way, things will be consistent with the ways that I processed the other files
+# I also need to check Bob Schnabel's scripts to sample reads for the simulation. 
+
+# Goals:
+	1. Align the reads and run Alkan's pipeline on them
+	2. Generate simulation reads from the dataset
+	3. Compare CNV calls with the lower density data
+	4. Compare simulation X coverage profiles
+	
+$ pwd: /mnt/data110/dbickhart/high_den_angus
+	# The files were zipped and server 3 did not have an updated version of unzip.
+	# I had to create a wrapper script to unzip the files, then scp them to the server. 
+	# It's called transfer_to_server3.pl and it is in the same directory as the zipped fastq files
+	
+	# Now, I separated the three animals' fastq files into three groups (id-number_list.txt) and I will run the mrsfast_se_wrapper.pl script on them.
+	
+	$ perl mrsfast_cow4_se_letter_wrapper.pl an0626_list.txt a /mnt/data8/dbickhart/high_ang_bam/an0626
+	$ perl mrsfast_cow4_se_letter_wrapper.pl an0828_list.txt a /mnt/data8/dbickhart/high_ang_bam/an0828
+	$ perl mrsfast_cow4_se_letter_wrapper.pl an1717_list.txt b /mnt/data8/dbickhart/high_ang_bam/an1717
+	
+	# Now, I need to convert these files into sorted "hits" files. 
+		# First, these sam files failed to convert properly, so I removed them
+		$ rm AN0626P.01.1.fastq.sam; rm AN0626P.01.2.fastq.sam
+		
+		$ for i in *.sam; do perl -lane '$e = $F[3] + 80; print "$F[2]\t$F[3]\t$e";' < $i >> temp; done; sort -k 1,1 temp > an0626_angus.hits; rm temp
+		$ for i in *.sam; do perl -lane '$e = $F[3] + 80; print "$F[2]\t$F[3]\t$e";' < $i >> temp; done; sort -k 1,1 temp > an0828_angus.hits; rm temp
+		$ for i in *.sam; do perl -lane '$e = $F[3] + 80; print "$F[2]\t$F[3]\t$e";' < $i >> temp; done; sort -k 1,1 temp > an1717_angus.hits; rm temp
+	
+	
+	# Testing the mapped reads:
+		$ for i in *.sam; do lines=`cat $i | wc | awk '{print $2}'`; echo "$i $lines" >> an0626P_mapped_reads.txt; done
+		$ for i in *.sam; do lines=`cat $i | wc | awk '{print $2}'`; echo "$i $lines" >> an1717P_mapped_reads.txt; done
+		$ for i in *.sam; do lines=`cat $i | wc | awk '{print $2}'`; echo "$i $lines" >> an0828P_mapped_reads.txt; done
+		
+		# That gave the wrong count of reads. Trying another method:
+		$ for i in *.sam; do echo $i; perl -e 'chomp $ARGV[0]; open(IN, "< $ARGV[0]"); while(<IN>){$l++;} close IN; print "$ARGV[0]\t$l\n";' $i >> an0626_correct_mapped_reads.txt; echo "done"; done
+		$ for i in *.sam; do echo $i; perl -e 'chomp $ARGV[0]; open(IN, "< $ARGV[0]"); while(<IN>){$l++;} close IN; print "$ARGV[0]\t$l\n";' $i >> an0828_correct_mapped_reads.txt; echo "done"; done
+		$ for i in *.sam; do echo $i; perl -e 'chomp $ARGV[0]; open(IN, "< $ARGV[0]"); while(<IN>){$l++;} close IN; print "$ARGV[0]\t$l\n";' $i >> an1717_correct_mapped_reads.txt; echo "done"; done
+		
+		# Doing the same method for the nelore high density reads:
+		$ for i in ./*HWUSI*/*.fq_*; do echo $i; perl -e 'chomp $ARGV[0]; open(IN, "< $ARGV[0]"); while(<IN>){$t++;} $f = $t / 4; print "$ARGV[0]\t$f\n";' $i >> nelore_raw_reads.txt; echo "done"; done
+		
+		
+	# Running against umd3
+		$ perl mrsfast_umd3_wrapper.pl an0626_fastq.list a high_den_ang/an0626
+		$ perl mrsfast_umd3_wrapper.pl an0828_fastq.list b high_den_ang/an0828
+		$ perl mrsfast_umd3_wrapper.pl an1717_fastq.list c high_den_ang/an1717
+	
+	# The number of mapped reads for some of these files is significantly lower than with what Bob suggested in his files.
+	# Checking out the repeatmasked "N's" from the UCSC masked assembly
+	# then I'll test one of the sequence files on the current assembly with BWA and mrsfast on the new assembly.
+		 $ gunzip ucsc_bosTau4.fa.masked.gz
+		 $ perl -e '%b; while(<>){ chomp; if ($_ =~ />/){ next;} $a = ($_ =~ tr/A/A/); $t = ($_ =~ tr/T/T/); $g = ($_ =~ tr/G/G/); $c = ($_ =~ tr/C/C/); $b{A} += $a; $b{T} += $t; $b{G} += $g; $b{C} += $c;} foreach $k (sort{$a cmp $b}(keys(%b))){ print "$k\:\t$b{$k}\n";}' < ucsc_bosTau4.fa.masked
+			A:      425609878
+			C:      299385661
+			G:      299634237
+			T:      426225633
+			# Wait... this includes chrUn...
+			
+		$ perl -e '$a = 0; while(<>){if($_ =~ />chrUn/){$a = 1;}elsif($a == 1){last;}else{print $_;}}' < ucsc_bosTau4.fa.masked > ucsc_temp.fa
+		$ perl -e '%b; while(<>){ chomp; if ($_ =~ />/){ next;} $a = ($_ =~ tr/A/A/); $t = ($_ =~ tr/T/T/); $g = ($_ =~ tr/G/G/); $c = ($_ =~ tr/C/C/); $b{A} += $a; $b{T} += $t; $b{G} += $g; $b{C} += $c;} foreach $k (sort{$a cmp $b}(keys(%b))){ print "$k\:\t$b{$k}\n";}' < ucsc_bosTau4.fa.masked
+			A:      388900342
+			C:      273595014
+			G:      273947967
+			T:      389649446
+		
+		# Now lets see if doing the same stuff that I've done before really influences the autosomal sequence numbers
+		# Extending the repeat masking by 36bp each way. 
+		$ perl -ne '$_ =~ s/^\s+//g; $_ =~ s/\s+/\t/g; @s = split(/\s/, $_); if ($s[0] =~ m/s/i){next;}elsif(!defined($s[2])){next;} $e = $s[5] - 36; $s = $s[6] + 36; if ($e < 0){ $e = 0;} print "$s[4]\t$s\t$e\n";' < bosTau4.fa.out > bosTau4.fa_36.out
+		$ perl -ne '@s = split(/\t/, $_); $s = $s[1] - 36; $e = $s[2] + 36; if ($s < 0){ $s = 0;} print "$s[0]\t$s\t$e\n";' < bosTau4.trf.bed > bosTau4.trf_36.bed
+		
+		# Now, I'm going to mask the main masked file sequentially and then I'll mark how much sequence is different. 
+		$ perl -e 'while(<>){$_ =~ s/^\s+//g; $_ =~ s/\s+/\t/g; @s = split(/\s/, $_); if ($s[0] =~ m/s/i){next;}elsif(!defined($s[2])){next;} $t += $s[6] - $s[5];} print "$t\n";' < bosTau4.fa.out
+			1281343123
+		$ perl -e 'while(<>){$_ =~ s/^\s+//g; $_ =~ s/\s+/\t/g; @s = split(/\s/, $_); if ($s[0] =~ m/s/i){next;}elsif(!defined($s[2])){next;} $t += $s[6] - $s[5] + 72;} print "$t\n";' < bosTau4.fa.out
+			1672356403
+		$ perl -e 'while (<>){@s = split(/\t/, $_); $t += $s[2] - $s[1];} print "$t\n";' < bosTau4.trf.bed
+			6530095
+			
+		# OK, so that's a significant number of "N's" that were added (approx 400 megabases). Let's check out how many N's are in my masked reference genome:
+		$ perl -e 'while (<>){$n = ($_ =~ tr/N/N/); $t += $n;} print "$t\n";' < cow4_36_noun_rmask_b.fa
+			1530162014
+		
+# Testing other alignment programs:
+	# OK, so that looks about right. I think that the 36bp extension is what's doing it. Let's test it out with a different alignment program
+		
+	$ ../bwa-0.5.9rc1/bwa aln ../reference/bwa_cow4_a AN0626P.01.1.fastq > AN0626P.01.1.sai
+	$ ../bwa-0.5.9rc1/bwa samse ../reference/bwa_cow4_a AN0626P.01.1.sai AN0626P.01.1.fastq > AN0626P.01.1.sam
+	$ perl -e 'while(<>){@s = split(/\t/, $_); if($s[2] =~ /\*/){next;}else{$t += 1;}} print "$t\n";' < AN0626P.01.1.sam
+		1788956	
+	$ perl -e 'while(<>){@s = split(/\t/, $_); if($s[2] =~ /\*/){next;}else{$t += 1;}} print "$t\n";' < /mnt/data8/dbickhart/high_ang_bam/an0626/AN0626P.01.1.fastq.sam
+		1208344
+		
+	# One last shot: I'm going to test out Mosaik really fast to see if it gets a read mapping similar to bwa or to mrsfast. 
+		$ export MOSAIK_TMP=/mnt/data110/dbickhart/reference/tmp 
+		$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikBuild -fr cow4_36_noun_rmask_f.fa.gz -oa ./cow4_36_noun_rmask_f.dat
+		$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikJump -ia cow4_36_noun_rmask_f.dat -out cow4_36_mosaik_jump -hs 14
+		$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikBuild -q AN0626P.01.1.fastq -out AN0626P.01.1.dat -st illumina
+		$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikAligner -in AN0626P.01.1.dat -out AN0626P.01.1_align.dat -ia ../reference/cow4_36_noun_rmask_f.dat -hs 14 -mm 4 -mhp 100 -act 20 -j ../reference/cow4_36_mosaik_jump
+		$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikText -in AN0626P.01.1_align.dat -bam AN0626P.01.1_align.bam
+		
+		$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view AN0626P.01.1_align.bam | wc
+			2151010
+		
+	# Trying the base ucsc masked fasta:
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --index ucsc_bosTau4.fa.masked
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked --seq AN0626P.01.1.fastq -o AN0626P.01.1_mrsfast.sam
+			4861090
+	
+	
+	# Checking the indels:
+		$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view AN0626P.01.1_align.bam | perl -lane 'if($F[5] =~ /[ID]/){ print "$F[5]";}' | wc
+  			97268
+  		$ perl -lane 'if($F[5] =~ /[ID]/){ print "$F[5]";}' < AN0626P.01.1.sam | wc
+ 			34212
+	
+	
+# A few paragraphs from the CNVnator supplemental:
+	CNV discovery in samples with low sequencing coverage
+	Discovering CNVs in samples with low sequencing coverage can be no different from analyzing samples with high coverage if a bin size is made larger. However, this limits breakpoint resolution and sensitivity in discovering small CNVs. An alternative approach for CNV detection is to combine sequencing data from several samples into one RD signal. This will increase the statistics allowing the usage of smaller bins, consequently allowing the detection of smaller CNVs with more precise breakpoints, albeit only for CNVs that are common in analyzed individuals. Subsequently, discovered CNVs could be genotyped in each individual. We suggest that both approaches should be used on a given set of low coverage samples to broaden the spectrum (size and allele frequency) of discovered CNVs.
+	
+	Sensitivity analysis to choose bin size
+	For sensitive CNV prediction with RD analysis choice of bin size is crucial. Analysis using small bins suffers from limited number of mapped read in each bin (limited statistics) in order to resolve regions with different copy number (CN). Analysis with large bins, on the contrary, is not sensitive to small CNVs and less precise in CNV boundaries. Therefore, the objective would be to use as small bins as possible still preserve enough statistical power to resolve genomic regions with different CN states.
+	In order to determine the optimal bin size to calculate RD signal we have compared CNV calls made at different bin sizes for trio data. Decreasing bin size improves sensitivity and allows calling for more CNVs, however, those calls should be consistent with the ones made at larger bin size. Due to not 100% sensitivity, consistency of CNV calling cannot be judged solely by call overlap or concordance (we define it as 50% reciprocal overlap). Indeed, proportions of both overlapping and concordant calls are fairly similar across range of bin sizes (see Figure S14A), however, the difference between the two increases rapidly when decreasing bin size below 100 bp, indicating dramatic change in predicted CNVs boundaries (see Figure S14B). This difference can be caused by smaller as well as larger event boundaries when using different bin size (see Figure S15). And while for each region, without addition information, it is not possible to say, which boundaries are more correct, the general trend of increasing inconsistency suggests that boundaries of CNVs determined with small bins (<100 bp) are less accurate.
+	The optimal bin size, of course, varies depending on the available statistics. For coverage smaller than those we have for the six analyzed individual the optimal bin size will be larger. To avoid time consuming calculation to determine the optimal bin size, i.e. comparing CNVs predicted when using different ones, we provide an empirical observation, from analysis of the six individuals, that the optimal bin size is the one at which ratio of average RD signal to its standard deviation (both values are calculated from Gaussian fit) is roughly 4-5. For the six individual analyzed here this project into bins of 100-150 bp. 
+
+
+# Testing the UMD3 reference:
+	# my UMD3 reference had twice the number of reads map to it from each file. 
+	# I want to check to see if it really worked and if the increased number of reads isn't just from repetative reads
+	# going to use this one liner in a loop: /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view BTAN01M.FC42PER.3.bam | perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $h{$s[0]} += 1;} foreach $k (keys(%h)){print "$h{$k}\n";}' | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		$ for i in *.bam; do echo "$i" >> angus_hd_read_repeats.txt; echo "********************" >> angus_hd_read_repeats.txt; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $h{$s[0]} += 1;} foreach $k (keys(%h)){print "$h{$k}\n";}' | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl >> angus_hd_read_repeats.txt; echo "********************" >> angus_hd_read_repeats.txt; echo $i; done
+		$ for i in ./*/*.bam; do folder=`echo $i | cut -d'/' -f2`; echo $folder; echo "$i" >> $folder/hd_read_repeats.txt; echo "********************" >> $folder/hd_read_repeats.txt; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $h{$s[0]} += 1;} foreach $k (keys(%h)){print "$h{$k}\n";}' | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl >> $folder/hd_read_repeats.txt; echo "********************" >> $folder/hd_read_repeats.txt; echo $i; done
+		# That is a good test to see multiple mappings of a solitary read (indicating repeats that weren't masked!)
+	
+	
+	# Also, testing the UMD3 mappings:
+		$ for i in *.bam; do lines=`/mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | wc | awk '{print $2}'`; echo "$i $lines" >> nelore_mapped_list1.txt; done
+		$ for i in *.bam; do lines=`/mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | wc | awk '{print $2}'`; echo "$i $lines" >> nelore_mapped_list2.txt; done
+		
+____________________________________
+Running Alkan's pipeline
+____________________________________
+
+# OK, so George wants me to get the CNV calls for the cow4 mapping of the Angus individuals. Going to run the pipeline on each animal
+	# For an0626
+	$ perl run_alkan_pipeline.pl --File1 an0626_angus_file1.bed --File2 an0626_angus_file2.bed --File3 an0626_angus_file3.bed --File1_c an0626_angus_file1_c.bed --File3_c an0626_angus_file3_c.bed
+	
+	
+# Going to set it up so that I can run the pipeline on the remaining two animals. First I need to get the bed files sorted out.
+	$ for i in *.sam; do echo $i; perl -lane '$e = $F[3] + 80; print "$F[2]\t$F[3]\t$e";' < $i >> an0828_angus.bed; done
+	$ for i in *.sam; do echo $i; perl -lane '$e = $F[3] + 80; print "$F[2]\t$F[3]\t$e";' < $i >> an1717_angus.bed; done
+	
+	# Now to process them into window files sequentially
+	
+	$ perl combine_bed_hits.pl an0828_angus.bed cnv_calls; cd ../an1717/; perl combine_bed_hits.pl /mnt/data8/dbickhart/high_ang_bam/an1717/an1717_angus.bed /mnt/data8/dbickhart/high_ang_bam/an1717/cnv_calls
+	
+	$ perl run_alkan_pipeline.pl --File1 an0828_angus_file1.bed --File1_c an0828_angus_file1_c.bed --File2 an0828_angus_file2.bed --File3 an0828_angus_file3.bed --File3_c an0828_angus_file3_c.bed
+	$ perl run_alkan_pipeline.pl --File1 an1717_angus_file1.bed --File1_c an1717_angus_file1_c.bed --File2 an1717_angus_file2.bed --File3 an1717_angus_file3.bed --File3_c an1717_angus_file3_c.bed

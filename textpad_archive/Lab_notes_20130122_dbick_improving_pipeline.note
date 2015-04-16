@@ -1,0 +1,821 @@
+01/22/2013
+# This file contains my notes on improving and streamlining my variant detection pipeline in order to work on other systems.
+# Additionally, I am trying to improve the algorithms in order to get better calls and standardize everything.
+
+Project sourceforge page: https://sourceforge.net/projects/cosvard/?source=navbar
+
+# Some of the systems that I am interested in emulating:
+	* DELLY and GenomeStrip: Both programs combine splitreads and discordant reads in order to identify deletion breakpoints
+	* CNVnator: uses read depth signal and the mean-shift
+	
+# Implemented a java based fastq splitter
+	# Testing the time of the program
+	3850:/POD1_1/users/bickhart
+	$ time java -Xmx3g -jar ~/bin/rapidSplitFastq.jar -i1 ./Ivanhoe/ivanhoe_p_2_1_raw.fq.gz -i2 ./Ivanhoe/ivanhoe_p_2_2_raw.fq.gz -i 0 -n 1000000 -o temp_fqs -t 50 -d
+		Iterator:99
+		
+		real    23m33.448s
+		user    23m11.789s
+		sys     1m7.067s
+	
+	# Now to test my perl splitter to see which is faster
+	$ time perl ~/bin/test_perl_fq_splitter.pl ./Ivanhoe/ivanhoe_p_2_1_raw.fq.gz ./Ivanhoe/ivanhoe_p_2_2_raw.fq.gz temp_fqs 0
+		real    15m18.524s
+		user    20m35.722s
+		sys     1m21.215s
+
+	# So the perl script is faster! It is less resilient though so maybe the java program is the best way to go still?
+	
+# Retooling the beginning of the pipeline in order to use BWA and CNVnator more effectively
+	# Right now I do not have a fluid means of incorporating BWA into the pipeline
+	# I am going to rewrite the initial pair-end matching C program in Java in order to better detect OEAs from non-interleaved fastq file bams
+	# Another thing that I want to do: Retool the initial OEA finder program in order to search near discordant read clusters
+	
+	# I need to retool the beginning of my pipeline to do the following:
+		1. Run a separate script that runs MrsFAST on one reference genome, BWA on an unmasked genome and then converts the output from both into bams
+		2. Run the java program on the Mrsfast data in order to extract the divets and discordant reads (this will take care of the first part of the splitread pipeline)
+		3. sort (samtools), merge (picard) and index the bams from both BWA and Mrsfast		
+		4. The rest of the pipeline can proceed normally
+		
+	# Testing the java program I wrote:
+		pwd:/home/dbickhart/share/test_software/test_files/
+		$ mrsfast --search ../../umd3_data/umd3_kary_extend_hgap.fa --seq ivanhoe_p_2_1_raw.fq_0.fq1 -o ivanhoe_p_2_1_raw.fq_0.fq1.sam
+		$ mrsfast --search ../../umd3_data/umd3_kary_extend_hgap.fa --seq ivanhoe_p_2_2_raw.fq_0.fq2 -o ivanhoe_p_2_2_raw.fq_0.fq2.sam
+		
+		# Running the command in the netbeans ide using predefined settings
+		# It worked the first time! Going to try running the split read programs one a time on the interleaved fastqs to see if the results are similar
+		$ perl -e 'chomp(@ARGV); open(I1, "< $ARGV[0]"); open(I2, "< $ARGV[1]"); while($h1 = <I1>){$s1 = <I1>; $p1 = <I1>; $q1 = <I1>; $h2 = <I2>; $s2 = <I2>; $p2 = <I2>; $q2 = <I2>; print "$h1$s1$p1$q1$h2$s2$p2$q2";}' ivanhoe_p_2_1_raw.fq_0.fq1 ivanhoe_p_2_2_raw.fq_0.fq2 > ivanhoe_interleaved_test.fq
+		$ mrsfast --search ../../umd3_data/umd3_kary_extend_hgap.fa --seq ivanhoe_interleaved_test.fq -o ivanhoe_interleaved_test.fq.sam
+		$ ../../programs_source/eichler_lab/splitread/Paired-end_match_samd -i ivanhoe_interleaved_test.fq.sam -o ivanhoe_interleaved_test -l 100 -u 500 -m 500000
+		# This took way too long; I think that there are too many mapped reads in the sam file for the program
+		
+		$ perl -e '$c = 0; while(<>){print $_; $c++; if($c >= 500000){last;}}' < ivanhoe_interleaved_test.fq.sam > ivanhoe_interleaved_test.fq.crop.sam
+		# That was still too many!
+		$ perl -e '$c = 0; while(<>){print $_; $c++; if($c >= 200000){last;}}' < ivanhoe_interleaved_test.fq.crop.under.sam > ivanhoe_interleaved_test.fq.crop.under.crop.sam
+		$ ../../programs_source/eichler_lab/splitread/Paired-end_match_samd -i ivanhoe_interleaved_test.fq.crop.under.crop.sam -o ivanhoe_interleaved_test_crop -l 100 -u 500 -m 500000
+		
+		# I had to rewrite the code logic of my program to better replicate the "bin everything" approach of the splitread program
+		# I included an optional output file that contains a list of the discordant reads that have perfect concordant matches
+		# Testing my split fastq output against the original splitread pipeline now
+		
+		$ perl -e '%unique; while(<>){chomp; @s = split(/\t/); $unique{$s[0]} = 1;} foreach $k (sort{$a cmp $b} keys(%unique)){print "$k\n";}' < ivanhoe_interleaved_test_crop.single.txt > ivanhoe_interleaved_test_oea.name
+		$ fastqdeloea -i ivanhoe_interleaved_test.fq -r ivanhoe_interleaved_test_oea.name -o ivanhoe_interleaved_test_split.fq -clean
+		
+		$ breakReads -i ivanhoe_interleaved_test_split.fq -o ivanhoe_interleaved_test_split_split.fq PAIR
+		
+	# Just wrote a massive java program that combines both splitread and variationhunter
+	# Going to test it out on my local installation to see if it works or bugs out
+		pwd:/home/dbickhart/share/test_software/test_files/
+		$ mkdir split_sams
+		$ mrsfast --search ../../umd3_data/umd3_kary_extend_hgap.fa --seq test_disc_output.split.fq -o split_sams/test_disc_output.split.fq.sam
+		$ rm split_sams/test_disc_output.split.fq.sam.nohit
+		
+	# Now, checking to see if I could get away with running mrsfast in PE mode to try to get easier alignments of the split reads
+		3850: /home/bickhart/POD1_1
+		$ mrsfast --search ./reference/umd3_kary_nmask_hgap.fa --seq test_mrsfast.fq1 -o 
+		$ mrsfast --search ./reference/umd3_kary_nmask_hgap.fa --pe --seq1 test_mrsfast.fq1 --seq2 test_mrsfast.fq2 -o test_mrsfast_pe.sam --min 100 --max 500
+		$ mrsfast --search ./reference/umd3_kary_nmask_hgap.fa --pe --seq1 test_mrsfast.fq1 --seq2 test_mrsfast.fq2 -o test_mrsfast_pe_highbounds.sam --min 100 --max 100000
+		
+		# Ran a one-shot script designed to interrogate the mappings of each read quickly.
+		# PEH is the highbounds paired end mapping
+		# Doesn't look good for paired end data; I think that every possible permutation (with proper orientation of reads) is accounted for in the highbounds mapping
+		$ perl check_read_occurrence_profile.pl
+			Done with sampe!
+			Top 10 hits for pe:
+			Readname        PE      SE      PEH
+			HWI-ST330_0056:2:67:6521:62956#0:0      44      47      1388
+			HWI-ST330_0056:2:67:15591:53108#0:0     44      34      882
+			HWI-ST330_0056:2:67:14871:54606#0:0     40      37      802
+			HWI-ST330_0056:2:67:5265:59282#0:0      40      31      754
+			HWI-ST330_0056:2:67:17017:52652#0:0     40      30      800
+			HWI-ST330_0056:2:67:13650:59700#0:0     38      45      1376
+			HWI-ST330_0056:2:67:13421:60014#0:0     38      28      738
+			HWI-ST330_0056:2:67:5403:52735#0:0      38      31      752
+			HWI-ST330_0056:2:67:14506:59495#0:0     38      43      1278
+			HWI-ST330_0056:2:67:3201:53902#0:0      38      28      784
+			HWI-ST330_0056:2:67:1524:63134#0:0      36      28      756
+			HWI-ST330_0056:2:67:13313:61236#0:0     36      29      736
+
+			Top 10 hits for se:
+			Readname        PE      SE      PEH
+			HWI-ST330_0056:2:67:11088:62037#0:0     2       54      10
+			HWI-ST330_0056:2:67:4513:56971#0:0      34      52      632
+			HWI-ST330_0056:2:67:4524:56986#0:0      34      52      632
+			HWI-ST330_0056:2:67:6521:62956#0:0      44      47      1388
+			HWI-ST330_0056:2:67:13650:59700#0:0     38      45      1376
+			HWI-ST330_0056:2:67:7995:62386#0:0              44
+			HWI-ST330_0056:2:67:4658:61144#0:0              44
+			HWI-ST330_0056:2:67:14506:59495#0:0     38      43      1278
+			HWI-ST330_0056:2:67:1700:54336#0:0      8       43      306
+			HWI-ST330_0056:2:67:13297:55729#0:0             42
+			HWI-ST330_0056:2:67:12404:63914#0:0     12      42      344
+			HWI-ST330_0056:2:67:8490:56411#0:0      26      42      560
+
+			Top 10 hits for pe2:
+			Readname        PE      SE      PEH
+			HWI-ST330_0056:2:67:6521:62956#0:0      44      47      1388
+			HWI-ST330_0056:2:67:13650:59700#0:0     38      45      1376
+			HWI-ST330_0056:2:67:14506:59495#0:0     38      43      1278
+			HWI-ST330_0056:2:67:15591:53108#0:0     44      34      882
+			HWI-ST330_0056:2:67:2925:55963#0:0      14      29      848
+			HWI-ST330_0056:2:67:14871:54606#0:0     40      37      802
+			HWI-ST330_0056:2:67:12040:54283#0:0     26      17      800
+			HWI-ST330_0056:2:67:17017:52652#0:0     40      30      800
+			HWI-ST330_0056:2:67:3201:53902#0:0      38      28      784
+			HWI-ST330_0056:2:67:13012:55083#0:0     4       35      780
+			HWI-ST330_0056:2:67:1524:63134#0:0      36      28      756
+			HWI-ST330_0056:2:67:5265:59282#0:0      40      31      754
+			
+# I think that CNVnator may give me further issues in this pipeline. Going to rely on the old MrsFAST WSSD design but instead, I will include GMA estimates for read normalization first
+	
+	
+# Checkpoint file
+	# Here is my idea for the checkpoint file:
+		- Start with the sample name
+		- Then the type of files
+		- Then the fastq file name or other info, depending on the types of files
+		- Follow with the names and paths of the files afterwards
+	
+		line 1: current working directory
+		line 2: samplename\tpfq1\trgnum\torigfq1\tfile1\tfile2\t...
+		line 3: samplename\tpfq2\trgnum\torigfq2\tfile1\tfile2\t...
+		line 2: samplename\tmfq1\trgnum\torigfq1\tfile1\tfile2\t...
+		line 3: samplename\tmfq2\trgnum\torigfq2\tfile1\tfile2\t...
+		line 2: samplename\tsfq1\trgnum\torigfq1\tfile1\tfile2\t...
+		line 4: samplename\tsrrp\trgnum\tflatfile
+		line 5: samplename\tdoc\trgnum\tfile1\tfile2\t...
+		line 7: samplename\tsnp\trgnum\tbam1\tbam2\t...
+		line 8: samplename\tmerger\t(to be decided later)
+		
+# I am going to use a flat file to contain the lists of anchor reads, split reads and divets for each subsection of data of the VHSR program
+# This should help reduce the memory overhead of the readinitialfiles class as it does not need to keep the entire hash of readnames active
+
+# Here is the flatfile order:
+	splitsamfile\tdivetfile\tanchorfile\tinsertsize\tstdev\n
+		
+
+
+# Now that many of the animals are completely aligned, let's test out the DOC caller that I've created
+	# Generating list of GMS files
+	Blade14: /home/dbickhart/reference/gms
+	$ for i in *.gz; do echo "/home/dbickhart/reference/gms/$i" >> gms_files.list; done
+	
+	# Now, let's run a test case on one of the samples
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/
+	$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -O BIBR07_test_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 10000 -g ~/reference/gms/gms_files.list -s '*.mrsfast.bam'
+		[DOC MAIN]Processing input reference fasta
+		[DOC CHR]Working on >chr1
+		[DOC CHR]Working on >chr2
+		[DOC CHR]Working on >chr3
+		[DOC CHR]Working on >chr4
+		[DOC CHR]Working on >chr5
+		[DOC CHR]Working on >chr6
+		[DOC CHR]Working on >chr7
+		[DOC CHR]Working on >chr8
+		[DOC CHR]Working on >chr9
+		[DOC CHR]Working on >chr10
+		[DOC CHR]Working on >chr11
+		[DOC CHR]Working on >chr12
+		[DOC CHR]Working on >chr13
+		[DOC CHR]Working on >chr14
+		[DOC CHR]Working on >chr15
+		[DOC CHR]Working on >chr16
+		[DOC CHR]Working on >chr17
+		[DOC CHR]Working on >chr18
+		[DOC CHR]Working on >chr19
+		[DOC CHR]Working on >chr20
+		[DOC CHR]Working on >chr21
+		[DOC CHR]Working on >chr22
+		[DOC CHR]Working on >chr23
+		[DOC CHR]Working on >chr24
+		[DOC CHR]Working on >chr25
+		[DOC CHR]Working on >chr26
+		[DOC CHR]Working on >chr27
+		[DOC CHR]Working on >chr28
+		[DOC CHR]Working on >chr29
+		[DOC CHR]Working on >chrX
+		[DOC MAIN]Retrieving GMS data; Intersecting reads from BAMS
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr10.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr11.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr12.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr13.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr14.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr15.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr16.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr17.reduced.simple.gz
+		[DOC GMS]Done with first set of eight files
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr18.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr19.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr1.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr20.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr21.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr22.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr23.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr24.reduced.simple.gz
+		[DOC GMS]Done with first set of eight files
+		java.lang.NullPointerException thread:  285
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr25.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr26.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr27.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr28.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr29.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr2.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr3.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr4.reduced.simple.gz
+		[DOC GMS]Done with first set of eight files
+		java.lang.NullPointerException thread:  286
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr5.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr6.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr7.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr8.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chr9.reduced.simple.gz
+		[DOC GMS]Loading file: /home/dbickhart/reference/gms/chrX.reduced.simple.gz
+		[DOC GMS]Done with first set of eight files
+		java.lang.NullPointerException thread:  285
+		[DOC MAIN]Creating control windowsead:  811
+		[DOC CTRL]Partitioned 331823 control windows out of 867802 for window: 0
+		[DOC CTRL]Partitioned 542625 control windows out of 1180251 for window: 1
+		[DOC CTRL]Partitioned 253465 control windows out of 586053 for window: 2
+		[DOC MAIN]Calculating new control statistics
+		[DOC MAIN]Normalizing windows with control statistics
+		[DOC MAIN]Finished
+		
+		# I had to debug a little, but it wasn't too bad. I think that bam file # 285/286 is causing issues here
+		# Added a line to the samintersector thread class to print out the offending file name
+		
+		# Now to try calling CNVs
+		$ ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 BIBR07_test_wins.file1.bed -f2 BIBR07_test_wins.file2.bed -f3 BIBR07_test_wins.file3.bed -s1 BIBR07_test_wins.file1.stats -s2 BIBR07_test_wins.file2.stats -s3 BIBR07_test_wins.file3.stats -o BIBR07/doc_wins/BIBR07_doc_calls -w 10000 -t 2
+		
+		# OK, after some debugging, I was able to get CNV loss calls, but there is a problem with my calling and window generation scripts
+		# I need to develop the model better and/or filter the final CNV calls to remove regions that might be unmappable
+		# Here are some of the issues that I think that I'm having:
+			1. CNV calls are including the regions that have an average GMS score of 0.1 or less
+			2. CNV call thresholds are not being properly set, so the median, average and stdev values are off
+			3. My padding routine is not properly padding the CNVS
+			4. My thresholds are too lenient given the STDEV of the read scores
+			5. My CN associations are off and not reflective of the actual CN windows
+			
+		# Checking to see if these issues are correct
+			2. This one is easier to check; I'll just use my old program to see if the window values change that significantly due to my addition of GMS normalization
+				Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/
+				$ ~/jdk1.7.0/bin/java -jar ~/bin/mergeDocWindows.jar -I BIBR07 -O BIBR07_old_style -R ~/reference/umd3_kary_nmask_hgap.fa -n 2
+				
+				# OK, so there is a significant change:
+				$ less BIBR07_test_wins.file1.preNorm.bed
+				chr1    108832  133434  0.39150000      0.00000000
+				chr1    110832  135780  0.41069999      0.00000000
+				chr1    112832  137271  0.42219999      0.00000000
+				chr1    114832  139089  0.44970000      0.00000000
+				chr1    116832  139400  0.45130000      0.00000000
+				chr1    118832  139933  0.45010000      0.00000000
+				chr1    120832  146975  0.45640001      0.00000000
+				chr1    122832  147796  0.45710000      0.00000000
+				chr1    124832  150089  0.46910000      0.00000000
+				chr1    126832  150920  0.46550000      0.00000000
+				chr1    128832  151253  0.46700001      0.00000000
+				chr1    130832  151259  0.46680000      0.00000000
+				
+				$ less BIBR07_old_style.file1.bed
+				chr1    108832  120097  0.34380001      367
+				chr1    109832  121764  0.36899999      320
+				chr1    110832  123170  0.37880000      299
+				chr1    111832  124038  0.41780001      209
+				chr1    112832  124038  0.41780001      209
+				chr1    113832  124947  0.43020001      207
+				chr1    114832  126088  0.44920000      123
+				chr1    115832  126088  0.44920000      123
+				chr1    116832  131512  0.44299999      135
+				chr1    117832  131640  0.43860000      143
+				chr1    118832  132623  0.43300000      150
+				chr1    119832  133382  0.43939999      132
+				chr1    120832  133654  0.43640000      124
+				chr1    121832  135070  0.43279999      123
+				chr1    122832  135486  0.43720001      128
+
+				
+				# Before I start doing any comparisons of the values (because my new windows, prenorm, have 5 times the value of the old windows), let's redo
+				# the mergeDoCwins program with in increase in window size to make things comparable.
+				
+				$ less BIBR07_old_style.file1.bed
+				chr1    78832   107721  0.36770001      599
+				chr1    80832   107948  0.36680001      611
+				chr1    82832   108460  0.37380001      613
+				chr1    84832   110634  0.36430001      606
+				chr1    86832   110784  0.36590001      618
+				chr1    88832   111043  0.36500001      614
+				
+				$ less BIBR07_test_wins.file1.preNorm.bed
+				chr1    78832   107721  0.36770001      1560.31274414
+				chr1    80832   107948  0.36680001      1594.06213379
+				chr1    82832   108460  0.37380001      1601.97302246
+				chr1    84832   110634  0.36430001      1585.97485352
+				chr1    86832   110784  0.36590001      1611.72497559
+				chr1    88832   111043  0.36500001      1607.08093262
+				
+				# Granted, my previous binning strategy was pretty terrible, so that may be involved here.
+				# I have rewritten the program to print out the actual number of times that an intersection occurred so lets see if that helps:
+				$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -O BIBR07_test_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 10000 -g ~/reference/gms/gms_files.list -s '*.mrsfast.bam'
+				# It does. The number of "zero" areas has decreased significantly.
+				
+				
+			5.  I have good evidence to believe this as I found an anomaly in the data
+				# CNV call:
+				chr1    9110609 9270767 GAIN    0.1593
+				
+				# CN windows
+				chr1    9110123 9113385 2.213693
+				chr1    9113386 9115494 3.683626
+				chr1    9115495 9118773 4.523465
+				chr1    9118774 9122704 2.848505
+				chr1    9122705 9127196 5.740545
+				chr1    9127197 9136474 6.014415
+				chr1    9136475 9138651 4.452477
+				chr1    9138652 9141022 5.545598
+				chr1    9141023 9145649 5.864076
+				chr1    9145650 9149704 4.927729
+				chr1    9149705 9153631 1.839883
+				chr1    9153632 9160352 4.392857
+				chr1    9163184 9172568 3.385521
+				chr1    9172569 9177259 0.159346	<- very similar to the value above
+				chr1    9177260 9183466 6.653302
+				chr1    9183467 9188138 2.862874
+				chr1    9190011 9195767 2.277603
+				chr1    9195768 9199063 3.857984
+				chr1    9199064 9203871 3.370723
+				chr1    9203872 9207129 3.823027
+				chr1    9212068 9216124 2.979971
+				chr1    9216125 9223677 3.241402
+				chr1    9223678 9236730 5.029170
+				chr1    9236731 9242442 5.169858
+				chr1    9242443 9244508 4.612896
+				chr1    9244509 9247423 4.612682
+				chr1    9247424 9249996 2.817622
+				chr1    9249997 9252150 4.652143
+				chr1    9252151 9266055 2.776445
+				chr1    9266056 9272471 1.777259
+				chr1    9272472 9276412 3.305312
+
+
+			4. I think that the GMS score might not be suitable for this analysis; here's why:
+				Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/BIBR07/doc_wins
+				$ perl -e '$t = 0; while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_doc_next_calls.cnvs.bed
+					558,313,481
+				# This is after I fixed the bug where my intersections were not mapping all reads within a chromosome
+				# I added a boolean flag to the DOC window generator that excludes GMS score normalization.
+				# Let's see if that helps
+				
+				Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/
+				$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -O BIBR07_nogms_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 10000 -g ~/reference/gms/gms_files.list -s '*.mrsfast.bam' -u
+				$ ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 BIBR07_tenogms_wins.file1.bed -f2 BIBR07_tenogms_wins.file2.bed -f3 BIBR07_tenogms_wins.file3.bed -s1 BIBR07_tenogms_wins.file1.stats -s2 BIBR07_tenogms_wins.file2.stats -s3 BIBR07_tenogms_wins.file3.stats -o BIBR07_doc_nonorm_calls -w 10000 -t 2
+				
+				$ perl -e '$t = 0; while(<>){@s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_doc_nonorm_calls.cnvs.bed
+					483,490,726
+				# fewer but still too few
+				
+				# Something to consider: my control windows contain entries that are in "poor" GMS areas
+				$ perl -lane 'if($F[5] == 0){next}elsif($F[4] / $F[5] < 0.75 || $F[4] / $F[5] > 1){print $_;}' < BIBR07/doc_wins/BIBR07_test_wins.file1.preNorm.bed | wc -l
+					6748
+				$ perl -lane 'if($F[5] == 0){next}elsif($F[4] / $F[5] < 0.75 || $F[4] / $F[5] > 1){print "$F[0]\t$F[1]\t$F[2]";}' < BIBR07/doc_wins/BIBR07_test_wins.file1.preNorm.bed | intersectBed -a stdin -b BIBR07/doc_wins/BIBR07_test_wins.file1.control.bed -wa | uniq | wc -l
+					3395
+					
+				# So, I've been thinking that the GMS score is almost a glorified WSSD calculation on a per nucleotide basis using 50bp windows
+				# If I use the ratio of read hits vs gms hits and cutoff at about 75%, I should be able to remove poor performing windows this way, before control statistics are calculated
+				
+				# Let's test this out
+					$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -O BIBR07_newctrl_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 10000 -g ~/reference/gms/gms_files.list -s '*.mrsfast.bam'
+					# OK, so the differences this time are: control thresholds are the median divided/multiplied by 7 and also control windows cannot contain a gms count vs binary count ratio of less than 75%
+					$ perl -e '$t; while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_newctrl_wins_calls.cnvs.bed
+						60607479
+					$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;}$t += $s[2] - $s[1];} print "$t\n";' < BIBR07_newctrl_wins_calls.cnvs.bed
+						10622484
+					# Better, but still not near the numbers I was expecting in the past. The X chromosome has 50 megabases of CNVs!
+				
+					# Lets reduce the control window estimate by 7 * median (for upper limit) and by median / 4 (for lower limit).
+				
+				# Since I bin the GMS file and since it is so large, I'm going to make my program's life easier by prebinning the values for easy access later
+					Blade14: /home/dbickhart/reference/gms
+					$ perl -e 'use Forks::Super; opendir(DIR, "./"); while($l = readdir(DIR)){print "$l\n"; fork{cmd => "perl ~bin/create_simple_gms_files.pl $l $l.bin" max_prox => 10};} waitall();'
+				
+				$ ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 BIBR07_newctrl_wins.file1.bed -f2 BIBR07_newctrl_wins.file2.bed -f3 BIBR07_newctrl_wins.file3.bed -s1 BIBR07_newctrl_wins.file1.stats -s2 BIBR07_newctrl_wins.file2.stats -s3 BIBR07_newctrl_wins.file3.stats -o BIBR07_newctrl_wins_calls -w 10000 -t 4
+				# I think that it went well, but the autosomal calls are very small
+				
+				# Also, a bug: I think that the file3 stats and the file2 stats are from the same file. I need to check my window generation program here
+					$ head BIBR07_newctrl*.stats
+					==> BIBR07_newctrl_wins.file1.stats <==
+					auto;avg;755.60307957
+					auto;std;487.31747624
+					auto;median;702.72251341
+					sex;avg;8.70855016
+					sex;std;40.76785710
+					sex;median;0.00000000
+					
+					==> BIBR07_newctrl_wins.file2.stats <==
+					auto;avg;152.17571465
+					auto;std;115.94255294
+					auto;median;126.24979641
+					sex;avg;9.81089362
+					sex;std;46.20073197
+					sex;median;0.00000000
+					
+					==> BIBR07_newctrl_wins.file3.stats <==
+					auto;avg;152.17571465
+					auto;std;115.94255294
+					auto;median;126.24979641
+					sex;avg;9.81089362
+					sex;std;46.20073197
+					sex;median;0.00000000
+
+				# One more change: I think that I will also get the GMS differential in each of the file1 windows in order to exclude regions of low GMS from being called as losses
+				# I called this a GMS ratio and it is printed right after the normalized read counts in each window for each file type
+				Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+				$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -O BIBR07_simplecrl_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 10000 -g ~/reference/gms/gms_simplified_list.txt -s '*.mrsfast.bam'
+		
+		# One thing that I haven't considered: what if the data is drastically different if I run it through the old pipeline?
+		# Since I'm lazy and I don't want to rewrite my old code, I am going to copy the mrsfast bams to a new folder
+			Blade14: /home/dbickhart/vnx_gliu_7/100_base_run/BIBR07
+			$ mkdir olddoctest
+			$ cp *.mrsfast.bam ./olddoctest/
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/mergeDocWindows.jar -I olddoctest/ -O BIBR07_old_alkan_test -R ~/reference/umd3_kary_nmask_hgap.fa -n 8
+			
+			Blade14: /home/dbickhart/vnx_gliu_7/100_base_run/BIBR07/olddoctest/doc_wins
+			$ sh ~/bin/cattle_umd3_pipeline_bob_placeholder.sh BIBR07_old_alkan_test.file1_c.bed 0 0 0 BIBR07_old_alkan_test.file1.bed BIBR07_old_alkan_test.file2.bed 0 0 0 0 BIBR07_old_alkan_test.file3_c.bed BIBR07_old_alkan_test.file3.bed
+				$ perl -e '$t; while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_old_alkan_test.file1.bed.final.wssd
+					14,625,176
+				$ perl -e '$t; while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_old_alkan_test.file1.bed.final.deletions.tab
+					1,920,285
+					
+			# Hmm... these are the results I was expecting. Let's try running my java analysis with similar windows to see if there is an improvement in my results
+			Blade14: /home/dbickhart/vnx_gliu_7/100_base_run
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -O BIBR07_5k_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 5000 -g ~/reference/gms/gms_files.list -s '*.mrsfast.bam'
+				[DOC CTRL] control thresholds for window 0: lower -> 135.9280242919922 upper -> 815.5681457519531
+				[DOC CTRL]Partitioned 1541434 control windows out of 2086766 for window: 0
+				[DOC CTRL] control thresholds for window 1: lower -> 24.99498176574707 upper -> 149.96989059448242
+				[DOC CTRL]Partitioned 1602686 control windows out of 2460607 for window: 1
+				[DOC CTRL] control thresholds for window 2: lower -> 24.939619064331055 upper -> 149.63771438598633
+				[DOC CTRL]Partitioned 773328 control windows out of 1197860 for window: 2
+				[DOC MAIN]Calculating new control statistics
+				[DOC MAIN]Normalizing windows with control statistics
+				[DOC OUTPUT]Rejected 3542 windows from 0 window set
+				[DOC OUTPUT]Rejected 20971 windows from 1 window set
+				[DOC OUTPUT]Rejected 3275 windows from 2 window set
+				[DOC MAIN]Finished
+				
+			# OK, so I noticed that my new windows have values that are three times larger than the old windows.
+			# Window partitioning seems to be the same in both cases (which is good, since the algorithms are supposed to be the same)
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 BIBR07_5k_wins.file1.bed -f2 BIBR07_5k_wins.file2.bed -f3 BIBR07_5k_wins.file3.bed -s1 BIBR07_5k_wins.file1.stats -s2 BIBR07_5k_wins.file2.stats -s3 BIBR07_5k_wins.file3.stats -o BIBR07_5k_wins_calls -w 5000 -t 4
+				$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_5k_wins_calls.cnvs.bed
+					15,549,895
+				$ wc -l BIBR07_5k_wins_calls.cnvs.bed
+					1333 BIBR07_5k_wins_calls.cnvs.bed  <- 490 autosome calls
+				$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_5k_wins_calls.cnvs.bed
+					71,586,107  <- this is with the X chromosome
+					
+		# OK, so my program worked "better" with the 5k windows and shows somewhat similar numbers to the old program. Lets do a comparison
+			# statistics
+				$ head BIBR07_5k_wins.file1.stats  <- new program
+					auto;avg;367.46650993
+					auto;std;160.42035931
+					auto;median;354.31200179
+					sex;avg;1.78323278
+					sex;std;18.08040922
+					sex;median;0.00000000
+				$ head BIBR07_old_alkan_test.file1.bed_gccorr.log	<- old program
+					Avg:  136.623493  std:  34.281409  AutoCut:  273.749129  AutoCut2:  239.467720  Del:  33.779266
+					SexA:  9.875106  std:  28.341520  AutoCut:  123.241186  AutoCut2:  94.899666  Del:  0.0
+				
+				# So, the old program has a better standard deviation. I wonder if this is due to the control window selection or if my java program is miscalculating the stats
+					# Checking prenormalized stats
+					NEW (no gms) $ perl -lane 'if($F[0] eq "chrX"){next;}else{print $F[5];}' < BIBR07_5k_wins.file1.preNorm.bed | statStd.pl
+						total   1992107
+						Minimum 0
+						Maximum 17340
+						Average 339.469796
+						Median  290
+						Standard Deviation      279.135358
+						Mode(Highest Distributed Value) 168
+					NEW (w gms) $ perl -lane 'if($F[0] eq "chrX"){next;}else{print $F[4];}' < BIBR07_5k_wins.file1.preNorm.bed | statStd.pl           total   1992107
+						Minimum 0.00000000
+						Maximum 8817.74414063
+						Average 333.373722
+						Median  287.38256836
+						Standard Deviation      233.481083
+						Mode(Highest Distributed Value) 0.00000000
+					OLD $ perl -lane 'if($F[0] eq "chrX"){next;}else{print $F[4];}' < ../olddoctest/doc_wins/BIBR07_old_alkan_test.file1.bed | statStd.pl
+						total   1992107
+						Minimum 0
+						Maximum 5369
+						Average 132.852366
+						Median  133
+						Standard Deviation      78.631032
+						Mode(Highest Distributed Value) 141
+						
+					# Checking the controls
+					NEW $ perl -lane 'if($F[0] eq "chrX"){next;}else{print $F[3];}' < BIBR07_5k_wins.file1.control.bed | statStd.pl           
+						total   1539890
+						Minimum 6.88
+						Maximum 950.20
+						Average 367.498978
+						Median  354.34
+						Standard Deviation      160.420357
+						Mode(Highest Distributed Value) 339.15
+					$ perl -lane 'if($F[0] eq "chrX"){next;}else{print $F[4];}' < ../olddoctest/doc_wins/BIBR07_old_alkan_test.file1_c.bed | statStd.pl
+						total   1663123
+						Minimum 34
+						Maximum 925
+						Average 136.623151
+						Median  135
+						Standard Deviation      54.888592
+						Mode(Highest Distributed Value) 143	
+					
+					# I made a modification to the program that makes it print out the previous statistics as well
+						$ head BIBR07_5k_wins.file1.stats BIBR07_5k_wins.file1.stats.pre
+						==> BIBR07_5k_wins.file1.stats <==
+						auto;avg;367.46650993
+						auto;std;160.42035931
+						auto;median;354.31200173
+						sex;avg;1.78323280
+						sex;std;18.08040925
+						sex;median;0.00000000
+						
+						==> BIBR07_5k_wins.file1.stats.pre <==
+						auto;avg;367.43403790
+						auto;std;172.61903002
+						auto;median;335.82794189
+						sex;avg;155.17932524
+						sex;std;30.00035520
+						sex;median;148.72924805
+
+						# Not much of an improvement! In fact, the sex stats get completely borked					
+					
+				# Checking the overlap
+					$ perl -lane 'if($F[0] eq "chrX"){next;}else{print $_;}' < ../../doc_wins/BIBR07_5k_wins_calls.cnvs.bed | ~/bin/intersectBed -a stdin -b BIBR07_old_alkan_test.file1.bed.final.wssd -v  | wc -l
+						396 <- considering that this was 490, its less than 30%
+						
+		# New strategy: Let's try to get information just from the bwa aligned reads
+			Blade14: /home/dbickhart/vnx_gliu_7/100_base_run
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -i ./BIBR07/BIBR07.full.sorted.merged.bam -O BIBR07_bwa5k_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -s '*.merged.bam'
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 BIBR07_bwa5k_wins.file1.bed -f2 BIBR07_bwa5k_wins.file2.bed -f3 BIBR07_bwa5k_wins.file3.bed -s1 BIBR07_bwa5k_wins.file1.stats -s2 BIBR07_bwa5k_wins.file2.stats -s3 BIBR07_bwa5k_wins.file3.stats -o BIBR07_bwa5k_calls -w 5000 -t 8
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_bwa5k_calls.cnvs.bed
+				102,095,821	<- autosome calls could be worse, but not bad!
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] ne "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_bwa5k_calls.cnvs.bed
+				11,089,701	<- x chromosome calls. Better than before
+				
+			# Lots of CN discrepencies among CNV calls so I designed the CNV caller to filter them before printing them out
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_bwa5k_calls.cnvs.bed
+				93,453,260	<- autosome calls; OK, so it filtered out alot of tiny calls (sub 50k that probably had bad window coverage in the file3 windows)
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] ne "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_bwa5k_calls.cnvs.bed
+				9,176,132	<- same story
+				
+			# All in all, this is much better than expected. Let's try this with Mrsfast using my new updated programs
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -O BIBR07_5k_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -s '*.mrsfast.bam'
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 BIBR07_5k_wins.file1.bed -f2 BIBR07_5k_wins.file2.bed -f3 BIBR07_5k_wins.file3.bed -s1 BIBR07_5k_wins.file1.stats -s2 BIBR07_5k_wins.file2.stats -s3 BIBR07_5k_wins.file3.stats -o BIBR07_5k_newcalls -w 5000 -t 8
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_5k_newcalls.cnvs.bed
+				9,372,173	<- OK, now this is too zealous I think
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] ne "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_5k_newcalls.cnvs.bed
+				11,676,497	<- Funny  how the X chromosome has nearly the same CNV space. Let's see if it overlaps
+				
+			$ perl -lane 'if($F[0] eq "chrX"){print $_;}' < BIBR07_5k_newcalls.cnvs.bed > BIBR07_5k_newcalls.cnvs.X.bed
+			$ perl -lane 'if($F[0] eq "chrX"){print $_;}' < BIBR07_bwa5k_calls.cnvs.bed | intersectBed -a stdin -b BIBR07_5k_newcalls.cnvs.X.bed -v | wc -l
+				104	<- not much overlap
+				
+			# ONE last thing, let's try the BWA mapping without the gms to see how much gms influences BWA mapping
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/GenerateDocWindows.jar -I ./BIBR07 -i BIBR07/BIBR07.full.sorted.merged.bam -O BIBR07_bwanonorm5k_wins -R ~/reference/umd3_kary_nmask_hgap.fa -n 2 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -s '*.merged.bam' -u
+			$ ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 BIBR07_bwanonorm5k_wins.file1.bed -f2 BIBR07_bwanonorm5k_wins.file2.bed -f3 BIBR07_bwanonorm5k_wins.file3.bed -s1 BIBR07_bwanonorm5k_wins.file1.stats -s2 BIBR07_bwanonorm5k_wins.file2.stats -s3 BIBR07_bwanonorm5k_wins.file3.stats -w 5000 -t 8 -o BIBR07_bwanonorm5k_calls
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_bwanonorm5k_calls.cnvs.bed
+				96,862,522
+			$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] ne "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";' < BIBR07_bwanonorm5k_calls.cnvs.bed
+				7,163,244	<- interesting, fewer on the X
+				
+			# Now, for the overlap
+			$ wc -l BIBR07_bwa5k_calls.cnvs.bed BIBR07_bwanonorm5k_calls.cnvs.bed
+			  2253 BIBR07_bwa5k_calls.cnvs.bed
+			  2246 BIBR07_bwanonorm5k_calls.cnvs.bed
+			  4499 total			
+			$ intersectBed -a BIBR07_bwa5k_calls.cnvs.bed -b BIBR07_bwanonorm5k_calls.cnvs.bed -v | wc -l
+				477 <- found in the norm dataset but not in the non-normalized dataset
+			$ intersectBed -b BIBR07_bwa5k_calls.cnvs.bed -a BIBR07_bwanonorm5k_calls.cnvs.bed -v | wc -l
+				466 <- found in the non-normalized dataset but not in the norm dataset
+			
+			# So about 20% novel in each case
+			$ intersectBed -a BIBR07_bwa5k_calls.cnvs.bed -b BIBR07_bwanonorm5k_calls.cnvs.bed | wc -l
+				1786
+				
+			$ intersectBed -b BIBR07_bwa5k_calls.cnvs.bed -a BIBR07_bwanonorm5k_calls.cnvs.bed -v | perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";'
+				15,488,745
+			$ intersectBed -a BIBR07_bwa5k_calls.cnvs.bed -b BIBR07_bwanonorm5k_calls.cnvs.bed -v | perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chrX"){next;} $t += $s[2] - $s[1];} print "$t\n";'
+				12,842,173
+				
+		
+# SNP calling
+	# I am going to download known sites from ensembl, turn them into a vcf (after filtering) and then use them to recalibrate my bams for SNP detection
+	# I am using notes from (Lab_note_20120618_dbick_gatk_snpindel.txt) as a guide and I am using a modified version of gvf2vcf.pl (requires FAlite.pm) to try to convert my files to the proper format
+	
+	pwd: ~/share/umd3_data/known_variants
+	$ gunzip Bos_taurus.gvf.gz
+	
+	# I extensively altered the gvf2vcf script to only provide me with the validated snps from the dataset
+	$ perl gvf2vcf.pl ../umd3_kary_extend_hgap.fa Bos_taurus.gvf > unfiltered_umd3_snps.vcf
+	$ perl filter_converted_vcf.pl unfiltered_umd3_snps.vcf filtered_umd3_snps.vcf
+	
+	# This left me with about 2700 snps.
+	# I'm going to yank the 56k snp positions and use them as a truth dataset as well
+	# Actually, I found the 6k LD snps easily, so I'll use them first
+	$ head ld_snp_known_sites.tab
+	$ perl incorporate_56k_snps_vcf.pl ld_snp_data.vcf
+	
+	# Let's reorder the snps so that they are in chromosome and numerical order
+	
+	# Now to try this again with the gatk
+		# GATK order
+			1. $java $jopt -jar $gatk -R $ref -T BaseRecalibrator -I input_bam.bam -knownSites $known_vcf.vcf -o recal_data.grp
+			2. $java $jopt -jar $gatk -R $ref -T RealignerTargetCreator -nt $max_p -I input_bam.bam -o $indeltargetint.intervals
+			3. $java $jopt -jar $gatk -R $ref -T IndelRealigner -I $input_bam_str -targetIntervals $indeltargetint -o $realign_bam
+			4. $java $jopt -jar $gatk -R $ref -T ReduceReads -I $realign_bam -o $reduce_bam
+			
+			5. $java $jopt -jar $gatk -R $ref -nt $max_p -T UnifiedGenotyper -I $reduce_bam -o $raw_snps
+			
+			6. $java $jopt -jar $gatk -R $ref -nt $max_p -T VariantRecalibrator -input $raw_snps -resource:dbsnp,known=true,training=false,truth=false,prior=6.0 $known_vcf.vcf -an QD -an HaplotypeScore -an MQRankSum -an ReadPosRankSum -an FS -an MQ -an InbreedingCoeff -mode SNP -recalFile $recal_file.recal -tranchesFile $tranches_file.tranches -rscriptFile $output.plots.R
+			7. $java $jopt -jar $gatk -R $ref -nt $max_p -T ApplyRecalibration -input $raw_snps --ts_filter_level 99.0 -tranchesFile $tranches_file.tranches -recalFile $recal_file.recal -mode SNP -o $recal_snp_filtered.vcf
+			
+			
+		# Test run on BIBR07
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T BaseRecalibrator -I BIBR07.clean.sort.nodup.merge.bam -knownSites ~/reference/dbsnp_filtered_umd3_snps.vcf -o BIBR07_recal_data.grp
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T RealignerTargetCreator -nt 8 -I BIBR07.clean.sort.nodup.merge.bam -o BIBR07_indels.targets.intervals
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T IndelRealigner -I BIBR07.clean.sort.nodup.merge.bam -targetIntervals BIBR07_indels.targets.intervals -o BIBR07.clean.sort.nodup.merge.realign.bam
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T ReduceReads -I BIBR07.clean.sort.nodup.merge.realign.bam -o BIBR07.clean.sort.nodup.merge.realign.reduced.bam
+			# Reduction resulted in a three fold size decrease of the bam
+			
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T UnifiedGenotyper -nt 8 -I BIBR07.clean.sort.nodup.merge.realign.reduced.bam -o BIBR07.initial.raw.snps.vcf
+			
+			# My previous strategy hit a snag: I need a truth dataset for the training and "truth" categories, so I used the LD snp chip data
+			# Also, I cannot calculate the InbreedingCoefficient for my dataset
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T VariantRecalibrator -nt 8 -input BIBR07.initial.raw.snps.vcf -resource:dbsnp,known=true,training=true,truth=false,prior=6.0 ~/reference/dbsnp_filtered_umd3_snps.vcf -resource:ldchip,known=true,training=true,truth=true,prior=12.0 ~/reference/dbsnp_ld_filtered_sorted_known_snps.vcf -an QD -an HaplotypeScore -an MQRankSum -an ReadPosRankSum -an FS -an MQ -mode SNP -recalFile BIBR07_variant.recal -tranchesFile BIBR07_variant.tranches -rscriptFile BIBR07_variant.plots.R
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T ApplyRecalibration -nt 8 -input BIBR07.initial.raw.snps.vcf --ts_filter_level 99.0 -mode SNP -recalFile BIBR07_variant.recal -tranchesFile BIBR07_variant.tranches -o BIBR07.recalibrated.unfiltered.snps.vcf
+			
+			# Filters have already been applied and have reduced the amount of SNPs by 200,000
+				$ perl -lane 'if($F[0] =~ /#/){next;}else{if($F[6] eq "PASS"){print $_;}}' < BIBR07.recalibrated.unfiltered.snps.vcf | wc -l
+					2,667,786  <- vs 2,832,572 initial
+			# I want to filter this further with the filtering module of the GATK
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T VariantFiltration  --variant BIBR07.recalibrated.unfiltered.snps.vcf --filterExpression "QD < 1.0 || MQ < 40.0 || FS > 60.0 || HaplotypeScore > 13.0 || ReadPosRankSum < -8.0" --filterName "GATKBest" -o BIBR07.recalibrated.filtered.snps.vcf
+			
+			$ perl -lane 'if($F[0] =~ /#/){next;}else{if($F[6] eq "PASS"){print $_;}}' < BIBR07.recalibrated.filtered.snps.vcf | wc -l
+					2,356,013 <- vs 2,832,572 initial
+			# So, another 300,000 removed
+			
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T VariantFiltration  --variant BIBR07.recalibrated.filtered.snps.vcf --filterExpression "DP < 4" --filterName "DefaultRD" --filterExpression "DP > 6 && FS < 0.01" --filterName "StrandBias" -o BIBR07.recalibrated.filtered.secondary.snps.vcf
+			$ perl -lane 'if($F[0] =~ /#/){next;}else{if($F[6] eq "PASS"){print $_;}}' < BIBR07.recalibrated.filtered.secondary.snps.vcf | wc -l
+				689,407 <- almost half removed
+			$ perl -e '%h; while(<>){chomp; @F = split(/\t/); if($F[0] =~ /#/){next;}else{$h{$F[6]} += 1;}} foreach $k (keys(%h)){print "$k\t$h{$k}\n";}' < BIBR07.recalibrated.filtered.secondary.snps.vcf
+				PASS    689407
+				StrandBias;VQSRTrancheSNP99.90to100.00  3801
+				GATKBest;VQSRTrancheSNP99.90to100.00    2791
+				DefaultRD       1554831
+				VQSRTrancheSNP99.90to100.00     44642
+				GATKBest;StrandBias     9867
+				VQSRTrancheSNP99.00to99.90      69986
+				GATKBest;StrandBias;VQSRTrancheSNP99.00to99.90  2355
+				GATKBest        68826
+				StrandBias;VQSRTrancheSNP99.00to99.90   4590
+				GATKBest;VQSRTrancheSNP99.00to99.90     7779
+				DefaultRD;GATKBest;VQSRTrancheSNP99.00to99.90   971
+				DefaultRD;VQSRTrancheSNP99.00to99.90    22643
+				StrandBias      111775
+				GATKBest;StrandBias;VQSRTrancheSNP99.90to100.00 3185
+				DefaultRD;GATKBest;VQSRTrancheSNP99.90to100.00  40
+				DefaultRD;VQSRTrancheSNP99.90to100.00   1936
+				DefaultRD;GATKBest      233080
+
+			# My default RD and strand bias filters might be too strict
+			$ ~/jdk1.7.0/bin/java -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -R ~/reference/umd3_kary_unmask_ngap.fa -T VariantFiltration  --variant BIBR07.recalibrated.filtered.snps.vcf --filterExpression "DP < 3" --filterName "DefaultRD" --filterExpression "DP > 10 && FS < 0.01" --filterName "StrandBias" -o BIBR07.recalibrated.filtered.secondary.snps.vcf
+			$ perl -e '%h; while(<>){chomp; @F = split(/\t/); if($F[0] =~ /#/){next;}else{$h{$F[6]} += 1;}} foreach $k (keys(%h)){print "$k\t$h{$k}\n";}' < BIBR07.recalibrated.filtered.secondary.snps.vcf                                                                                 
+				PASS    1393681		<- OK, not bad actually
+				StrandBias;VQSRTrancheSNP99.90to100.00  458
+				GATKBest;VQSRTrancheSNP99.90to100.00    3450
+				DefaultRD       953464
+				VQSRTrancheSNP99.90to100.00     49921
+				GATKBest;StrandBias     2039
+				VQSRTrancheSNP99.00to99.90      96774
+				GATKBest;StrandBias;VQSRTrancheSNP99.00to99.90  1138
+				GATKBest        148654
+				StrandBias;VQSRTrancheSNP99.00to99.90   440
+				GATKBest;VQSRTrancheSNP99.00to99.90     9942
+				DefaultRD;GATKBest;VQSRTrancheSNP99.00to99.90   25
+				DefaultRD;VQSRTrancheSNP99.00to99.90    5
+				StrandBias      8868
+				GATKBest;StrandBias;VQSRTrancheSNP99.90to100.00 2556
+				DefaultRD;GATKBest;VQSRTrancheSNP99.90to100.00  10
+				DefaultRD;GATKBest      161080
+				
+			# NOTE: received errors on MQRankSum and ReadPosRankSum most likely because the SNPs did not have these values
+			
+				# SNP calling statistics (pulled from the vcf header)
+					##INFO=<ID=AC,Number=A,Type=Integer,Description="Allele count in genotypes, for each ALT allele, in the same order as listed">
+					##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency, for each ALT allele, in the same order as listed">
+					##INFO=<ID=AN,Number=1,Type=Integer,Description="Total number of alleles in called genotypes">
+					##INFO=<ID=BaseQRankSum,Number=1,Type=Float,Description="Z-score from Wilcoxon rank sum test of Alt Vs. Ref base qualities">
+					##INFO=<ID=DP,Number=1,Type=Integer,Description="Approximate read depth; some reads may have been filtered">
+					##INFO=<ID=DS,Number=0,Type=Flag,Description="Were any of the samples downsampled?">
+					##INFO=<ID=Dels,Number=1,Type=Float,Description="Fraction of Reads Containing Spanning Deletions">
+					##INFO=<ID=END,Number=1,Type=Integer,Description="Stop position of the interval">
+					##INFO=<ID=FS,Number=1,Type=Float,Description="Phred-scaled p-value using Fisher's exact test to detect strand bias">
+					##INFO=<ID=HaplotypeScore,Number=1,Type=Float,Description="Consistency of the site with at most two segregating haplotypes">
+					##INFO=<ID=InbreedingCoeff,Number=1,Type=Float,Description="Inbreeding coefficient as estimated from the genotype likelihoods per-sample when compare
+					d against the Hardy-Weinberg expectation">
+					##INFO=<ID=MLEAC,Number=A,Type=Integer,Description="Maximum likelihood expectation (MLE) for the allele counts (not necessarily the same as the AC),
+					for each ALT allele, in the same order as listed">
+					##INFO=<ID=MLEAF,Number=A,Type=Float,Description="Maximum likelihood expectation (MLE) for the allele frequency (not necessarily the same as the AF),
+					 for each ALT allele, in the same order as listed">
+					##INFO=<ID=MQ,Number=1,Type=Float,Description="RMS Mapping Quality">
+					##INFO=<ID=MQ0,Number=1,Type=Integer,Description="Total Mapping Quality Zero Reads">
+					##INFO=<ID=MQRankSum,Number=1,Type=Float,Description="Z-score From Wilcoxon rank sum test of Alt vs. Ref read mapping qualities">
+					##INFO=<ID=QD,Number=1,Type=Float,Description="Variant Confidence/Quality by Depth">
+					##INFO=<ID=RPA,Number=.,Type=Integer,Description="Number of times tandem repeat unit is repeated, for each allele (including reference)">
+					##INFO=<ID=RU,Number=1,Type=String,Description="Tandem repeat unit (bases)">
+					##INFO=<ID=ReadPosRankSum,Number=1,Type=Float,Description="Z-score from Wilcoxon rank sum test of Alt vs. Ref read position bias">
+					##INFO=<ID=STR,Number=0,Type=Flag,Description="Variant is a short tandem repeat">
+					##INFO=<ID=VQSLOD,Number=1,Type=Float,Description="Log odds ratio of being a true variant versus being false under the trained gaussian mixture model
+					##INFO=<ID=culprit,Number=1,Type=String,Description="The annotation which was the worst performing in the Gaussian mixture model, likely the reason why the variant was filtered out">
+					
+			# I think that I have the filtering criteria that I want. Now its time to make the GATK running script
+	
+# Data statistics
+	# I want to summarize the copy number variants in the dataset for my BARC Poster day poster using R
+	# CNV Deletion length statistics
+		# I'm going to try a Box Plot using ggplot2 (if the libraries are installed...!)
+		# First, I need a tab delimited file that contains just the lengths of the deletions
+		
+		Blade14: /home/dbickhart/vnx_gliu_7/100_bulls_final/vhsr
+		$ for i in *full.filtered.vhsr.deletions.tab; do an=`echo $i | cut -d'.' -f1`; echo $an; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $x = $ARGV[1]; ($bname) = $x =~ /(B.{3})\d+/; while(<IN>){chomp; @s = split(/\t/); $t = $s[3] - $s[2]; if($t >= 0){ print "$bname\t$t\n";}}' $i $an >> dataset_deletion.sizes; done
+		# This should merge all of the sizes into breeds rather than individuals
+		
+		# I was not able to get R to install packages on Blade14, so I am transferring the files over to my virtualbox on my workstation at AIPL
+		
+		> x <- read.delim(file= "./dataset_deletion.sizes", header= FALSE, sep="\t")
+		> y <- data.frame(breed=x[,1], size=x[,2])
+		> qplot(breed, size, data=y, fill=breed, geom="jitter", color=breed, main="Genomic Deletions per Breed", xlab="Breed", ylab="Deletion Size(bp)") + geom_text(aes("BIBR", 20000, label="35,527"), colour = "white", size = 4) + geom_text(aes("BIGI", 20000, label="50,333"), colour = "white", size = 4) + geom_text(aes("BINE", 20000, label="51,189"), colour = "white", size = 4) + geom_text(aes("BTAN", 20000, label="42,966"), colour = "white", size = 4) + geom_text(aes("BTHO", 20000, label="67,504"), colour = "white", size = 4) + geom_text(aes("BTJE", 20000, label="31,666"), colour = "white", size = 4) + geom_text(aes("BTLM", 20000, label="36,304"), colour = "white", size = 4) + geom_text(aes("BTRO", 20000, label="17,410"), colour = "white", size = 4)
+		
+		# This worked, but the PDF was 2.2 megabytes! I'll have to plot something else
+		
+		# I will still take size information into account for each type of variant, then bin them into different size ranges and try to plot them
+		$ for i in *full.filtered.vhsr.insertions.tab; do an=`echo $i | cut -d'.' -f1`; echo $an; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $x = $ARGV[1]; ($bname) = $x =~ /(B.{3})\d+/; while(<IN>){chomp; @s = split(/\t/); $t = $s[3] - $s[2]; if($t >= 0){ print "$bname\t$t\n";}}' $i $an >> dataset_insertion.sizes; done
+		$ for i in *full.filtered.vhsr.tand.tab; do an=`echo $i | cut -d'.' -f1`; echo $an; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $x = $ARGV[1]; ($bname) = $x =~ /(B.{3})\d+/; while(<IN>){chomp; @s = split(/\t/); $t = $s[3] - $s[2]; if($t >= 0){ print "$bname\t$t\n";}}' $i $an >> dataset_tand.sizes; done
+		
+		
+		# Now to make some plots in R
+			pwd: /home/dbickhart/share/100_bulls_project/vhsr
+			>library(ggplot2)
+			>library(reshape2)
+			
+			> dels <- read.delim(file="dataset_deletion.sizes", sep="\t")
+			> inddeltable <- table(cut(dels[dels$V1 == "BIBR" | dels$V1 == "BIGI" | dels$V1 == "BINE",2], breaks=c(0, 50, 75, 100, 1000, 5000, 10000,50000,250000,500000)))
+			> inddelplot <- plot(inddeltable, xlab="Deletion Size Bins (in bp)", main="Indicus Deletion Counts", type="h", ylab="Number of deletions", ylim=c(0,90000))
+			> text(inddelplot, inddeltable, labels=inddeltable, pos=3)
+			> dev.copy2pdf(file="indicus_deletion_size_bins.pdf", useDingbats=FALSE)
+			
+			> taudeltable <- table(cut(dels[dels$V1 != "BIBR" & dels$V1 != "BIGI" & dels$V1 != "BINE",2], breaks=c(0, 50, 75, 100, 1000, 5000, 10000,50000,250000,500000)))
+			> taudelplot <- plot(taudeltable, xlab="Deletion Size Bins (in bp)", main="Taurus Deletion Counts", type="h", ylab="Number of deletions", ylim=c(0,95000))
+			> text(taudelplot, taudeltable, labels=taudeltable, pos=3)
+			> dev.copy2pdf(file="taurus_deletion_size_bins.pdf", useDingbats=FALSE)
+			
+			> ins <- read.delim(file="dataset_insertion.sizes", sep="\t", header=FALSE)
+			> indinstable <- table(cut(ins[ins$V1 == "BIBR" | ins$V1 == "BIGI" | ins$V1 == "BINE",2], breaks=c(0,10,20,30,40,50,75,100,150,200,250,300)))
+			> indinsplot <- plot(indinstable, xlab="Insertion Size Bins (in bp)", main="Indicus Insertion Counts", type="h", ylab="Number of insertions", ylim=c(0,110))
+			> text(indinsplot, indinstable, labels=indinstable, pos=3)
+			> dev.copy2pdf(file="indicus_insertion_size_bins.pdf", useDingbats=FALSE)
+			
+			> tauinstable <- table(cut(ins[ins$V1 != "BIBR" & ins$V1 != "BIGI" & ins$V1 != "BINE",2], breaks=c(0,10,20,30,40,50,75,100,150,200,250,300)))
+			> tauinsplot <- plot(tauinstable, xlab="Insertion Size Bins (in bp)", main="Taurus Insertion Counts", type="h", ylab="Number of insertions", ylim=c(0,310))
+			> text(tauinsplot, tauinstable, labels=tauinstable, pos=3)
+			> dev.copy2pdf(file="taurus_insertion_size_bins.pdf", useDingbats=FALSE)
+			
+			> tand <- read.delim(file="dataset_tand.sizes", sep="\t", header=FALSE)
+			> indtandtable <- table(cut(tand[tand$V1 == "BIBR" | tand$V1 == "BIGI" | tand$V1 == "BINE",2], breaks=c(0,50,100,200,500,1000,5000,10000,25000,50000,100000,500000)))
+			> indtandplot <- plot(indtandtable, xlab="TandDup Size Bins (in bp)", main="Indicus TandDup Counts", type="h", ylab="Number of tandem dups", ylim=c(0,3500))
+			> text(indtandplot, indtandtable, labels=indtandtable, pos=3)
+			> dev.copy2pdf(file="indicus_tandem_size_bins.pdf", useDingbats=FALSE)
+			
+			> tautandtable <- table(cut(tand[tand$V1 != "BIBR" & tand$V1 != "BIGI" & tand$V1 != "BINE",2], breaks=c(0,50,100,200,500,1000,5000,10000,25000,50000,100000,500000)))
+			> tautandplot <- plot(tautandtable, xlab="TandDup Size Bins (in bp)", main="Taurus TandDup Counts", type="h", ylab="Number of tandem dups", ylim=c(0,4800))
+			> text(tautandplot, tautandtable, labels=tautandtable, pos=3)
+			> dev.copy2pdf(file="taurus_tand_size_bins.pdf", useDingbats=FALSE)
+			
+	# Since everyone likes venn diagrams, let's see how much of an overlap I can find within the breeds
+		pwd: /home/dbickhart/share/100_bulls_project/vhsr
+		$ for i in *full.filtered.vhsr.insertions.tab; do an=`echo $i | cut -d'.' -f1`; echo $an; outfile=`echo ./analysis/${an}_insertion_simple.bed`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $x = $ARGV[1]; ($bname) = $x =~ /(B.{3})\d+/; open(OUT, ">> analysis/$bname\_insertion_simple.bed"); while(<IN>){chomp; @s = split(/\t/); $t = $s[3] - $s[2]; print OUT "$s[0]\t$s[2]\t$s[3]\t$bname\n";}' $i $an; done
+		$ cd analysis
+		$ for i in *_simple.bed; do echo $i; sort -k1,2 $i > temp; mv temp $i; done
+		
+		# Actually, that failed. I need to sort by chr then by number to make things work
+		# Created a script that should sort this all out
+		$ for i in *_simple.bed; do echo $i; perl sort_chr_bed_file.pl $i > temp; mv temp $i; done
+		
+		# Now to try this for deletions
+		$ cd ../
+		$ for i in *full.filtered.vhsr.deletions.tab; do an=`echo $i | cut -d'.' -f1`; echo $an; bname=`perl -e 'chomp(@ARGV); ($x) = $ARGV[0] =~ /^(.{4})\d+/; print $x;' $an`; outfile=`echo ${bname}"_deletion_simple.bed"`; echo $outfile; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $x = $ARGV[1]; ($bname) = $x =~ /(B.{3})\d+/; while(<IN>){chomp; @s = split(/\t/); $t = $s[3] - $s[2]; print "$s[0]\t$s[2]\t$s[3]\t$bname\n";}' $i $an | perl ~/bin/sort_chr_bed_file.pl >> $outfile; done
+		$ cd ./analysis
+		
+		
+		$ for i in *.deletions.tab; do an=`echo $i | cut -d'.' -f1`; echo $an; perl -e 'chomp(@ARGV); $an = $ARGV[0]; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[2]\t$s[3]\t$an\n";}' $an $i | ~/bin/sort_chr_bed_file.pl > named_beds/$an.simple.named.deletions.bed; done
+		$ cat ./*.bed | mergeBed -i stdin -nms > all_deletion_merged.bed
+		
+		

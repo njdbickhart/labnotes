@@ -1,0 +1,97 @@
+2010_09_20
+___________________________________________________
+MrFAST estimation of time and some ideas
+___________________________________________________
+
+#Well, I started my MrFAST run at 4:10pm on Friday the 17th and it is still working as of 8:29am on 9/20.
+
+#Some characteristics of the run and some things to consider:
+	- First off, I did not repeatmask the chromosome fastas prior to concatenation or even after concatenation
+		- Repeatmasking might significantly reduce run-time and memory consumption
+		- I might want to consider repeatmasking the concatenated file
+		
+	- It almost filled up Dr. Liu's hard drive off of a smaller dataset!
+	
+	- I only used one processor for this run; batching might just reduce time to process
+	
+#Before I ditch MrFAST as a viable option, I need to repeatmask the chromosomes, re-index them, and then try it again
+
+#In the meantime, here is another option for the processing of the reads:
+	
+- The runtime and memory/cpu consumption was getting ridiculous; I terminated MrFAST at 9:02 AM on the 17th and deleted all .tmp files in my folder
+	- The .tmp files accounted for 77% of the hard drive's space! 
+	
+	- Hopefully, repeatmasking will reduce the strain on the cpu and reduce the size of the .tmp files
+	
+(<>) Copied RepeatMasked UMD3 files from Lakshmi; If I use them I should talk to him about collaboration or acknowledgement	
+	
+(<>) Actually, it doesn't seem like Lakshmi masked the repeats with anything other than lowercase letters. I should probably repeatmask the sequences myself.
+
+#Running RepeatMasker on the concatenation of UMD3.1 files that I generated on 9/16
+	./RepeatMasker -q -pa 3 /mnt/data6/gliu/dbickhart/b_tau_umd.fa
+	
+#While I wait for my repeatmasked data set to finish, I'm going to use Lakshmi's masked genome as a pilot study
+	 ./mrfast --index /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_masked.fa
+	 ./mrfast 
+	 	--search /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_masked.fa 
+	 	--pe 
+	 	--seq1 081211_HWI-EAS174_s_1_1_sequence.fq 
+	 	--seq2 081211_HWI-EAS174_s_1_2_sequence.fq 
+	 	--min 150 
+	 	--max 250 
+	 	-o /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_pe.sam
+	 	
+	Started at 3:29pm on 9/20 	
+
+
+____________________________________________________
+Sorting RepeatMasker data and processing
+____________________________________________________
+
+#While I wait to sort out the problems with MrFast, I will take a look at the finished RepeatMasker data and try to extract useful information from it
+
+#File format (the *.out file) is tab delimited with the following headers:
+	SW   perc perc perc  query     position in query                 matching     repeat           position in repeat
+	score   div. del. ins.  sequence  begin     end            (left)   repeat       class/family   begin  end    (left)    ID
+	0	1	2	3	4	5	6	7	8	9	11	12	13	14	15	16
+	
+	- I'm looking for [4] (query sequence) [5] (start seq) [6] (end seq) [9] (repeat name) and [16/17] for the asterisk (asterixed ID's are lower in score and overlap with another repeat call)
+	
+	- My Perl script to parse this all out should do the following:
+		# Generate a hash-key based file with the nucleotide positions of all called repeats per chromosome (one file per chromosome)
+		# Generate a tab-delimited file with all of the repeat information (concatenation of data from all chromosomes at the end)
+		# Generate a smaller "count" file in order to count repeat classes
+		
+#Big problem: the repeatmasker files are not tab-delimited! I have to convert them prior to using them.
+	- Problem solved! I created a script (convert_RM_out_tab.pl) to remove the spaces and replace them with tabs!
+	- Script is stored on my Ubuntu virtual box in the /home/Perl folder
+	
+#Completed my extract_repeat_information.pl script! 
+	- Location: /home/Perl folder of my Ubuntu virtual box
+	- Creates the following files:
+		- *.nps  <- nucleotide positions for CR1 elements
+		- *.tbl  <- table of CR1 elements (with asterisks to indicate that the element is NOT the best match)
+		- repeatcount.txt  <- count of all identified CR1 repeats by repeatmasker
+		
+#My next task is to extract the nucleotide sequence using the .nps files for each repeat class.
+
+#I can either do this using a script or try to figure out how to use FASTACMD on the servers.
+	- Attempted to make a script to automate it, but sadly, my methods of extracting fasta information were WAY too slow!
+	- Script name: extract_repeat_fasta.pl
+	- Downloading and attempting to install BioPERL for SeqIO module
+	
+#In order to use SeqIO to extract sequence information:
+	use Bio::SeqIO
+	my $seqio = Bio::SeqIO->new(-format => 'fasta', -file => 'file.fasta');
+	my $seq = $seqio->next_seq;
+	$seq->subseq(x,y)    
+	
+2010_09_21
+
+#I was able to use that snippet of code for Bio::SeqIO in order to extract sequences MUCH faster than before!
+
+#I did have an issue loading the Bio::SeqIO module though
+	- Received an @INC error from the Perl compiler
+	- Used the UNIX command, "locate" to find the SeqIO.pm file
+	- Then I fixed it by including the following header line in the script
+		use lib '/home/derek/.cpan/build/BioPerl-1.6.1-2NvxkL/';

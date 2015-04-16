@@ -1,0 +1,369 @@
+2010_10_12 - 2010_10_15
+# Getting into the meaning behind the different alignments
+	- Novoalign uses a Needleman-Wunsch algorithm
+	- BWA, Mosaik and Bowtie all use Smith-Waterman algorithms
+	- Novoalign does a global alignment whereas the others do local alignments
+	- In order to better fine-tune the alignments at each stage, I am going to print out the options to each program from the "help" option on the command line
+	- It has been suggested that BWA and Novoalign are the proper two aligners to use with Hydra, so I want to improve processing with those two programs.
+	
+# Novoalign
+	Novoalign V2.05.33
+	
+	Usage:
+	    novoalign options
+	
+	Options:
+	    -d dbname      Full pathname of indexed reference sequence from novoindex
+	
+	Options for Read processing:
+	    -f read1 read2     Filenames for the read sequences for Side 1 & 2.
+	                   If only one file is specified then single end reads are processed.
+	                   If two files are specified then the program will operate in paired end mode.
+	    -F format      Specifies a read file format. For Fastq '_sequence.txt' files from Illumina
+	                   Pipeline 1.3 please specify -F ILMFQ.
+	    -l 99          Sets the minimum number of good quality bases for a read. Alignment will not
+	                     be attempted for reads with less bases.  Default log4(Ng) + 5
+	                   where Ng is the length of the reference genome. Measure uses base qualities
+	                   to determine information content of the read in bits an ddivides by 2 to get
+	                     effective length in bases.
+	    -n 99          Truncate reads to the specified length before alignment. Default is 150.
+	    -a [read1 adapter] [read2 adapter]
+	                   Enables adapter stripping from 3' end of reads before aligning. The second
+	                   adapter is used for the second read in paired end mode.
+	                   Default adapter sequence for single end is TCGTATGCCGTCTTCTGCTTG.
+	                   Default adapter sequences for paired end reads are:
+	                           Read1: AGATCGGAAGAGCGGTTCAGCAGGAATGCCGAG
+	                           Read2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTA
+	    -h 99 [99]     Sets homopolymer and optional dinucleotide filter score. Any read that
+	                   matches a homopolymer or dinuc with score less than or equal to this
+	                   threshold will skipped (reported as QC).
+	                   Default 20 for homopolymer and 20 for dinucleotides.
+	
+	Options for alignment scoring:
+	    -t 99          Sets the maximum alignment score acceptable for the best alignment. Default Automatic.
+	                   In automatic mode the threshold is set based on read length, genome size and other
+	                   factors (see manual).
+	                   For pairs the threshold applies to the fragment and includes both ends and the length penalty.
+	    -g 99          Sets the gap opening penalty. Default 40
+	    -x 99          Sets the gap extend penalty. Default 15
+	    -u 99          Penalty for unconverted CHG or CHH cytosine in bisulfite alignment mode. Default 0
+	                   For plants 6 may be a good value.
+	    -b mode        Sets Bisulphite alignment mode. Values for mode are:
+	                        4 - Aligns in 4 possible combinations of direction and index. (Default)
+	                        2 - Aligns reads in forward direction using CT index and in reverse complement using the GA index.
+	    -N 999         Sets the number of bp of source DNA that are not represented in the reference sequences (index). This
+	                   value is used in calculation of prior probability that the read originated in sequence that we cannot
+	                   align to because it is not in the reference sequence set. By default we use the number of bases coded
+	                   as N's in the reference genome. Set to zero to disable inclusion of this in quality calculations.
+	
+	Options for reporting:
+	    -o format [readgroup]
+	                   Specifies the report format. Native, Pairwise, SAM. Default is Native. Optionally followed by SAM @RG record.
+	                   Refer to manual for details and more options.
+	                   This may increase memory utilisation.
+	    -R 99          Sets score difference between best and second best alignment for calling a repeat. Default 5.
+	    -r strategy [limit]
+	                   Sets strategy for reporting repeats. 'None', 'Random', 'All', 'Exhaustive',
+	                   or a posterior probability limit. Default None.
+	                   For -rAll & -rEx you can also specify a limit on the maximum number of alignments reported per read.
+	    -Q 99          Sets lower limit on alignment quality for reporting. Default 0.
+	    -e 999         Sets a limit on number of alignments for a single read.
+	                   This limit applies to the number of alignments with score equal to that of the best
+	                   alignment. Alignment process will stop when the limit is reached.
+	                   Default 1000 in default report mode, off for other modes.
+	    -q 9           Sets number of decimal places for quality score. Default zero.
+	    -K [file]      Collects mismatch statistics for quality calibration by position in the read
+	                   and called base quality. Mismatch counts are written to the named file after
+	                   all reads are processed. When used with -k option the mismatch counts include
+	                   any read from the input quality calibration file.
+	
+	Paired End Options:
+	    -i 99 99       Sets approximate fragment length and standard deviation. Default [250, 30]
+	    -v 99          Sets the structural variation penalty for chimeric fragments. Default 70
+	    -v 99 99       Sets the structural variation penalty for chimeric fragments.
+	                    1) Penalty for SVs within one sequence
+	                    2) Penalty for SVs across different sequences.
+	    -v 99 99 99 regex
+	                   Sets the structural variation penalty for chimeric fragments. The three values are for:
+	                    1) Penalty for SVs within a group of sequences as defined by the regular expression.
+	                    2) Penalty for SVs within a single sequence
+	                    3) Penalty for SVs different sequence and group.
+	                   regex defines a regular expression applied to headers of indexed sequences. The regular
+	                   expression should define one field that is used to define sequence groups.
+	
+	Single End Options:
+	    -m [99]        Sets miRNA mode. In this mode each alignment to a read is given an additional
+	                   score based on nearby alignment to the opposite strand of the read. Optional
+	                   parameter sets maximum distance in bp between alignment and it's reverse complement, Default 100bp.
+	                   Setting miRNA mode changes the default report mode to 'All'.
+	    -s 9           Turns on read trimming and sets trimming step size. Default step size is 2bp.
+	                   Unaligned reads are trimmed until they align or fail the QC tests.
+	
+	 (c) 2008, 2009 NovoCraft Technologies Sdn Bhd
+
+#BWA: 
+	Usage:   bwa sampe [options] <prefix> <in1.sai> <in2.sai> <in1.fq> <in2.fq>
+	
+	Options: -a INT   maximum insert size [500]
+	         -o INT   maximum occurrences for one end [100000]
+	         -n INT   maximum hits to output for paired reads [3]
+	         -N INT   maximum hits to output for discordant pairs [10]
+	         -c FLOAT prior of chimeric rate (lower bound) [1.0e-05]
+	         -f FILE sam file to output results to [stdout]
+	
+	         -P       preload index into memory (for base-space reads only)
+	         -s       disable Smith-Waterman for the unmapped mate
+	         -A       disable insert size estimate (force -s)
+	
+	Notes: 1. For SOLiD reads, <in1.fq> corresponds R3 reads and <in2.fq> to F3.
+	       2. For reads shorter than 30bp, applying a smaller -o is recommended to
+	          to get a sensible speed at the cost of pairing accuracy.
+	
+	[dbickhart@bfgl-svr3 bwa-0.5.8a]$ ./bwa aln
+	
+	Usage:   bwa aln [options] <prefix> <in.fq>
+	
+	Options: -n NUM    max #diff (int) or missing prob under 0.02 err rate (float) [0.04]
+	         -o INT    maximum number or fraction of gap opens [1]
+	         -e INT    maximum number of gap extensions, -1 for disabling long gaps [-1]
+	         -i INT    do not put an indel within INT bp towards the ends [5]
+	         -d INT    maximum occurrences for extending a long deletion [10]
+	         -l INT    seed length [32]
+	         -k INT    maximum differences in the seed [2]
+	         -m INT    maximum entries in the queue [2000000]
+	         -t INT    number of threads [1]
+	         -M INT    mismatch penalty [3]
+	         -O INT    gap open penalty [11]
+	         -E INT    gap extension penalty [4]
+	         -R INT    stop searching when there are >INT equally best hits [30]
+	         -q INT    quality threshold for read trimming down to 35bp [0]
+	         -c        input sequences are in the color space
+	         -L        log-scaled gap penalty for long deletions
+	         -N        non-iterative mode: search for all n-difference hits (slooow)
+	         -f FILE   file to write output to instead of stdout
+
+# I believe that I have been neglecting important settings in the BWA aln function; namely gap penalties and mismatch penalties. I should talk to George about this
+
+
+_____________________________________________
+Fine Tuning Novoalign second alignment
+_____________________________________________
+
+# If I remember correctly, my second Novoalignment (third total alignment) failed to produce a bedpe that generated hydra calls.
+
+# I am going to quickly test to see if I can "force" hydra to make calls on the existing data by setting -ms to 1 (one supporting pair per SV).
+	$ ../../Hydra-Version-0.5.3/bin/hydra -in novo_3_discded_081211_1.bedpe -out novo_3_081211_1_breaks -mld 300 -mno 807 -is -li -ms 1
+	# nope, still nothing
+	# I think that I might have figured out why though: 
+	# Most of the entries in the bedpe file were due to multiple calls for one of the pairs of the same readpair.
+	# For example, the HWI-EAS174:1:32:505:1053#0 right end read maps to the same location every time, but the left end is mapped to 22+ locations.
+	# This could probably be overcome by removing reads mapping to ALL repeat regions!
+	
+# Thoughts:
+	# The BWA aln option for -n can be set to the maximum edit distance for a read to be considered. I believe that this might be a critical point to consider in the initial alignment.
+	# It appears that the default setting for -n in BWA is 0.04, which would mean approximately 1 edit distance is the cutoff.  
+	# That doesn't appear true based on the .bedpe file from the bowtie/bwa alignment. Instead, I think that I should set -n 2 for BWA.
+	# This way, I can eliminate false positives more reliably.
+	
+	# In novoalign, set -t 171 for 72 total bp (formula given is 3 * (length - 15) on seqanswers forum) and the latest version (2.07) has a -p option that can be set to eliminate polyclonal reads
+	# In the latest version of novoalign, I should set -p to 5,10  and set -H (for hard clipping low quality trailing bases) for both runs
+	# Additionally, in the second run of novoalign, I should try to set -r Exhaustive 1100. 
+	# Also, -i PE 250,<std dev> for each dataset
+	
+# I was running the April 2010 version of novoalign (2.05); I just updated to the August 2010 version (2.07). I need to reindex my genome file as well.	
+
+# Reindexing the 5th chromosome using the new version of novoalign:
+	$ ../novocraft/novoindex -k 14 -s 3 -m -n chr5 novo_chr5.index chr5.masked
+
+# Now, retrying the tier two alignment using novoalign
+	$ ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/blackstar/novo_chr5.index -f novo_1_081211_1_1.fq novo_1_081211_1_2.fq  -o SAM -r R -i PE 250,50 -H -p 5,10 > novo_2_new.sam
+	# Started at 11:33am 10/12/2010
+
+# George pointed out that the pairToBed script has a -type neither option; maybe I should use that instead?
+	$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_2_081211_1.bedpe -b chr5_SSRs.bed -type neither | cut -f 1-14 > novo_2_neither_noSSR.bedpe
+	# That seemed to work
+	$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i novo_2_neither_noSSR.bedpe > novo_2_neither_noSSR_nodup.bedpe
+	$ ../../Hydra-Version-0.5.3/bin/hydra -in novo_2_neither_noSSR_nodup.bedpe -out novo_2_neither_breaks -mld 300 -mno 807 -is -li -ms 10
+	# The "Breaks" file at the end had something in it!
+	
+		chr5    8199016 	8199191 	chr5    60250612        60250911        1       16      +       +       2.375   3       1       1       52051896        16      16      16      16      16      0  	0
+		chr5    8198909 	8199155 	chr5    72144528        72144679        2       11      -       -       2.18182 2.90909 1       1       63945771        11      11      11      11      11      0  	0
+		chr5    23380714        23381066        chr5    72144448        72144669        3       13      +       -       1.46154 3.07692 1       1       48763956        13      13      13      13 	13       0       0
+		chr5    23380765        23380973        chr5    60250549        60250860        4       10      -       +       2.5     3.1     1       1       36870096        10      10      10      10 	10       0       0
+		chr5    72144506        72144666        chr5    117557705       117557789       5       10      -       +       3       1.9     1       1       45413284        10      10      10      10 	10       0       0
+
+# I also wanted to test the second novoalignment settings just to see if I can tweak them into generating reliable CNV calls...
+	# Remade novobuild index of chr5
+	$  ../novocraft/novoindex -k 14 -s 3 -m -n cow4_chr5 B_tau_chr5 chr5.masked
+	$ ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/blackstar/B_tau_chr5 -f novo_2_081211_1_1.fq novo_2_081211_1_2.fq -o SAM -t 180 -r Exhaustive 1000 > novo_3_test.sam
+	# In this iteration, I have increased the -t value and changed the -r value to be "Exhaustive" with 1000 reports
+	
+	# Then I remembered that I redid novoalign using the new novoalign version and the output sam file was a different size (also, it ran faster!)
+	$ ../../samtools-0.1.8/samtools view -bS -o novo_2_new.bam novo_2_new.sam
+	$ ../../samtools-0.1.8/samtools sort -n novo_2_new.bam novo_2_new_sort
+	$ ../../samtools-0.1.8/samtools view -bF 0x2 novo_2_new_sort.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 novo_2_new.fq1 -fq2 novo_2_new.fq2
+	
+	$ ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/blackstar/B_tau_chr5 -f novo_2_new.fq1 novo_2_new.fq2 -o SAM -t 180 -r Exhaustive 1000 > novo_3_new.sam
+	# Interesting fact: the *.fq1 and *.fq2 files I just generated from the new novoalign run and sort have different file sizes, but the same number of columns
+	
+		$ wc novo_2_new.fq1
+		  	4557624   4555692 116326821 novo_2_new.fq1
+
+		$ wc novo_2_new.fq2
+  			4557624   4544996 102008761 novo_2_new.fq2
+  			
+  	# I think I know why: the -H option of novoalign crops poor quality bases off of the 3' ends of reads and completely discards them		
+	
+	(<>) So, novo_3_test.sam is the file generated from the older novo_2_081211_1_x fastq files using Aaron Quinlan's settings
+	(<>) novo_2_new.sam is the file generated from the newer novo_2_new.fqx files using Aaron Quinlan's settings	
+	
+# I opened the screen that I used to run novoalign for the novo_2_new.sam files, and I saw several error messages, so I cannot trust that run. Going to try it again.	
+		======= Backtrace: =========
+		[0x4ec612]
+		[0x4f1107]
+		[0x401329]
+		[0x4d03c6]
+		[0x400239]
+		======= Memory map: ========
+		00400000-005bc000 r-xp 00000000 08:21 116752390                          /mnt/gliu1_usb/dbickhart/novocraft/novoalign
+		007bc000-007ce000 rw-p 001bc000 08:21 116752390                          /mnt/gliu1_usb/dbickhart/novocraft/novoalign
+		007ce000-00aca000 rw-p 007ce000 00:00 0                                  [heap]
+		2aaaaaaac000-2aaaaaaae000 rw-p 2aaaaaaac000 00:00 0
+		2aaaaaaae000-2aaaf3c35000 r--s 00000000 08:21 106364954                  /mnt/gliu1_usb/dbickhart/blackstar/novo_chr5.index
+		2aaaf3c35000-2aaaf3db9000 rw-p 2aaaf3c35000 00:00 0
+		2aaaf3f45000-2aaaf4103000 rw-p 2aaaf3f45000 00:00 0
+		2aaaf8000000-2aaaf802a000 rw-p 2aaaf8000000 00:00 0
+		2aaaf802a000-2aaafc000000 ---p 2aaaf802a000 00:00 0
+		7fffcf2db000-7fffcf2f0000 rw-p 7ffffffea000 00:00 0                      [stack]
+		7fffcf3fd000-7fffcf400000 r-xp 7fffcf3fd000 00:00 0                      [vdso]
+		ffffffffff600000-ffffffffff601000 r-xp 00000000 00:00 0                  [vsyscall]
+		Aborted
+
+# The other runs completed as normal. 
+	$ time ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/blackstar/B_tau_chr5 -f novo_1_081211_1_1.fq novo_1_081211_1_2.fq  -o SAM -r R -i PE 250,50 -H > novo_2_new.sam
+	# This time, I am running the novoalignment program using the time setting to gauge how long it takes
+	# Also, I removed the -p option (it might have been the cause of the error.
+	
+	
+# In the meantime, I will try to process novo_3_test.sam
+	$ ../../samtools-0.1.8/samtools view -bS -o novo_3_test.bam novo_3_test.sam
+	$ ../../samtools-0.1.8/samtools sort -n novo_3_test.bam novo_3_test_sort
+	$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i novo_3_test_sort.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > novo_3_test.bedpe
+	$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_3_test.bedpe -b chr5_SSRs.bed -type neither | cut -f 1-14 > novo_3_test_noSSR.bedpe
+	$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i novo_3_test_noSSR.bedpe > novo_3_test_ded.bedpe
+	$ ../../Hydra-Version-0.5.3/bin/hydra -in novo_3_test_ded.bedpe -out novo_3_test_breaks -mld 300 -mno 807 -is -li -ms 5
+	# A -ms setting of 10 produced no results for this test bedpe file
+	
+	$ more novo_3_test_breaks.final
+
+		chr5    8198855 	8199061 	chr5    23380729        23380861        1       5       +       +       2       2.4     1       1       15182007        6       4.5     5       4       3       2  0
+		chr5    8198924 	8199158 	chr5    72144523        72144642        2       6       +       +       1.66667 0.666667        1       1       63945719        6       6       6       6       6  00
+		chr5    8198929 	8199146 	chr5    36480019        36480067        3       5       +       -       2       1.6     1       1       28281139        5       4       5       4       3       2  0
+		chr5    23380823        23381057        chr5    72144449        72144666        4       6       +       -       0.833333        2.5     1       1       48763844        6       5       6  	54       2       0
+		chr5    23380665        23380932        chr5    60250557        60250843        5       6       -       +       1.66667 1.66667 1       1       36870179        6       4       6       4  	24       0
+
+	$ more novo_3_test_breaks.detail
+
+		chr5    8198912 	8198948 	chr5    23380820        23380856        HWI-EAS174:1:65:746:1681#0      1       +       +       2       1       1       1       1       Y       1
+		chr5    8198855 	8198891 	chr5    23380820        23380856        HWI-EAS174:1:53:802:753#0       1       +       +       3       2       1       1       1       Y       1
+		chr5    8198986 	8199022 	chr5    23380825        23380861        HWI-EAS174:1:73:1204:1054#0     2       +       +       2       2       1       2       2       Y       1
+		chr5    8198945 	8198979 	chr5    23380729        23380765        HWI-EAS174:1:99:1365:661#0      1       +       +       2       4       1       1       1       Y       1
+		chr5    8199040 	8199075 	chr5    23380830        23380865        HWI-EAS174:1:84:1063:1564#0     2       +       +       3       1       1       2       2       N       1
+		chr5    8199025 	8199061 	chr5    23380736        23380771        HWI-EAS174:1:40:1069:111#0      1       +       +       1       3       2       1       2       Y       1
+		chr5    8198924 	8198960 	chr5    72144609        72144641        HWI-EAS174:1:67:710:1647#0      1       +       +       2       0       1       1       1       Y       2
+		chr5    8198935 	8198968 	chr5    72144606        72144641        HWI-EAS174:1:86:1721:1334#0     1       -       -       1       0       1       1       1       Y       2
+		chr5    8199036 	8199069 	chr5    72144607        72144642        HWI-EAS174:1:30:571:368#0       2       -       -       1       1       1       1       1       Y       2
+		chr5    8199016 	8199051 	chr5    72144538        72144574        HWI-EAS174:1:58:1592:103#0      1       -       -       1       2       1       1       1       Y       2
+		chr5    8199122 	8199158 	chr5    72144609        72144642        HWI-EAS174:1:36:394:115#0       1       +       +       3       0       1       1       1       Y       2
+		chr5    8199112 	8199146 	chr5    72144523        72144557        HWI-EAS174:1:28:220:873#0       1       -       -       2       1       1       1       1       Y       2
+		chr5    8199048 	8199083 	chr5    36480026        36480062        HWI-EAS174:1:58:575:547#0       2       +       -       2       1       1       1       1       Y       3
+		chr5    8199102 	8199135 	chr5    36480019        36480055        HWI-EAS174:1:82:112:1188#0      1       +       -       1       1       1       1       1       Y       3
+		chr5    8199108 	8199144 	chr5    36480028        36480064        HWI-EAS174:1:78:1391:51#0       1       +       -       1       3       2       1       2       Y       3
+		chr5    8199110 	8199146 	chr5    36480031        36480067        HWI-EAS174:1:85:1428:337#0      2       +       -       2       3       1       1       1       Y       3
+		chr5    8198929 	8198965 	chr5    36480025        36480061        HWI-EAS174:1:32:1732:98#0       2       +       -       4       0       1       2       2       Y       3
+		chr5    23380823        23380859        chr5    72144607        72144643        HWI-EAS174:1:57:394:144#0       1       +       -       0       4       1       1       1       Y       4
+		chr5    23380833        23380869        chr5    72144604        72144640        HWI-EAS174:1:34:723:1099#0      1       +       -       1       2       1       1       1       Y       4
+		chr5    23380831        23380866        chr5    72144548        72144579        HWI-EAS174:1:84:328:299#0       2       +       -       1       0       2       1       2       Y       4
+		chr5    23380830        23380865        chr5    72144449        72144484        HWI-EAS174:1:84:1063:1564#0     1       +       -       1       3       1       2       2       Y       4
+		chr5    23380917        23380952        chr5    72144528        72144561        HWI-EAS174:1:94:1628:7#0        1       +       -       1       3       1       1       1       Y       4
+		chr5    23381022        23381057        chr5    72144630        72144666        HWI-EAS174:1:46:911:1331#0      1       +       -       1       3       1       1       1       Y       4
+		chr5    23380766        23380801        chr5    60250674        60250710        HWI-EAS174:1:42:1582:120#0      1       -       +       2       0       1       1       1       Y       5
+		chr5    23380844        23380880        chr5    60250685        60250716        HWI-EAS174:1:61:232:53#0        1       -       +       1       1       1       2       2       Y       5
+		chr5    23380822        23380858        chr5    60250770        60250806        HWI-EAS174:1:38:702:194#0       2       -       +       3       3       1       1       1       Y       5
+		chr5    23380835        23380869        chr5    60250775        60250810        HWI-EAS174:1:51:164:1801#0      1       -       +       2       2       1       2       2       Y       5
+		chr5    23380665        23380698        chr5    60250557        60250592        HWI-EAS174:1:88:963:529#0       1       -       +       1       2       2       1       2       Y       5
+		chr5    23380897        23380932        chr5    60250809        60250843        HWI-EAS174:1:91:475:373#0       1       -       +       1       2       2       1       2       Y       5
+
+	# The "final" breakpoint file makes more sense in light of the "details" file. 
+	# The higher variance of the coordinates of the "mates" in the "final" file corresponds NOT to indels assumed by the aligner but rather to the overlap of read pairs in the region.
+	# I have higher confidence that these larger breakpoints are likely chromosomal translocations or duplications of regions in blackstar vs dominette on chromosome 5
+	
+	# Checking these breakpoints on the genome browser, I find that I am still picking up reads that map to repeats. So, the issue is that my chr5_SSR.bed file doesn't contain some of the SINEs found on UCSC
+	# Here is how I found out:
+		perl -n -e 'split(/\t/, $_); if($_[1] >=8198800 && $_[2] <=8199300){print"@_";}' < chr5_SSRs.bed
+		perl -n -e 'split(/\t/, $_); if($_[3] =~ /SINE/){print"@_";}' < chr5_SSRs.bed
+			# This entry found quite a few labeled "SINES" but apparently one passed through my analysis!
+			# So, repeatmasking the genome is definitely a crucial step
+			
+	# One crucial stage in the generation of the SSR.bed file would be to take the repbase/UCSC data then use the mergeBed tool in the BEDTOOLS package. Then sort and eliminate duplicates (just in case)		
+
+	# OK, so the mergeBed executable actually does the duplicate merging rather than catenation of the two files (see the "Filtering out repeats from Alignments" section below)
+	# Going to try this again with the new com_chr5_SSR.bed file
+	
+	$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_3_test.bedpe -b com_chr5_SSR.bed -type neither | cut -f 1-14 > novo_3_test_neither.bedpe
+	
+	# I received the same "stack" error for the novo_2_new run, but I will progress anyways since it looks like the reads are all present in the sam file. It took 20 hours to run the program for this step.
+	
+	$ ../../samtools-0.1.8/samtools view -bS -o novo_2_new.bam novo_2_new.sam
+	$ ../../samtools-0.1.8/samtools sort -n novo_2_new.bam novo_2_new_sort
+	$ ../../samtools-0.1.8/samtools view -bF 0x2 novo_2_new_sort.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 novo_2_new_1.fq -fq2 novo_2_new_2.fq
+	
+	$ ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/blackstar/B_tau_chr5 -f novo_2_new_1.fq novo_2_new_2.fq  -o SAM -r Exhaustive 1000 -i PE 250,50 -t 180 > novo_3_new.sam
+_________________________________________
+Filtering out repeats from alignments
+_________________________________________
+# Using a modified extract_SSR.pl script on my Ubuntu drive to create a new, highly filtered SSR.bed file.
+# Note: this chr5.out file used, was generated by me before using Adelson's library. However, I did not do the two tier masking to generate it!
+# Transferred that file to server 3 and then picked up the project from the novoalignment2 and three stages
+	$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_2_081211_1.bedpe -b chr5_SSRs.bed -type either | cut -f 1-14 > novo_2_test_noSSR.bedpe
+	# Generated a .bedpe file that was LARGER than the original! Obviously did not do what I wanted it to do!
+	$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_2_081211_1.bedpe -b chr5_SSRs.bed -type notboth | cut -f 1-14 > novo_2_test_noSSR.bedpe
+	# Generated a smaller .bedpe file
+	$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i novo_2_test_noSSR.bedpe > novo_2_test_noSSR_nodup.bedpe
+	$ ../../Hydra-Version-0.5.3/bin/hydra -in novo_2_test_noSSR_nodup.bedpe -out novo_2_test_breaks -mld 300 -mno 807 -is -li -ms 10
+	# That did something! Let's check it out!
+	
+# One of the big concerns is my use of an unmasked, or poorly masked, cow4 genome. So, I am redoing the masking of the genome in two stages.
+	# using -species cow to initially mask repeat sequence in a concatenated fasta
+	$ ./RepeatMasker -species cow -s -pa 6 /mnt/data6/gliu/dbickhart/cow4_whole.fa -dir /mnt/data6/gliu/dbickhart/RepeatMasker/cow4/
+	
+	# Great! It ran out of memory! I will have to split the file in order to process it and then cat the masked sequence.
+	$ split -l 29306024 cow4_whole.fa cow4_whole_half
+	# Running separate commands on the two half files
+		$ ./RepeatMasker -species cow -s -pa 6 /mnt/data6/gliu/dbickhart/cow4_whole_halfaa -dir /mnt/data6/gliu/dbickhart/RepeatMasker/cow4/
+	# George told me that RepeatMasker, on the -s setting, will crash after about 400 megabases of processing.
+	
+	#So, I will attempt to use the repeatmasker_batch7.pl script in order to batch each chromosome individually. 
+		./repeatmasker_batch7.pl -i /mnt/data6/gliu/dbickhart/cow4masked/ -o '-species cow -s -pa 6 -e wublast -xsmall' -local -localdir /mnt/data6/gliu/dbickhart/RepeatMasker/
+		# Just did not work out very well
+		
+	# Modified my turkey repeatmasker automation script to work on the cow4 chromosomes. Uses the same options as listed above and outputs data into /mnt/data6/gliu/dbickhart/cow4masked/mask_out/	
+	
+	# using -lib david adelson's library to mask repeat sequence in the masked output file
+	
+	
+# In order to ensure that I am completely confluent with the UCSC browser in this stage, I am going to take their repeatmasker data and use the BEDTOOLS mergeBed script to merge my files with theirs
+# From there, I sort the file and remove duplicates.
+# Hopefully it is that easy!
+	$ perl extract_SSRs.pl bosTau4.fa.out
+	$ perl -n -e 'split(/\t/, $_); if($_[0] eq "chr5"){pnt $_;}' < bosTau4.fa.bed > UCSC_chr5_rep.bed
+	
+	On server 3
+	$ cat UCSC_chr5_rep.bed chr5_SSRs.bed > comb_chr5_SSR.bed
+	# Apparently, my chr5_SSR.bed file has 11 lines whereas the new file has 12
+	$ cut -f 1-11 UCSC_chr5_rep.bed > UCSC_chr5_S.bed
+	$ cat chr5_SSRs.bed UCSC_chr5_S.bed > com_chr5_SSR.bed
+	$ ../../BEDTools-Version-2.10.0/bin/mergeBed -i com_chr5_SSR.bed -n
+	
+	$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_3_test.bedpe -b com_chr5_SSR.bed -type neither | cut -f 1-14 > novo_3_test_neither.bedpe
+	

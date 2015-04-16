@@ -1,0 +1,587 @@
+05/06/2011
+# So, we want to get the NGS/acgh/snp CNV manuscript out as soon as possible. 
+
+# In order to do this, I need to get the CNVR regions to Yali so she can get the intersection and give it to George.
+# Then George will pick regions to design primers for them. 
+
+# I think that I've already done a good merger similar to this in my "major_table_3" table that I generated for the last batch of CNVs
+# I gave Yali a bed file of all the DOC identified CNVRs with gain and loss designations.
+
+# Yali generated a major overlap table: overlapwithdataset.xls (S:/gliu/yali/for derek/gene/ )
+# I want to pick out a number of interesting genes from the CNVs that are shared among all three datasets (aCGH, SNP and NGS)
+	# I filtered the "ncombine" column to only show "3"
+	# I then filtered the "genenamerefseq" column (ORFs that had refseq annotation) to show > 0
+	# This left me with 65 CNVRs to check
+	
+	# I copied the "genenamerefseq" column to a textpad file and saved in unix format on my sharedfolder (share/major_cnv_qpcr_loci)
+	# I then used a very specialized script (format_refseq_list.pl) to convert that column into individual refseq numbers separated by newlines
+		$ perl format_refseq_list.pl pre_treated_gene_list_all_3.txt > refseq_numbers.txt
+		# this gave me 152 refseq IDs
+	
+	# Then I took the refseq IDs and pasted them into DAVID just to take a quick look. 
+	
+	# Mostly brought up immune function related genes
+	
+	# New strategy: I am going to manually check the annotations to see if there's any interesting genes that have not been id'd in other studies
+	# Did the same filtering as above, only I allowed a "2" and a "3" in the ncombine column
+		654	chr2:93441668-93471308	chr2	93441668	93471308	29641	1	chr2:93441668-93463787	1	chr2:93450640-93471308	1	chr2:93454242-93464576	3											1	NM_176668 AOX1 aldehyde oxidase 1	1	NM_001159 AOX1 aldehyde oxidase 1	1	GLEAN_16153	1	ENSBTAG00000009725 ENSBTAT00000012827 ENSBTAT00000038326	1	ENSBTAG00000009725 ENSBTAT00000012827 ENSBTAT00000038326
+		1779	chr5:121230672-121447669	chr5	121230672	121447669	216998			1	chr5:121416176-121425462	1	chr5:121230672-121447669	2											1	NM_001192582 SCUBE1 signal peptide, CUB domain, EGF-like 1	2	NM_173050 SCUBE1 signal peptide, CUB domain, EGF-like 1;BC047916	2	GLEAN_21475;GLEAN_21526	2	ENSBTAG00000038410 ENSBTAT00000036156;ENSBTAG00000039694 ENSBTAT00000014979	2	ENSBTAG00000038410 ENSBTAT00000036156;ENSBTAG00000039694 ENSBTAT00000014979
+		2876	chr9:37876337-37944246	chr9	37876337	37944246	67910	1	chr9:37917792-37934219	1	chr9:37876337-37944246	1	chr9:37888028-37938393	3											1	NM_001076215 HS3ST5 heparan sulfate (glucosamine) 3-O-sulfotransferase 5	0		0		1	ENSBTAG00000000188 ENSBTAT00000000213	1	ENSBTAG00000000188 ENSBTAT00000000213
+		3253	chr10:89242436-89400394	chr10	89242436	89400394	157959	2	chr10:89274595-89328612;chr10:89333610-89400394			1	chr10:89242436-89342895	2											1	NM_001192143 FLVCR2 feline leukemia virus subgroup C cellular receptor family, member 2	1	NM_017791 FLVCR2 feline leukemia virus subgroup C cellular receptor family, member 2	2	GLEAN_03438;GLEAN_14426	2	ENSBTAG00000011985 ENSBTAT00000015901;ENSBTAG00000040078 ENSBTAT00000025616	2	ENSBTAG00000011985 ENSBTAT00000015901;ENSBTAG00000040078 ENSBTAT00000025616
+		3341	chr11:14858538-14911738	chr11	14858538	14911738	53201	2	chr11:14858538-14878744;chr11:14887538-14911738			1	chr11:14870693-14908064	2											1	NM_173972 XDH xanthine dehydrogenase	1	NM_000379 XDH xanthine dehydrogenase	1	GLEAN_06431	2	ENSBTAG00000012519 ENSBTAT00000016620 ENSBTAT00000032589;ENSBTAG00000040352 ENSBTAT00000056733	2	ENSBTAG00000012519 ENSBTAT00000016620 ENSBTAT00000032589;ENSBTAG00000040352 ENSBTAT00000056733
+		4877	chr17:64589330-64611513	chr17	64589330	64611513	22184			1	chr17:64589330-64606956	1	chr17:64591482-64611513	2											2	NM_001029846 OAS1 2',5'-oligoadenylate synthetase 1, 40/46kDa;NM_178108 OAS1 2',5'-oligoadenylate synthetase 1, 40/46kDa	4	NM_001032409 OAS1 2',5'-oligoadenylate synthetase 1, 40/46kDa;NM_002534 OAS1 2',5'-oligoadenylate synthetase 1, 40/46kDa;NM_016816 OAS1 2',5'-oligoadenylate synthetase 1, 40/46kDa;AY730627	2	GLEAN_04405;GLEAN_04404	2	ENSBTAG00000037527 ENSBTAT00000044986;ENSBTAG00000039861 ENSBTAT00000002019	2	ENSBTAG00000037527 ENSBTAT00000044986;ENSBTAG00000039861 ENSBTAT00000002019
+		5123	chr18:62749176-62799600	chr18	62749176	62799600	50425			1	chr18:62778879-62799600	1	chr18:62749176-62783256	2											2	NM_001075345 RDH13 retinol dehydrogenase 13 (all-trans/9-cis);NM_001097567 KIR2DS1 killer cell immunoglobulin-like receptor, two domains, short cytoplasmic tail, 1	5	AF276292;AF474153;AK075392;BC028137;BC035023	2	GLEAN_23702;GLEAN_19696	2	ENSBTAG00000030393 ENSBTAT00000029403;ENSBTAG00000038288 ENSBTAT00000053352 ENSBTAT00000055656	2	ENSBTAG00000030393 ENSBTAT00000029403;ENSBTAG00000038288 ENSBTAT00000055656 ENSBTAT00000053352
+		5221	chr19:15449999-15629999	chr19	15449999	15629999	180001	1	chr19:15458155-15471797	1	chr19:15449999-15629999			2											1	NM_205773 CCL11 chemokine (C-C motif) ligand 11	4	NM_002981 CCL1 chemokine (C-C motif) ligand 1;NM_002986 CCL11 chemokine (C-C motif) ligand 11;NM_005408 CCL13 chemokine (C-C motif) ligand 13;NM_005623 CCL8 chemokine (C-C motif) ligand 8	4	GLEAN_07863;GLEAN_07862;GLEAN_07865;GLEAN_07861	3	ENSBTAG00000004129 ENSBTAT00000005406;ENSBTAG00000008832 ENSBTAT00000047653 ENSBTAT00000047654;ENSBTAG00000022876 ENSBTAT00000047649	3	ENSBTAG00000004129 ENSBTAT00000005406;ENSBTAG00000008832 ENSBTAT00000047653 ENSBTAT00000047654;ENSBTAG00000022876 ENSBTAT00000047649
+		5415	chr20:6965846-6976263	chr20	6965846	6976263	10418	1	chr20:6965846-6976263			1	chr20:6971690-6975638	2											2	NM_001076510 HEXB hexosaminidase B (beta polypeptide);NM_001102109 GFM2 G elongation factor, mitochondrial 2	4	NM_000521 HEXB hexosaminidase B (beta polypeptide);NM_032380 GFM2 G elongation factor, mitochondrial 2;NM_170691 GFM2 G elongation factor, mitochondrial 2;BC017378	1	GLEAN_05255	2	ENSBTAG00000015512 ENSBTAT00000048411;ENSBTAG00000015519 ENSBTAT00000020623 ENSBTAT00000054796	2	ENSBTAG00000015512 ENSBTAT00000048411 ENSBTAT00000048410;ENSBTAG00000015519 ENSBTAT00000020623 ENSBTAT00000054796
+		5817	chr22:62000-98590	chr22	62000	98590	36591	1	chr22:62000-98590	1	chr22:86380-89757			2											2	NM_001038111 PGAM2 phosphoglycerate mutase 2 (muscle);NM_001098970 DBNL drebrin-like	5	NM_000290 PGAM2 phosphoglycerate mutase 2 (muscle);NM_001014436 DBNL drebrin-like;NM_002629 PGAM1 phosphoglycerate mutase 1 (brain);NM_014063 DBNL drebrin-like;AK027367	2	GLEAN_10484;GLEAN_10483	2	ENSBTAG00000014547 ENSBTAT00000019336;ENSBTAG00000017547 ENSBTAT00000023325	2	ENSBTAG00000014547 ENSBTAT00000019336;ENSBTAG00000017547 ENSBTAT00000023325
+		6019	chr23:7245118-7256231	chr23	7245118	7256231	11114	1	chr23:7245118-7255376			1	chr23:7252516-7256231	2											2	NM_001083674 GCLC glutamate-cysteine ligase, catalytic subunit;NM_001083785 DSB MHC class II antigen DS beta	4	NM_001498 GCLC glutamate-cysteine ligase, catalytic subunit;NM_002124 HLA-DRB1 major histocompatibility complex, class II, DR beta 1;NM_022555 HLA-DRB3 major histocompatibility complex, class II, DR beta 3;BC106057	2	GLEAN_01434;GLEAN_01435	2	ENSBTAG00000015565 ENSBTAT00000020679;ENSBTAG00000015571 ENSBTAT00000020690 ENSBTAT00000049040	2	ENSBTAG00000015565 ENSBTAT00000020679;ENSBTAG00000015571 ENSBTAT00000020690 ENSBTAT00000049040
+		6671	chr27:17214158-17220992	chr27	17214158	17220992	6835			1	chr27:17214158-17220992	1	chr27:17215160-17220857	2											1	NM_001079787 SORBS2 sorbin and SH3 domain containing 2	0		1	GLEAN_21605	1	ENSBTAG00000016486 ENSBTAT00000021917	1	ENSBTAG00000016486 ENSBTAT00000021917 ENSBTAT00000054109
+		
+	# Saved in a file (share/major_cnv_qpcr_loci/target_regions_for_qpcr_design.xlsx)
+	
+	
+# qPCR targets
+	 # OK, after talking with George, here is what I think I should do:
+	 	1. pick moderate frequency CNVs of different types and design qPCR primers for them (4 targets, two primers per each)
+	 	2. check Genome research previously identified CNVS that were qPCR'ed
+	 	3. If the custom array fails, we need to pick at least 36 more CNVR's to qPCR
+	 	4. As for the initial run, we should test the locii against all animals, but we should start out with Holstein and Jersey first (more DNA)
+	 	
+	 # Let's work on these in order
+	 	1. Pick the moderate frequency CNVs
+	 		# The good news is that I've already created a table that allows me to filter out these results (major_table_4 design)
+	 		# The problem is that the table does not give me the important gene intersection information, nor does it tell me if a CNV is a breed specific trait. 
+	 		# I might be able to write up a quick script for that or just do manual curation...
+	 		# I decided to do the script; this way I can sort through the 100 entries faster. 
+	 		# My script will take three files:
+	 			# the merge_method_sep_animal.tab file (the text-ish file used to generate Major_table_2)
+	 			# the quick_table_gain_output.tab (and loss_output) files (the files generated using bedtools merge to generate table 4 (see the nelore_30.txt note file)
+	 			# a list of refseq genes with annotations. I downloaded these from the UCSC genome browser website
+	 			
+	 		# Script name will be filter_major_table_4_type.pl and it is located in the backup folder on my sharedfolder directories
+	 		# Now to run the script
+	 		$ perl filter_major_table_4_type.pl -f quick_table_gain_output.tab -t merge_method_sep_animal.tab -o qpcr_target_gain.tab
+	 		# The output looks good, now to convert it to an xls and show George.
+	 		# I included a new feature: I created hyperlinks to google search each gene within the excel spreadsheet using this print statement:
+	 			print OUT "\t=HYPERLINK(\"http://www.google.com/search?q=$g\",\"$g\")";
+	 		# Now to run it on the losses
+	 		
+	 # George has expressed some concerns with the qPCR excel files. I will try to extract some of the higher frequency animal events and check to see how many intervals overlap
+	 # My big concern, though, is with the processing of the custom array data and the alignment of the high coverage angus individuals. 
+	 # Created a script to do this (in an automated manner)
+	 	# Preparing files to run it
+	 	$ ls *table2.bed > table2_tagged_beds.list  <- file list input
+	 	$ perl -lane 'if($F[5] > 80){ print "$F[0]\t$F[1]\t$F[2]";}' < qpcr_target_gain.tab > greater_80_beds.bed  <- list of beds to check.
+	 	$ perl bed_file_lookup.pl -i table2_tagged_beds.list -b greater_80_beds.bed -o greater_80_table.tab
+	 	
+	 	# Something's fishy, I'll have to debug later.
+	 	# I should probably make it easier, and do one bed coordinate at a time.
+	 	# No, that didn't work. It has to do with my input of the file tag into the bed. 
+	 	# I should scrap this idea and instead look to simplify things in the script or take up a new strategy
+	 	# I think that my "filter_major_table_4_type.pl" script is a good baseline
+	 	# Actually, I found the problem! I didn't keep the $f_tag variable information for my loop and that was what was causing the problem
+	 	
+	 	# I updated the program with the Spreadsheet::WriteExcel module and now it prints each queried bed into a new worksheet!
+	 	# Now that I have a pseudo-pipeline to test this, I should try to feed in different bed coordinates to see if there are any more good marker locations
+	 	
+	# Now to get some interesting CNVRs, process them through the bed_file_lookup.pl script and then determine if they are shared coordinates or are just concatenations of cnvs
+		# Here are my target criteria
+			1. predominance in one breed over others
+			2. intersection with genes
+			3. small length and low - moderate frequency
+			
+		# I will try alternating those criteria and generating lookup files to run through the script
+			1. This was basically a cut and paste job from the qpcr_target_gain.tab and qpcr_target_loss.tab files
+				# Input file was called "breed_specific_cnvr_list.txt".
+				# I tried to use the following rules for the selection:
+					# There had to be two or fewer breeds that had the CNVR
+					# There had to be a number of 4 or above animals in that breed that had the CNVR
+					# Overlap with genes did not influence the picking
+				$ perl bed_file_lookup.pl -i table2_tagged_beds.list -b breed_specific_cnvr_list.txt -o breed_specific_lookup.xls
+				# Turned out good: there are some "winner" regions and some junk ones as well
+				# I am going to start uploading everything to the S:/ drive (S:/gliu/Derek/cnvr_comparison/qpcr_target_discovery )
+				
+			2. This has the potential to get out of hand quickly! So let's take lower length CNVRs within the gene intersections instead.
+				$ perl -lane 'if($F[3] < 50000 && length($F[6]) > 1){ print "$F[0]\t$F[1]\t$F[2]";}' < qpcr_target_gain.tab  > gene_intersection_gain_list.bed
+				$ perl bed_file_lookup.pl -i table2_tagged_beds.list -b gene_intersection_gain_list.bed -o gene_specific_gain_lookup.xls
+				# Now for the deletions
+				$ perl -lane 'if($F[3] < 50000 && length($F[6]) > 1){ print "$F[0]\t$F[1]\t$F[2]";}' < qpcr_target_loss.tab  > gene_intersection_loss_list.bed
+				$ perl bed_file_lookup.pl -i table2_tagged_beds.list -b gene_intersection_loss_list.bed -o gene_specific_loss_lookup.xls
+				
+			3. OK, I'll try to get events that are around 30kb and less than 15 percent frequency
+				$ perl -lane 'if($F[3] < 30000 && $F[5] < 15){ print "$F[0]\t$F[1]\t$F[2]";}' < qpcr_target_gain.tab > small_low_freq_gain.bed
+				$ perl bed_file_lookup.pl -i table2_tagged_beds.list -b small_low_freq_gain.bed -o small_low_freq_gain_lookup.xls
+				
+				# There were too many small low freq loss events, so I had to reduce the prevalence to 8%
+				$ perl -lane 'if($F[3] < 30000 && $F[5] < 8){ print "$F[0]\t$F[1]\t$F[2]";}' < qpcr_target_loss.tab > small_low_freq_loss.bed
+				$ perl bed_file_lookup.pl -i table2_tagged_beds.list -b small_low_freq_loss.bed -o small_low_freq_loss_lookup.xls
+	 	
+__________________________________
+BWA side-project
+__________________________________
+
+# OK, I want to see if I can get the one-end anchors from the paired end files. I will use the newest version of bwa and a solitary processor to see if this is possible. 
+# I also want to remap the Blackstar Hiseq Doc. I will devote another processor to this, but I will cancel it as soon as I need more processors.
+
+# First I need to make two BWA indicies (not sure if the same index can be used by two different processes). 
+	$ ../bwa-0.5.9rc1/bwa index -p bwa_cow4_a -a bwtsw cow4_36_noun_rmask_a.fa
+	
+	# I may have to put this on hold, especially if I get the high coverage angus data. I need to start processing it immediately to get it finished in any amount of time. 
+	
+_________________________________
+ACGH experiments
+_________________________________
+
+# George received the hybridization data back from the custom array.
+# Now, we need to process the files using NimbleScan 2.5 and then check the custom array's results back to our predictions
+# Note: NimbleScan doesn't seem to have very good memory usage; I have to run the files in batches of five, and exit out the program to prevent unfreed memory from building up over time.
+
+# I found the following section of notes from Alkan's paper on the use of a custom array:
+	V. ArrayCGH Validation
+	
+	We performed array comparative genomic hybridization (arrayCGH) to confirm
+	individual-specific duplications and to confirm copy-number differences in shared
+	duplications. We used two customized oligonucleotide microarrays (NimbleGen, 385,000
+	isothermal probes). One design was targeted specifically to the primate segmental
+	duplications detected in human, chimpanzee, orangutan and macaque 28. This covered
+	180 Mbp of corresponding sequence from the human genome at a density of 1 probe
+	every 525 bp (GEO13934). The second microarray targeted new duplications and
+	deletions identified by our three-way human comparison. This design spanned 88.4 Mb
+	of sequencing, resulting in 1 probe every 230 bp. As part of both designs, we also
+	selected 10 regions (100 kbp each) of single copy DNA to serve as copy-number
+	invariant control regions for the analysis of the hybridizations (9 autosomal and 1 X
+	chromosome regions). For the second microarray, only 8 autosomal regions were
+	considered as a control regions since one of them (in chr10) overlapped with a potential
+	deletion in JDW.
+	All the results are combined together in a single validation experiment. A total of six
+	intra-specific experiments were performed and the log2 relative hybridization intensity
+	was calculated for each probe. These experiments included the following genomic DNA
+	comparisons: JDW vs. NA18507, JDW vs. YH, and NA18507 vs. YH. All the
+	experiments were performed with a standard replicate dye-swap experimental design
+	(reverse labeling of test and reference samples).
+	To analyze the results of the hybridizations and to validate our predictions, we considered
+	only those probes that showed a consistent result in replicate dye-swap experiments
+	(~55% of probes). We further restricted our analysis to those regions that were greater
+	than 20 kbp in length and had less than 80% of common repeats. We first correlated
+	experimental and computational copy-number estimations. We computed the copy
+	number for individuals based on the depth-of-coverage of aligned WGS (WSSD
+	duplication) against the human reference assembly (hg17). Based on this computational
+	estimate of copy number, we calculated a predicted log2 copy-number ratio for each
+	autosomal duplication interval >20 kbp in length (and with less than 80% of total
+	common repeat content). These values were plotted against the experimental log2 ratios
+	determined by array comparative genomic hybridization specific for each individual. The
+	correlations (R2) ranged from 0.9 for specific duplications to 0.5 for some shared
+	duplications (Figure 4 and Supplementary Figure 4). Specific duplications are more
+	accurately correlated with predicted copy number because in shared duplications with
+	similar copy number there is an associated noise in both the computational predictions
+	and experimental log2 (although usually centered around zero).
+	Secondly, we used a heuristic approach to calculate specific log2 thresholds of
+	significance for each comparison and experimental array 29. In short, we dynamically
+	adjusted the thresholds for each hybridization to result in a false discovery rate of <1% in
+	the control regions.
+	With this method, we statistically validated 17 duplication intervals (68%) of the initial
+	25 predicted intervals greater than 20 kb that were found not shared by all three
+	individuals. To make calls on validated sites, we required the interval to be statistically
+	significant in both complementary hybridizations (so for a JDW-specific SD it had to be
+	validated in both JDW/NA18507 and JDW/YH arrayCGH experiments). Those validated
+	intervals encompassed 1.1 Mb of sequence not duplicated in at least one of the three
+	individuals. Similarly, we found 28 validated deletions (12% of the 134 predicted not
+	shared in the three individuals). This accounted for 1.4 Mb (Supplementary Note Figures
+	8, 9, 10, Supplementary Note Table 3). See also Supplementary Note Figure 11 for in
+	silico vs. experimental log2 ratios of copy numbers in deletion regions.
+
+
+# Checking how many of my reads mapped per animal:
+	$ pwd: /mnt/gliu1_usb/dbickhart/breed_doc/
+	$ for i in ./*/mrsfast/*animal*/*auto_rem.bed; do prefix=`basename $i`; wc $i | awk '{print var"\t"$1}' var=$prefix >> mapped_reads.txt; done 
+	
+
+# Used NimbleScan 2.5 to parse all of the pair files in George's folder (server3: /mnt/data110/gliu/cgh_hd/28378)
+	# I need to organize the raw-files folder
+		$ mkdir in_house_pdfs
+		$ mv *.pdf ../in_house_pdfs/
+		$ mkdir in_hous_segtables
+		$ mv *.txt ../in_house_segtables/
+		
+		$ mkdir working_folder   <- to contain copies that I will work on
+		# Yali told me that the filter script cannot recognize the unavg designation, so i must change that into "500bp" in order for the filename to work
+		$ cp *segtable* ../working_folder/
+		
+		# Yali informed me that I need to convert the segtable format since the segtables are different (higher density) than the ones used in the older program
+		$ file_rename.pl ./ 's/_unavg_segtable_segMNT/_500bp_segMNT_segtable/'
+		$ file_rename.pl ./ 's/segtable_segMNT/segMNT_segtable/'
+		$ file_rename.pl ./ 's/txt/txt1/'
+		
+		$ Formathdacgh.pl -i working_folder  <- converts file lines into the older version so that the filtering step can work
+		$ for i in *.txt; do perl -pi -e 's/ARRAY_ID/CY5_SAMPLE_NAME/' $i; done
+		$ mkdir ../raw_format
+		$ mv *.txt1 ../raw_format/
+		
+	
+	
+	# Now to filter the calls using George's script: FilterCghData01d.pl
+
+		$ FilterCghData01d.pl
+			usage: FilterCghData01.pl -i [input directory including segtable files] -r [ratio shift threshold] -p [numbe of raw datapoints threshold] -o [output file]
+		
+		$ mkdir ../filter_0.5_3
+		$ FilterCghData01c.pl -i . -r 0.5 -p 3 -o ../filter_0.5_3/0.5_3_fil
+				
+		$ mkdir filter_0.5_5/
+		$ FilterCghData01c.pl -i . -r 0.5 -p 5 -o ../filter_0.5_5/0.5_5_fil	
+	
+	# Now to merge the CNVs into CNVR
+		$ for i in 0.5_3*; do arrayCGH_segMNT_merge03b.pl -i $i; done
+		$ for i in 0.5_5*; do arrayCGH_segMNT_merge03b.pl -i $i; done
+		
+		
+_____________________________________
+Figure/table draft
+_____________________________________
+
+# George has asked me to create a draft of figures and tables for the manuscript
+# I will use my ideas from previous note files to draft this up and send it to him
+# I will shoot for 5 placeholder figures, and several tables
+
+# Here is a section from my previous notes file
+	# Tables:
+		* Table 1: Dataset stats 
+		* Table 2: Numbers of CNV's per breed (PEM vs DoC and overlap)
+		* Table 3: Listing of CNV's that are common to all breeds (PEM vs DoC)
+		* Table 4: Comparisons of CNV's to other publications
+		* Table 5: Nearby proteins and transcription factors
+		* Table 6: 
+		
+		*Supp Table: DAVID analysis of enriched genes
+		*Supp Table: Full CNV listing
+		
+		
+	# Figures:
+		* Figure 1: Circos plot of ALL CNV's (two tracks underneath chromosomes: PEM and DoC)
+		* Figure 2: Circos plot of CNV's per breed <- iffy, maybe supplemental?
+		* Figure 3: Circos plot of one chromosome with links representing CNV's
+		* Figure 4: qPCR graph
+		* Figure 5: pile-up plot of one CNV
+		
+	*Supp Figure: Distribution of PEM lengths
+	
+# Let's change that around a bit. My guideline will be the 1000 genomes project paper and Sudmant's paper
+	# Figures 
+		* Figure 1: Typical result and example region and workflow
+		* Figure 2: Circos plot of all CNVR's predicted (different track per method)
+		* Figure 3: inset pie chart CNVR contributions + graph deletions vs insertions
+		* Figure 4: VENN diagram CNVR comparisions to other datasets
+		* Figure 5: aCGH confirmation
+		* Figure 6: Heatmap at interesting location
+		
+	# Tables:
+		* Table 1: Dataset stats
+		* Table 2: Merged across animals within breed unique CNV's
+		* Table 3: Overlap with proteins, or panther ipa analysis
+		
+		
+# Saving draft file: cnv_draft_figs_tabs.pptx
+
+# OK, so I lost the extract_regions_for_heatmap.pl script, and the circos tables, but I should be able to put them all back together fast
+# I will ask Yali to help me with the VENN diagram and I will draw the typical result and workflow in inkscape
+
+# Excellent! I do have the extract_regions_for_heatmap.pl script saved! That makes things easier. I think that I will just include a placeholder heatmap for now, just to give George an idea of what to expect.
+
+# Now to create a doughnut chart of the CNVR contributions of each method and their contribution to MB
+	# My major_table_3 design merges across animals but not across methods (making it perfect to calculate these values)
+	# I'm going to use the larger animal dataset to extract the stats; I might want to use just the common animal datasets in the future
+	# On second thought, let me rethink this and use the merged_method beds in major_table_2's construction.
+		$ cat *.bed | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > full_set_merged.bed
+		# This merged all of the animal_merge_method.bed files
+		# name tag is now: method_animal
+		# Not interested in the animals right now, but the name tag will be important
+		
+		pwd: /home/derek/share/cow4_doc/nelore/major_table_3
+		$ perl create_contribution_table.pl full_set_merged.bed
+		
+	
+	
+# I just quickly used an example Circos plot for my Figure 2 example.
+	# The design for the final Circos plot will be a merger of CNVRs across animals
+	# Chromosomes on the outside (White with bars for gaps)
+	# Inner circles will represent CNVRs from aCGH, NGS and SNP respectively
+	# Green bars for dup's and red bars for del's (perhaps on separate tracks
+	
+# The VENN diagram pipeline was previously created by me in the opt_doc note file. Here are the relevant sections from it:
+			# I created a script (create_intersection_table_yali.pl) that creates comparisons of all datasets and combines numbers in order to form the intersections of a VENN diagram
+				1377  perl create_intersection_table_yali.pl del_3_2_separate_stats.tab venn_del_3_2.tab
+				 ...
+			# I should keep these numbers, but try to merge the snp and acgh numbers before running them through the pipeline (look for the -> above in the notes)
+				# Now to cat all of the snp intervals into one file 
+					$ find ./merge/ -name acgh*cat*gain.bed | xargs -i cat '{}' > acgh_master_cat_gain.bed
+					$ find ./merge/ -name snp*cat*gain.bed | xargs -i cat '{}' > snp_master_cat_gain.bed
+					# same with the loss files
+					
+				$ for i in *master*; do ../../BEDTools-Version-2.10.1/bin/mergeBed -i $i > $i.merge; done
+				
+				$ for i in *.merge; do perl -e' $f = $ARGV[0]; chomp $f; @s = split(/\_/, $f); open(IN, "< $f"); while (<IN>){ chomp $_; print "$_\t$s[0]\n";}' $i > $i.name; done
+				
+				$ cat ./merge/ins_4_3_cat_named.bed ./acgh_master_cat_gain.bed.merge.name ./snp_master_cat_gain.bed.merge.name | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_4_3_simple_combo_gain_events.bed
+				...
+				
+				# Now moving files to a folder called "simple"
+				
+				# Created a script (create_simpel_yali_stats.pl) to generate the VENN numbers
+				$ perl create_simple_yali_stats.pl ins_3_2_simple_combo_gain_events.bed ins_3_2_simple.tab
+				...
+				
+				# Wait, that isn't fair... I need to merge the NGS data too. Going to do that fast...
+				# Did the following for each ins/del file:
+					$ ../../BEDTools-Version-2.10.1/bin/mergeBed -i ./merge/del_4_3_cat_named.bed > del_4_3_master.bed
+					$ for i in *master.bed; do perl -e' $f = $ARGV[0]; open(IN, "< $f"); while (<IN>){ chomp $_; print "$_\tNGS\n";}' $i > $i.name; done
+					$ cat acgh_master_cat_gain.bed.merge.name snp_master_cat_gain.bed.merge.name ins_4_3_master.bed.name | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_4_3_fair_gain.bed
+					$ for i in *fair*; do perl create_simple_yali_stats.pl $i $i.simple; done
+	
+	# My current representative venn diagram is made from the table generated using that method
+	# The numbers are likely to change significantly
+	
+# Creating a merged across animals within breed CNVR table. 
+
+_______________________________________
+HD animal focus
+_______________________________________
+
+# OK, so George wants me to focus more on the HD coverage animals. This includes:
+	* DT (trace reads)
+	* Blackstar
+	* Nelore
+	* 3 angus (3, 7, 10)
+	
+# What I need to do is to construct a Major_table_2 format with all of these animals present
+# Then I will design qPCR target loci on four ranked qualities:
+	1. New (not in any other dataset) w/gene overlap and ranked by # of methods
+	2. New w/o gene overlap and ranked by methods
+	3. Individual calls from new dataset ranked by methods
+	4. Individual calls from older datasets ranked by methods
+	
+# HD Angus conversion:
+	an0626	> BTAN09
+	an1717 	> BTAN10
+	an0828	> BTAN02
+	
+# Primer wrapper script 
+	# So, I have identified the problem with my primer_3_blat_wrapper.pl script: my run_primer3_core subroutine is not saving primer sequences!
+	# I have resolved this issue and I replaced the core utilities with some tools from the exonerate package
+	# Now, the wrapper is renamed (primer_3_exonerate_wrapper.pl) and it works!
+	
+# Major table 2 and 4 design
+	# These are the scripts that I used to create the first table 
+			$ perl bed_split_by_animal.pl acgh_gain_table2.bed
+			$ perl bed_merge_across_method.pl
+			$ perl bed_create_merge_method_table.pl all_animals_merge_method.bed
+	# I think I should use them in their current order right now, and perhaps streamline the process into one pipeline later
+	# I can see myself using this process in the future.
+
+	# Now to separate the HD animal stats from Yali's data
+	# copied over all that I could to the folder: share/cow4_doc/hd_animals on my shared folders
+	# Now, I need to devise a scheme to rename and tag each CNV
+	# The name tag will be: ngsid_gain/loss_dataset
+		$ perl -ne 'chomp; print "$_\tBTAN09_gain_ngs\n";' < an0626_angus_gain.bed > ./hd_animals/BTAN09_ngs_gain.bed
+		$ perl -ne 'chomp; print "$_\tBTAN09_loss_ngs\n";' < an0626_angus_loss.bed > ./hd_animals/BTAN09_ngs_loss.bed
+		$ perl -ne 'chomp; print "$_\tBTAN02_loss_ngs\n";' < an0828_angus_loss.bed > ./hd_animals/BTAN02_ngs_loss.bed
+		$ perl -ne 'chomp; print "$_\tBTAN02_gain_ngs\n";' < an0828_angus_gain.bed > ./hd_animals/BTAN02_ngs_gain.bed
+		$ perl -ne 'chomp; print "$_\tBTAN10_gain_ngs\n";' < an1717_angus_gain.bed > ./hd_animals/BTAN10_ngs_gain.bed
+		$ perl -ne 'chomp; print "$_\tBTAN10_loss_ngs\n";' < an1717_angus_loss.bed > ./hd_animals/BTAN10_ngs_loss.bed
+		
+		# I need to rerun the nelore data through the pipeline; I am unsure if the ngs cnv calls are accurate.
+		# done; this reduced the number of hits significantly and now I just need to process the file
+		$ perl -lane '@s = split(/\_/, $F[3]); print "$F[0]\t$F[1]\t$F[2]\t$s[0]\_$s[1]\_ngs";' < BINE12_hd_ngs_doc.bed > ./hd_animals/BINE12_ngs_all.bed
+		
+		$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBINE12_$F[4]\_hacgh";' < nelore_hacgh_call > ./hd_animals/BINE12_hacgh_all.bed
+		$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBINE12_$F[4]\_hdsnp";' < nelore_hsnp_call > ./hd_animals/BINE12_hdsnp_all.bed
+		
+		# I also combined the "gain and loss" files into an "all.bed" file for each dataset.
+		# Moved all of the original, uncombined files into the original_files folder. 
+		
+	# I put in the work to link the separate scripts in order to make tables 2 and 4 on demand (for a variable list of animals)
+	# The script is called (bed_create_tables_2_4.pl) and it does not take input (it does an "ls" in the directory that it is run in);
+		# Takes input according to my named bed file naming scheme (ngsid_gain/loss_dataset)
+		$ perl bed_create_tables_2_4.pl
+		
+# Now to use my filter_major_table_4_type.pl script to identify refgene intersections and interesting intervals
+	# I modified the filter_major_table_4_type.pl script to take in the new "event" column (gain, loss, or both) in my new table 4 format
+	$ perl filter_major_table_4_type.pl -f major_table_4.tab -t major_table_2.tab -o hd_filtered_4_2.tab -m 2
+	# Now I have a list of common CNV events near genes
+	# I need to take these CNV events and subtract the already known CNV events.
+	# Taking my copies of the previously detected CNVs from S:/gliu/Derek/yalis_data/cnvrdataset
+	# Now to intersect them and then do a merge with my newer dataset
+		$ for i in *.txt; do prefix=`echo $i | cut -d'_' -f1`; echo $prefix; perl -e '$n = $ARGV[0]; $f = $ARGV[1]; chomp $f; chomp $n; open (IN, "< $f"); while(<IN>){$_ =~ s/\r//g; chomp; print "$_\t$n\n";}' $prefix $i >> $prefix.named.bed; done
+		# Now to take the bed position out of the hd_filtered_4_2.tab file and make it into a named bed for the merger
+		$ perl -lane 'if ($F[1] =~ /start/){ next;} print "$F[0]\t$F[1]\t$F[2]\tfilter";' < hd_filtered_4_2.tab > hd_filtered_bed_positions.bed
+		$ cat ../hd_filtered_bed_positions.bed *.named.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms | grep 'filter' > round_1_filter_intersections.named.bed
+		# Next, I just eyeballed the intersected cnvs and copy-pasted the intersections into an excel workbook
+	
+	# What I need to do is prioritize elements in this table and then run my bed_file_lookup.pl script to pull the exact CNV coordinates for each animal
+		# So I have prioritized the primer selections in an excel file (hd_filtered_4_2.xlsx)
+		# My primer selection location selection criteria followed this pattern:
+			1. new calls (no intersection with the literature) w/ gene intersections sorted by number of animals (smallest to largest)
+			2. new calls (''	''		''	 ) w/o gene intersections sorted by number of animals (smallest to largest)
+			3. the two WC1 cnv locii
+			4. individual cnv calls (only found in one animal) that intersect with the literature
+			5. individual cnv calls (found in two animals) that interstect with the literature
+			
+		# This gave me 62 putative locii to check for. I think that this is a reasonable number.
+
+# Now I need to intersect the CNV intervals with aCGH probe locations, and then I can send the list off to Reuben
+	# Yali gave me a list of the HD aCGH probe locations
+	# Now, I need to reformat that list and intersect it with my CNV calls. 
+	$ perl -lane 'print "$F[1]\t$F[2]\t$F[3]\t$F[0]";' < acghprobe > acgh_hd_probes.bed
+	# I wrote a quick script (check_priority_bed.pl) to intersect the coordinates.
+	# It worked quite fast and did a good job; I should remember this script to do a better intersection script in the future.
+	# I modified the script to only print the fourth, fifth and sixth positions inside the CNV interval (to avoid the "edges" and to return only a smaller number of probes.
+	
+	$ perl check_priority_bed.pl acgh_hd_probes.bed priority_list.bed > priority_list_pcr_positions.tab
+	# I'm missing alot of positions... maybe these were regions devoid of probes?
+	# I figured it out (scripting error). I also realized that I wasn't carrying over the animal names. 
+	# Created a script to crossreference the animals that had each CNVR and rewrote check_priority_bed.pl to keep the animal information
+		$ perl cross_reference_priority_table2.pl major_table_2.tab priority_list.bed > priority_list_named.bed
+		# Removed some of the obnoxious CNVRs (had the same animal listed about 3-4 times, indicating multiple cnvs within the CNVR)
+			chr10	23981385	24525126	BINE12;BINE12;BINE12;BTAN02;BTAN02;BTAN02;BTAN02;BTAN02;BTAN02;BTAN09;BTAN09;BTHO11;BTHO11;BTHO11;BTHO11;BTHO11
+			chr16	51725880	51910675	BINE12;BINE12;BTAN02;BTAN09;BTAN10;BTAN10;BTHO11;BTHO11
+			chr19	42697268	42847598	BINE12;BINE12;BTAN02;BTAN02;BTAN09;BTAN09;BTAN10;BTAN10;BTHO11;BTHO11
+			chr5	9700298	9858001	BINE12;BINE12;BTAN02;BTAN09;BTAN09;BTAN10;BTHO11
+			chr6	6172132	6341771	BINE12;BTAN02;BTAN02;BTAN09;BTAN09;BTAN10;BTAN10;BTHO11
+			chr13	74990299	75072119	BINE12;BINE12;BINE12;BTAN09;BTAN10;BTHO11
+		$ perl check_priority_bed.pl acgh_hd_probes.bed priority_list_named.bed > priority_list_pcr_pos.tab
+		
+	# Reuben just finished the initial run of the primer design pipeline but 10 primers failed. I am going to give him a wider list of probe locations to pick
+	# I need to modify the check_priority_bed.pl script to print out more probe locations first
+	# Done; Now the script skips the first three probes but then prints out every probe up to the twentieth location.
+	$ perl check_priority_bed.pl acgh_hd_probes.bed initial_failed_list.txt > initial_failed_expanded_probes.list
+	
+_______________________________________
+Organizing folder
+_______________________________________
+
+# I need to get all of the files into one unified directory on the S:/ drive and on server 3
+# First, George wants me to combine the gain and loss into one bed file
+	$ perl -ne 'chomp; print "$_\tBINE12_gain\n";' < total_nelore_doc_r_file1.bed.final.wssd > nelore_hd_gain.bed
+	$ perl -ne 'chomp; print "$_\tBINE12_loss\n";' < total_nelore_doc_r_file1.bed.final.deletions.tab > nelore_hd_loss.bed
+	$ cat nelore_hd_gain.bed nelore_hd_loss.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms | grep 'BINE12_gain;BINE12_loss' <- no overlaps
+	$ cat  nelore_hd_gain.bed nelore_hd_loss.bed > BINE12_hd_ngs_doc.bed
+	
+	$ perl -ne 'chomp; print "$_\tBTAN09_gain\n";' < an0626_angus_gain.bed > BTAN09_gain.bed
+	$ perl -ne 'chomp; @s = split(/\t/); if ($s[2] - $s[1] < 10000){next;} print "$_\tBTAN09_loss\n";' < an0626_angus_loss.bed > BTAN09_loss.bed
+	$ cat BTAN09_gain.bed BTAN09_loss.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms | grep 'BTAN09_gain;BTAN09_loss'
+		chr21   1912922 1990200 BTAN09_gain;BTAN09_loss
+		chr27   6522256 6547767 BTAN09_gain;BTAN09_loss
+		chr27   6666190 6777984 BTAN09_gain;BTAN09_loss
+		chr27   6784190 6844380 BTAN09_gain;BTAN09_loss
+		chr27   7010650 7128508 BTAN09_gain;BTAN09_loss
+		chr27   7173367 7297879 BTAN09_gain;BTAN09_loss
+		
+		# Should be:
+		chr21   1912922 1948921 BTAN09_gain
+		chr21   1948922 1990200 BTAN09_loss
+		chr27	6522256	6536156	BTAN09_loss
+		chr27	6536157	6547767	BTAN09_gain
+		chr27	6666190	6723663	BTAN09_gain
+		chr27	6722664	6777984	BTAN09_loss
+		chr27	6784190	6813189	BTAN09_loss
+		chr27	6813190	6844380	BTAN09_gain
+		chr27	7010650	7032128	BTAN09_loss
+		chr27	7032129	7128508	BTAN09_gain
+		chr27	7173367	7198960	BTAN09_loss
+		chr27	7198961	7297879	BTAN09_gain
+		
+		# Redid this based on the raw files and then replaced the merged intervals.
+		
+	$ perl -ne 'chomp; print "$_\tBTAN02_gain\n";' < an0828_angus_gain.bed > BTAN02_gain.bed
+	$ perl -ne 'chomp; @s = split(/\t/); if ($s[2] - $s[1] < 10000){next;} print "$_\tBTAN02_loss\n";' < an0828_angus_loss.bed > BTAN02_loss.bed
+	$ cat BTAN02_gain.bed BTAN02_loss.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms | grep 'BTAN02_gain;BTAN02_loss'
+		chr21   1908922 2020833 BTAN02_gain;BTAN02_loss
+		chr27   6522256 6547767 BTAN02_gain;BTAN02_loss
+		chr27   6666190 6777984 BTAN02_gain;BTAN02_loss
+		chr27   6784190 6844380 BTAN02_gain;BTAN02_loss
+		chr27   7010650 7051271 BTAN02_gain;BTAN02_loss
+		chr27   7173367 7297879 BTAN02_gain;BTAN02_loss
+		chr27   7560417 7596442 BTAN02_gain;BTAN02_loss
+		chr29   39885933        39931258        BTAN02_gain;BTAN02_loss
+		
+		# Should be:
+		chr21	1908922	1948921	BTAN02_gain
+		chr21	1948922	2020833	BTAN02_loss
+		chr27	6522256	6536156	BTAN02_loss
+		chr27	6536157	6547767	BTAN02_gain
+		chr27	6666190	6723663	BTAN02_gain
+		chr27	6722664	6777984	BTAN02_loss
+		chr27	6784190	6813189	BTAN02_loss
+		chr27	6813190	6844380	BTAN02_gain
+		chr27	7010650	7032128	BTAN02_loss
+		chr27	7032129	7128508	BTAN02_gain
+		chr27	7173367	7198960	BTAN02_loss
+		chr27	7198961	7297879	BTAN02_gain
+		chr27	7560417	7575433	BTAN02_gain
+		chr27	7575434	7596442	BTAN02_loss
+		chr29	39885933	39901923	BTAN02_gain
+		chr29	39901933	39931258	BTAN02_loss
+		
+	$ perl -ne 'chomp; print "$_\tBTAN10_gain\n";' < an1717_angus_gain.bed > BTAN10_gain.bed
+	$ perl -ne 'chomp; @s = split(/\t/); if ($s[2] - $s[1] < 10000){next;} print "$_\tBTAN10_loss\n";' < an1717_angus_loss.bed > BTAN10_loss.bed
+	$ cat BTAN10_gain.bed BTAN10_loss.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms | grep 'BTAN10_gain;BTAN10_loss'
+		chr21   1908922 1990019 BTAN10_gain;BTAN10_loss
+		chr27   6520256 6547767 BTAN10_gain;BTAN10_loss
+		chr27   6630190 6777984 BTAN10_gain;BTAN10_loss
+		chr27   6790190 6844380 BTAN10_gain;BTAN10_loss
+		chr27   7010650 7067374 BTAN10_gain;BTAN10_loss
+		
+		# Should be
+		chr21	1908922	1948921	BTAN10_gain
+		chr21	1948922	1990019	BTAN10_loss
+		chr27	6520256	6536156	BTAN10_loss
+		chr27	6536157	6547767	BTAN10_gain
+		chr27	6630190	6723663	BTAN10_gain
+		chr27	6722664	6777984	BTAN10_loss
+		chr27	6790190	6813189	BTAN10_loss
+		chr27	6813190	6844380	BTAN10_gain
+		chr27	7010650	7032128	BTAN10_loss
+		chr27	7032129	7067374	BTAN10_gain
+		
+	$ perl -ne 'chomp; print "$_\tBTHO11_gain\n";' < blackstar_rem_hits_r_file1.bed.final.wssd > BTHO11_gain.bed
+	$ perl -ne 'chomp; @s = split(/\t/); if ($s[2] - $s[1] < 10000){next;} print "$_\tBTHO11_loss\n";' < blackstar_rem_hits_r_file1.bed.final.deletions.tab > BTHO11_loss.bed
+	$ cat BTHO11_gain.bed BTHO11_loss.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms | grep 'BTHO11_gain;BTHO11_loss' <- nothing
+	$ cat BTHO11_gain.bed BTHO11_loss.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > BTHO11_hd_ngs_doc.bed
+	
+	# Tad did not tell Yali what Dominette's ID was. I'm going to improvise and just call her BTHE01 for now
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBTHE01_gain"' < artmask_trace_calls.wssd > BTHE01_hd_ngs_doc.bed
+	
+__________________________________
+Comparing to custom array data
+__________________________________
+
+# I found Yali's CNV calls for the custom array data on server 3
+# I am now going to process the CNV calls into a named animal bed using the naming convention that I used above. (ie, animal_gain/loss_custom)
+# Here are the ID conversions for the results:
+	 68089902 <- BINE12
+	 68089202 <- Blackstar
+	 68112902 <- BTAN09
+	 68113002 <- Dt Test
+	 68131902 <- BTAN02
+	
+# I created a one-time script to process the reads
+pwd: /home/derek/share/cow4_doc/hd_animals/custom_array
+$ perl process_custom_array_calls.pl > hd_animals_custom_cnv_named.bed
+# Now I need to intersect the custom array calls with my CNV calls
+# Going to use the bed_create_tables_2_4.pl script to do this, but I have to separate the animals into separate files
+	$ perl -lane '@s = split(/\_/, $F[3]); open (OUT, ">> $s[0]_custom_all.bed"); print OUT "$F[0]\t$F[1]\t$F[2]\t$F[3]"; close OUT;' < hd_animals_custom_cnv_named.bed
+	pwd: /home/derek/share/cow4_doc/hd_animals/custom_array/tables_w_custom
+	$ perl bed_create_tables_2_4.pl
+	
+	# Now to filter out only the intervals that had custom array hits:
+	$ perl -lane 'if($F[0] =~ /animal/){next;}elsif($F[2] =~ /y/ || $F[6] =~ /y/){print $_;}' < major_table_2.tab > filter_table2_for_custom.tab
+	$ perl -lane 'if($F[10] > 1){print $_;}' < filter_table2_for_custom.tab | wc
+	    237    2607   11508
+	    
+# Now, I am going to check out the confirmed cnvs/animals that have multiple confirming methods
+	$ perl -lane 'if($F[10] > 3 && $F[0] ne "animal"){ ($c, $s, $e) = $F[1] =~ m/(chr\d+)\:(\d+)\-(\d+)/; print "$c\t$s\t$e\t$F[0]";}' < filter_table2_for_custom.tab > four_method_confirm.bed
+	# I created a new script to cross reference the individual CNVs out of each method
+	$ perl cross_reference_raw_bed_files.pl four_method_confirm.tab
+	# This generated a bed file that contained all of the individual CNVs per method. I can fix this script later to better organize the output.
+	
+	
+##### See Lab_note_20110627_dbick_more_cnv.txt #####

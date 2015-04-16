@@ -1,0 +1,1255 @@
+07/10/2014
+# These are my notes on the improvement of the RPSR program and testing it on "real data" prior to publication
+
+# Priority action items for the program:
+	1. I need a way to convert BWA aligned BAMs into the metadata I need for the program. So I will create a mode that does this for the user
+	2. I need to rerun the simulation data using my improvements to the algorithm (that reduce its memory overhead)
+	3. I need to javadoc the living hell out of all of my classes and to trim the useless classes that I developed a long time ago
+	
+________________________
+Conversion from BWA
+________________________
+# So, I have used MrsFAST exclusively, previously. If I can perform BWA as the initial alignment and then use SAM flags or something similar to select reads for analysis, I'll be better off!
+# The goal is to scan BWA-based BAM files to draw off reads that are likely to be informative. These reads will be identified from:
+	1. Read Flags
+	2. Insert sizes from BWA pairing
+	3. XA:Z tags that show multiple mappings per read
+	
+# If I can process the bam using that information and group reads by read groups, I will be all set!
+# I have created a mode that reprocesses bam files derived from BWA. Now to test them against my simulation results
+
+Blade14: /mnt/iscsi/vnx_gliu_7/vhsr_sim/fifty_trials/var_1
+$ perl -lane 'for($x = 0; $x < 3; $x++){@b = split(/\//, $F[$x]); $F[$x] = $b[2];} print join("\t", @F);' < var_1_vh.list > var_1_rpsr.list  //
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s var_1_rpsr.list -c chr29 -g ../../../reference/umd3_gaps_ftp.bed -o rpsr_r_retry
+
+# Now for testing
+$ perl ~/bin/test_vhsr_delly_duppy_recall_accurracy.pl rpsr_r_retry.vhsr.deletions rpsr_r_retry.vhsr.tand var_1_vars_delly.txt var_1_vars_duppy.txt ../true_variant_locs_1.bed rpsr_r
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+	DELLY   1       93      0.010752688172043       0.111111111111111       9       11
+	DUPPY   6       295     0.0203389830508475      0.545454545454545       9       11
+	RPSRDELS        1       321     0.00311526479750779     0.111111111111111       9       11
+	RPSRTAND        3       64      0.046875        0.272727272727273       9       11
+$ cat rpsr_r_retry.vhsr.tand rpsr_r_retry.vhsr.insertions > rpsr_r_retry.vhsr.tandandins
+$ perl ~/bin/test_vhsr_delly_duppy_recall_accurracy.pl rpsr_r_retry.vhsr.deletions rpsr_r_retry.vhsr.tandandins var_1_vars_delly.txt var_1_vars_duppy.txt ../true_variant_locs_1.bed rpsr_rt
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+	DELLY   1       93      0.010752688172043       0.111111111111111       9       11
+	DUPPY   6       295     0.0203389830508475      0.545454545454545       9       11
+	RPSRDELS        1       321     0.00311526479750779     0.111111111111111       9       11
+	RPSRTAND        8       91      0.0879120879120879      0.727272727272727       9       11
+	
+# Now, let's try the conversion of the BWA bam
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i var_1.sorted.bam -o rpsr_p_retry -r ../../../reference/umd3_kary_nmask_hgap.fa -t 3
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s rpsr_p_retry.flat -c chr29 -g ../../../reference/umd3_gaps_ftp.bed -o rpsr_p_retry
+
+$ perl ~/bin/test_vhsr_delly_duppy_recall_accurracy.pl rpsr_p_retry.vhsr.deletions rpsr_p_retry.vhsr.tand var_1_vars_delly.txt var_1_vars_duppy.txt ../true_variant_locs_1.bed rpsr_rt
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+	DELLY   1       93      0.010752688172043       0.111111111111111       9       11
+	DUPPY   6       295     0.0203389830508475      0.545454545454545       9       11
+	RPSRDELS        1       1014    0.000986193293885602    0.111111111111111       9       11
+	RPSRTAND        6       9       0.666666666666667       0.545454545454545       9       11
+
+# OK, even though the results above were good, there were some huge bugs
+# I need to be careful that I use the same reference genome fasta that was used for the BWA run!
+# Otherwise the SAMJDK puts an aligned read on another chromosome as a "*" aligned read and throws an error
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i var_1.sorted.bam -o rpsr_p_retry -r ../../umd3_chr29.fa -t 3 
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s rpsr_p_retry.flat -c chr29 -g ../../../reference/umd3_gaps_ftp.bed -o rpsr_p_retry
+
+
+# I am going to try to figure out why I am getting too many deletion calls with the preprocessed data
+# I have created debug flags on both processes that should help me diagnose the issues
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i var_1.sorted.bam -o rpsr_d_retry -r ../../umd3_chr29.fa -d
+$ wc -l SamSupport.tab
+	31768 SamSupport.tab
+	
+# I noticed that most of the "split reads" were simply anchors where both reads were mismatched. Much of my flag filtering in the main preprocessing routine sucked
+# I changed it and reran it
+
+# Now to test the new files with the clustering routine
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s rpsr_d_retry.flat -c chr29 -g ../../../reference/umd3_gaps_ftp.bed -o rpsr_d_retry -d
+# OK, I reduced the number of false positive deletion calls down to 383 by changing my criteria for adding deletions to the group (ie. adding the set only if the interior coordinate aligns)
+
+# Now, let's see what's happening to my split reads
+	$ samtools view rpsr_d_retry.D.bam | perl -lane 'if($F[3] > 31523506 && $F[3] < 31523996){print $_;}'
+	# nothing
+	$ samtools view rpsr_d_retry.D.anchor.bam | perl -lane 'if($F[3] > 31523292 && $F[3] < 31524201){print $_;}'
+	# nothing
+	
+	# Hmm, I would expect split reads here
+	# Let's check the BWA bam to see if there are any reads that should be near the deletion
+	$ samtools view var_1.sorted.bam chr29:31523000-31524300 | perl -lane '($c, $s, $e) = $F[0] =~ /(chr.+)-(\d+)-(\d+)-.+/; if($F[6] eq "="){next;} if(($e > 31523292 && $s < 31523506) || ($e > 31523996 && $s < 31524201)){print $_;}' | less
+	# Nothing
+	# apparently everything aligned "just fine"
+	
+	# Let's check the fastq to see if there is an issue here.
+	$ perl -e 'while($h = <>){chomp $h; ($c, $s, $e) = $h =~ /\@(chr.+)-(\d+)-(\d+)-.+/; if(($e > 31523292 && $s < 31523506) || ($e > 31523996 && $s < 31524201)){print "$h\n";} <>; <>; <>;}' < var_1_r1.fq > int_read1.txt
+	$ samtools view var_1.sorted.bam | perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $_ =~ s/\@//g; $_ =~ s/\/\d{1}//g; $h{$_} = 0;} while(<STDIN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$h{$s[0]} += 1;}} foreach $k (keys(%h)){if($h{$k} == 0){print "$k\t$h{$k}\n";}}' int_read1.txt
+	# Nothing
+	
+	# 467 appears to be the amount of nucleotides missing from the alignment, so maybe I have to adjust the reads by this much amount?
+	$ perl -e 'while($h = <>){chomp $h; ($c, $s, $e) = $h =~ /\@(chr.+)-(\d+)-(\d+)-.+/; if(($e > 31523700 && $s < 31523906) || ($e > 31524396 && $s < 31524601)){print "$h\n";} <>; <>; <>;}' < var_1_r1.fq > int_read1.txt
+	
+	
+	# My old program version detected two split reads in the area (and only one discordant read)
+	$ perl -lane 'if($F[2] < 31523888 && $F[3] > 31523655){print $_;}' < var_1_vh.calls.vhsr.deletions
+		chr29   31523340        31523605        31523938        31524096        DELETION
+		
+	# Let's see if I can pull the split reads from the region
+	$ samtools view var_1.sr.split.sorted.bam chr29:31523555-31523988
+		chr29-31523372-31523875-3:0:0-4:0:0-1ae25a/21   0       chr29   31523605        255     50M     *       0       0       NAAAAACTAAAAGAAGAAATGACTGTTTCCTACCACACAGAGAAAATTGA      22222222222222222222222222222222222222222222222222      NM:i:1  MD:Z:6A43
+		chr29-31522989-31523471-2:1:0-1:0:0-2310f2/12   16      chr29   31523605        255     50M     *       0       0       NAAAAAATAAAAGTAGAAATGACTGTTTCCTACCACACAGAGAAAATTGA      22222222222222222222222222222222222222222222222222      NM:i:1  MD:Z:13A36
+		chr29-31522989-31523471-2:1:0-1:0:0-2310f2/11   16      chr29   31523889        255     50M     *       0       0       CATCCAAATCTATTTTATCTATAACATAAATATAAATAAAATAGATTTGN      22222222222222222222222222222222222222222222222222      NM:i:1  MD:Z:A49
+	
+	# Found one! Let's get its anchor and other alignment information
+	$ samtools view var_1.sorted.bam | grep 'chr29-31522989-31523471-2:1:0-1:0:0-2310f2'
+		chr29-31522989-31523471-2:1:0-1:0:0-2310f2      163     chr29   31523222        29      100M    =       31523606        436     ATGTACTGCTATACAGACAGCTCCCAAATTTCGCCCCGTTTCTATGAAATGCTTCTTCTAGATTAACTAGAAGATTTAAATGGGCACTGTCATATCCACT    2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222    XT:A:U  NM:i:3  SM:i:29 AM:i:29 X0:i:1  X1:i:0  XM:i:3  XO:i:0  XG:i:0  MD:Z:1A30C27C39
+		chr29-31522989-31523471-2:1:0-1:0:0-2310f2      83      chr29   31523606        29      1S52M47S        =       31523222        -436    NAAAAAATAAAAGTAGAAATGACTGTTTCCTACCACACAGAGAAAATTGACATCCAAATCTATTTTATCTATAACATAAATATAAATAAAATAGATTTGN    2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222    XT:A:M  NM:i:1  SM:i:29 AM:i:29 XM:i:1  XO:i:0  XG:i:0  MD:Z:12A39
+
+	# Goddammit! That's it! BWA softclipped the read!
+	# Now I think that I can identify the right regions based on this soft-clipping
+	# OK, I rewrote the program to identify reads that have softclipping and to ensure that their anchors are retrieved and stored for later
+
+# Testing the softclipping retrieval
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i var_1.sorted.bam -o rpsr_s_retry -r ../../umd3_chr29.fa -d
+$ samtools view rpsr_s_retry.D.bam | grep 'chr29-31522989-31523471-2:1:0-1:0:0-2310f2'
+	chr29-31522989-31523471-2:1:0-1:0:0-2310f2_1    0       chr29   31523605        255     50M     *       0       0       NAAAAAATAAAAGTAGAAATGACTGTTTCCTACCACACAGAGAAAATTGA   22222222222222222222222222222222222222222222222222      MD:Z:13A36      NM:i:1
+	chr29-31522989-31523471-2:1:0-1:0:0-2310f2_2    0       chr29   31523889        255     50M     *       0       0       CATCCAAATCTATTTTATCTATAACATAAATATAAATAAAATAGATTTGN   22222222222222222222222222222222222222222222222222      MD:Z:A49        NM:i:1
+	
+# Sweet! It worked! Let's test the rest of the pipeline
+	$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s rpsr_s_retry.flat  -c chr29 -g ../../../reference/umd3_gaps_ftp.bed  -o rpsr_s_retry -d
+	
+	$ cat rpsr_s_retry.vhsr.insertions rpsr_s_retry.vhsr.tand > rpsr_s_retry.vhsr.tandandins
+	
+	
+_________________________________
+Mills dataset analysis
+_________________________________
+# OK, Bioinformatics requires that I use real data in testing my program
+# I will download one of the chromosomes from the human reference assembly to see if I can process it and recover the discovered variants from Mills et al.
+
+Blade14: /mnt/iscsi/vnx_gliu_7/rpsr_testing
+$ /home/dbickhart/RepeatMasker/RepeatMasker -pa 20 -species human human_1000_genomes_chr11_unmasked.fa
+$ samtools faidx human_1000_genomes_chr11_unmasked.fa.masked
+$ mrsfast --index human_1000_genomes_chr11_unmasked.fa.masked
+
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i NA12878.chrom11.ILLUMINA.bwa.CEU.low_coverage.20121211.bam -o NA12878_RPSR_chr11 -r human_1000_genomes_chr11_unmasked.fa.masked -g -t 20
+# I ran into an error. Apparenly MrsFAST creates read entries based on the size of the first read and does not allocate array sizes larger than that
+# This caused issues where the "sam" entry was locked at 35 bases for the quality score and CIGAR, but the read was a variable length all the time
+# I had to remove the splitting function and instead I returned a "same size" read splitter.
+
+# OK, now to do the clustering
+# First I need to get a gap file for this chromosome
+$ ~/bin/get_repeatmask_bed human_1000_genomes_chr11_unmasked.fa
+
+# Now the command
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s NA12878_RPSR_chr11.flat -c 11 -g human_1000_genomes_chr11_unmasked.fa.repeats -o NA12878_RPSR_chr11_calls
+
+# Nothing is matching up! Let's try Delly to see if we get better luck
+$ export LD_LIBRARY_PATH=/mnt/iscsi/vnx_gliu_7/bamtools-master/lib/
+$ /mnt/iscsi/vnx_gliu_7/delly_source_v0.0.9/pemgr/delly/delly -g human_1000_genomes_chr11_unmasked.fa NA12878.chrom11.ILLUMINA.bwa.CEU.low_coverage.20121211.bam
+
+# Nothing is matching up there either! The reference genome and truth dataset coordinates must be from different assemblies! Damn...
+# I'm going to realign NA12878 to the human reference genome consortium fasta to see if that improves anything
+$ wget ftp://ftp.ncbi.nlm.nih.gov/genbank/genomes/Eukaryotes/vertebrates_mammals/Homo_sapiens/GRCh38/Primary_Assembly/assembled_chromosomes/FASTA/chr11.fa.gz
+$ wget ftp://ftp.ncbi.nlm.nih.gov/genbank/genomes/Eukaryotes/vertebrates_mammals/Homo_sapiens/GRCh38/Primary_Assembly/assembled_chromosomes/FASTA/chr11.rm.out.gz
+
+$ perl -lane 'if($F[0] =~ /^>/){print ">chr11";}else{print $_;}' < chr11.fa > grch37_hsapiens_chr11.unmasked.fa
+$ ~/bin/get_repeatmask_bed grch37_hsapiens_chr11.unmasked.fa 
+$ mv grch37_hsapiens_chr11.unmasked.fa.repeats grch37_hsapiens_chr11.unmasked.fa.gaps
+$ perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//g; chomp; @s = split(/\s+/); print "chr11\t$s[5]\t$s[6]\n";}' < chr11.rm.out > grch37_hsapiens_chr11.unmasked.fa.repeats.bed //
+$ ~/bedtools-2.17.0/bin/maskFastaFromBed -fi grch37_hsapiens_chr11.unmasked.fa -bed grch37_hsapiens_chr11.unmasked.fa.repeats.bed -fo grch37_hsapiens_chr11.masked.fa
+
+
+# Now to prepare the fasta files for realignment
+$ bwa index grch37_hsapiens_chr11.unmasked.fa
+$ samtools faidx grch37_hsapiens_chr11.unmasked.fa
+$ samtools view NA12878.chrom11.ILLUMINA.bwa.CEU.low_coverage.20121211.bam | perl -lane 'print "\@$F[0]\n$F[9]\n+\n$F[10]";' > NA12878.chr11.low_coverage.fq
+$ samtools faidx grch37_hsapiens_chr11.masked.fa
+
+# Damn, the fastq isn't that easy. I need to use the sam flags to generate the different read files
+$ samtools view NA12878.chrom11.ILLUMINA.bwa.CEU.low_coverage.20121211.bam | perl -e 'open(FQ1, "> NA12878.chr11.low_coverage.1.fq"); open(FQ2, "> NA12878.chr11.low_coverage.2.fq"); while(<>){chomp; @F = split(/\t/); my $fh; if($F[1] & 40){$fh = *FQ1;}else{$fh = *FQ2;} print $fh "\@$F[0]\n$F[9]\n+\n$F[10]\n";}'
+
+$ perl take_care_of_reads.pl NA12878.chr11.low_coverage.1.fq NA12878.chr11.low_coverage.2.fq
+$ bwa aln grch37_hsapiens_chr11.unmasked.fa NA12878.chr11.low_coverage.1.fq.filt > NA12878.chr11.low_coverage.1.fq.filt.sai
+$ bwa aln grch37_hsapiens_chr11.unmasked.fa NA12878.chr11.low_coverage.2.fq.filt > NA12878.chr11.low_coverage.2.fq.filt.sai
+
+$ bwa sampe grch37_hsapiens_chr11.unmasked.fa NA12878.chr11.low_coverage.1.fq.filt.sai NA12878.chr11.low_coverage.2.fq.filt.sai NA12878.chr11.low_coverage.1.fq.filt NA12878.chr11.low_coverage.2.fq.filt > NA12878.chr11.lowcov.grch37.unsorted.sam
+	[bwa_sai2sam_pe_core] convert to sequence coordinate...
+	[infer_isize] (25, 50, 75) percentile: (237, 343, 394)
+	[infer_isize] low and high boundaries: 101 and 708 for estimating avg and std
+	[infer_isize] inferred external isize from 205185 pairs: 316.395 +/- 103.505
+	[infer_isize] skewness: -0.328; kurtosis: -0.540; ap_prior: 1.27e-05
+	[infer_isize] inferred maximum insert size: 981 (6.42 sigma)
+	
+$ samtools view -bS NA12878.chr11.lowcov.grch37.unsorted.sam > NA12878.chr11.lowcov.grch37.unsorted.bam
+$ samtools sort -@ 5 NA12878.chr11.lowcov.grch37.unsorted.bam NA12878.chr11.lowcov.grch37.sorted
+$ samtools index NA12878.chr11.lowcov.grch37.sorted.bam
+
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i NA12878.chr11.lowcov.grch37.sorted.bam -o grchr37_reformatted_chr11_RPSR -r grch37_hsapiens_chr11.masked.fa
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s grchr37_reformatted_chr11_RPSR.flat -c chr11 -g grch37_hsapiens_chr11.unmasked.fa.gaps -o grchr27_reformatted_chr11_RPSR_calls
+
+# Hmm... I'm still not removing enough clusters. Let's allow the user to set thresholds and the number of threads for the SetWeightCover algorithm
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i NA12878.chr11.lowcov.grch37.sorted.bam -o grchr37_reformatted_chr11_RPSR -r grch37_hsapiens_chr11.masked.fa -s 100000
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s grchr37_reformatted_chr11_RPSR.flat -c chr11 -g grch37_hsapiens_chr11.unmasked.fa.gaps -o grchr27_reformatted_chr11_RPSR_calls -t 10 -i 4	
+	[RPSR INPUT] Finished loading gap file: grch37_hsapiens_chr11.unmasked.fa.gaps
+	[RPSR INPUT] Read list item: 1 of 1; (D , S): (280128 , 98806). Current sets: 91512
+	[RPSR INPUT] Finished loading all files! Final Sets: 91512.
+	[RPSR WEIGHT] Calculating preliminary set values.
+	[RPSR WEIGHT] Working on set number: 6427 of 91512 and removed: 91511
+	[RPSR WEIGHT] Finished with: chr11: 6429 out of 91512 initial Events
+	
+# OK, that's more manageable. Let's see how we did.
+$ wc -l grchr27_reformatted_chr11_RPSR_calls.vhsr.*
+    77 grchr27_reformatted_chr11_RPSR_calls.vhsr.deletions
+    77 grchr27_reformatted_chr11_RPSR_calls.vhsr.deletions.sup
+     0 grchr27_reformatted_chr11_RPSR_calls.vhsr.insertions
+     0 grchr27_reformatted_chr11_RPSR_calls.vhsr.insertions.sup
+  6200 grchr27_reformatted_chr11_RPSR_calls.vhsr.inversions
+     8 grchr27_reformatted_chr11_RPSR_calls.vhsr.tand
+     8 grchr27_reformatted_chr11_RPSR_calls.vhsr.tand.sup
+  6370 total
+  
+# Dammit! The coordinates are still off! They're using a different build of the reference assembly again!
+# Let's test Lumpy on this then
+$ ~/jdk1.8.0_05/bin/java -jar ~/picard-tools-1.85/AddOrReplaceReadGroups.jar I=NA12878.chr11.lowcov.grch37.sorted.bam O=NA12878.chr11.lowcov.grch37.sorted.rg.bam ID=NA12878.11 LB=NA12878.lb PL=illumina PU=hiseq2000 SM=NA12878
+$ samtools index NA12878.chr11.lowcov.grch37.sorted.rg.bam
+$ samtools view NA12878.chr11.lowcov.grch37.sorted.rg.bam | ~/lumpy/scripts/pairend_distro.py -r 101 -o NA12878.chr11.lowcov.grch37.sorted.rg.bam.histo -X 3 -N 10000
+	mean:423.5352   stdev:201.365860962
+$ ~/lumpy/bin/lumpy -mw 4 -tt 0.0 -pe bam_file:NA12878.chr11.lowcov.grch37.sorted.rg.bam,histo_file:NA12878.chr11.lowcov.grch37.sorted.rg.bam.histo,mean:423,stdev:201,read_length:101,min_non_overlap:150,discordant_z:3,back_distance:20,weight:1,id:1,min_mapping_threshold:20 > grchr27_reformatted_chr11_lumpy_pe.bedpe
+
+# Lumpy is beginning to thrash on the data! I think that the dataset is crap
+
+
+# OK, there is a tool called "SMASH" that was developed at Berkley to try to fix this problem
+# I will download the NA12878 chr20 dataset to test this
+$ cd smash_test
+$ wget http://ampx-smash-sampled-human-na12878.s3.amazonaws.com/NA12878_chr20.bam
+$ wget http://ampx-smash-hg19-reference.s3.amazonaws.com/ucsc.hg19.fasta
+
+$ samtools faidx ucsc.hg19.fasta
+$ perl ~/bin/split_fasta.pl ucsc.hg19.fasta
+$ for i in `ls *.fa | grep -v chr20.fa | grep -v ucsc.hg19.fasta`; do rm $i; done
+$ ~/RepeatMasker/RepeatMasker -pa 20 -species human -no_is -q chr20.fa
+
+$ mrsfast --index chr20.fa.masked
+$ samtools faidx chr20.fa.masked
+
+$ ~/bin/get_repeatmask_bed chr20.fa
+
+~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i NA12878_chr20.bam -g -o RPSR_NA12878_preprocess -r chr20.fa.masked -t 10 -s 10000
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s RPSR_NA12878_preprocess.flat -c chr20 -g chr20.fa.repeats -o RPSR_NA12878_cluster -t 20 -i 3
+$ sort -k2,2n RPSR_NA12878_cluster.vhsr.deletions > RPSR_NA12878_cluster.vhsr.deletions.sorted
+
+# They only have one deletion in this dataset! I'll have to try Venter's genome here
+$ wget http://ampx-smash-synthetic-venter.s3.amazonaws.com/Venter_chr20.bam
+
+# The chr20 fasta appears to be correct from the last set of reads so I will use that for preprocessing
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i Venter_chr20.bam -o RPSR_Venter_preprocess -r ../NA12878/chr20.fa.masked -g -t 10 -s 10000
+$ ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s RPSR_Venter_preprocess.flat -c chr20 -g ../NA12878/chr20.fa.repeats  -o RPSR_Venter_cluster -i 3 -t 20
+$ wc -l RPSR_Venter_cluster.vhsr.*
+   3217 RPSR_Venter_cluster.vhsr.deletions
+   3217 RPSR_Venter_cluster.vhsr.deletions.sorted
+   3217 RPSR_Venter_cluster.vhsr.deletions.sup
+      9 RPSR_Venter_cluster.vhsr.insertions
+      9 RPSR_Venter_cluster.vhsr.insertions.sorted
+      9 RPSR_Venter_cluster.vhsr.insertions.sup
+      4 RPSR_Venter_cluster.vhsr.inversions
+      0 RPSR_Venter_cluster.vhsr.tand
+      0 RPSR_Venter_cluster.vhsr.tand.sup
+   9682 total
+   
+# Hmmm, I'm missing a few important insertions that I know are in the divet files
+# I need to alter the insertion logic a bit
+# Actually, this insertion is too large, and it has non-reference sequence. There is no way that I can detect it
+# Let me compare my results against delly instead
+$ export LD_LIBRARY_PATH=/mnt/iscsi/vnx_gliu_7/bamtools-master/lib/
+$ ../../../delly_source_v0.0.9/pemgr/delly/delly -o delly_Venter_deletions.txt -g ../NA12878/chr20.fa.masked Venter_chr20.bam
+	[2014-Jul-31 14:12:42] ../../../delly_source_v0.0.9/pemgr/delly/delly -o delly_Venter_deletions.txt -g ../NA12878/chr20.fa.masked Venter_chr20.bam
+	Library0: Venter_chr20.bam (Median: 586, MAD: 91, Orientation: 2, PE insert size cutoff: 1041)
+$ ../../../delly_source_v0.0.9/pemgr/duppy/duppy -o duppy_Venter_duplications.txt -g ../NA12878/chr20.fa.masked Venter_chr20.bam
+	[2014-Aug-01 08:36:01] ../../../delly_source_v0.0.9/pemgr/duppy/duppy -o duppy_Venter_duplications.txt -g ../NA12878/chr20.fa.masked Venter_chr20.bam
+	Library0: Venter_chr20.bam (Median: 586, MAD: 91, Orientation: 2)
+	
+$ perl ~/bin/test_vhsr_delly_duppy_recall_accurracy.pl RPSR_Venter_cluster.vhsr.deletions RPSR_Venter_cluster.vhsr.tand delly_Venter_deletions.txt duppy_Venter_duplications.txt ../smash_venter_true_dels_gt300.bed rpsr_delly_gt300_del_comparison_venter
+$ less rpsr_delly_gt300_del_comparison_venter.tab
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+	DELLY   35      12321   0.00284067851635419     0.921052631578947       38
+	DUPPY   0       79      0       0       38
+	RPSRDELS        35      3387    0.0103336285798642      0.921052631578947       38
+	RPSRTAND        0       19      0       0       38
+
+
+_______________________
+Running data on an Angus Individual
+_______________________
+# I am going to add more "real data" to the analysis by using one of Jerry's Angus
+Lewis: /ibfs7/asg2/bickhartd/angus_bwa/AN1717
+$ bsub -J mergebams -oo mergebams.out -n 4 -R 'rusage[mem=4000] span[hosts=1]' ../../jdk1.8.0_05/bin/java -jar ../../picard-tools-1.118/MergeSamFiles.jar INPUT=AN1717.AP.05.sorted.rg.bam INPUT=AN1717.AP.06.sorted.rg.bam INPUT=AN1717.AP.07.sorted.rg.bam INPUT=AN1717.AP.08.sorted.rg.bam INPUT=AN1717.BP.02.sorted.rg.bam INPUT=AN1717.BP.03.sorted.rg.bam INPUT=AN1717.BP.04.sorted.rg.bam OUTPUT=AN1717.total.merged.sorted.rg.bam MERGE_SEQUENCE_DICTIONARIES=true SO=coordinate VALIDATION_STRINGENCY=LENIENT
+
+$ mkdir rpsr
+$ bsub -J rpsr_pre -oo rpsr_preprocess -n 4 -R 'rusage[mem=11000] span[hosts=1]' ../../jdk1.8.0_05/bin/java -Xmx10g -Djava.io.tmpdir=/ibfs7/asg2/bickhartd/angus_bwa/AN1717/merge_temp -jar ../../bin/ r preprocess -i AN1717.total.merged.sorted.rg.bam -o RPSR_preprocess -r ../../reference/umd3_kary_nmask_hgap.fa -g -t 4 -s 10000
+$ for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 X; do chr=`echo "chr"$i`; echo $chr; bsub -J rspr_${chr} -oo rpsr_cluster -n 4 -R 'rusage[mem=20000] span[hosts=1]' ../../jdk1.8.0_05/bin/java -Xmx20g -Djava.io.tmpdir=/ibfs7/asg2/bickhartd/angus_bwa/AN1717/merge_temp -jar ../../bin/RPSR.jar cluster -s RPSR_preprocess.flat -c $chr -g ../../reference/umd3_gaps_ftp.bed -o RPSR_cluster.${chr} -i 3 -f 3 -t 4 ; done
+
+$ cat *.vhsr.deletions | sort -k1,1 -k2,2n > ./rpsr_calls/RPSR_cluster.wgs.vhsr.deletions
+$ cat *.vhsr.insertions | sort -k1,1 -k2,2n > rpsr_calls/RPSR_cluster.wgs.vhsr.insertions
+$ cat *.vhsr.tand | sort -k1,1 -k2,2n > rpsr_calls/RPSR_cluster.wgs.vhsr.tand
+$ cat *.vhsr.inversions | sort -k1,1 -k2,2n > rpsr_calls/RPSR_cluster.wgs.vhsr.inversions
+$ cat *.vhsr.deletions.sup | sort -k1,1 -k2,2n > rpsr_calls/RPSR_cluster.wgs.vhsr.deletions.sup
+$ cat *.vhsr.insertions.sup | sort -k1,1 -k2,2n > rpsr_calls/RPSR_cluster.wgs.vhsr.insertions.sup
+$ cat *.vhsr.tand.sup | sort -k1,1 -k2,2n > rpsr_calls/RPSR_cluster.wgs.vhsr.tand.sup
+
+# Delly won't compile on Lewis, so I have to work on the Angus individual on Blade14
+Blade14: /mnt/iscsi/vnx_gliu_7/rpsr_testing/angus_delly
+$ ../../delly_source_v0.0.9/pemgr/delly/delly -o delly_an1717_dels.txt -g ../../reference/umd3_kary_nmask_hgap.fa AN1717.total.merged.sorted.rg.bam
+	[2014-Aug-07 09:47:17] ../../delly_source_v0.0.9/pemgr/delly/delly -o delly_an1717_dels.txt -g ../../reference/umd3_kary_nmask_hgap.fa AN1717.total.merged.sorted.rg.bam
+	Library0: AN1717.total.merged.sorted.rg.bam (Median: 307, MAD: 25, Orientation: 2, PE insert size cutoff: 432) <- well, Delly goofed already! There are several libraries here
+	Redundant abnormal pairs: 115252
+	Total non-redundant abnormal pairs: 1053291
+	chr1: 13782 components
+	...
+	[2014-Aug-07 13:51:56] Done.
+	
+$ ../../delly_source_v0.0.9/pemgr/duppy/duppy -o duppy_an1717_dups.txt -g ../../reference/umd3_kary_nmask_hgap.fa AN1717.total.merged.sorted.rg.bam
+	[2014-Aug-07 14:07:13] ../../delly_source_v0.0.9/pemgr/duppy/duppy -o duppy_an1717_dups.txt -g ../../reference/umd3_kary_nmask_hgap.fa AN1717.total.merged.sorted.rg.bam
+	Library0: AN1717.total.merged.sorted.rg.bam (Median: 307, MAD: 25, Orientation: 2)
+	Redundant abnormal pairs: 3256
+	Total non-redundant abnormal pairs: 1292443
+	chr1: 19279 components
+	...
+	[2014-Aug-07 18:50:42] Done.
+
+$ grep '>' *.txt | wc -l
+	176280
+
+#OK, now it's time to compare the datasets and do a venn	
+pwd: /home/dbickhart/share/RPSR/an1717_test
+$ grep '>Deletion' delly_an1717_dels.txt | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tDellyDel";' > DELLY_deletions.bed
+$ grep '>' duppy_an1717_dups.txt | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tDuppyDup";' > DUPPY_duplications.bed
+$ perl -lane 'if($F[2] > $F[3]){$s = $F[3]; $F[3] = $F[2]; $F[2] = $s;} print "$F[0]\t$F[2]\t$F[3]\tRPSRDel";' < RPSR_cluster.wgs.vhsr.deletions | sortBedFileSTDIN.pl > RPSR_deletions.bed
+$ cat RPSR_cluster.wgs.vhsr.insertions RPSR_cluster.wgs.vhsr.tand | perl -lane 'print "$F[0]\t$F[1]\t$F[4]";' | sortBedFileSTDIN.pl | perl -lane 'if($F[1] < 0){next;}else{print $_;}' | mergeBed -i stdin | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tRPSRDup";' > RPSR_duplications.bed
+
+# There was a call on chr17 that apparently softclipped off into the centromere! The start coordinates were -65!
+$ wc -l *.bed
+	  43629 DELLY_deletions.bed
+	 132617 DUPPY_duplications.bed
+	   4171 RPSR_deletions.bed
+	   9617 RPSR_duplications.bed
+	 190034 total
+	 
+	 # Thats a 10 fold difference!
+$ cat DUPPY_duplications.merged.bed | ~/bin/bed_length_sum.pl 
+	Interval Numbers:	10263
+	Total Length:		2,385,867,163
+	Length Average:		232472.684692585
+	Length Median:		168
+	Length Stdev:		4627959.63273791
+	Smallest Length:	16
+	Largest Length:		150180733
+$ cat RPSR_deletions.bed | ~/bin/bed_length_sum.pl 
+	Interval Numbers:	4171
+	Total Length:		991,453
+	Length Average:		237.701510429154
+	Length Median:		70
+	Length Stdev:		1229.77216405839
+	Smallest Length:	0
+	Largest Length:		43754
+$ cat RPSR_duplications.bed | ~/bin/bed_length_sum.pl 
+	Interval Numbers:	9617
+	Total Length:		5,335,149
+	Length Average:		554.762295934283
+	Length Median:		272
+	Length Stdev:		3053.0384773063
+	Smallest Length:	14
+	Largest Length:		152086
+$ cat DELLY_deletions.bed | ~/bin/bed_length_sum.pl
+	Interval Numbers:	1867
+	Total Length:		2,435,843,642
+	Length Average:		1304683.25763257
+	Length Median:		163
+	Length Stdev:		11021096.9246699
+	Smallest Length:	9
+	Largest Length:		149426475
+
+# After removing initial calls that were greater than 1 mb in size:
+$ perl -lane 'if($F[2] - $F[1] > 1000000){next;}else{print $_;}' < DUPPY_duplications.bed | sortBedFileSTDIN.pl | mergeBed -i stdin | bed_length_sum.pl 
+	Interval Numbers:	97407
+	Total Length:		118,544,899
+	Length Average:		1217.00595439753
+	Length Median:		167
+	Length Stdev:		26337.7118094347
+	Smallest Length:	16
+	Largest Length:		2286242
+$ perl -lane 'if($F[2] - $F[1] > 1000000){next;}else{print $_;}' < DELLY_deletions.bed | sortBedFileSTDIN.pl | mergeBed -i stdin | bed_length_sum.pl 
+	Interval Numbers:	1833
+	Total Length:		9,568,159
+	Length Average:		5219.94489907256
+	Length Median:		161
+	Length Stdev:		42714.1660012513
+	Smallest Length:	9
+	Largest Length:		885255
+
+
+# Bob had a good point that I had changed the parameters for the SV calling between the Angus and human datasets.
+# Let's change it back to be more stringent (5 raw reads instead of 3)
+$ for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 X; do chr=`echo "chr"$i`; echo $chr; bsub -J rspr_${chr} -oo rpsr_cluster -n 4 -R 'rusage[mem=20000] span[hosts=1]' ../../jdk1.8.0_05/bin/java -Xmx20g -Djava.io.tmpdir=/ibfs7/asg2/bickhartd/angus_bwa/AN1717/merge_temp -jar ~/bin/RPSR.jar cluster -s RPSR_preprocess.flat -c $chr -g ../../reference/umd3_gaps_ftp.bed -o RPSR_cluster.${chr} -i 5 -f 2 -t 4 -m 0.000001 -p /ibfs7/asg2/bickhartd/angus_bwa/AN1717/merge_temp; done
+# That finished super fast!
+$ mkdir rpsr_stricter_calls
+
+_________________________
+Running data on a Human individual
+_________________________
+# Here's my final test on NA12878
+3850 /seq1/side_projects/NA12878_ref_dataset
+$ mkdir NA12878_temp
+
+# It's mapped to hg18/ncbi36. No matter. The original paper had the same assembly.
+# I feel defeated already, but it's worth a try
+$ mrsfast --index Homo_sapiens_assembly18.fasta ; ~/jdk1.8.0_05/bin/java -Xmx20g -Djava.io.tmpdir=/seq1/side_projects/NA12878_ref_dataset/NA12878_temp -jar ~/bin/RPSR.jar preprocess -i NA12878.hiseq.wgs.bwa.raw.bam -r Homo_sapiens_assembly18.fasta -g -t 4 -s 100000 -o RPSR.NA12878.preprocess
+
+$ perl -ne 'if($_ =~ /^>/){print $_;}else{$_ =~ tr/acgt/ACGT/; print $_;}' < Homo_sapiens_assembly18.fasta > Homo_sapiens_assembly18.masked.fasta
+$ mrsfast --index Homo_sapiens_assembly18.masked.fasta
+
+
+# This damn bam file is too big and full of errors. Let's split it up so that I don't lose a day's worth of progress every time I run RPSR!
+$ ~/bamUtil-master/bin/bam splitBam -i NA12878.hiseq.wgs.bwa.raw.bam -o NA12878.rgsplit.wgs.bwa
+# I got the UCSC masked genome
+$ cat chr1.fa.masked chr2.fa.masked chr3.fa.masked chr4.fa.masked chr5.fa.masked chr6.fa.masked chr7.fa.masked chr8.fa.masked chr9.fa.masked chr10.fa.masked chr11.fa.masked chr12.fa.masked chr13.fa.masked chr14.fa.masked chr15.fa.masked chr16.fa.masked chr17.fa.masked chr18.fa.masked chr19.fa.masked chr20.fa.masked chr21.fa.masked chr22.fa.masked chrX.fa.masked chrY.fa.masked chr1_random.fa.masked chr2_random.fa.masked chr3_random.fa.masked chr4_random.fa.masked chr5_random.fa.masked chr6_random.fa.masked chr7_random.fa.masked chr8_random.fa.masked chr9_random.fa.masked chr10_random.fa.masked chr11_random.fa.masked chr13_random.fa.masked chr15_random.fa.masked chr16_random.fa.masked chr17_random.fa.masked chr18_random.fa.masked chr19_random.fa.masked chr21_random.fa.masked chr22_random.fa.masked chrX_random.fa.masked > ucsc_human_assembly18.masked.fasta
+$ mrsfast --index ucsc_human_assembly18.masked.fasta
+
+# I tested out a version of my program that speeds up the analysis of the BAM file and should be able to use MrsFAST-ultra
+$ mv ~/RPSR.jar ~/bin/RPSR2.jar
+$ for i in NA12878.rgsplit.*.bam; do name=`echo $i | cut -d'.' -f5,6`; echo $name;  ~/jdk1.8.0_05/bin/java -Xmx40g -Djava.io.tmpdir=/seq1/side_projects/NA12878_ref_dataset/NA12878_temp -jar ~/bin/RPSR2.jar preprocess -i $i -o NA12878.rgsplit.wgs.preproc.$name -r ucsc_human_assembly18.masked.fasta -t 10 -s 100000; done
+
+$ cat NA12878.*.flat > NA12878.full.flat
+$ ~/jdk1.8.0_05/bin/java -Xmx50g -jar ~/bin/RPSR2.jar cluster -s NA12878.full.flat -c chr1 -g Homo_sapiens_assembly18.fasta.repeat -o NA12878.RPSR.cluster -i 15 -t 10 -p /seq1/side_projects/NA12878_ref_dataset/NA12878_temp
+
+
+# Still, the coordinates aren't matching up with any dataset I can find! I'm going to run lumpy on this crap
+pwd: /home/dbickhart/share/RPSR/NA12878_test
+$ samtools view NA12878.rgsplit.wgs.bwa.20GAV.8.bam | python ../../test_software/lumpy-sv/scripts/pairend_distro.py -r 100 -o NA12878.rgsplit.wgs.bwa.20GAV.8.histo -X 3 -N 10000
+	mean:407.8162	stdev:41.4185105667
+$ ../../test_software/lumpy-sv/bin/lumpy -mw 4 -tt 0.0 -pe bam_file:NA12878.rgsplit.wgs.bwa.20GAV.8.bam,histo_file:NA12878.rgsplit.wgs.bwa.20GAV.8.histo,mean:407,stdev:41,read_length:100,min_non_overlap:100,discordant_z:4,back_distance:20,weight:1,id:1,min_mapping_threshold:20 > NA12878.lumpy.bedpe
+
+
+# OK I think that the Mills golden dataset is on the same coordinate scale
+# I have tested both sets of dels and dups on the data and I'm pretty happy with the results!
+$ intersectBed -a mills_golden_chr1_NA12878.dels.bed -b NA12878.RPSR.chr1.deletions.bed -f 0.25 -r -c | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+	total   51
+	Average 0.372549
+	Standard Deviation      0.488294
+
+$ intersectBed -a mills_golden_chr1_NA12878.dups.bed -b NA12878.RPSR.chr1.tand.bed -f 0.25 -r -c | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+	total   26
+	Average 0.384615
+	Standard Deviation      0.496139
+
+# I have done some further refinement and performance improvements to the pipeline
+# I then took the data and ran sequential filtering to see where my sensitivity and specificity scaled 
+# I think that a sum total score cutoff of 16 is the sweet spot
+$ ~/jdk1.8.0_05/bin/java -Xmx50g -jar ~/bin/RPSR2.jar cluster -s NA12878.full.flat -c chr1 -g Homo_sapiens_assembly18.fasta.repeat -o NA12878.RPSR.cluster.test -i 5 -t 10 -p /seq1/side_projects/NA12878_ref_dataset/NA12878_temp -f 16
+
+$ ~/jdk1.8.0_05/bin/java -Xmx50g -jar ~/bin/RPSR2.jar cluster -s NA12878.full.flat -c chr2 -g Homo_sapiens_assembly18.fasta.repeat -o NA12878.RPSR.cluster.chr2 -i 5 -t 10 -p /seq1/side_projects/NA12878_ref_dataset/NA12878_temp -f 10
+$ perl -lane 'if($F[0] eq "chr2"){print $_;}' < mills_golden_all_NA12878.dels.bed | intersectBed -a stdin -b RPSR.chr2.dels.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+	total   58
+	Minimum 0
+	Maximum 1
+	Average 0.637931	<- I like! 50% reciprocal is more than fair, and this is a 64% recall rate for this chromosome!
+	Median  1
+	Standard Deviation      0.484796
+	Mode(Highest Distributed Value) 1
+	
+# I'm going to calculate the remaining chromosomes now in order
+$ for i in chr1 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chr23 chrX; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx50g -jar ~/bin/RPSR2.jar cluster -s NA12878.full.flat -c $i -g Homo_sapiens_assembly18.fasta.repeat -o NA12878.RPSR.cluster.$i -i 5 -t 10 -p /seq1/side_projects/NA12878_ref_dataset/NA12878_temp -f 10; done
+
+# Now to concatenate the data
+# I found out that my deletion estimates had values above 1 mb in size. I think that this is a library issue and needs to be deconvoluted down the line
+$ cat NA12878.RPSR.cluster.chr*.vhsr.deletions | perl -lane 'if($F[4] - $F[1] > 1000000){next;} print "$F[0]\t$F[1]\t$F[4]";' | sortBedFileSTDIN.pl > NA12878.RPSR.cluster.whole.deletions.bed
+# My tand and insertion calls did not have that problem
+$ cat NA12878.RPSR.cluster.chr*.vhsr.tand NA12878.RPSR.cluster.chr*.vhsr.insertions | perl -lane 'if($F[4] - $F[1] > 1000000){} print "$F[0]\t$F[1]\t$F[4]";' | sortBedFileSTDIN.pl > NA12878.RPSR.cluster.whole.tandins.bed
+
+# Statistics on the Human data:
+	$ mergeBed -i NA12878.RPSR.cluster.whole.deletions.bed | bed_length_sum.pl               
+		Interval Numbers:       43643
+	        Total Length:           182,030,404
+	        Length Average:         4170.89576793529
+	        Length Median:          822
+	        Length Stdev:           35384.3132737578
+	        Smallest Length:        58
+        	Largest Length:         1893202
+        $ mergeBed -i NA12878.RPSR.cluster.whole.tandins.bed | bed_length_sum.pl
+	        Interval Numbers:       1357
+	        Total Length:           84,226,380
+	        Length Average:         62068.0766396463
+	        Length Median:          1337
+	        Length Stdev:           151449.430411241
+	        Smallest Length:        110
+        	Largest Length:         2073203
+        	
+# Cleaning up the directory
+	$ mkdir indiv_chr_runs
+	$ mv NA12878.RPSR.cluster.chr* ./indiv_chr_runs/
+	$ mkdir test_runs
+	
+# Now, the moment of truth: Getting statistics from the true positive dataset:
+	$ intersectBed -a mills_golden_all_NA12878.dels.bed -b NA12878.RPSR.cluster.whole.deletions.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   642
+		Average 0.464174
+		Standard Deviation      0.499104
+	$ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.RPSR.cluster.whole.tandins.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   301
+		Average 0.059801
+		Standard Deviation      0.237512
+		
+	# Now to remove the reciprocal requirement
+	$ intersectBed -a mills_golden_all_NA12878.dels.bed -b NA12878.RPSR.cluster.whole.deletions.bed -c -f 0.5 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   642
+		Average 0.633956
+		Standard Deviation      0.482097
+	$ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.RPSR.cluster.whole.tandins.bed -c -f 0.5 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   301
+		Average 0.205980
+		Standard Deviation      0.405089
+	
+	# The Tandem and insertion calls are quite low, and I believe that this is because my runtime filters were too high (a -f 10 value really depleted the count here!)
+	# I will have to go back and see if my calculations are correct; proper conditionals to add split reads can fix this as well
+	
+# I am going to rerun RPSR with lower runtime filters and then I will try to check the overlap of the tand and ins calls again.
+	$ for i in chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chr23 chrX; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx50g -jar ~/bin/RPSR2.jar cluster -s NA12878.full.flat -c $i -g Homo_sapiens_assembly18.fasta.repeat -o NA12878.RPSR.cluster.4.1.$i -i 4 -t 10 -p /seq1/side_projects/NA12878_ref_dataset/NA12878_temp -f 1; done
+	
+	# It is taking far longer because the number of initial sets is so high
+	# Just a quick test with chr1:
+		$ intersectBed -a mills_golden_chr1_NA12878.dups.bed -b looser_restrictions_chr1.bed -c | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+			total   26
+			Average 0.538462 <- simple overlap
+			Standard Deviation      0.508391
+		$ intersectBed -a mills_golden_chr1_NA12878.dups.bed -b looser_restrictions_chr1.bed -c -f 0.5 -r| perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+			total   26
+			Average 0.269231	<- 50% reciprocal overlap; Not too shabby
+			Standard Deviation      0.452344
+			
+	# OK, the run completed, let's consolidate the data
+	$ mkdir indiv_chr_lowfilter
+	$ mv NA12878.RPSR.cluster.4.1.chr* ./indiv_chr_lowfilter/
+	$ cat indiv_chr_lowfilter/*.tand indiv_chr_lowfilter/*.insertions | perl -lane 'if($F[4] - $F[1] > 1000000){next;}else{print "$F[0]\t$F[1]\t$F[4]\t$F[9]";}' | sortBedFileSTDIN.pl > NA12878.RPSR.whole.lowfilter.tandins.bed
+	$ mergeBed -i NA12878.RPSR.whole.lowfilter.tandins.bed | bed_length_sum.pl
+	        Interval Numbers:       4125
+	        Total Length:           118204712
+	        Length Average:         28655.6877575758
+	        Length Median:          469
+	        Length Stdev:           122764.91153171
+	        Smallest Length:        56
+	        Largest Length:         4431331
+	        
+	$ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.RPSR.whole.lowfilter.tandins.bed -c -f 0.5 -r| perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   301
+		Average 0.126246	<- 50% reciprocal
+		Standard Deviation      0.332679
+	$ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.RPSR.whole.lowfilter.tandins.bed -c -f 0.5 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   301
+		Average 0.292359	<- 50% with A
+		Standard Deviation      0.455604	
+	$ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.RPSR.whole.lowfilter.tandins.bed -c | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   301
+		Average 0.375415	<- single base overlap
+		Standard Deviation      0.485036
+	# Now to test the cutoff values that I will use (using sumtotalscore values)
+		-Single base overlap	Total calls
+		2	0.332226 	9610
+		3	0.332226	9320
+		4	0.332226	9010
+		5	0.299003	7017
+		6	0.279070	5821
+		7	0.275748	5025
+		8	0.269103	4383
+		9	0.259136	3875
+		
+		-50% reciprocal overlap
+		2	0.093023
+		3	0.089701
+		4	0.083056
+		5	0.069767
+		6	0.063123
+		
+		-50% nonreciprocal overlap
+		2	0.252492
+		3	0.249169
+		4	0.242525
+		5	0.229236
+		6	0.215947
+		
+	# I think that 6 is the sweet spot. A little dissappointed with the numbers, but it may be due to other reasons
+	
+	# This was interesting:
+		$ perl -lane 'if($F[3] > 4){print $_;}' < NA12878.RPSR.whole.lowfilter.tandins.bed | mergeBed -i stdin | intersectBed -a mills_golden_all_NA12878.dups.bed -b stdin -c -f 0.5 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+			total   301
+			Average 0.242525	<- 50% reciprocal overlap after merger
+			Standard Deviation      0.429324
+		$ perl -lane 'if($F[3] > 4){print $_;}' < NA12878.RPSR.whole.lowfilter.tandins.bed | mergeBed -i stdin | bed_length_sum.pl
+		        Interval Numbers:       3584
+		        Total Length:           101,570,929
+		        Length Average:         28340.1029575893
+		        Length Median:          370
+		        Length Stdev:           107621.084296007
+		        Smallest Length:        56
+		        Largest Length:         2377258
+		
+	
+# Let's run Delly on the data
+	3850: /seq1/side_projects/NA12878_ref_dataset
+	$ samtools index NA12878.hiseq.wgs.bwa.raw.bam
+	$ ~/delly_source_v0.0.9/pemgr/delly/delly -o NA12878.delly.dels.txt -g ucsc_human_assembly18.masked.fasta NA12878.hiseq.wgs.bwa.raw.bam
+	$ ~/delly_source_v0.0.9/pemgr/duppy/duppy -o NA12878.duppy.dups.txt -g ucsc_human_assembly18.masked.fasta NA12878.hiseq.wgs.bwa.raw.bam
+	
+	# Note: after 3 days, Delly is still running and is only up to chromosome 11 (lexicographic order) in terms of estimating components!
+	# Duppy is done! Let's test it
+	
+	# Whole data merger:
+		$ grep '>' NA12878.duppy.dups.txt | perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' | sortBedFileSTDIN.pl | mergeBed -i stdin | bed_length_sum.pl
+		        Interval Numbers:       5193
+		        Total Length:           2,880,612,609
+		        Length Average:         554710.689196996
+		        Length Median:          222
+		        Length Stdev:           9141280.65672188
+		        Smallest Length:        101
+        		Largest Length:         246,960,887
+        # Non-merger stats
+        	$ grep '>' NA12878.duppy.dups.txt | perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' | sortBedFileSTDIN.pl | bed_length_sum.pl
+		        Interval Numbers:       157768
+		        Total Length:           72257337096
+		        Length Average:         457997.420871153
+		        Length Median:          234
+		        Length Stdev:           6366519.61483849
+		        Smallest Length:        101
+        		Largest Length:         246735634
+        		
+        # Again, it is predicting entire chromosomes that are duplicated. 246 megabases is about the size of human chr1
+        # Let's remove calls above 1mb
+        $ grep '>' NA12878.duppy.dups.txt | perl -lane 'if($F[2] - $F[1] > 1000000){next;}print "$F[0]\t$F[1]\t$F[2]";' | sortBedFileSTDIN.pl
+        $ cat NA12878.duppy.lt1mb.dups.bed | bed_length_sum.pl
+	        Interval Numbers:       155435
+	        Total Length:           743,304,103	<- Jesus!
+	        Length Average:         4782.08963875575
+	        Length Median:          230
+	        Length Stdev:           41155.0488284716
+	        Smallest Length:        101
+        	Largest Length:         998139
+        	
+        # OK, now to compare to the mills golden dataset
+        $ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.duppy.lt1mb.dups.bed -c | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   301
+		Average 0.491694	<- simple base overlap
+		Standard Deviation      0.500764
+	$ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.duppy.lt1mb.dups.bed -c -f 0.5 -r| perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   301
+		Average 0.076412	<- 50% reciprocal overlap. If I go with a 50% reciprocal overlap with RPSR and a filter of 4 sumtotal score, I beat this
+		Standard Deviation      0.266099
+	$ mergeBed -i NA12878.duppy.lt1mb.dups.bed | intersectBed -a mills_golden_all_NA12878.dups.bed -b stdin -c -f 0.5 -r| perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl                    
+		total   301
+		Average 0.059801	<- 50% reciprocal overlap after merger
+		Standard Deviation      0.237512
+		
+	# Delly will take forever to finish at this rate. In fact, it stopped due to /TMP being filled up. It had 7 days runtime
+	# Let's do the comparison
+	$ grep '>' NA12878.delly.dels.txt | perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' | sortBedFileSTDIN.pl | mergeBed -i stdin | bed_length_sum.pl
+	        Interval Numbers:       65,595
+	        Total Length:           2,889,480,093	<- This is nearly the whole genome
+	        Length Average:         44050.3101303453
+	        Length Median:          201
+	        Length Stdev:           2562478.12518998
+	        Smallest Length:        3
+        	Largest Length:         246,633,145	<- chromosome 1 :)
+        # Non merger stats
+        $ grep '>' NA12878.delly.dels.txt | perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' | sortBedFileSTDIN.pl | bed_length_sum.pl
+	        Interval Numbers:       1,547,930
+	        Total Length:           66,469,271,806
+	        Length Average:         42940.7478413107
+	        Length Median:          190
+	        Length Stdev:           1928281.32307789
+	        Smallest Length:        2
+	        Largest Length:         241,158,955	<- Still chr1 :)
+	
+	# OK, removing 1mb+ calls
+	$ grep '>' NA12878.delly.dels.txt | perl -lane 'if($F[2] - $F[1] > 1000000){next;}print "$F[0]\t$F[1]\t$F[2]";' | sortBedFileSTDIN.pl > NA12878.delly.lt1mb.dels.bed
+	$ cat NA12878.delly.lt1mb.dels.bed | bed_length_sum.pl
+	        Interval Numbers:       1,545,747	<- we only removed a few hundred calls
+	        Total Length:           968,409,058	<- that's still a gigabase!
+	        Length Average:         626.499070028925
+	        Length Median:          190
+	        Length Stdev:           12517.9140429436
+	        Smallest Length:        2
+        	Largest Length:         999,889
+
+	$ intersectBed -a mills_golden_all_NA12878.dels.bed -b NA12878.delly.lt1mb.dels.bed -c | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   642
+		Average 0.883178			<- simple overlap
+		Standard Deviation      0.321459
+	$ intersectBed -a mills_golden_all_NA12878.dels.bed -b NA12878.delly.lt1mb.dels.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+		total   642
+		Average 0.609034			<- 50% reciprocal overlap. Damn, its better but at such a cost!
+		Standard Deviation      0.488347
+
+	
+	# I am going to try to relax some of the settings on my deletion prediction of RPSR to see if I can match Delly's prediction rate at lower thresholds
+			$ cat indiv_chr_lowfilter/*.deletions | perl -lane 'print "$F[9]";' | statStd.pl
+				total   845,960	<- from the low filter predicted dataset
+				Minimum 1.0
+				Maximum 14058.0
+				Average 6.870817
+				Median  6
+				Standard Deviation      27.922878
+				Mode(Highest Distributed Value) 5.0
+			
+			$ cat indiv_chr_lowfilter/*.deletions | perl -lane 'print "$F[0]\t$F[1]\t$F[4]";' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_all_NA12878.dels.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+				total   642
+				Average 0.540498	<- 50% reciprocal overlap on whole data without filtering. Almost the same
+				Standard Deviation      0.498746
+				
+			# Table format for returns from cropping
+				filter	callnum	total	(all 50% reciprocal overlap)
+				4	0.531153	815153
+				5	0.514019	483543
+				6	0.501558	278147
+				7	0.485981	157568	
+				8	0.470405	89476	<- this really isn't that bad
+				
+			# I made some improvements to the program since my initial preprocessing step, let's try to run it in the background while I prepare data for the manuscript
+			# I think that the major improvement here is to the false positive rate, requiring less filtering from the post-processing end
+			$ for i in NA12878.rgsplit.*.bam; do name=`echo $i | cut -d'.' -f5,6`; echo $name;  ~/jdk1.8.0_05/bin/java -Xmx40g -Djava.io.tmpdir=/seq1/side_projects/NA12878_ref_dataset/NA12878_temp -jar ~/bin/RPSR.jar preprocess -i $i -o NA12878.rgsplit.wgs.preproc.$name -r ucsc_human_assembly18.masked.fasta -t 10 -s 100000; done
+			
+			# About 75% of the preprocessing is done. I'm going to jump the gun and work on 15X data
+			$ for i in chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chr23 chrX; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx50g -jar ~/bin/RPSR.jar cluster -s NA12878.newpreprocess.data.flat -c $i -g Homo_sapiens_assembly18.fasta.repeat -o NA12878.RPSR.cluster.3.1.$i -i 3 -t 10 -p /seq1/side_projects/NA12878_ref_dataset/NA12878_temp -f 1; done
+			
+			# I have made some serious modifications that are giving me much better results! I am about halfway finished with the chromosomes, so let's start calculating statistics for the paper
+			# Here is a set of 13 chromosomes that I will work with for the time being
+			$ perl -lane 'if($F[0] eq "chr1" || $F[0] eq "chr2" || $F[0] eq "chr3" || $F[0] eq "chr5" || $F[0] eq "chr6" || $F[0] eq "chr10" || $F[0] eq "chr11" || $F[0] eq "chr17" || $F[0] eq "chr18" || $F[0] eq "chr19" || $F[0] eq "chr20" || $F[0] eq "chr21" || $F[0] eq "chr22"){print $_;}' < NA12878.delly.lt1mb.dels.bed | sortBedFileSTDIN.pl > NA12878.delly.lt1mb.dels.13chrs.bed
+			$ perl -lane 'if($F[0] eq "chr1" || $F[0] eq "chr2" || $F[0] eq "chr3" || $F[0] eq "chr5" || $F[0] eq "chr6" || $F[0] eq "chr10" || $F[0] eq "chr11" || $F[0] eq "chr17" || $F[0] eq "chr18" || $F[0] eq "chr19" || $F[0] eq "chr20" || $F[0] eq "chr21" || $F[0] eq "chr22"){print $_;}' < NA12878.duppy.lt1mb.dups.bed | sortBedFileSTDIN.pl > NA12878.duppy.lt1mb.dups.13chrs.bed
+			$ perl -lane 'if($F[0] eq "chr1" || $F[0] eq "chr2" || $F[0] eq "chr3" || $F[0] eq "chr5" || $F[0] eq "chr6" || $F[0] eq "chr10" || $F[0] eq "chr11" || $F[0] eq "chr17" || $F[0] eq "chr18" || $F[0] eq "chr19" || $F[0] eq "chr20" || $F[0] eq "chr21" || $F[0] eq "chr22"){print $_;}' < mills_golden_all_NA12878.dels.bed | sortBedFileSTDIN.pl > mills_golden_13chrs_NA12878.dels.bed
+			$ perl -lane 'if($F[0] eq "chr1" || $F[0] eq "chr2" || $F[0] eq "chr3" || $F[0] eq "chr5" || $F[0] eq "chr6" || $F[0] eq "chr10" || $F[0] eq "chr11" || $F[0] eq "chr17" || $F[0] eq "chr18" || $F[0] eq "chr19" || $F[0] eq "chr20" || $F[0] eq "chr21" || $F[0] eq "chr22"){print $_;}' < mills_golden_all_NA12878.dups.bed | sortBedFileSTDIN.pl > mills_golden_13chrs_NA12878.dups.bed
+			
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_13chrs_NA12878.dels.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.574359
+			$ intersectBed -a mills_golden_13chrs_NA12878.dels.bed -b NA12878.delly.lt1mb.dels.13chrs.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.623077
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*tand NA12878.RPSR.noprobfilter.5.2.chr*insertions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_13chrs_NA12878.dups.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.129730
+			$ intersectBed -a mills_golden_13chrs_NA12878.dups.bed -b NA12878.duppy.lt1mb.dups.13chrs.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'            
+				Average 0.070270	<- reciprocal 50% overlap
+				b count = 84536
+			$ intersectBed -a mills_golden_13chrs_NA12878.dups.bed -b NA12878.duppy.lt1mb.dups.13chrs.bed -c -f 0.75 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl                               
+				total   185
+				Average 0.145946 <- non reciprocal 75% overlap
+				b count = 84536
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*tand NA12878.RPSR.noprobfilter.5.2.chr*insertions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_13chrs_NA12878.dels.bed -b stdin -c -f 0.75  | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+				total   390
+				Average 0.605128 <- non reciprocal 75% overlap
+				b count = 12920
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*tand NA12878.RPSR.noprobfilter.5.2.chr*insertions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000 && $F[9] > 1){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_13chrs_NA12878.dups.bed -b stdin -c -f 0.75 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl
+				total   185
+				Average 0.345946	<- non reciprocal 75% overlap after removing elements over 1 mb
+				b count = 12351
+				
+			
+			# Let's try size ranges now
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 1000000 && $F[9] > 4){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_13chrs_NA12878.dels.200_3300.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.506024	<- 200 to 3300
+			$ intersectBed -a mills_golden_13chrs_NA12878.dels.200_3300.bed -b NA12878.delly.lt1mb.dels.13chrs.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'   
+				Average 0.662651	<- 200 to 3300
+				
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 1000000 && $F[9] > 4){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_13chrs_NA12878.dels.3300_50k.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.696429	<- 3300 to 50,000
+			$ intersectBed -a mills_golden_13chrs_NA12878.dels.3300_50k.bed -b NA12878.delly.lt1mb.dels.13chrs.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'   
+				Average 0.666667	<- 3300 to 50,000
+			
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 1000000 && $F[9] > 4){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_13chrs_NA12878.dels.gt50k.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.600000
+			$ intersectBed -a mills_golden_13chrs_NA12878.dels.gt50k.bed -b NA12878.delly.lt1mb.dels.13chrs.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.566667
+				
+				
+			# full dataset comparisons
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_all_NA12878.dels.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.571651
+				
+			# Preparing median values for split:
+			$ cat mills_golden_all_NA12878.dels.bed | perl -lane 'if($F[2] - $F[1] > 3441){print $_;}' > mills_golden_all_NA12878.gt3441.dels.bed
+			$ cat mills_golden_all_NA12878.dels.bed | perl -lane 'if($F[2] - $F[1] <= 3441){print $_;}' > mills_golden_all_NA12878.lt3441.dels.bed
+			
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[9] > 6){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_all_NA12878.gt3441.dels.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.666667
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[9] > 6){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_all_NA12878.lt3441.dels.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.433022
+			
+			# Now for delly
+			$ intersectBed -a mills_golden_all_NA12878.gt3441.dels.bed -b NA12878.delly.lt2mb.dels.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.623053
+			$ intersectBed -a mills_golden_all_NA12878.lt3441.dels.bed -b NA12878.delly.lt2mb.dels.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.595016
+				
+			# Tand and INS
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*.insertions NA12878.RPSR.noprobfilter.5.2.chr*.tand | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a mills_golden_all_NA12878.dups.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.142857	<- base overlap
+			$ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.duppy.lt2mb.dups.bed -c -f 0.5 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+				Average 0.076412	<- base overlap duppy
+			
+			# Dataset sizes
+			RPSRTANDINS (lt 2mb)		22,546
+			RPSRDEL (PP > 6, lt 2mb)	477,316
+			Duppy				155,638
+			Delly				1,545,981
+			
+			# Let's refine the sizes again:
+			Trial	Delly		RPSRDels	Duppy		RPSRTandIns
+			lt1k	0.514085	0.183099	0.029412	0.029412
+			gt1kltm	0.659218	0.631285	0.012195	0.024390
+			ltmed	0.595016	0.461059	0.020000	0.026667
+			gtmed	0.623053	0.666667	0.133333	0.260000
+			
+		# My hypothesis as to why RPSR is missing the smaller dels is because they have fewer quality reads than my cutoff criteria need to make an accurrate call
+		# Let's test this
+			$ intersectBed -a mills_golden_all_NA12878.lt3441.dels.bed -b NA12878.delly.lt2mb.dels.bed -wb -f 0.5 -r > delly_ltmed_dels.bed
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*.deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl |  intersectBed -a mills_golden_all_NA12878.lt3441.dels.bed -b stdin -wb -f 0.5 -r > rpsr_ltmed_dels.bed
+			
+			# Now to make the comparisons
+			$ intersectBed -a delly_ltmed_dels.bed -b rpsr_ltmed_dels.bed -v | perl -e 'chomp(@ARGV); open(IN, "grep \">\" $ARGV[0] |"); %d; while(<STDIN>){chomp; @s = split(/\t/); push(@{$d{$s[3]}}, $s[4]);} while(<IN>){chomp; @s = split(/\t/); foreach $m (@{$d{$s[0]}}){if($s[1] == $m){print join("\t", @s) . "\n";}}}' NA12878.delly.dels.txt | perl -lane 'if($F[4] <= 5){print 1;}' | wc -l
+				14	<- number of calls based on 5 or fewer reads
+			$ intersectBed -a delly_ltmed_dels.bed -b rpsr_ltmed_dels.bed -v | perl -e 'chomp(@ARGV); open(IN, "grep \">\" $ARGV[0] |"); %d; while(<STDIN>){chomp; @s = split(/\t/); push(@{$d{$s[3]}}, $s[4]);} while(<IN>){chomp; @s = split(/\t/); foreach $m (@{$d{$s[0]}}){if($s[1] == $m){print join("\t", @s) . "\n";}}}' NA12878.delly.dels.txt | perl -lane 'if($F[4] > 5){print 1;}' | wc -l
+				44	<- number of calls based on > 5 reads
+				
+			# from those 44...
+			$ samtools faidx ucsc_human_assembly18.masked.fasta
+			# This one liner calculates the number of "N" bases (repeats) within the sections of the deletion call
+			$ intersectBed -a delly_ltmed_dels.bed -b rpsr_ltmed_dels.bed -v | perl -e 'chomp(@ARGV); open(IN, "grep \">\" $ARGV[0] |"); %d; while(<STDIN>){chomp; @s = split(/\t/); push(@{$d{$s[3]}}, $s[4]);} while(<IN>){chomp; @s = split(/\t/); foreach $m (@{$d{$s[0]}}){if($s[1] == $m){print join("\t", @s) . "\n";}}}' NA12878.delly.dels.txt | perl -lane 'if($F[4] > 5){open(IN, "samtools faidx ucsc_human_assembly18.masked.fasta $F[0]:$F[1]-$F[2] |"); $h = <IN>; $n = 0; while(<IN>){chomp; $t = ($_ =~ tr/N/N/); $n += $t;} print join("\t", @F) . "\t$n"; close IN; }'
+			$ intersectBed -a delly_ltmed_dels.bed -b rpsr_ltmed_dels.bed -v | perl -e 'chomp(@ARGV); open(IN, "grep \">\" $ARGV[0] |"); %d; while(<STDIN>){chomp; @s = split(/\t/); push(@{$d{$s[3]}}, $s[4]);} while(<IN>){chomp; @s = split(/\t/); foreach $m (@{$d{$s[0]}}){if($s[1] == $m){print join("\t", @s) . "\n";}}}' NA12878.delly.dels.txt | perl -lane 'if($F[4] > 5){open(IN, "samtools faidx ucsc_human_assembly18.masked.fasta $F[0]:$F[1]-$F[2] |"); $h = <IN>; $n = 0; while(<IN>){chomp; $t = ($_ =~ tr/N/N/); $n += $t;} print join("\t", @F) . "\t$n"; close IN; }' | perl -lane 'if($F[7] / $F[3] > 0.5){print 1;}else{print 0;}' | statStd.pl
+				# That makes 30 of the 44 that have more than 50% of their length as repetitive bases
+			$ intersectBed -a delly_ltmed_dels.bed -b rpsr_ltmed_dels.bed -v | perl -e 'chomp(@ARGV); open(IN, "grep \">\" $ARGV[0] |"); %d; while(<STDIN>){chomp; @s = split(/\t/); push(@{$d{$s[3]}}, $s[4]);} while(<IN>){chomp; @s = split(/\t/); foreach $m (@{$d{$s[0]}}){if($s[1] == $m){print join("\t", @s) . "\n";}}}' NA12878.delly.dels.txt | perl -lane 'if($F[4] > 5){open(IN, "samtools faidx ucsc_human_assembly18.masked.fasta $F[0]:$F[1]-$F[2] |"); $h = <IN>; $n = 0; while(<IN>){chomp; $t = ($_ =~ tr/N/N/); $n += $t;} print join("\t", @F) . "\t$n"; close IN; }' | perl -lane 'if($F[7] / $F[3] < 0.5){print $_;}'
+				chr1    163997863       163998138       275     30      22.6161 >Deletion_xxx_00076641< 0	RPSR: chr1    163997470       163998432
+				chr11   66468123        66470137        2014    7       8.44578 >Deletion_xxx_00227306< 883	<- this one is probably another repeat area RPSR: chr11   64620994        67490041
+				chr13   105247329       105247924       595     37      37      >Deletion_xxx_00383871< 0	
+				chr13   108159811       108160432       621     32      34.1488 >Deletion_xxx_00385538< 129	
+				chr14   84208908        84209374        466     33      37      >Deletion_xxx_00425050< 0	RPSR: chr14   84208626        84209707
+				chr17   78165412        78165519        107     21      23.1396 >Deletion_xxx_00562549< 0	RPSR: chr17   78164835        78165496
+				chr18   74763481        74767310        3829    34      35.4262 >Deletion_xxx_00603877< 300	RPSR: chr18   74763134        74767689
+				chr2    133388274       133390956       2682    6       37      >Deletion_xxx_00702950< 86	RPSR: chr2    133384244       133391259
+				chr2    182565184       182565839       655     44      35.7371 >Deletion_xxx_00730160< 40	RPSR: chr2    133384244       133391259
+				chr3    146371144       146371600       456     35      35.4641 >Deletion_xxx_00909162< 0	RPSR: chr3    146370736       146371919
+				chr3    160739737       160740379       642     51      37      >Deletion_xxx_00917108< 0	RPSR: chr3    160739357       160740728
+				chr5    112505766       112506259       493     44      37      >Deletion_xxx_01103302< 93	RPSR: chr5    112505268       112506648
+				chr7    82888115        82889129        1014    46      33.8853 >Deletion_xxx_01275297< 243	RPSR: chr7    82887782        82889510
+				chr9    10394564        10395089        525     42      35.6853 >Deletion_xxx_01401655< 0	RPSR: chr9    10394185        10395422
+				# That's 14
+				
+			$ intersectBed -a delly_ltmed_dels.bed -b rpsr_ltmed_dels.bed -v | perl -e 'chomp(@ARGV); open(IN, "grep \">\" $ARGV[0] |"); %d; while(<STDIN>){chomp; @s = split(/\t/); push(@{$d{$s[3]}}, $s[4]);} while(<IN>){chomp; @s = split(/\t/); foreach $m (@{$d{$s[0]}}){if($s[1] == $m){print join("\t", @s) . "\n";}}}' NA12878.delly.dels.txt | perl -lane 'if($F[4] > 5){open(IN, "samtools faidx ucsc_human_assembly18.masked.fasta $F[0]:$F[1]-$F[2] |"); $h = <IN>; $n = 0; while(<IN>){chomp; $t = ($_ =~ tr/N/N/); $n += $t;} print join("\t", @F) . "\t$n"; close IN; }' | perl -lane 'if($F[7] / $F[3] < 0.5){print $_;}' | perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' > unexplained_delly_dels.bed
+			$ cat NA12878.RPSR.noprobfilter.5.2.chr*.deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl | intersectBed -a unexplained_delly_dels.bed -b stdin -f 0.5 -wa | uniq | wc -l
+				14	<- We have all 14, I think that it was just a case of strict criteria eliminating these RPSR deletions
+				
+		# OK, with most of the 14 above, the reciprocal overlap did us in. 
+		# Let's test this with a non-reciprocal overlap
+		$ cat NA12878.RPSR.noprobfilter.5.2.chr*.deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000 && $F[9] > 6){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl |  intersectBed -a mills_golden_all_NA12878.lt3441.dels.bed -b stdin -c -f 1 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+			Average 0.710280	<- RPSR dels 100% non reciprocal overlap
+		$ intersectBed -a mills_golden_all_NA12878.lt3441.dels.bed -b NA12878.delly.lt2mb.dels.bed -c -f 1 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+			Average 0.264798	<- delly 100% non reciprocal overlap
+		$ cat NA12878.RPSR.noprobfilter.5.2.chr*.deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000 && $F[9] > 6){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl |  intersectBed -a mills_golden_all_NA12878.lt3441.dels.bed -b stdin -c -f 0.25 -r | perl -lane 'if($F[3]){print "1";}else{print "0";}' | statStd.pl | grep 'Average'
+			Average 0.595016	<- this is the Delly percentage!
+			
+		$ cat NA12878.RPSR.noprobfilter.5.2.chr*.deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000 && $F[9] > 6){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl |  intersectBed -a mills_golden_all_NA12878.lt3441.dels.bed -b stdin -wb -f 0.25 -r > rpsr_ltmed_25_r_dels.bed
+		
+_______________________
+Rerunning the fifty simulations
+_______________________
+# In addition to the SMASH dataset, I'm also going to redo my fifty chr29 simulations
+# This way, I should be able to test the performance of BWA-based vs mrsfast-based data
+
+Blade14: /mnt/iscsi/vnx_gliu_7/rpsr_testing
+$ mkdir fifty_redone
+$ cd fifty_redone
+$ for i in `seq 1 50`; do name=`echo "var_"$i`; echo $name; ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i ../../vhsr_sim/fifty_trials/$name/$name.sorted.bam -o ${name}.RPSR -r ../../vhsr_sim/umd3_chr29.fa -t 19; done
+
+$ for i in `seq 1 50`; do name=`echo "var_"$i`; echo $name; ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s ${name}.RPSR.flat -c chr29 -g ../../reference/umd3_gaps_ftp.bed -o ${name}.calls.RPSR -f 2 -i 2 -t 19; done
+$ mv var_*.calls* ./calls
+
+$ for i in `seq 1 50`; do name=`echo "var_"$i`; cat ${name}.calls.RPSR.vhsr.insertions ${name}.calls.RPSR.vhsr.tand > ${name}.calls.RPSR.vhsr.tandins; done
+$ for i in `seq 1 50`; do name=`echo "var_"$i`; perl /home/dbickhart/bin/test_vhsr_delly_duppy_recall_accurracy.pl ${name}.calls.RPSR.vhsr.deletions ${name}.calls.RPSR.vhsr.tandins ../../../vhsr_sim/fifty_trials/${name}/${name}_vars_delly.txt ../../../vhsr_sim/fifty_trials/${name}/${name}_vars_duppy.txt ../../../vhsr_sim/fifty_trials/true_variant_locs_${i}.bed ${name}.test.bwa; done
+$ perl ../../../bin/combine_comp_test_vhsr_delly_duppy.pl var_10.test.bwa.tab var_11.test.bwa.tab var_12.test.bwa.tab var_13.test.bwa.tab var_14.test.bwa.tab var_15.test.bwa.tab var_16.test.bwa.tab var_17.test.bwa.tab var_18.test.bwa.tab var_19.test.bwa.tab var_1.test.bwa.tab var_20.test.bwa.tab var_21.test.bwa.tab var_22.test.bwa.tab var_23.test.bwa.tab var_24.test.bwa.tab var_25.test.bwa.tab var_26.test.bwa.tab var_27.test.bwa.tab var_28.test.bwa.tab var_29.test.bwa.tab var_2.test.bwa.tab var_30.test.bwa.tab var_31.test.bwa.tab var_32.test.bwa.tab var_33.test.bwa.tab var_34.test.bwa.tab var_35.test.bwa.tab var_36.test.bwa.tab var_37.test.bwa.tab var_39.test.bwa.tab var_3.test.bwa.tab var_40.test.bwa.tab var_41.test.bwa.tab var_42.test.bwa.tab var_43.test.bwa.tab var_44.test.bwa.tab var_45.test.bwa.tab var_46.test.bwa.tab var_48.test.bwa.tab var_49.test.bwa.tab var_4.test.bwa.tab var_50.test.bwa.tab var_5.test.bwa.tab var_6.test.bwa.tab var_7.test.bwa.tab var_8.test.bwa.tab var_9.test.bwa.tab
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+	DELLY   0.979166666666667       95.8125 0.00937191449098136     0.083328667519844       12.2916666666667        11.8333333333333
+	DUPPY   6.41666666666667        366.375 0.0176555096611961      0.555084822889099       12.2916666666667        11.8333333333333
+	RPSRDELS        0.9375  18.375  0.0869785162393286      0.0757846864464511      12.2916666666667        11.8333333333333
+	RPSRTAND        7.77083333333333        11.3333333333333        0.737185842383853       0.655734057913334       12.2916666666667        11.8333333333333
+
+# Not bad, but let's calculate the stdevs
+$ perl ../../../bin/combine_comp_test_vhsr_delly_duppy.pl var_10.test.bwa.tab var_11.test.bwa.tab var_12.test.bwa.tab var_13.test.bwa.tab var_14.test.bwa.tab var_15.test.bwa.tab var_16.test.bwa.tab var_17.test.bwa.tab var_18.test.bwa.tab var_19.test.bwa.tab var_1.test.bwa.tab var_20.test.bwa.tab var_21.test.bwa.tab var_22.test.bwa.tab var_23.test.bwa.tab var_24.test.bwa.tab var_25.test.bwa.tab var_26.test.bwa.tab var_27.test.bwa.tab var_28.test.bwa.tab var_29.test.bwa.tab var_2.test.bwa.tab var_30.test.bwa.tab var_31.test.bwa.tab var_32.test.bwa.tab var_33.test.bwa.tab var_34.test.bwa.tab var_35.test.bwa.tab var_36.test.bwa.tab var_37.test.bwa.tab var_39.test.bwa.tab var_3.test.bwa.tab var_40.test.bwa.tab var_41.test.bwa.tab var_42.test.bwa.tab var_43.test.bwa.tab var_44.test.bwa.tab var_45.test.bwa.tab var_46.test.bwa.tab var_48.test.bwa.tab var_49.test.bwa.tab var_4.test.bwa.tab var_50.test.bwa.tab var_5.test.bwa.tab var_6.test.bwa.tab var_7.test.bwa.tab var_8.test.bwa.tab var_9.test.bwa.tab
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+	DELLY   0.979(0.979)    95.812(670.444) 0.009(0.000)    0.083(0.008)    12.292(13.873)  11.833(12.847)
+	DUPPY   6.417(7.035)    366.375(22869.401)      0.018(0.000)    0.555(0.032)    12.292(13.873)  11.833(12.847)
+	RPSRDELS        0.938(0.850)    18.375(583.401) 0.087(0.012)    0.076(0.006)    12.292(13.873)  11.833(12.847)
+	RPSRTAND        7.771(8.302)    11.333(32.306)  0.737(0.028)    0.656(0.019)    12.292(13.873)  11.833(12.847)
+
+# Hmm... the stdev values are a bit off. Let's see whats up here.
+# Damn, I forgot to take the square root of the sum of squares!
+$ perl ../../../bin/combine_comp_test_vhsr_delly_duppy.pl var_10.test.bwa.tab var_11.test.bwa.tab var_12.test.bwa.tab var_13.test.bwa.tab var_14.test.bwa.tab var_15.test.bwa.tab var_16.test.bwa.tab var_17.test.bwa.tab var_18.test.bwa.tab var_19.test.bwa.tab var_1.test.bwa.tab var_20.test.bwa.tab var_21.test.bwa.tab var_22.test.bwa.tab var_23.test.bwa.tab var_24.test.bwa.tab var_25.test.bwa.tab var_26.test.bwa.tab var_27.test.bwa.tab var_28.test.bwa.tab var_29.test.bwa.tab var_2.test.bwa.tab var_30.test.bwa.tab var_31.test.bwa.tab var_32.test.bwa.tab var_33.test.bwa.tab var_34.test.bwa.tab var_35.test.bwa.tab var_36.test.bwa.tab var_37.test.bwa.tab var_39.test.bwa.tab var_3.test.bwa.tab var_40.test.bwa.tab var_41.test.bwa.tab var_42.test.bwa.tab var_43.test.bwa.tab var_44.test.bwa.tab var_45.test.bwa.tab var_46.test.bwa.tab var_48.test.bwa.tab var_49.test.bwa.tab var_4.test.bwa.tab var_50.test.bwa.tab var_5.test.bwa.tab var_6.test.bwa.tab var_7.test.bwa.tab var_8.test.bwa.tab var_9.test.bwa.tab
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+	DELLY   0.979(0.989)    95.812(25.893)  0.009(0.009)    0.083(0.088)    12.292(3.725)   11.833(3.584)
+	DUPPY   6.417(2.652)    366.375(151.226)        0.018(0.003)    0.555(0.180)    12.292(3.725)   11.833(3.584)
+	RPSRDELS        0.938(0.922)    18.375(24.154)  0.087(0.111)    0.076(0.075)    12.292(3.725)   11.833(3.584)
+	RPSRTAND        7.771(2.881)    11.333(5.684)   0.737(0.168)    0.656(0.139)    12.292(3.725)   11.833(3.584)
+
+
+# Now for the rerunning of the data based on my pipeline
+$ for i in `seq 1 50`; do name=`echo "var_"$i`; perl -lane 'print "/mnt/iscsi/vnx_gliu_7/vhsr_sim/$F[0]\t/mnt/iscsi/vnx_gliu_7/vhsr_sim/$F[1]\t/mnt/iscsi/vnx_gliu_7/vhsr_sim/$F[2]\t$F[3]\t$F[4]";' <../../../vhsr_sim/fifty_trials/$name/${name}_vh.list > ${name}_vh.list; done
+$ for i in `seq 1 50`; do name=`echo "var_"$i`; ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s ${name}_vh.list -c chr29 -g ../../../reference/umd3_gaps_ftp.bed -o ${name}.calls.RPSR -f 2 -i 2 -t 19; done
+
+$ mkdir calls
+$ mv *.calls.* ./calls/
+
+$ for i in `seq 1 50`; do name=`echo "var_"$i`; cat ${name}.calls.RPSR.vhsr.insertions ${name}.calls.RPSR.vhsr.tand > ${name}.calls.RPSR.vhsr.tandins; done
+$ for i in `seq 1 50`; do name=`echo "var_"$i`; perl /home/dbickhart/bin/test_vhsr_delly_duppy_recall_accurracy.pl ${name}.calls.RPSR.vhsr.deletions ${name}.calls.RPSR.vhsr.tandins ../../../../vhsr_sim/fifty_trials/${name}/${name}_vars_delly.txt ../../../../vhsr_sim/fifty_trials/${name}/${name}_vars_duppy.txt ../../../../vhsr_sim/fifty_trials/true_variant_locs_${i}.bed ${name}.test.bwa; done
+
+$ perl ../../../../bin/combine_comp_test_vhsr_delly_duppy.pl var_10.test.bwa.tab var_11.test.bwa.tab var_12.test.bwa.tab var_13.test.bwa.tab var_14.test.bwa.tab var_15.test.bwa.tab var_16.test.bwa.tab var_17.test.bwa.tab var_18.test.bwa.tab var_19.test.bwa.tab var_1.test.bwa.tab var_20.test.bwa.tab var_21.test.bwa.tab var_22.test.bwa.tab var_23.test.bwa.tab var_24.test.bwa.tab var_25.test.bwa.tab var_26.test.bwa.tab var_27.test.bwa.tab var_28.test.bwa.tab var_29.test.bwa.tab var_2.test.bwa.tab var_30.test.bwa.tab var_31.test.bwa.tab var_32.test.bwa.tab var_33.test.bwa.tab var_34.test.bwa.tab var_35.test.bwa.tab var_36.test.bwa.tab var_37.test.bwa.tab var_39.test.bwa.tab var_3.test.bwa.tab var_40.test.bwa.tab var_41.test.bwa.tab var_42.test.bwa.tab var_43.test.bwa.tab var_44.test.bwa.tab var_45.test.bwa.tab var_46.test.bwa.tab var_48.test.bwa.tab var_49.test.bwa.tab var_4.test.bwa.tab var_50.test.bwa.tab var_5.test.bwa.tab var_6.test.bwa.tab var_7.test.bwa.tab var_8.test.bwa.tab var_9.test.bwa.tab
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+	DELLY   0.979(0.989)    95.812(25.893)  0.009(0.009)    0.083(0.088)    12.292(3.725)   11.833(3.584)
+	DUPPY   6.417(2.652)    366.375(151.226)        0.018(0.003)    0.555(0.180)    12.292(3.725)   11.833(3.584)
+	RPSRDELS        0.125(0.389)    8.979(1.507)    0.014(0.046)    0.010(0.029)    12.292(3.725)   11.833(3.584)
+	RPSRTAND        5.229(2.391)    13.500(3.482)   0.376(0.108)    0.451(0.163)    12.292(3.725)   11.833(3.584)
+
+# That was actually worse! Hmm...
+# Also, my deletion algorithm isn't working well, and I suspect it is because I am not getting split reads in there.
+
+# I think that the problem arose from a mistake in the interpretation of the data. I have fixed it since then.
+
+# I need to revise the way that I generate the simulation so that I get more deletion predictions from both programs. 
+# I suspect the issue is that I generate deletion calls at the edges of repeats, and that my subsequent attempts to detect them are foiled by the repetitive regions not being alignable
+# OK, I've modified the pipeline.sh and generateTandandDelLong.pl scripts. I should have longer events and it should take advantage of the new stuff in my RPSR program
+# Let's run it!
+	Blade 14: /mnt/iscsi/vnx_gliu_7/vhsr_sim
+	$ sh numerical_simulation_pipeline.sh 50 better_fifty_trial
+	
+	# There was an issue with RPSR, I've fixed it and finally incorporated unbalanced split read detection
+	$ for i in `seq 1 50`; do name=`echo "var_"$i`; echo $name; ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar preprocess -i better_fifty_trial/$name/$name.sorted.bam -o better_fifty_trial/$name/${name}_rpsr.preprocess -r umd3_chr29.fa -s 10000; ~/jdk1.8.0_05/bin/java -jar ~/bin/RPSR.jar cluster -s better_fifty_trial/$name/${name}_rpsr.preprocess.flat -c chr29 -g ../reference/umd3_gaps_ftp.bed -o better_fifty_trial/$name/${name}_rpsr.cluster -f 4 -i 2 -m 0; done
+	$ for i in `seq 1 50`; do name=`echo "var_"$i`; echo $name; dir=`echo "better_fifty_trial/"$name`; rpbase=`echo $dir/$name"_rpsr.cluster.rpsr"`; cat $rpbase.tand $rpbase.insertions > $rpbase.tandins; perl ~/bin/test_vhsr_delly_duppy_recall_accurracy_merger.pl $rpbase.deletions $rpbase.tandins $dir/${name}_delly_dels.txt $dir/${name}_duppy_dups.txt better_fifty_trial/true_variant_locs_${i}.bed $dir/comparison_${name} ; done
+	$ for i in better_fifty_trial/*/comparison*.tab; do echo -n $i" "; done; echo
+	
+	$ perl ../bin/combine_comp_test_vhsr_delly_duppy.pl better_fifty_trial/var_10/comparison_var_10.tab better_fifty_trial/var_11/comparison_var_11.tab better_fifty_trial/var_12/comparison_var_12.tab better_fifty_trial/var_13/comparison_var_13.tab better_fifty_trial/var_14/comparison_var_14.tab better_fifty_trial/var_15/comparison_var_15.tab better_fifty_trial/var_16/comparison_var_16.tab better_fifty_trial/var_17/comparison_var_17.tab better_fifty_trial/var_18/comparison_var_18.tab better_fifty_trial/var_19/comparison_var_19.tab better_fifty_trial/var_1/comparison_results.tab better_fifty_trial/var_1/comparison_var_1.tab better_fifty_trial/var_20/comparison_var_20.tab better_fifty_trial/var_21/comparison_var_21.tab better_fifty_trial/var_22/comparison_var_22.tab better_fifty_trial/var_23/comparison_var_23.tab better_fifty_trial/var_24/comparison_var_24.tab better_fifty_trial/var_25/comparison_var_25.tab better_fifty_trial/var_26/comparison_var_26.tab better_fifty_trial/var_27/comparison_var_27.tab better_fifty_trial/var_28/comparison_var_28.tab better_fifty_trial/var_29/comparison_var_29.tab better_fifty_trial/var_2/comparison_var_2.tab better_fifty_trial/var_30/comparison_var_30.tab better_fifty_trial/var_31/comparison_var_31.tab better_fifty_trial/var_32/comparison_var_32.tab better_fifty_trial/var_33/comparison_var_33.tab better_fifty_trial/var_34/comparison_var_34.tab better_fifty_trial/var_35/comparison_var_35.tab better_fifty_trial/var_36/comparison_var_36.tab better_fifty_trial/var_37/comparison_var_37.tab better_fifty_trial/var_38/comparison_var_38.tab better_fifty_trial/var_39/comparison_var_39.tab better_fifty_trial/var_3/comparison_var_3.tab better_fifty_trial/var_40/comparison_var_40.tab better_fifty_trial/var_41/comparison_var_41.tab better_fifty_trial/var_42/comparison_var_42.tab better_fifty_trial/var_43/comparison_var_43.tab better_fifty_trial/var_44/comparison_var_44.tab better_fifty_trial/var_45/comparison_var_45.tab better_fifty_trial/var_46/comparison_var_46.tab better_fifty_trial/var_47/comparison_var_47.tab better_fifty_trial/var_48/comparison_var_48.tab better_fifty_trial/var_49/comparison_var_49.tab better_fifty_trial/var_4/comparison_var_4.tab better_fifty_trial/var_50/comparison_var_50.tab better_fifty_trial/var_5/comparison_var_5.tab better_fifty_trial/var_6/comparison_var_6.tab better_fifty_trial/var_7/comparison_var_7.tab better_fifty_trial/var_8/comparison_var_8.tab better_fifty_trial/var_9/comparison_var_9.tab
+	Program Found   Total   Precis  Recall  Delcount        Tandcount
+		DELLY   7.412(2.180)    31.294(42.114)  0.290(0.092)    0.353(0.087)    21.235(4.523)   20.843(4.189)
+		DUPPY   13.078(4.144)   18.922(40.248)  0.972(0.136)    0.622(0.113)    21.235(4.523)   20.843(4.189)
+		RPSRDELS        7.882(2.390)    26.765(5.059)   0.296(0.078)    0.378(0.105)    21.235(4.523)   20.843(4.189)
+		RPSRTAND        13.843(3.759)   13.941(3.696)   0.992(0.036)    0.663(0.100)    21.235(4.523)   20.843(4.189)
+	# Yes! Improvement!
+	# The reviewers will want to see both program results merged, so let's calculate it
+	$ for i in `seq 1 50`; do name=`echo "var_"$i`; echo $name; dir=`echo "better_fifty_trial/"$name`; rpbase=`echo $dir/$name"_rpsr.cluster.rpsr"`; cat $rpbase.tand $rpbase.insertions > $rpbase.tandins; perl ~/bin/test_vhsr_delly_duppy_recall_accurracy_merger_b.pl $rpbase.deletions $rpbase.tandins $dir/${name}_delly_dels.txt $dir/${name}_duppy_dups.txt better_fifty_trial/true_variant_locs_${i}.bed $dir/both_merge_${name} ; done
+	$ perl ../bin/combine_comp_test_vhsr_delly_duppy.pl better_fifty_trial/var_10/both_merge_var_10.tab better_fifty_trial/var_11/both_merge_var_11.tab better_fifty_trial/var_12/both_merge_var_12.tab better_fifty_trial/var_13/both_merge_var_13.tab better_fifty_trial/var_14/both_merge_var_14.tab better_fifty_trial/var_15/both_merge_var_15.tab better_fifty_trial/var_16/both_merge_var_16.tab better_fifty_trial/var_17/both_merge_var_17.tab better_fifty_trial/var_18/both_merge_var_18.tab better_fifty_trial/var_19/both_merge_var_19.tab better_fifty_trial/var_1/both_merge_var_1.tab better_fifty_trial/var_20/both_merge_var_20.tab better_fifty_trial/var_21/both_merge_var_21.tab better_fifty_trial/var_22/both_merge_var_22.tab better_fifty_trial/var_23/both_merge_var_23.tab better_fifty_trial/var_24/both_merge_var_24.tab better_fifty_trial/var_25/both_merge_var_25.tab better_fifty_trial/var_26/both_merge_var_26.tab better_fifty_trial/var_27/both_merge_var_27.tab better_fifty_trial/var_28/both_merge_var_28.tab better_fifty_trial/var_29/both_merge_var_29.tab better_fifty_trial/var_2/both_merge_var_2.tab better_fifty_trial/var_30/both_merge_var_30.tab better_fifty_trial/var_31/both_merge_var_31.tab better_fifty_trial/var_32/both_merge_var_32.tab better_fifty_trial/var_33/both_merge_var_33.tab better_fifty_trial/var_34/both_merge_var_34.tab better_fifty_trial/var_35/both_merge_var_35.tab better_fifty_trial/var_36/both_merge_var_36.tab better_fifty_trial/var_37/both_merge_var_37.tab better_fifty_trial/var_38/both_merge_var_38.tab better_fifty_trial/var_39/both_merge_var_39.tab better_fifty_trial/var_3/both_merge_var_3.tab better_fifty_trial/var_40/both_merge_var_40.tab better_fifty_trial/var_41/both_merge_var_41.tab better_fifty_trial/var_42/both_merge_var_42.tab better_fifty_trial/var_43/both_merge_var_43.tab better_fifty_trial/var_44/both_merge_var_44.tab better_fifty_trial/var_45/both_merge_var_45.tab better_fifty_trial/var_46/both_merge_var_46.tab better_fifty_trial/var_47/both_merge_var_47.tab better_fifty_trial/var_48/both_merge_var_48.tab better_fifty_trial/var_49/both_merge_var_49.tab better_fifty_trial/var_4/both_merge_var_4.tab better_fifty_trial/var_50/both_merge_var_50.tab better_fifty_trial/var_5/both_merge_var_5.tab better_fifty_trial/var_6/both_merge_var_6.tab better_fifty_trial/var_7/both_merge_var_7.tab better_fifty_trial/var_8/both_merge_var_8.tab better_fifty_trial/var_9/both_merge_var_9.tab
+		Program	Found	Total	Precis	Recall	Delcount	Tandcount
+		DELLY	7.360(2.170)	25.340(5.010)	0.296(0.087)	0.352(0.087)	21.120(4.493)	20.940(4.173)
+		DUPPY	13.140(4.162)	13.160(4.163)	0.999(0.010)	0.622(0.114)	21.120(4.493)	20.940(4.173)
+		RPSRDELS	7.840(2.395)	26.880(5.042)	0.293(0.075)	0.378(0.106)	21.120(4.493)	20.940(4.173)
+		RPSRTAND	13.920(3.757)	13.960(3.731)	0.997(0.017)	0.663(0.101)	21.120(4.493)	20.940(4.173)
+	# Doesn't help delly and duppy very much
+		
+
+#################################
+#				#
+#	Dataset collection	#
+#				#
+#################################
+# Simulated datasets
+	1. SMASH dataset, NA12878 chr20 simulated dataset <- not going to use. It's silly
+	2. fifty simulated cattle chr29
+	
+# Real datasets
+	1. Angus individual 20x coverage
+	2. NA12878 individual
+	
+	
+#################################
+#				#
+#	Reviewer Rebuttal	#
+#				#
+#################################
+# The reviewer comments were not bad. My major issues are to compare it to Lumpy's performance and to do a time-scale test 
+# Working on Lumpy first
+
+
+__________________________
+Lumpy analysis
+__________________________
+# First, I need to make the histogram
+Bender: /seq1/side_projects/NA12878_ref_dataset
+	$ samtools view NA12878.hiseq.wgs.bwa.raw.bam | python2 ~/lumpy-sv/scripts/pairend_distro.py -r 101 -o NA12878.hiseq.wga.bwa.raw.bam.histo -X 3 -N 10000
+		Removed 10 outliers with isize >= 608
+		mean:391.336936937      stdev:45.9348037246
+	
+	9:25AM 11/12/2014
+	$ ~/lumpy-sv/bin/lumpy -mw 4 -tt 0.0 -pe bam_file:NA12878.hiseq.wgs.bwa.raw.bam,histo_file:NA12878.hiseq.wga.bwa.raw.bam.histo,mean:391,stdev:45,read_length:101,min_non_overlap:150,discordant_z:3,back_distance:20,weight:1,id:1,min_mapping_threshold:20 > NA12878.hiseq.wgs.bwa.raw.bam.lumpy.bedpe
+	
+	# Damn, that was without sr reads. I'll have to redo it, but I can test chr1 in the meantime
+	$ perl -lane 'if($F[0] eq "chr1"){print "$F[0]\t$F[1]\t$F[5]";}' < NA12878.hiseq.wgs.bwa.raw.bam.lumpy.bedpe > NA12878.hiseq.wgs.bwa.lumpy.pe.chr1.dels
+	$ cat NA12878.hiseq.wgs.bwa.lumpy.pe.chr1.dels | perl -lane 'if($F[1] < $F[2] && $F[1] > 0 && $F[2] - $F[1] < 2000000){print "$F[0]\t$F[1]\t$F[2]";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl |  intersectBed -a mills_golden_all_NA12878.dels.bed -b stdin -c -f 0.5 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl | grep 'Average'
+		Average 0.048287
+	$ cat NA12878.RPSR.noprobfilter.5.2.chr1.rpsr.deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000){print "$F[0]\t$F[1]\t$F[4]";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl |  intersectBed -a mills_golden_all_NA12878.dels.bed -b stdin -c -f 0.5 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl | grep 'Average'
+		Average 0.062305	<- so far I'm better
+		
+	# OK, so let's include the split read calls for lumpy to make this fair
+	# Extracting the soft-clipped reads (minimum 50bp that are soft-clipped -- so half of the read)
+	$ samtools view NA12878.hiseq.wgs.bwa.raw.bam | perl ~/lumpy-sv/scripts/split_unmapped_to_fasta.pl -b 50 > NA12878.hiseq.wgs.softclipped.reads.fq
+	$ bwa bwasw -H -t 20 ucsc_human_assembly18.masked.fasta NA12878.hiseq.wgs.softclipped.reads.fq | samtools view -Sb - > NA12878.hiseq.wgs.softclipped.reads.bam
+	$ samtools sort -O NA12878.hiseq.wgs.softclipped.reads.sorted.bam -O 'bam' -T NA12878.soft NA12878.hiseq.wgs.softclipped.reads.bam
+	
+	$ ~/lumpy-sv/bin/lumpy -mw 4 -tt 0.0 -pe bam_file:NA12878.hiseq.wgs.bwa.raw.bam,histo_file:NA12878.hiseq.wga.bwa.raw.bam.histo,mean:391,stdev:45,read_length:101,min_non_overlap:150,discordant_z:3,back_distance:20,weight:1,id:1,min_mapping_threshold:20 -sr bam_file:NA12878.hiseq.wgs.softclipped.reads.rehead.sorted.bam,back_distance:20,weight:1,id:2,min_mapping_threshold:20 > NA12878.hiseq.wgs.bwa.raw.bam.lumpy.bedpe
+	
+	$ perl -lane 'if($F[10] eq "TYPE:DELETION"){print "$F[0]\t$F[1]\t$F[5]";}' < NA12878.hiseq.wgs.bwa.raw.bam.lumpy.bedpe > NA12878.hiseq.wgs.bwa.raw.bam.lumpy.del.bed
+	
+	$ cat NA12878.hiseq.wgs.bwa.raw.bam.lumpy.del.bed | perl -lane 'if($F[2] - $F[1] < 2000000){print "$F[0]\t$F[1]\t$F[2]";}' |  intersectBed -a mills_golden_all_NA12878.dels.bed -b stdin -c -f 1 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl | grep 'Average'
+		Average 0.389408 <- 100% reciprocal overlap
+		
+		
+	# Dataset sizes
+	RPSRTANDINS (lt 2mb)		22,546
+	RPSRDEL (PP > 6, lt 2mb)	477,316
+	Duppy				155,638
+	Delly				1,545,981
+	Lumpy dels			958,275
+	Lumpy dups			2,132
+
+	# Let's refine the sizes again:
+	Trial	Delly		RPSRDels	Duppy		RPSRTandIns	LumpyDels	LumpyDups
+	lt1k	0.514085	0.183099	0.029412	0.029412	0.570423	0.044118
+	gt1kltm	0.659218	0.631285	0.012195	0.024390	0.720670	0.097561
+	ltmed	0.595016	0.461059	0.020000	0.026667	0.654206	0.073333
+	gtmed	0.623053	0.666667	0.133333	0.260000	0.607477	0.140000
+	total	0.697819
+	
+	$ cat NA12878.hiseq.wgs.bwa.raw.bam.lumpy.dup.bed | perl -lane 'if($F[2] - $F[1] < 2000000 && $F[2] > $F[1]){print "$F[0]\t$F[1]\t$F[2]";}' |  intersectBed -a mills_golden_all_NA12878.dups.bed -b stdin -c -f 0.5 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl | grep 'Average'
+		Average 0.106312
+	$ cat NA12878.hiseq.wgs.bwa.raw.bam.lumpy.del.bed | perl -lane 'if($F[2] - $F[1] < 2000000 && $F[2] > $F[1]){print "$F[0]\t$F[1]\t$F[2]";}' |  intersectBed -a mills_golden_all_NA12878.dels.bed -b stdin -c -f 0.5 | perl -lane 'if($F[3]){print "1";}else{print "0";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl | grep 'Average'
+		Average 0.630841 	< 406
+	
+# Rerunning the 50 simulations:
+Blade14: /home/dbickhart/vnx_gliu_7/vhsr_sim/better_fifty_trial
+	$ for i in var_*; do echo $i; samtools view $i/$i.sorted.bam | perl ~/lumpy/scripts/split_unmapped_to_fasta.pl -b 50 > $i/$i.split_read.bam; done
+	$ sleep 1h; for i in var_*; do echo $i; bwa bwasw -H -t 10 ../umd3_chr29.fa $i/$i.split_read.bam | samtools view -Sb - > $i/$i.split_read.align.bam; samtools sort $i/$i.split_read.align.bam $i/$i.split_read.sort; samtools index $i/$i.split_read.sort.bam; done
+	$ for i in var_*; do echo $i; samtools view $i/$i.sorted.bam | ~/lumpy/scripts/pairend_distro.py -r 101 -o $i/$i.sorted.histo -X 3 -N 10000; done
+	$ for i in var_*; do echo $i; ~/lumpy/bin/lumpy -mw 4 -tt 0.0 -pe bam_file:$i/$i.sorted.bam,histo_file:$i/$i.sorted.histo,mean:500,stdev:50,read_length:100,min_non_overlap:150,discordant_z:3,back_distance:20,weight:1,id:1,min_mapping_threshold:20 -sr bam_file:$i/$i.split_read.sort.bam,back_distance:20,weight:1,id:2,min_mapping_threshold:20 > $i/$i.lumpy.bedpe; done
+	
+	
+	# I am going to do some individual tests to confirm if the parameters are decent
+	# A minimum weight of 2
+	$ i=var_1; ~/lumpy/bin/lumpy -mw 2 -tt 0.0 -pe bam_file:$i/$i.sorted.bam,histo_file:$i/$i.sorted.histo,mean:500,stdev:50,read_length:100,min_non_overlap:150,discordant_z:3,back_distance:20,weight:1,id:1,min_mapping_threshold:20 -sr bam_file:$i/$i.split_read.sort.bam,back_distance:20,weight:1,id:2,min_mapping_threshold:20 > $i/$i.lumpy.bedpe
+	$ wc -l var_1/var_1.lumpy.bedpe 
+		740 var_1/var_1.lumpy.bedpe	<- holy crap!
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[4]\t$F[10]";' < var_1/var_1.lumpy.bedpe | intersectBed -a true_variant_locs_1.bed -b stdin -wa -wb | wc -l
+		20	<- the same number of events detected by delly/duppy and RAPTR-SV
+	
+	# Minimum weight of 3
+	$ i=var_1; ~/lumpy/bin/lumpy -mw 3 -tt 0.0 -pe bam_file:$i/$i.sorted.bam,histo_file:$i/$i.sorted.histo,mean:500,stdev:50,read_length:100,min_non_overlap:150,discordant_z:3,back_distance:20,weight:1,id:1,min_mapping_threshold:20 -sr bam_file:$i/$i.split_read.sort.bam,back_distance:20,weight:1,id:2,min_mapping_threshold:20 > $i/$i.lumpy.bedpe
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[4]\t$F[10]";' < var_1/var_1.lumpy.bedpe | intersectBed -a true_variant_locs_1.bed -b stdin -wa -wb | wc -l
+		17	<- same as a weight of 4 but less precise
+		
+	$ for i in `seq 1 50`; do echo $i; trial="var_"$i; perl ~/bin/test_vhsr_delly_duppy_lumpy_recall_accurracy_merger.pl $trial/${trial}_rpsr.cluster.rpsr.deletions $trial/${trial}_rpsr.cluster.rpsr.tandins $trial/${trial}_delly_dels.txt $trial/${trial}_duppy_dups.txt $trial/${trial}.lumpy.bedpe true_variant_locs_${i}.bed $trial/${trial}.lumpy.test; done
+	$ perl ../../bin/combine_comp_test_vhsr_delly_duppy.pl var_10/var_10.lumpy.test.tab var_11/var_11.lumpy.test.tab var_12/var_12.lumpy.test.tab var_13/var_13.lumpy.test.tab var_14/var_14.lumpy.test.tab var_15/var_15.lumpy.test.tab var_16/var_16.lumpy.test.tab var_17/var_17.lumpy.test.tab var_18/var_18.lumpy.test.tab var_19/var_19.lumpy.test.tab var_1/var_1.lumpy.test.tab var_20/var_20.lumpy.test.tab var_21/var_21.lumpy.test.tab var_22/var_22.lumpy.test.tab var_23/var_23.lumpy.test.tab var_24/var_24.lumpy.test.tab var_25/var_25.lumpy.test.tab var_26/var_26.lumpy.test.tab var_27/var_27.lumpy.test.tab var_28/var_28.lumpy.test.tab var_29/var_29.lumpy.test.tab var_2/var_2.lumpy.test.tab var_30/var_30.lumpy.test.tab var_31/var_31.lumpy.test.tab var_32/var_32.lumpy.test.tab var_33/var_33.lumpy.test.tab var_34/var_34.lumpy.test.tab var_35/var_35.lumpy.test.tab var_36/var_36.lumpy.test.tab var_37/var_37.lumpy.test.tab var_38/var_38.lumpy.test.tab var_39/var_39.lumpy.test.tab var_3/var_3.lumpy.test.tab var_40/var_40.lumpy.test.tab var_41/var_41.lumpy.test.tab var_42/var_42.lumpy.test.tab var_43/var_43.lumpy.test.tab var_44/var_44.lumpy.test.tab var_45/var_45.lumpy.test.tab var_46/var_46.lumpy.test.tab var_47/var_47.lumpy.test.tab var_48/var_48.lumpy.test.tab var_49/var_49.lumpy.test.tab var_4/var_4.lumpy.test.tab var_50/var_50.lumpy.test.tab var_5/var_5.lumpy.test.tab var_6/var_6.lumpy.test.tab var_7/var_7.lumpy.test.tab var_8/var_8.lumpy.test.tab var_9/var_9.lumpy.test.tab
+		Program Found   Total   Precis  Recall  Delcount        Tandcount
+		DELLY   7.360(2.170)    25.340(5.010)   0.296(0.087)    0.352(0.087)    21.120(4.493)   20.940(4.173)
+		DUPPY   13.140(4.162)   13.160(4.163)   0.999(0.010)    0.622(0.114)    21.120(4.493)   20.940(4.173)
+		LUMPYDELS       6.600(2.646)    14.720(5.250)   0.454(0.107)    0.320(0.125)    21.120(4.493)   20.940(4.173)
+		LUMPYDUPS       11.700(3.477)   11.700(3.477)   1.000(0.000)    0.557(0.113)    21.120(4.493)   20.940(4.173)
+		RPSRDELS        7.840(2.395)    26.880(5.042)   0.293(0.075)    0.378(0.106)    21.120(4.493)   20.940(4.173)
+		RPSRTAND        16.000(4.609)   16.040(4.591)   0.997(0.014)    0.760(0.123)    21.120(4.493)   20.940(4.173)
+__________________________
+Samblaster comparison
+__________________________
+# I am going to check to see if there is a difference in my format compared to samblaster
+Bender: 
+	# Dammit! I need to sort by read names apparently... I'm only going to do this on half the data
+	$ for i in 1 2 3 4 5 6 7 8; do echo $i; samtools sort -o NA12878.rgsplit.wgs.bwa.rgsort.20FUK.$i.bam -O bam -T hey -n NA12878.rgsplit.wgs.bwa.20FUK.$i.bam; done
+	$ for i in NA12878.rgsplit.wgs.bwa.rgsort.20FUK.*.bam; do samtools view -h $i | ~/samblaster/samblaster -a -e -d $i.disc.sam -s $i.split.sam -o /dev/null &  done
+	
+	# OK, I have a script that will compare the results back to the true positive values
+	# First, the readname sorted sams
+	$ for i in `seq 1 8`; do echo $i; perl ~/perl_toolchain/sequence_data_scripts/associateDiscordantReadsSamDivet.pl -b mills_golden_all_NA12878.dels.bed -s NA12878.rgsplit.wgs.bwa.rgsort.20FUK.${i}.bam.disc.sam > NA12878.rgsplit.wgs.bwa.rgsort.20FUK.${i}.bam.disc.dels.stats; done
+	
+	# Now the divet files
+	$ for i in `seq 1 8`; do echo $i; perl ~/perl_toolchain/sequence_data_scripts/associateDiscordantReadsSamDivet.pl -b mills_golden_all_NA12878.dels.bed -d NA12878.rgsplit.wgs.preproc.20FUK.${i}.D.divet > NA12878.rgsplit.wgs.preproc.20FUK.${i}.D.divet.dels.stats; done
+	
+	# The tests
+	$ for i in /seq1/side_projects/NA12878_ref_dataset/NA12878.rgsplit.wgs.bwa.rgsort.*.bam.disc.dels.stats; do perl -lane 'if($F[3]){print "1";}else{print "0";}' < $i; done | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+		total   5136
+		Minimum 0
+		Maximum 1
+		Average 0.044782
+		Median  0
+		Standard Deviation      0.206845
+		Mode(Highest Distributed Value) 0
+	$ for i in /seq1/side_projects/NA12878_ref_dataset/NA12878.rgsplit.wgs.preproc.*.D.divet.dels.stats; do perl -lane 'if($F[3]){print "1";}else{print "0";}' < $i; done | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+		total   5136
+		Minimum 0
+		Maximum 1
+		Average 0.691394
+		Median  1
+		Standard Deviation      0.461963
+		Mode(Highest Distributed Value) 1
+
+	# Let's try a subset to see if the numbers are the same
+	$  perl -lane 'if($F[3]){print "1";}else{print "0";}' < /seq1/side_projects/NA12878_ref_dataset/NA12878.rgsplit.wgs.bwa.rgsort.20FUK.1.bam.disc.dels.stats | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+		total   642
+		Minimum 0
+		Maximum 1
+		Average 0.052960
+		Median  0
+		Standard Deviation      0.224127
+		Mode(Highest Distributed Value) 0
+	
+	$  perl -lane 'if($F[3]){print "1";}else{print "0";}' < /seq1/side_projects/NA12878_ref_dataset/NA12878.rgsplit.wgs.preproc.20FUK.1.D.divet.dels.stats | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+		total   642
+		Minimum 0
+		Maximum 1
+		Average 0.708723
+		Median  1
+		Standard Deviation      0.454705
+		Mode(Highest Distributed Value) 1
+		
+	# So, the benefit is 65%? Seems quite high..
+__________________________
+Comparison to Chaisson
+__________________________
+# I need to compare the results from the publication in Chaisson et al. 2014 to my data. 
+# Unfortunately, Chaisson does not provide much in the way of the raw calls. I will have to use the data from their "INDELSINGENES" table sheet from their supplementary information
+3850: /seq1/side_projects/NA12878_ref_dataset
+	# I need the liftover file as the indels-in-genes file is on the hg19 (grch38) assembly
+	$ wget http://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/hg19ToHg18.over.chain.gz
+	$ perl -lane '$F[1] =~ s/,//g; $F[2] =~ s/,//g; print join("\t", @F);' < chaisson_2014_pacbio_results.bed > chaisson_2014_pacbio_results_format.bed
+	$ ~/bin/liftOver chaisson_2014_pacbio_results_format.bed hg19ToHg18.over.chain chaisson_2014_pacbio_results.hg18.bed chaisson_2014_pacbio_results.hg18.bed.unmapped
+	
+	# Only three of these did not lift over
+	$ cat NA12878.RPSR.noprobfilter.5.2.chr*.deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000 && $F[9] > 6){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl |  intersectBed -a chaisson_2014_pacbio_results.hg18.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[4]){print "1";}else{print "0";}' | statStd.pl
+		total   297
+		Minimum 0
+		Maximum 1
+		Average 0.050505
+		Median  0
+		Standard Deviation      0.219354
+		Mode(Highest Distributed Value) 0
+	$ intersectBed -a chaisson_2014_pacbio_results.hg18.bed -b NA12878.delly.lt2mb.dels.bed -c -f 0.5 -r | perl -lane 'if($F[4]){print "1";}else{print "0";}' | statStd.pl                                   total   297
+		Minimum 0
+		Maximum 1
+		Average 0.131313
+		Median  0
+		Standard Deviation      0.338313
+		Mode(Highest Distributed Value) 0
+	$ perl -lane 'if($F[2] < $F[1]){next;}else{print $_;}' <  NA12878.hiseq.wgs.bwa.raw.bam.lumpy.del.bed | intersectBed -a chaisson_2014_pacbio_results.hg18.bed -b stdin -c -f 0.5 -r | perl -lane 'if($F[4]){print "1";}else{print "0";}' | statStd.pl
+		total   297
+		Minimum 0
+		Maximum 1
+		Average 0.013468
+		Median  0
+		Standard Deviation      0.115462
+		Mode(Highest Distributed Value) 0
+	
+	# Unfortunately, most of these events are very small, and delly/duppy predicted a ton of events, making it a "not fair" comparison. Also, most of the events were "insertions" that 
+	# intersected with delly deletion calls
+	
+	# Let's just create a list of true calls that were only found by RAPTR-SV from this dataset
+	$ mkdir comparison
+	$ cat NA12878.RPSR.noprobfilter.5.2.chr*.deletions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000 && $F[9] > 6){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl |  intersectBed -a mills_golden_all_NA12878.dels.bed -b stdin -f 0.5 -r -wa | uniq > comparison/RPSR_confirmed_deletions.bed
+	$ cat NA12878.RPSR.noprobfilter.5.2.chr*.tand NA12878.RPSR.noprobfilter.5.2.chr*.insertions | perl -lane 'if($F[1] < $F[4] && $F[1] > 0 && $F[4] - $F[1] < 2000000 && $F[9] > 6){print "$F[0]\t$F[1]\t$F[4]";}' | sortBedFileSTDIN.pl |  intersectBed -a mills_golden_all_NA12878.dups.bed -b stdin -f 0.5 -r -wa | uniq > comparison/RPSR_confirmed_duplications.bed
+	
+	$ intersectBed -a mills_golden_all_NA12878.dels.bed -b NA12878.delly.lt2mb.dels.bed -f 0.5 -r | uniq > comparison/delly_confirmed_deletions.bed
+	$ intersectBed -a mills_golden_all_NA12878.dups.bed -b NA12878.duppy.lt2mb.dups.bed -f 0.5 -r | uniq > comparison/duppy_confirmed_duplications.bed
+	$ perl -lane 'if($F[2] < $F[1]){next;}else{print $_;}' <  NA12878.hiseq.wgs.bwa.raw.bam.lumpy.del.bed | intersectBed -a mills_golden_all_NA12878.dels.bed -b stdin -f 0.5 -r | uniq > comparison/lumpy_confirmed_deletions.bed
+	$ perl -lane 'if($F[2] < $F[1]){next;}else{print $_;}' <  NA12878.hiseq.wgs.bwa.raw.bam.lumpy.dup.bed | intersectBed -a mills_golden_all_NA12878.dups.bed -b stdin -f 0.5 -r | uniq > comparison/lumpy_confirmed_duplications.bed
+	
+	$ cat comparison/delly_confirmed_deletions.bed comparison/lumpy_confirmed_deletions.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > comparison/delly_lumpy_dels.bed
+	$ cat comparison/duppy_confirmed_duplications.bed comparison/lumpy_confirmed_duplications.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > comparison/duppy_lumpy_dups.bed
+	
+	# OK, now to do the intersection to see which calls were novel to RAPTR-SV
+	$ intersectBed -a comparison/RPSR_confirmed_deletions.bed -b comparison/delly_lumpy_dels.bed -v | mergeBed -i stdin | wc -l
+		30
+	$ intersectBed -a comparison/RPSR_confirmed_duplications.bed -b comparison/duppy_lumpy_dups.bed -v | mergeBed -i stdin | wc -l
+		7
+	$ intersectBed -a comparison/RPSR_confirmed_deletions.bed -b comparison/delly_lumpy_dels.bed -v | mergeBed -i stdin > comparison/novel_RAPTRSV_dels.bed
+	$ intersectBed -a comparison/RPSR_confirmed_duplications.bed -b comparison/duppy_lumpy_dups.bed -v | mergeBed -i stdin > comparison/novel_RAPTRSV_dups.bed
+	
+	# Now, summary statistics on the data
+	$ perl ~/bin/table_bed_length_sum.pl comparison/novel_RAPTRSV_dels.bed comparison/novel_RAPTRSV_dups.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		comparison/novel_RAPTRSV_dels.bed       30      959171  31972.3666666667        35771.2258307179        16644.5 965    125491
+		comparison/novel_RAPTRSV_dups.bed       7       1141652 163093.142857143        98599.5008005743        119296  34490  336837
+		
+	
+_________________________
+Runtime tests
+_________________________
+# I need to run comparisons of my program in cluster mode
+# Let's start hard and work down to the bottom
+Bender: /seq1/side_projects/NA12878_ref_dataset
+	# chr1 single thread -- 14 gigabytes of RAM at peak - 90 X coverage - 247 Mb chromosome
+	$ time java -jar ~/RAPTR-SV/store/RAPTR-SV.jar cluster -s NA12878.newpreprocess.data.flat -c chr1 -g Homo_sapiens_assembly18.fasta.repeat -o time_test_run -i 5 -f 2 -p NA12878_temp
+		[MAIN] Setting temporary file directory to: NA12878_temp
+		[RPSR INPUT] Finished loading gap file: Homo_sapiens_assembly18.fasta.repeat
+		[RPSR INPUT] Finished loading divet sets. Identified: 746458 discordant sets
+		[RPSR INPUT] Finished loading all files! Final Sets: 1108475.
+		[RPSR WEIGHT] Calculating preliminary set values.
+		[RPSR WEIGHT] Reads that need recalculation: 289179
+		[RPSR WEIGHT] Working on set number: 1108474 of 1108475 and have retained: 98692
+		[RPSR WEIGHT] Finished with: chr1: 98694 out of 1108475 initial Events
+		
+		real    94m32.902s	5672s		final set processing rate: 195 / s
+		user    789m45.753s			memory per set ratio: 0.0126 Mb / set
+		sys     182m47.993s
+		
+	# chr22 single thread -- 11 gigabytes of RAM at peak - 90 X coverage - 50 Mb chromosome
+	$ time java -jar ~/RAPTR-SV/store/RAPTR-SV.jar cluster -s NA12878.newpreprocess.data.flat -c chr22 -g Homo_sapiens_assembly18.fasta.repeat -o time_test_run -i 5 -f 2 -p NA12878_temp
+		[MAIN] Setting temporary file directory to: NA12878_temp
+		[RPSR INPUT] Finished loading gap file: Homo_sapiens_assembly18.fasta.repeat
+		[RPSR INPUT] Finished loading divet sets. Identified: 95679 discordant sets
+		Deletion split pair: dataStructs.splitRead@6f2b958e;dataStructs.splitRead@1eb44e46
+		Deletion split pair: dataStructs.splitRead@6f2b958e;dataStructs.splitRead@1eb44e46
+		Deletion split pair: dataStructs.splitRead@6f2b958e;dataStructs.splitRead@1eb44e46
+		Deletion split pair: dataStructs.splitRead@6f2b958e;dataStructs.splitRead@1eb44e46
+		[RPSR INPUT] Finished loading all files! Final Sets: 164271.
+		[RPSR WEIGHT] Calculating preliminary set values.
+		[RPSR WEIGHT] Reads that need recalculation: 75716
+		[RPSR WEIGHT] Working on set number: 164270 of 164271 and have retained: 17625
+		[RPSR WEIGHT] Finished with: chr22: 17627 out of 164271 initial Events
+		
+		real    25m15.391s	1515s		final set processing rate: 108 / s
+		user    169m25.110s			memory per set ratio: 0.0670 Mb / set
+		sys     26m20.900s
+		
+	 # Let's drop down to 10 X coverage
+	 # chr1 single thread -- 11 gigabytes at peak - 247 Mb chromosome
+	 $ cat NA12878.rgsplit.wgs.preproc.20FUK.1.flat NA12878.rgsplit.wgs.preproc.20FUK.2.flat > NA12878.10X.cov.test.flat
+	 $ time java -jar ~/RAPTR-SV/store/RAPTR-SV.jar cluster -s NA12878.10X.cov.test.flat -c chr1 -g Homo_sapiens_assembly18.fasta.repeat -o time_test_run -i 5 -f 2 -p NA12878_temp
+		[MAIN] Setting temporary file directory to: NA12878_temp
+		[RPSR INPUT] Finished loading gap file: Homo_sapiens_assembly18.fasta.repeat
+		[RPSR INPUT] Finished loading divet sets. Identified: 151195 discordant sets
+		[RPSR INPUT] Finished loading all files! Final Sets: 286565.
+		[RPSR WEIGHT] Calculating preliminary set values.
+		[RPSR WEIGHT] Reads that need recalculation: 50828
+		[RPSR WEIGHT] Working on set number: 286564 of 286565 and have retained: 2976
+		[RPSR WEIGHT] Finished with: chr1: 2978 out of 286565 initial Events
+		
+		real    4m13.567s	253s		final set processing rate: 1132 / s
+		user    13m59.884s			memory per set ratio: 0.0384 Mb / set
+		sys     3m48.201s
+		
+	# chr22 single thread -- 5 gigabytes at peak - 50 Mb chromosome
+	$ time java -jar ~/RAPTR-SV/store/RAPTR-SV.jar cluster -s NA12878.10X.cov.test.flat -c chr22 -g Homo_sapiens_assembly18.fasta.repeat -o time_test_run -i 5 -f 2 -p NA12878_temp
+		[MAIN] Setting temporary file directory to: NA12878_temp
+		[RPSR INPUT] Finished loading gap file: Homo_sapiens_assembly18.fasta.repeat
+		[RPSR INPUT] Finished loading divet sets. Identified: 19106 discordant sets
+		[RPSR INPUT] Finished loading all files! Final Sets: 44723.
+		[RPSR WEIGHT] Calculating preliminary set values.
+		[RPSR WEIGHT] Reads that need recalculation: 11822
+		[RPSR WEIGHT] Working on set number: 44722 of 44723 and have retained: 744
+		[RPSR WEIGHT] Finished with: chr22: 746 out of 44723 initial Events
+		
+		real    2m30.335s	150s		final set processing rate: 298 / s
+		user    5m9.382s			memory per set ratio: 0.112 Mb / set
+		sys     0m51.222s
+		
+	# Now, to see the scalability with additional threads
+	# 10 threads, 90X coverage -- 247 Mb chromosome
+	$ time java -jar ~/RAPTR-SV/store/RAPTR-SV.jar cluster -s NA12878.newpreprocess.data.flat -c chr1 -g Homo_sapiens_assembly18.fasta.repeat -o time_test_run -i 5 -f 2 -p NA12878_temp -t 10
+	
+	
+	
+	# Table
+	

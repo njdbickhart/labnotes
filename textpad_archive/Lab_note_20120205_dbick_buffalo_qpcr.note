@@ -1,0 +1,53 @@
+02/05/2012
+# This is just a compilation of the commands used to generate the qPCR dataset
+# My goal is to take 100 loci (including several well-known genes such as PI3) and generate primers for them
+# Using the following file to select the genes for qPCR: C:\SharedFolders\bed_cnv_fig_table_pipeline\buffalo\gene_list_cn_buffalo.xls
+# Filtered genes according to "covered percentage == 100"
+# Had 152 queries
+
+____________________________
+Beginning the search
+____________________________
+# Transfered the 152 filtered queries to this file:
+C:\SharedFolders\bed_cnv_fig_table_pipeline\buffalo\buffalo_qpcr_targets.xlsx
+
+# Copied only the gene name, chr, start and end coordinates to a text file:
+C:\SharedFolders\bed_cnv_fig_table_pipeline\buffalo\buffalo_gene_qpcr_list.txt
+
+# Transferred this text file to Server 3
+Server3: /mnt/data110/dbickhart/buffalo_qpcr
+# Starting the pipeline:
+$ perl -ne '$_ =~ s/\r//g; chomp $_; @s = split(/\t/); $o = "$s[0]\_buffalo.primers"; print "$o\n"; system("primer_3_exonerate_wrapper.pl -c $s[1] -s $s[2] -e $s[3] -a 150-200 -o $o");' < buffalo_gene_qpcr_list.txt
+
+# There is an issue: The pipeline is giving me different nucleotide coordinates but the same primer sequence. Need to check this out.
+$ grep DEFB7 buffalo_gene_qpcr_list.txt
+	DEFB7   chr27   7372714 7405355
+$ perl -d ~/bin/primer_3_exonerate_wrapper.pl -c chr27 -s 7372714 -e 7405355 -a 150-200 -o DEFB7_test.primers
+	print $good[0]->[0]
+		GAATCCTGCTCTGAAGGTGC
+	print $good[0]->[1]
+		TTTTCTGTCTTGAGGCAGGG
+	print $good[0]->[2]
+		25081
+	print $good[0]->[3]
+		25251
+	# Found the problem, my start sites were shifting, so I had to use the original start values to accurately calculate the primer amplicon positions
+	# Also, I was not checking for redundant primers in my method. I had to implement a new subroutine to do this.
+# Retesting
+$ primer_3_exonerate_wrapper.pl -c chr27 -s 7372714 -e 7405355 -a 150-200 -o DEFB7_test.primers
+# It worked without bugs or duplicates.
+# Now to retry the automation.
+# NOTE: I used the Bio::DB::Fasta interface to generate an index of my reference fasta file and I incorporated this interface into the primer 3 script (speeds it up significantly!)
+	Server3: /mnt/data110/dbickhart/reference/
+	$ bioperl_index_using_index_fasta.pl ucsc_bosTau4.fa.masked
+
+Server3: /mnt/data110/dbickhart/buffalo_qpcr
+$ fork_primer_3_exonerate.pl -i buffalo_gene_qpcr_list.txt -p 3
+$ for i in *.primers; do perl -e 'chomp $ARGV[0]; @base = split(/\_/, $ARGV[0]); open(IN, "< $ARGV[0]"); $h = <IN>; $h2 = <IN>; while($v = <IN>){ chomp $v; print "$base[0]\t$v\n";}' $i >> full_primer_list.tab; done
+# Now to try to incorporate PI3
+$ grep PI3 buffalo_gene_qpcr_list.txt
+	PI3     chr13   74291788        74293861
+$ primer_3_exonerate_wrapper.pl -c chr13 -s 74291788 -e 74293861 -a 150-250 -o PI3_buffalo.primers -v
+	# The only one that worked:
+	$ more chr13_74292288_74294361.temp
+		primer_0 AAACCTTCCCACTGACCTCC CCGTCTTTCTGTCCTCTTGG 100 1250

@@ -1,0 +1,156 @@
+03/13/2012
+# I need to start working on the cucumber CNV project, but the genome is in pretty poor shape! 
+# Just scaffolds and no repeatmasking!
+# I am going to repeatmask the data and then try to start mapping the reads to it
+
+# Using TRF to mask it:
+	Server 3: /mnt/gliu1_usb/dbickhart/cucumber_data_01162012/Genome Data/Genome-FASTA
+	$ /home/dbickhart/RepeatMasker/trf321.linux.exe 454LargeContigs.fna 2 7 7 80 10 50 500 -m -d
+	
+	# Moving trf html files into a separate directory
+	$ mkdir trf_html
+	$ mv *.html ./trf_html/
+	
+	# I think that I masked the wrong file. Going to work on the scaffolds now.
+	$ /home/dbickhart/RepeatMasker/trf321.linux.exe 454Scaffolds.fna 2 7 7 80 10 50 500 -m -d
+	
+	# Working on repeatmasking the scaffolds
+	# Downloaded the most recent update to repbase (from march 2012)
+	Server 3: /home/dbickhart/
+	$ tar -xzvf repeatmaskerlibraries-20110920.tar.gz
+	$ mv Libraries/RepeatMaskerLib.embl RepeatMasker/Libraries/RepeatMaskerLib.embl
+	
+	# Now to start repeatmasking scaffolds
+	# Trying to setup RepeatMasker is such a pain on Server 3. I am going to instead migrate everything to server 2 and start repeatmasking there.
+	Server 2: /mnt/data6/gliu/dbickhart/RepeatMasker/cucumber/
+	$ ../RepeatMasker -pa 5 -s --species cucumber cucumber_scaffolds_trf_mask.fa
+	
+	# Now to transfer back to /mnt/gliu_usb1/dbickhart/
+	$ scp dbickhart@172.16.0.146:/mnt/data6/gliu/dbickhart/RepeatMasker/cucumber/cucumber_scaffolds_trf_mask.fa.masked ./cucumber_scaffolds_trf_masked.fa
+	$ cp cucumber_scaffolds_trf_masked.fa /mnt/data110/dbickhart/reference/
+	# Indexing with MrsFAST
+	Server 3: /mnt/data110/dbickhart/reference
+	$ mrsfast --index cucumber_scaffolds_trf_masked.fa
+	
+# George had a great suggestion: download the JGI DOE assembly of cucumber and use that instead
+	# Downloaded the hard masked genome and gene gff3 track from:
+	ftp://ftp.jgi-psf.org/pub/JGI_data/phytozome/v8.0/Csativus/
+	
+	# Damn! This assembly is also in scaffold form with no agp data!
+	# The good thing is that I have the gene gff3 now. 
+	# so I will just use the server2 repeatmasked version and just go to town on the read alignment without too many worries.
+	# I do not think that the calls will be good, but hey, we're working with a terrible assembly here!
+	
+	# So here are the directories where there is cucumber data:
+	
+	Server3: /mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines   <- seven cucumber strains
+		$ for i in /mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/*.gz; do echo $i; gunzip -c $i | head | perl -e '$h = <>; $s = <>; print length($s) . "\n";'; done		*/
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L6_CUCcxiRAADIAAPEI-1_1.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L6_CUCcxiRAADIAAPEI-1_2.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L6_CUCcxiRAEDIAAPEI-3_1.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L6_CUCcxiRAEDIAAPEI-3_2.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L7_CUCcxiRACDIAAPEI-2_1.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L7_CUCcxiRACDIAAPEI-2_2.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L7_CUCcxiRAHDIAAPEI-4_1.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L7_CUCcxiRAHDIAAPEI-4_2.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L8_CUCcxiRAIDIAAPEI-6_1.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L8_CUCcxiRAIDIAAPEI-6_2.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L8_CUCcxiRANDIAAPEI-7_1.fq.gz
+			91
+			/mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/110919_I878_FCD05TCACXX_L8_CUCcxiRANDIAAPEI-7_2.fq.gz
+			91
+	Server3: /mnt/gliu1_usb/dbickhart/cucumber_data_01162012/UW_CC3_SWCC8_Illumina   <- basic shortsequence shotgun reads for the main assembly
+		$ gunzip -c /mnt/gliu1_usb/dbickhart/cucumber_data_01162012/UW_CC3_SWCC8_Illumina/run227.CC3_NoIndex_L002_R1.fastq.gz | head | perl -e '$h = <>; $s = <>; print length($s) . "\n";'
+			102
+		$ gunzip -c /mnt/gliu1_usb/dbickhart/cucumber_data_01162012/UW_CC3_SWCC8_Illumina/run227.SWCC8_NoIndex_L003_R1.fastq.gz | head | perl -e '$h = <>; $s = <>; print length($s) . "\n";'
+			102
+	
+	# So I will use the UW_CC3  data as a pure WSSD finding. Then I will process the Seven cucumber lines separately and make CNV calls on them
+	Server3: /mnt/data110/dbickhart/reference
+	$ mrsfast --index cucumber_scaffolds_trf_mask.fa.masked
+	$ samtools faidx cucumber_scaffolds_trf_mask.fa.masked
+	
+	Server3: /mnt/data8/dbickhart/cucumber_project
+	$ mrsfast_fork_letter_wrapper_fq_splitter.pl 'ls /mnt/gliu1_usb/dbickhart/cucumber_data_01162012/UW_CC3_SWCC8_Illumina/*fastq.gz' shotgun_reads /mnt/data110/dbickhart/reference/cucumber_scaffolds_trf_mask.fa.masked   */
+	
+	
+	Server3: /mnt/data8/dbickhart/cucumber_project/shotgun_reads
+	$ mrsfast_fork_letter_wrapper_fq_splitter.pl 'ls /mnt/gliu1_usb/dbickhart/cucumber_data_01162012/BGI_Illumina/Seven_cucumber_lines/*fq.gz' seven_cucumber /mnt/data110/dbickhart/reference/cucumber_scaffolds_trf_mask.fa.masked	*/
+	
+	$ for i in *.bam; do samtools view $i | perl -lane '$e = $F[3] + 50; print "$F[2]\t$F[3]\t$e";' >> shotgun_reads_hits.bed; done
+	$ cd seven_cucumber
+	$ perl -e '@f = `ls *.bam`; foreach $h (@f){@fs = split(/[_-]/, $h); open(OUT, ">> $fs[4]_$fs[5]_hits.bed"); open(IN, "samtools view $h |"); while(<IN>){chomp; @s = split(/\t/); $e = $s[3] + 50; print OUT "$s[2]\t$s[3]\t$e\n";} close IN; close OUT;}'
+	
+	# Going to create the windows
+	Server 3 /mnt/data110/dbickhart/reference
+	$ ./winmaker_full_fasta.jar cucumber_scaffolds_trf_masked.fa
+	$ wc -l cucumber_scaffolds_trf_masked.file1 cucumber_scaffolds_trf_masked.file2 cucumber_scaffolds_trf_masked.file3
+	  196080 cucumber_scaffolds_trf_masked.file1
+	  200354 cucumber_scaffolds_trf_masked.file2
+  	  183766 cucumber_scaffolds_trf_masked.file3
+  	  
+  	$ mkdir ../cucumber_windows
+  	$ perl -e 'while(<>){chomp; @s = split(/\s+/); print "$s[0]\t$s[2]\t$s[3]\n";}' < cucumber_scaffolds_trf_masked.file1 > cucumber_scaffolds_trf_masked.file1.template
+  	$ perl -e 'while(<>){chomp; @s = split(/\s+/); print "$s[0]\t$s[2]\t$s[3]\n";}' < cucumber_scaffolds_trf_masked.file2 > cucumber_scaffolds_trf_masked.file2.template
+  	$ perl -e 'while(<>){chomp; @s = split(/\s+/); print "$s[0]\t$s[2]\t$s[3]\n";}' < cucumber_scaffolds_trf_masked.file3 > cucumber_scaffolds_trf_masked.file3.template
+  	
+  	$ perl GC_intervals.pl --in /mnt/data110/dbickhart/reference/cucumber_scaffolds_trf_mask.fa.masked --genome cucumber_scaffolds --name cucumber_scaffolds
+
+	# It looks like my GC script worked, but the GC values are very low!
+		$ cut -f4 cucumber_scaffolds_gc_file1.bed | statStd.pl
+			total   196080
+			Minimum 0.204840
+			Maximum 0.514702
+			Average 0.327041
+			Median  0.329865
+			Standard Deviation      0.036338
+			Mode(Highest Distributed Value) 0.340068
+			
+	# I will try to intersect the beds with the windows
+	# Won't be pretty, but hey, the assembly isn't all that great!
+	Server 3 /mnt/data8/dbickhart/cucumber_project/shotgun_reads
+	$ perl ~/bin/alkan_pipeline_no_controls_cuc.pl --File1 shotgun.full.file1 --File2 shotgun.full.file2 --File3 shotgun.full.file3 --bed --hits shotgun_reads_hits.bed --out shotgun_wins
+	
+	# I changed the cucumber script to remove the chrX processing (because there is no X chromosome!)
+	# I also had to change the control file filtering from the beginning, since not enough files were filtered from the analysis
+		$ wc -l shotgun_wins/shotgun_reads_hits_file1_c.bed shotgun_wins/shotgun_reads_hits_file1.bed
+		  195107 shotgun_wins/shotgun_reads_hits_file1_c.bed
+		  196080 shotgun_wins/shotgun_reads_hits_file1.bed
+  		  391187 total
+  	# Also, changed the pipeline to automatically make the deletion cutoff zero if it turns out negative
+  	Server 3 /mnt/data8/dbickhart/cucumber_project/shotgun_reads/shotgun_wins
+  	$ perl ~/bin/alkan_pipeline_no_controls_cuc.pl --File1 shotgun_reads_hits_file1.bed --File2 shotgun_reads_hits_file2.bed --File3 shotgun_reads_hits_file3.bed
+		
+	# Testing out cnv-seq
+	$ perl ~/cnv-seq/cnv-seq.pl --ref ../shotgun_reads_hits.bed --test CUCcxiRAADIAAPEI_1_hits.bed --genome-size 250000000 --global-normalization
+		genome-size 250000000 --global-normalization
+		genome size used for calculation is 250000000
+		CUCcxiRAADIAAPEI_1_hits.bed: 98054339 reads
+		../shotgun_reads_hits.bed: 799877706 reads
+		The minimum window size for detecting log2>= 0.6 should be 133.028472714216
+		The minimum window size for detecting log2<=-0.6 should be 251.185320791313
+		window size to use is 251.185320791313 x 1.5 = 377
+		window size to be used: 377
+		read 98054339 test reads, out of 98054339 lines
+		read 799877706 ref reads, out of 799877706 lines
+		write read-counts into file: CUCcxiRAADIAAPEI_1_hits.bed-vs-shotgun_reads_hits.bed.log2-0.6.pvalue-0.001.count
+		Can't use an undefined value as an ARRAY reference at /home/dbickhart/cnv-seq/cnv-seq.pl line 205, <REF> line 799877706.
+
+	# This might take a while, so I am going to run this through a couple of loops
+		$ for i in `ls CUCcxiRACDIAAPEI_2_hits.bed CUCcxiRAEDIAAPEI_3_hits.bed`; do echo $i; perl ~/cnv-seq/cnv-seq.pl --ref ../shotgun_reads_hits.bed --test $i --genome-size 250000000 --global-normalization ; done
+		$ for i in `ls CUCcxiRAHDIAAPEI_4_hits.bed CUCcxiRAIDIAAPEI_6_hits.bed CUCcxiRANDIAAPEI_7_hits.bed`; do echo $i; perl ~/cnv-seq/cnv-seq.pl --ref ../shotgun_reads_hits.bed --test $i --genome-size 250000000 --global-normalization ; done
+		
+	# It finished. Now to conver the calls into a bed-style format
+		$ perl convert_cnv_seq_results_to_bed.pl CUCcxiRAADIAAPEI_1_hits.bed-vs-shotgun_reads_hits.bed.log2-0.6.pvalue-0.001.minw-4.cnv
+		$ for i in *.cnv; do echo $i; perl convert_cnv_seq_results_to_bed.pl $i; done
+		

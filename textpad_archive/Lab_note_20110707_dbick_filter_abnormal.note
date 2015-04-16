@@ -1,0 +1,512 @@
+07/07/2011
+# This lab note file is dedicated to the discovery of the abnormally high read count regions in the reference assembly
+# I plan on finding a low resolution region of them and then masking that sequence and rerunning the pipeline in order to get rid of them.
+
+# Finding the bad regions
+	# First, I'm going to get the mean and median of the normalized windows:
+	$ cut -f4 an0626_angus_file1.bed-auto.depth.normalized | statStd.pl
+		total   1734357
+		Minimum 0
+		Maximum 104272.883288291
+		Average 284.737402
+		Median  276.684613050594
+		Standard Deviation 267.755732
+		Mode(Highest Distributed Value) 0
+		
+	# Now I'm going to extract any windows that are 20x larger than the average (5680)
+	$ perl -lane 'if($F[3] > 5680){print $_;}' < an0626_angus_file1.bed-auto.depth.normalized | wc
+	    269    1076   10435
+	# Now to cat them together into a bed file
+	$ perl -lane 'if($F[3] > 5680){print $_;}' < an0626_angus_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_btan09_gain.bed
+	$ wc abnormal_btan09_gain.bed
+ 	     21  63 467 abnormal_btan09_gain.bed
+ 	     
+ 	# Now to see how many intervals had zero hits
+ 	$ perl -lane 'if($F[3] == 0){print $_;}' < an0626_angus_file1.bed-auto.depth.normalized | wc
+    	    332    1328    8240
+    	$ perl -lane 'if($F[3] == 0){print $_;}' < an0626_angus_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_btan09_loss.bed
+    	$ wc abnormal_btan09_loss.bed
+  	     57  171 1314 abnormal_btan09_loss.bed
+  	     
+  	# Now for an0828
+  	$ cut -f4 an0828_angus_file1.bed-auto.depth.normalized | statStd.pl
+		total   1734357
+		Minimum 0
+		Maximum 55579.7542798209
+		Average 366.399956
+		Median  358.078144688739
+		Standard Deviation 298.510109
+		Mode(Highest Distributed Value) 344.860642036007
+	
+	# OK, so 20x the average is 7320
+	$ perl -lane 'if($F[3] > 7320){print $_;}' < an0828_angus_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_btan02_gain.bed
+	$ wc abnormal_btan02_gain.bed
+ 	   19  57 418 abnormal_btan02_gain.bed
+ 	
+ 	$ perl -lane 'if($F[3] == 0){print $_;}' < an0828_angus_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_btan02_loss.bed
+ 	$ wc abnormal_btan02_loss.bed
+ 		16  48 368 abnormal_btan02_loss.bed
+ 	
+ 	
+ 	# Now for an1717
+ 	$ cut -f4 an1717_angus_file1.bed-auto.depth.normalized | statStd.pl                                                                   
+	 	total   1734357
+		Minimum 0
+		Maximum 82964.3206804248
+		Average 259.923222
+		Median  252.31363972663
+		Standard Deviation 240.155545
+		Mode(Highest Distributed Value) 0
+		
+	# So 20x the average is 5180
+	$ perl -lane 'if($F[3] > 5180){print $_;}' < an1717_angus_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_btan10_gain.bed
+	$ wc abnormal_btan10_gain.bed
+ 		20  60 438 abnormal_btan10_gain.bed
+ 	
+ 	$ perl -lane 'if($F[3] == 0){print $_;}' < an1717_angus_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_btan10_loss.bed
+ 	$ wc abnormal_btan10_loss.bed
+ 		136  408 3162 abnormal_btan10_loss.bed
+ 		
+ 	$ wc *.bed
+		  19   57  418 abnormal_btan02_gain.bed
+		  16   48  368 abnormal_btan02_loss.bed
+		  21   63  467 abnormal_btan09_gain.bed
+		  57  171 1314 abnormal_btan09_loss.bed
+		  20   60  438 abnormal_btan10_gain.bed
+		 136  408 3162 abnormal_btan10_loss.bed
+		 269  807 6167 total
+		 
+	$ cat *gain.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > angus_gain_abnormal_merge.bed
+	
+	# Now for Blackstar
+	$ cut -f4 blackstar_rem_hits_r_file1.bed-auto.depth.normalized | statStd.pl
+		total   1734357
+		Minimum 0
+		Maximum 1410217.76360492
+		Average 271.415938
+		Median  240.767384027064
+		Standard Deviation 3855.082052
+		Mode(Highest Distributed Value) 224.718069529614
+	
+	# So 20x the average is 5420
+	$ perl -lane 'if($F[3] > 5420){print $_;}' < blackstar_rem_hits_r_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_btho11_gain.bed
+	$ wc abnormal_btho11_gain.bed
+ 		36 108 784 abnormal_btho11_gain.bed
+ 	$ perl -lane 'if($F[3] == 0){print $_;}' < blackstar_rem_hits_r_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_btho11_loss.bed
+ 	$ wc abnormal_btho11_loss.bed
+ 		2  6 48 abnormal_btho11_loss.bed
+ 		
+ 	# Now for Nelore
+ 	$ cut -f4 total_nelore_doc_r_file1.bed-auto.depth.normalized | statStd.pl
+		total   1734357
+		Minimum 0
+		Maximum 4797900.68908902
+		Average 1148.191327
+		Median  1040.44371074361
+		Standard Deviation 12923.099378
+		Mode(Highest Distributed Value) 0
+	
+	# So the cutoff is 22960
+	$ perl -lane 'if($F[3] > 22960){print $_;}' < total_nelore_doc_r_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_bine12_gain.bed
+	$ wc abnormal_bine12_gain.bed
+ 		37 111 807 abnormal_bine12_gain.bed
+ 	$ perl -lane 'if($F[3] == 0){print $_;}' < total_nelore_doc_r_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_bine12_loss.bed
+ 	$ wc abnormal_bine12_loss.bed
+  		46  138 1079 abnormal_bine12_loss.bed
+  		
+  	# Finally, for the dominette trace
+  	$ cut -f4 full_trace_file1.bed-auto.depth.normalized | statStd.pl
+		total   1734357
+		Minimum 0.660945160104973
+		Maximum 1971176.91450125
+		Average 390.146414
+		Median  343.63688160166
+		Standard Deviation 5372.898756
+		Mode(Highest Distributed Value) 328.890344583585
+		
+	# So the cutoff is 7800
+	$ perl -lane 'if($F[3] > 7800){print $_;}' < full_trace_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_trace_gain.bed
+	$ wc abnormal_trace_gain.bed
+ 		35 105 768 abnormal_trace_gain.bed
+ 	$ perl -lane 'if($F[3] == 0){print $_;}' < full_trace_file1.bed-auto.depth.normalized | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_trace_loss.bed
+ 	# gave nothing
+ 	
+ 	
+ # I think that the deletions may be individual specific, and should not be removed from the overall map.
+ # Now to merge all of the intervals and devise a strategy to find out the source
+ 	$ cat *gain.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > all_abnormal_intervals.bed
+ 	# How about I try this: I will generate 1000 bp regular (non-absolute) non-overlapping windows and sample "hits" in these regions. The regions should pop out like sore thumbs then.
+ 	
+ 	# I created a script to do this (create_nonoverlap_windows.pl) and then I can use the combine_bed_hits_utilitarian.pl script to tabulate the hits onto those refined windows
+ 	$ create_nonoverlap_windows.pl all_abnormal_intervals.bed
+ 		$ wc 1000bp_window_nonoverlap.bed
+			1254  3762 27015 1000bp_window_nonoverlap.bed
+	$ combine_bed_hits_utilitarian.pl an0626_angus.hits 1000_window_hits 1000bp_window_nonoverlap.bed
+	# Ok, I think that went well. Found some putative regions that might be troublesome
+	
+	$ mkdir 1000_window
+	$ combine_bed_hits_utilitarian.pl an0828_angus.bed 1000_window 1000bp_window_nonoverlap.bed
+	
+	$ combine_bed_hits_utilitarian.pl an1717_angus.bed 1000_window 1000bp_window_nonoverlap.bed
+	
+	$ combine_bed_hits_utilitarian.pl total_nelore_doc_rem.bed 1000_window 1000bp_window_nonoverlap.bed
+	
+	$ combine_bed_hits_utilitarian.pl blackstar_rem_hits.bed 1000_window 1000bp_window_nonoverlap.bed
+	
+	$ combine_bed_hits_utilitarian.pl full_trace.bed 1000_window 1000bp_window_nonoverlap.bed
+	
+	# Now to centralize all of the window files and check them out
+	$ cp ./*/1000_window*/*1000bp_window.bed ./
+	$ cp /mnt/gliu1_usb/dbickhart/nelore_30x/doc/1000_windows/total_nelore_doc_rem_1000bp_window.bed ./
+	
+	# Here's what I'm going to do: 
+	# I will run the windows through statStd.pl and try to determine if I can separate out the abnormal windows using a standard deviation approach
+	# Here goes:
+		$ cut -f4 an0626_angus_1000bp_window.bed | statStd.pl
+			total   1254
+			Minimum 0
+			Maximum 44063
+			Average 650.409888
+			Median  21
+			Standard Deviation      2444.454158
+			Mode(Highest Distributed Value) 0
+		# Doesn't look like it. These aren't "fair" windows with respect to the repeat masking
+		# I will need to "eyeball" the data to get the abnormal windows out
+		# Maybe if I use 2 standard deviations? 
+		$ perl -lane 'if($F[3] > 4888){print $_;}' < an0626_angus_1000bp_window.bed | more
+			chr1    23401477        23402477        16777
+			chr16   6857566 6858566 44063
+			chr21   0       1000    14019
+			chr21   1000    2000    16420
+			chr21   2000    3000    12934
+			chr21   3000    4000    13074
+			chr21   4000    5000    12253
+			chr21   5000    6000    15788
+			chr21   6000    7000    16479
+			chr21   52074232        52075232        10963
+			chr21   52075232        52076232        8113
+			chr21   52076232        52077232        8483
+			chr21   52077232        52078232        21051
+			chr21   52079232        52080232        19861
+			chr21   52080232        52081232        29370
+			chr21   52085232        52086232        11773
+			chr3    126989283       126990283       5803
+			chr3    126990283       126991283       11663
+			chr4    124280447       124281447       12079
+			chr4    124284447       124285447       7054
+			chr4    124285447       124286447       11294
+			chr4    124441748       124442748       14791
+			chr4    124443748       124444748       5764
+			chr4    124444748       124445748       8638
+			chr4    124445748       124446748       7564
+			chr7    6109617 6110617 22766
+			
+		$ perl -lane 'if($F[3] > 4888){print $_;}' < an0626_angus_1000bp_window.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin
+			chr1    23401477        23402477
+			chr16   6857566 6858566
+			chr21   0       7000
+			chr21   52074232        52078232
+			chr21   52079232        52081232
+			chr21   52085232        52086232
+			chr3    126989283       126991283
+			chr4    124280447       124281447
+			chr4    124284447       124286447
+			chr4    124441748       124442748
+			chr4    124443748       124446748
+			chr7    6109617 6110617
+			
+		# That misses the chr6 trouble regions though... let's try it on the higher mapped animals
+		# OK, I think that I found the right settings for the trace file
+		$ perl -lane 'if($F[3] > 7000){print $_;}' < full_trace_1000bp_window.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > abnormal_mask_regions.bed
+		
+		# Let's mask the sequence and see how it all works out:
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi cow4_36_noun_rmask_b.fa -bed abnormal_mask_regions.bed -fo cow4_noun_noabnorm_rmask_a.fa
+		
+		# OK, so I can now generate new windows or use MrCanavar on this.
+		# Lets do the latter (it is much faster)
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a total_nelore_doc_rem.bed -b /mnt/data110/dbickhart/reference/abnormal_mask_regions.bed -v > total_nelore_no_ab_doc.bed
+		
+		$ /mnt/gliu1_usb/dbickhart/mrcanavar-0.3.1/mrcanavar --prep -fasta cow4_noun_noabnorm_rmask_a.fa -gaps /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed -conf cow4_no_ab.cnvr
+		# OOps! I forgot that mrcanavar runs off of sam files
+		# Guess I'll have to make up the windows afterall
+		# New windows will be located in /mnt/data110/dbickhart/cow4_windows
+			# Splitting fasta into chromosomes
+			$ perl split_fasta.pl cow4_noun_noabnorm_rmask_a.fa
+			
+			# Making the windows
+			$ for i in *.fa; do /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/winmaker $i; done
+			
+			$ cat *.file1 > cow4_no_ab_file1_template.bed
+			$ cat *.file2 > cow4_no_ab_file2_template.bed
+			$ cat *.file3 > cow4_no_ab_file3_template.bed
+			
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a cow4_no_ab_file1_template.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v > cow4_no_ab_file1_control.bed
+			# Now for the GC percentages per window
+			$ perl GC_intervals.pl --path separate_chr --name cow4_no_ab
+			$ perl GC_control_intervals.pl --path separate_chr --name cow4_no_ab
+			
+			# Now to test this on my nelore data
+			$ combine_bed_hits_utilitarian.pl total_nelore_no_ab_doc.bed no_abnormal /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file2_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+			
+			# That should combine the filtered hits file (the abnormal region hits were removed) with the five windows that I need
+			# This failed for some reason; the same file was loaded twice. 
+			# I will check this later to see if I can't troubleshoot it.
+			
+			### Need to do this later ###
+			
+			# I decided to make a low memory usage script instead
+			# It reads from each file one at a time without putting them all into memory
+			$ combine_bed_hits_lowmem.pl total_nelore_no_ab_doc.bed no_abnormal /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file2_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+			
+			# It worked without too much fuss, but it looks like I missed some intervals
+			$ perl -lane 'if($F[3] > 50000){print $_;}' < total_nelore_no_ab_doc_cow4_no_ab_file1_template.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin
+				chr16   51897578        51910799
+				chr21   0       11595			<- definitely needs to be removed!
+				chr4    124429748       124447398
+				chr8    86266121        86276435
+			
+			# I'm just going to remove all those intervals
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi cow4_noun_noabnorm_rmask_a.fa -bed more_problems.bed -fo cow4_noun_noabnorm_r2.fa
+			$ perl split_fasta.pl cow4_noun_noabnorm_r2.fa
+			$ for i in chr*.fa; do /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/winmaker $i; done
+				$ cat *.file1 > ../cow4_no_ab_file1_template.bed
+				$ cat *.file2 > ../cow4_no_ab_file2_template.bed
+				$ cat *.file3 > ../cow4_no_ab_file3_template.bed
+				
+				$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a cow4_no_ab_file1_template.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v > cow4_no_ab_file1_control.bed
+				$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a cow4_no_ab_file3_template.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v > cow4_no_ab_file3_control.bed
+				
+				$ perl GC_intervals.pl --path separate_chr --name cow4_no_ab
+				$ perl GC_control_intervals.pl --path separate_chr --name cow4_no_ab
+				
+				$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a total_nelore_no_ab_doc.bed -b /mnt/data110/dbickhart/cow4_windows/more_problems.bed  -v > total_nelore_no_ab_no_prob.bed
+				$ mv total_nelore_no_ab_no_prob.bed total_nelore_no_ab_doc.bed
+				$ combine_bed_hits_lowmem.pl total_nelore_no_ab_doc.bed no_ab_two /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file2_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+				
+				# Now I need to setup the pipeline to deal with the new window files
+				# The original file windows need to be converted to Alkan's "tab" format
+				$ for i in cow4_no_ab_gc_file*.bed; do awk '{print $1"-"$2"-"$3"\t"$4}' $i | sort -k 1,1 > $i.tab; done
+				
+				# Now to run it on the nelore data
+				$ run_alkan_pipeline.pl --File1 total_nelore_no_ab_doc_cow4_no_ab_file1_template.bed --File2 total_nelore_no_ab_doc_cow4_no_ab_file2_template.bed --File3 total_nelore_no_ab_doc_cow4_no_ab_file3_template.bed --File1_c total_nelore_no_ab_doc_cow4_no_ab_file1_control.bed --File3_c total_nelore_no_ab_doc_cow4_no_ab_file3_control.bed
+					# Similar to the old calls, but refined
+					$ wc ../total_nelore_doc_r/total_nelore_doc_r_file1.bed.final.wssd                                              
+					   679  2037 15813 ../total_nelore_doc_r/total_nelore_doc_r_file1.bed.final.wssd  <- old calls
+					$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a total_nelore_no_ab_doc_cow4_no_ab_file1_template.bed.final.wssd -b ../total_nelore_doc_r/total_nelore_doc_r_file1.bed.final.wssd | wc
+ 					   657    1971   15309  <- overlap with new calls
+					$ wc total_nelore_no_ab_doc_cow4_no_ab_file1_template.bed.final.wssd
+					   657  1971 15309 total_nelore_no_ab_doc_cow4_no_ab_file1_template.bed.final.wssd  <- new calls
+				
+				# One region in chr17 had a copy number of 1000; checking it out
+					$ extract_seq_from_fasta.pl --in /mnt/data110/dbickhart/cow4_windows/cow4_noun_noabnorm_r2.fa --out chr17_44mb.fa --chr chr17 --s 44308202 --e 44310492
+								
+				# It's right next to a gap; I think I should redo the artifacts for this set of windows just to ensure that I'm masking these regions
+				# Reuploaded the simulation files and now I am checking their integrity:
+					$ perl -e 'while(<>){chomp; @s = split(/\t/); $h{$s[0]} += 1;} foreach $k (sort{$a cmp $b} keys(%h)){ print "$k\t$h{$k}\n";}' < simulation_merged.bed
+					# I also filtered out all of the previous anomaly areas
+					$ combine_bed_hits_lowmem.pl dt_simulation_filtered.bed sim_windows /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file2_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+					
+					
+
+# Redoing the high density Angus
+	# So, I think that I know what the cause was for the discrepency between the hd_angus and the other datasets
+	# I believe that the dos encoding was responsible for the loss of sequence data in the alignments
+	# I went through each file, used dos2unix on each, and then split them into 36bp segments
+	# Now, I need to realign them using the recently re-masked cow4 sequence
+	$ for i in cow4_noun_noabnorm_rmask_*; do /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --index $i; done
+	
+	$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools faidx cow4_noun_noabnorm_rmask_a.fa
+	# The sequence files are split into six different batches
+	hd_angus_listaa  <- btan09
+	hd_angus_listab  
+	hd_angus_listac  <- btan02
+	hd_angus_listad  
+	hd_angus_listae  <- btan10
+	hd_angus_listaf
+	
+	# I will run four at a time, and probably split the last two in half to run them four at a time as well
+	# I also rewrote mrsfast_cow4_se_letter_wrapper.pl in the directory of the files in order to use the new masked sequence
+	# All of this will take place in /mnt/data8/dbickhart/ang_rerun/
+	# Running:
+		$ perl mrsfast_cow4_se_letter_wrapper.pl hd_angus_listaa a btan09
+		$ perl mrsfast_cow4_se_letter_wrapper.pl hd_angus_listab b btan09
+		$ perl mrsfast_cow4_se_letter_wrapper.pl hd_angus_listac c btan02
+		$ perl mrsfast_cow4_se_letter_wrapper.pl hd_angus_listad d btan02
+		
+	# Now, I'm going to split up the two remaining lists (hd_angus_listae and af)
+		$ split -l 13 hd_angus_listae
+		$ split -l 14 hd_angus_listaf y
+		# Now, I can run four processes, as soon as the last two runs end
+		
+		$ perl mrsfast_cow4_se_letter_wrapper.pl yaa c btan10
+		$ perl mrsfast_cow4_se_letter_wrapper.pl yab d btan10
+		$ perl mrsfast_cow4_se_letter_wrapper.pl xaa a btan10
+		$ perl mrsfast_cow4_se_letter_wrapper.pl xab b btan10
+		
+	# They all completed
+	# Now, I need to get the bed files from the bams
+		$ for i in btan02/*.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> doc_beds/btan02_hits.bed; done
+		$ for i in btan09/*.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> doc_beds/btan09_hits.bed; done
+		$ for i in btan10/*.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> doc_beds/btan10_hits.bed; done
+		
+		# Now to remove the problem areas that I missed the first time:
+		$ for i in *hits.bed; do /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a $i -b /mnt/data110/dbickhart/cow4_windows/more_problems.bed -v > $i.temp; done
+		
+	# Now to align to windows
+		$ combine_bed_hits_lowmem.pl btan02_hits.bed btan02 /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file2_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+		$ sleep 8h; combine_bed_hits_utilitarian.pl btan09_hits.bed btan09 /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file2_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+		; combine_bed_hits_utilitarian.pl btan10_hits.bed btan10 /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file2_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+		
+	# They all finished. Time to check the control windows to see if there are any anomalies
+		$ cut -f4 dt_simulation_filtered_cow4_no_ab_file1_control.bed | statStd.pl
+			total   1505123
+			Minimum 0
+			Maximum 94256
+			Average 4605.099470
+			Median  3996
+			Standard Deviation      1708.045473
+			Mode(Highest Distributed Value) 3873
+		
+		# Removing windows with 3 stdev above the average from the control regions
+		$ perl -lane 'if($F[3] > 9729){ print $_;}' < dt_simulation_filtered_cow4_no_ab_file1_control.bed > remove_control_windows.bed
+		
+		$ cut -f4 dt_simulation_filtered_cow4_no_ab_file3_control.bed | statStd.pl
+			total   814286
+			Minimum 0
+			Maximum 87574
+			Average 960.868761
+			Median  840
+			Standard Deviation      451.275716
+			Mode(Highest Distributed Value) 910
+		
+		# Again, 3 stdev cutoff
+		$ perl -lane 'if($F[3] > 2313){print $_;}' < dt_simulation_filtered_cow4_no_ab_file3_control.bed > remove_control_3_windows.bed
+		$ wc artifacts/sim_windows/remove*
+		  8409  33636 246915 artifacts/sim_windows/remove_control_1_windows.bed
+		  3557  14228 101523 artifacts/sim_windows/remove_control_3_windows.bed
+		 11966  47864 348438 total
+		 
+		# Checking the angus runs:
+		$ cut -f4 btan02_hits_cow4_no_ab_file1_control.bed | statStd.pl
+			total   1505123
+			Minimum 0
+			Maximum 36554
+			Average 1342.320177
+			Median  1360
+			Standard Deviation      442.276669
+			Mode(Highest Distributed Value) 1526	
+		# Not quite so bad, but not the best
+		# Used 5 times the stdev for this dataset
+		$ perl -lane 'if($F[3] > 3552){print $_;}' < btan02_hits_cow4_no_ab_file1_control.bed > remove_control_1_windows.bed
+		
+		# The file3 control was really bad! 
+		$ perl -lane 'if($F[3] > 1905){print $_;}' < btan02_hits_cow4_no_ab_file3_control.bed > remove_control_3_windows.bed
+		
+		# Nelore
+		$ cut -f4 total_nelore_no_ab_doc_cow4_no_ab_file1_control.bed | statStd.pl
+			total   1505123
+			Minimum 0
+			Maximum 23840
+			Average 1052.629563
+			Median  984
+			Standard Deviation      553.621482
+			Mode(Highest Distributed Value) 595
+		$ perl -lane 'if($F[3] > 3817){print $_;}' < total_nelore_no_ab_doc_cow4_no_ab_file1_control.bed > remove_control_1_windows.bed
+		$ perl -lane 'if($F[3] > 1117){print $_;}' < total_nelore_no_ab_doc_cow4_no_ab_file3_control.bed > remove_control_3_windows.bed
+		
+		# Another angus
+		$ cut -f4 btan10_hits_cow4_no_ab_file1_control.bed | statStd.pl
+			total   1505123
+			Minimum 3
+			Maximum 37456
+			Average 1033.218340
+			Median  988
+			Standard Deviation      434.010199
+			Mode(Highest Distributed Value) 726
+		
+		$ perl -lane 'if($F[3] > 2335){print $_;}'< btan10_hits_cow4_no_ab_file1_control.bed > remove_control_2_windows.bed
+		$ perl -lane 'if($F[3] > 1203){print $_;}'< btan10_hits_cow4_no_ab_file3_control.bed > remove_control_3_windows.bed
+		
+		# Final angus
+		$ cut -f4 btan09_hits_cow4_no_ab_file1_control.bed | statStd.pl
+			total   1505123
+			Minimum 58
+			Maximum 43522
+			Average 1301.477547
+			Median  1271
+			Standard Deviation      486.650268
+			Mode(Highest Distributed Value) 1048
+			
+		$ perl -lane 'if($F[3] > 2759){print $_;}' < btan09_hits_cow4_no_ab_file1_control.bed > remove_control_1_windows.bed
+		$ perl -lane 'if($F[3] > 1362){print $_;}' < btan09_hits_cow4_no_ab_file3_control.bed > remove_control_3_windows.bed
+		
+		
+# Now I'm going to combine all of those intervals and then remove the windows from each control file
+	$ cat /mnt/data8/dbickhart/ang_rerun/doc_beds/*/remove_control_1_windows.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > ang_cat_control_1_remove.bed
+	# Scratch that, lets do it with nelore too
+	$ cat /mnt/data8/dbickhart/ang_rerun/doc_beds/*/remove_control_1_windows.bed remove_control_1_windows.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > ang_nel_cat_control_1_remove.bed
+	$ cat /mnt/data8/dbickhart/ang_rerun/doc_beds/*/remove_control_3_windows.bed remove_control_3_windows.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > ang_nel_cat_control_3_remove.bed
+	
+	
+	# Removing the windows
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a cow4_no_ab_file1_control.bed -b control_abnormal/ang_nel_cat_control_1_remove.bed -v > cow4_f1c.tmp
+	$ mv cow4_f1c.tmp cow4_no_ab_file1_control.bed
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a cow4_no_ab_file3_control.bed -b control_abnormal/ang_nel_cat_control_3_remove.bed -v > cow4_f3c.tmp
+	$ mv cow4_f3c.tmp cow4_no_ab_file3_control.bed
+	
+	# Now to regenerate GC windows for them
+	$ perl GC_control_intervals.pl --path separate_chr --name cow4_no_ab
+	
+	# Finally, time to redo the nelore comparison and see how it worked out
+	$ combine_bed_hits_lowmem.pl total_nelore_no_ab_doc.bed no_ab_two /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+	# I just need to remake the control files, so it should be a little bit faster this time
+	# Now to retest the pipeline
+	$ run_alkan_pipeline.pl --File1 total_nelore_no_ab_doc_cow4_no_ab_file1_template.bed --File1_c total_nelore_no_ab_doc_cow4_no_ab_file1_control.bed --File2 total_nelore_no_ab_doc_cow4_no_ab_file2_template.bed --File3 total_nelore_no_ab_doc_cow4_no_ab_file3_template.bed --File3_c total_nelore_no_ab_doc_cow4_no_ab_file3_control.bed
+	# Oops! I forgot to rerun the artifact generation script with the simulation dataset!
+	$ combine_bed_hits_lowmem.pl dt_simulation_filtered.bed sim_windows /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+	
+	# Doing the same thing with the angus samples
+	$ combine_bed_hits_lowmem.pl btan10_hits.bed . /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+	$ combine_bed_hits_lowmem.pl btan09_hits.bed btan09 /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+	$ combine_bed_hits_lowmem.pl btan02_hits.bed . /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+	# Starting up blackstar too
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a blackstar_rem_hits.bed -b /mnt/data110/dbickhart/cow4_windows/final_abnormal_intervals.bed -v > blackstar_no_ab_hits.bed
+	$ combine_bed_hits_lowmem.pl blackstar_no_ab_hits.bed no_ab_two /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file2_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_template.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file1_control.bed /mnt/data110/dbickhart/cow4_windows/cow4_no_ab_file3_control.bed
+	
+	
+# OK, conclusions on this test:
+	# George checked some of the abnormally masked regions and found that many of them intersected with detected WSSD and WGAC regions.
+	# So, these regions are probably "good" despite their high read counts. 
+	# I guess that the use of MrsFast just amplified the reads in these regions to epic proportions
+	# My new goals are to finalize comparisons between the trace reads and the artifacts file from the simulation (so dt_trace vs dt_sim after removing WSSD and WGAC)
+	
+# Artifact file comparisons:
+	# Changed the run_alkan_pipeline.sh script back to the old window pipeline (cattle_separate.sh) and changed the artifact file back to the "blank.txt" file
+	pwd: /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/
+	$ run_alkan_pipeline.pl --File1 full_trace_file1.bed --File1_c full_trace_file1_c.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File3_c full_trace_file3_c.bed
+	
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a full_trace_file1.bed.final.wssd -b george_wssd_wgac_autosome.wssd -v | wc
+	    258     774    5975
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a full_trace_file1.bed.final.wssd -b george_wssd_wgac_autosome.wssd -v > dt_trace_no_artmask_no_wssd_wgac.bed
+	$ wc /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed
+	    352 1056 8279 /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed
+	
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < dt_trace_no_artmask_no_wssd_wgac.bed
+	    5236849	<- there is the 5 megabases. Now to compare that with the simulation
+	
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a dt_trace_no_artmask_no_wssd_wgac.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed -v | wc
+	    132     396    3046 <- less encouraging
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -b dt_trace_no_artmask_no_wssd_wgac.bed -a /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed -v | wc
+	    224     672    5304
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -b dt_trace_no_artmask_no_wssd_wgac.bed -a /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed | wc
+	    129     387    2999
+	
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed
+	    5645560
+	
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/subtractBed -a dt_trace_no_artmask_no_wssd_wgac.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed | perl -e 'while(<stdin>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+	    2820586
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/subtractBed -b dt_trace_no_artmask_no_wssd_wgac.bed -a /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed | perl -e 'while(<stdin>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+	    3229297
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -b dt_trace_no_artmask_no_wssd_wgac.bed -a /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed | perl -e 'while(<stdin>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+	    2416263

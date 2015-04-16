@@ -1,0 +1,462 @@
+08/24/2012
+# These notes contain my attempts to create a coherent, precision-aware merger method for my CNV pipeline
+
+# My current pipeline has a simple merger method that accounts for the precision of each method, but I think that I can improve it in the following ways:
+	1. Incorporate the phred-based probability scores from VH into split read
+	2. Improve the precision-aware merger method (perhaps by including the GASV algorithm?)
+	3. Incorporate the velvet assembly method (by rewritting the SV_merge pipeline step into my pipeline)
+	
+# I think that the order of difficulty is also represented by the order of my list
+# Combining all three elements should give a very precise merger algorithm, with probability scores based on the VH and split mapping locations
+# From this, I can assign average probabilities at least to the split and VH calls. The DOC would be harder to assign probabilities since it is already quantitative
+
+# Based on the other merger methods I have seen, I think that this is the way to go without putatively increasing the risk for more false positives.
+
+
+#################################
+#				#
+#	1. Split Read		#
+#				#
+#################################
+
+# Here are some tests from the Split read pipeline on the Angus dataset. I hope these will help me to pick suitable filtering criteria for the final calls
+	pwd: /home/dbickhart/share/bob_missou_data/angus_finished
+	$ mkdir venn
+	# I am going to create a few 5 way venn comparisions using AN0219 (it is the lowest number) as the reference in each case
+	# First, to make suitable bed input for the venn program
+	# Let's try separating out the different "calls" as well. Like deletion and insertion calls per file
+	$ for i in final_split_merge_AN*; do prefix=`echo $i | cut -d'_' -f4 | cut -d'.' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; open(IN, "< $f"); open(INS, "> venn/$p\_split_ins.bed"); open(DEL, "> venn/$p\_split_del.bed"); while(<IN>){chomp; @s = split(/\t/); if($s[3] eq "del"){print DEL "$s[0]\t$s[1]\t$s[2]\t$p\n";}elsif($s[3] eq "ins"){print INS "$s[0]\t$s[1]\t$s[2]\t$p\n";}} close IN; close DEL; close INS; print "$p done\n";' $i $prefix; done
+	# Starting with deletions
+	$ create_GD_venn_diagram.pl del_0219_0342_0447_0458_0544.png AN0219_split_del.bed AN0342_split_del.bed AN0447_split_del.bed AN0458_split_del.bed AN0544_split_del.bed
+	$ create_GD_venn_diagram.pl del_0219_0626_0728_0828_1717.png AN0219_split_del.bed AN0626_split_del.bed AN0728_split_del.bed AN0828_split_del.bed AN1717_split_del.bed
+	$ create_GD_venn_diagram.pl del_0219_1776_4517.png AN0219_split_del.bed AN1776_split_del.bed AN4517_split_del.bed
+	
+	# Now for insertions
+	$ create_GD_venn_diagram.pl ins_0219_0342_0447_0458_0544.png AN0219_split_ins.bed AN0342_split_ins.bed AN0447_split_ins.bed AN0458_split_ins.bed AN0544_split_ins.bed
+	$ create_GD_venn_diagram.pl ins_0219_0626_0728_0828_1717.png AN0219_split_ins.bed AN0626_split_ins.bed AN0728_split_ins.bed AN0828_split_ins.bed AN1717_split_ins.bed
+	$ create_GD_venn_diagram.pl ins_0219_1776_4517.png AN0219_split_ins.bed AN1776_split_ins.bed AN4517_split_ins.bed
+	
+	# Let's try VH as a comparison
+	$ for i in final_vh_merge_AN*; do prefix=`echo $i | cut -d'_' -f4 | cut -d'.' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; open(IN, "< $f"); open(INS, "> venn/$p\_vh_inv.bed"); open(DEL, "> venn/$p\_vh_del.bed"); while(<IN>){chomp; @s = split(/\t/); if($s[5] =~ /del/){print DEL "$s[0]\t$s[1]\t$s[2]\t$p\n";}if($s[3] =~ /inv/){print INS "$s[0]\t$s[1]\t$s[2]\t$p\n";}} close IN; close DEL; close INS; print "$p done\n";' $i $prefix; done
+	# None of the inversion entries carried over. No matter, I'll just work on the dels.
+	# NOTE this is with the interior coordinates only
+	$ create_GD_venn_diagram.pl del_vh_0219_0342_0447_0458_0544.png AN0219_vh_del.bed AN0342_vh_del.bed AN0447_vh_del.bed AN0458_vh_del.bed AN0544_vh_del.bed
+	$ create_GD_venn_diagram.pl del_vh_0219_0626_0728_0828_1717.png AN0219_vh_del.bed AN0626_vh_del.bed AN0728_vh_del.bed AN0828_vh_del.bed AN1717_vh_del.bed
+	$ create_GD_venn_diagram.pl del_vh_0219_1776_4517.png AN0219_vh_del.bed AN1717_vh_del.bed AN4517_vh_del.bed
+
+# I am going to modify the split read source code to calculate the phred-based probability scores for normal reads and split reads
+# Instead of providing all of the alterations in an exhaustive fashion, I am going to list the source files modified and folder
+
+# Main folder:
+/home/dbickhart/share/eichler_progs/splitread_prob
+
+# Altered files:
+	- Paired-end_match_samd.c : Added probability score printout to the single.txt file output
+	- split_match_sam.c : Added probability score subs and probability score printout to the single.txt file output
+	- pair_match_v5.c : Added probability score printout to the .pair file output, also added probabilities to the final output in "formatted" form, added probabilities to single.txt output file
+	- SplitOEA_match.c : Adding probability scores to match printout and also added probabilities to the final output in "formatted" form. 
+	
+# Now I need to test the pipeline to make sure that the formats are respected by each sequential program hardpoint. 
+	pwd: /home/dbickhart/share/eichler_progs/splitread_prob/test_grounds
+	$ mrsfast --search /home/dbickhart/share/bob_missou_data/testdata/AN0828_test/umd3_kary_extend_hgap.fa --seq HFD33604.01.1_Unique.fastq.ptmp_0 -e 2 -o test_sam_out.sam -u unmapped_reads.txt
+	$ rm unmapped_reads.txt
+	$ ../Paired-end_match_samd -i test_sam_out.sam -o test_pe_sam_out.sam -l 50 -u 450 -m 50000
+	$ perl -e '%head; while(<>){chomp; @s =split(/\t/); $head{$s[0]} = 1;} print join("\n", sort {$a cmp $b} keys(%head)) . "\n";' < test_pe_sam_out.sam.single.txt  > test_oea.name
+	$ ../fastqdeloea -i HFD33604.01.1_Unique.fastq.ptmp_0 -r test_oea.name -o test_oea_split.fq -clean
+	$ ../breakReads -i test_oea_split.fq -o test_working_split.fq PAIR
+	$ mrsfast --search /home/dbickhart/share/bob_missou_data/testdata/AN0828_test/umd3_kary_extend_hgap.fa --seq test_working_split.fq -e 2 -o test_split_out.sam -u test_unmapped.out
+	$ rm test_unmapped.out
+	$ ../split_match_sam -i test_split_out.sam -o test_working_split.match -l 50 -u 50 -m 500000
+	$ ../pair_match_v5 -i test_pe_sam_out.sam.single.txt -fq HFD33604.01.1_Unique.fastq.ptmp_0 -split test_split_out.sam -o test.pair -l 50 -u 450 -m 50000
+		200000
+		Segmentation fault (core dumped)
+		# Damn, well it had to happen at some point.
+		# Recompiling with debugging flags
+		
+		$ ./Make_debug.sh
+		$ gdb ../pair_match_v5
+		(gdb) run -i test_pe_sam_out.sam.single.txt -fq HFD33604.01.1_Unique.fastq.ptmp_0 -split test_split_out.sam -o test.pair -l 50 -u 450 -m 50000	
+			Program received signal SIGSEGV, Segmentation fault.
+			0x000000000041e124 in ____strtoll_l_internal ()
+		(gdb) bt
+			#0  0x000000000041e124 in ____strtoll_l_internal ()
+			#1  0x000000000041cd40 in atoi ()
+			#2  0x0000000000403bd5 in push_table ()
+			#3  0x0000000000401adc in main ()
+		# The single.txt files do not have the float values at the ened of them.
+		# I found out why: my "make" script was using the old Paired-end_match_samd source
+		
+	$ cat test_pe_sam_out.sam.single.txt test_working_split.match.single.txt > test_working_all.oea
+	$ ../SplitOEA_match -i test_working_all.oea -o test_working_all.oea.match -l 50 -u 450 -m 50000
+	# OK, so the formatted output needs to be fixed in this program, but otherwise, I am making progress
+	# Done! It produces the output correctly. Now I just need to detail what the output says and then make a new java finalevents program to filter the data
+	
+	# Pair format file (balanced splits):
+		1. read name
+		2. first split chr name
+		3. first split orientation (163 = "f", 83 = "r")
+		4. first split start
+		5. first split end
+		6. first split sequence
+		7. first split edit distance
+		8. first split prob-based phred
+		9. second split orientation
+		10. second split start
+		11. second split end
+		12. second split sequence
+		13. second split edit distance
+		14. second split prob-based phred
+		15. anchor edit distance
+		16. anchor span
+		17. anchor start
+		18. anchor end
+		19. anchor prob-based phred
+		20. anchor len
+		
+	# oea match format file (unbalanced splits):
+		1. split read name (with split designation in name)
+		2. split chr name
+		3. split orientation (0 = "f", 16 = "r")
+		4. split start
+		5. split end
+		6. split sequence
+		7. split edit distance
+		8. anchor edit distance
+		9. anchor start
+		10. anchor end
+		11. anchor span
+		12. split prob-based phred
+		13. anchor prob-based phred
+		
+	# Going to test out the updated splitread pipeline on Lewis.
+	# Made some changes on finalize_split_read.pl to avoid reprocessing the already formatted format output
+	# NOTE: hard coded the gaps in the finalize script. I will need to change this later
+	
+	Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+	$ bsub -J STEST -oo STEST.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s AN0544_full_run_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"
+	
+	
+_______________________
+GMA testing
+_______________________
+# A bioinformatics paper discussing read mappability provides a way of calculating the genome mappability score in a relatively easy manner
+# I will test out the program to see if I can do this fast and effectively incorporate the data
+# The bad news: the instructions are REALLY bad
+	Server 3: /mnt/data110/dbickhart/reference
+	$ perl -e '$s = 0; while(<>){if($_ =~ />chr28/){print $_; $s = 1;}elsif($s && !($_ =~ />/)){print $_;}elsif($s && $_ =~ />/){$s = 0;}}' < umd3_full_cryptic_gap_a.fa >umd3_chr28.fa
+	$ ../bwa-0.5.9rc1/bwa index umd3_chr28.fa
+	
+	# I am just going to test this out on a small chromosome from umd3. It will be masked
+	# My goal is to compute the mappability of the genome within the non-repetitive space and then use that as a posterior probability in the calculation of phred-based probability scores in splitread
+	$ cat umd3_chr28.fa | ../gma-0.1.3/bin/mapper tech --illumina -b 60 -x umd3_chr28.fa -p /home/dbickhart/bin 1> map.txt
+		[LOCAL] command : ../gma-0.1.3/bin/mapper
+		1. tech
+		2. --illumina
+		3. -b
+		4. 60
+		5. -x
+		6. umd3_chr28.fa
+		7. -p
+		8. /home/dbickhart/bin
+		=============================================
+		Illumina-like simulation is applied
+		-------------------------------------------
+		read length : 100
+		average quality value : A
+		error rate(substitution) : 0.0100
+		error rate(insertion) : 0.0000
+		error rate(deletion) : 0.0000
+		library distance : 0
+		threshold : 20
+		fasta file : ref.fa
+		index path : umd3_chr28.fa
+		is hadoop : 1
+		program path : /home/dbickhart/bin
+		-------------------------------------------
+		
+		------------------------------------------
+		[INFO] Wed Sep 12 10:02:39 2012
+		
+		FASTA file is being generated.
+		fasta file : ref.fa
+		bases per line : 60
+		-------------------------------------------
+		Segmentation fault
+		# Great
+		
+	# Let's try recompiling the binaries from source. If this does not work, then I will ditch this idea
+	# The binaries would not compile on server 3, but they did on Blade 2. I will transition to that environment and try the test there instead
+	
+	Blade 2: /mnt/iscsi/md3200i_4/dbickhart/reference
+	$ cat umd3_chr28.fa | ../gma-0.1.3/bin/mapper tech --illumina -b 60 -x umd3_chr28.fa -p /home/dbickhart/bin 1> chr28_map.txt
+		=============================================
+		[LOCAL] # of args : 9
+		[LOCAL] command : ../gma-0.1.3/bin/mapper
+		1. tech
+		2. --illumina
+		3. -b
+		4. 60
+		5. -x
+		6. umd3_chr28.fa
+		7. -p
+		8. /home/dbickhart/bin
+		=============================================
+		Illumina-like simulation is applied
+		-------------------------------------------
+		read length : 100
+		average quality value : A
+		error rate(substitution) : 0.0100
+		error rate(insertion) : 0.0000
+		error rate(deletion) : 0.0000
+		library distance : 0
+		threshold : 20
+		fasta file : ref.fa
+		index path : umd3_chr28.fa
+		is hadoop : 1
+		program path : /home/dbickhart/bin
+		-------------------------------------------
+
+		------------------------------------------
+		[INFO] Wed Sep 12 11:00:31 2012
+
+		FASTA file is being generated.
+		fasta file : ref.fa
+		bases per line : 60
+		-------------------------------------------
+		Segmentation fault
+		# Nope again. Let's try the other method that uses the simulation reads
+		
+	# Oh, great, I think that I found the reason why it's segfaulting: they use a weird chunked fasta format. 
+	# Just tested it out on the ecoli input and that's the problem
+	# How ridiculous. I will have to figure out how they chunked their fastas
+	# They include a script (and don't mention it in the instructions)
+	
+	$ ../gma-0.1.3/script/prepro.chr.py umd3_chr28.fa
+	# That doesn't work, I need to run the whole chromosome through their python script
+	
+	# Perhaps I'm too optimistic here, but I'm going to try to set things up on Lewis and run this thing
+	Lewis /ibfs7/asg2/bickhartd/reference
+	$ bsub -J preprocess -oo preprocess.OUT -R 'rusage[mem=1000]' ../gma-0.1.3/script/prepro.chr.py umd3_kary_nmask_hgap.fa
+	# I created two scripts to hopefully automate the process per chromosome
+	$ ./full_gen_gma_pipeline.sh
+	# This script submits separate jobs (indiv_chr_gma_pipeline.sh) on a per-chromosome basis
+	
+	# Even better! I found out that any X masking causes errors in the program!
+	# Removing xs
+	$ bsub -J removexs perl remove_xs_fasta.pl umd3_kary_nmask_hgap.fa umd3_kary_nmask_noxs.fa
+	$ bsub -J bwa -R 'rusage[mem=2000]' bwa index umd3_kary_nmask_noxs.fa
+	$ bsub -J preprocess -oo preprocess.OUT -R 'rusage[mem=1000]' ../gma-0.1.3/script/prepro.chr.py umd3_kary_nmask_noxs.fa
+	
+	# I will also have to allocate at least 5 gb for each chromosome which might take a long time if the server has alot of users
+	$ ./full_gen_gma_pipeline.sh
+	# I had to modify runall.c to allow for updates to the path for the reference fasta (it was copying it to the same directory as the original fasta despite the arguments on the command line)
+	
+# goals for the GMS
+	# I hope to incorporate the GMS into anchor read mappability estimates
+	# If I can calculate the probability of the anchor read mapping to one location as opposed to another, this should give me a good reason to exclude certain anchor regions
+	# prior to the set weight cover exclusion in the final events program. If an anchor maps to the low mappability regions of the genome with poor prob-based phred scores, its a bad map
+	# I will test this to see how good of an improvement this incorporation is as opposed to the straight prob-based phred calculation
+	
+	# Actually, I think that it will be of more use in RD calculations.
+	
+	# I checked the chr folders and found that the map score was 0.0 in almost all cases on that previous run. I think that it has to do with the presence of a high quantity of N masked bases in the fasta
+	# I am going to take the unmasked fasta, convert all the bases to capitals and then rerun it through the pipeline.
+	
+	Lewis: /home/dbickhar/asg2/reference
+	$ bsub rm *.ppd
+	$ bsub -J rm 'rm -r chr/'
+	
+	$ bsub -J convert 'sh one_liner.sh ucsc_unmasked_umd3.fa ucsc_nosoft_unmasked_umd3.fa'
+	# The one-liner shell script contains this perl one-liner:
+	$ perl -ne 'if($_ =~ /^>/){print $_;}else{$_ =~ tr/acgt/ACGT/; print $_;}' < $1 > $2
+	$ bsub -J preprocess -oo preprocess.OUT -R 'rusage[mem=1000]' ../gma-0.1.3/script/prepro.chr.py ucsc_nosoft_unmasked_umd3.fa
+	$ ./full_gen_gma_pipeline.sh
+		FASTA file is being generated.
+		runall: invalid option -- a
+		
+		Program : GMA (Genome Mappability Analyzer) MAPPER
+		Version : 0.0.1
+		
+
+	# terminated all the jobs while I try to figure out what the "a" option was
+	# It was in the indiv_chr_gma_pipeline.sh script
+	# OOps! Also forgot to bwa index the reference!
+	$ bsub -J bwa ../bin/bwa index ucsc_nosoft_unmasked_umd3.fa
+
+	# I ran into some "Bus Errors" with the mapper subroutine in the GMA pipeline.
+	# I increased the memory allocation and also increased the number of processors for each run to ensure that it wasn't running out of resources
+	
+	# Here are the files that I have produced in each directory:
+	Lewis: /home/dbickhar/asg2/reference/chr
+	$ ls chr1
+		aln_se.bam  aln_se.sort.bam  chr1.fa.ppd.map.sort  ref.fa.amb  ref.fa.fai   ref.fa.rpac                            ref.fa.sa
+		aln_se.sai  chr1.fa.ppd.log  chr1.fa.ppd.reduce    ref.fa.ann  ref.fa.pac   ref.fa.rsa
+		aln_se.sam  chr1.fa.ppd.map  ref.fa                ref.fa.bwt  ref.fa.rbwt  ref.fa.s-50-A-0.0200-0.0000-0.0000.fq
+		
+	# The ref files are, of course, space wasters. Going to delete them.
+	# My dilemma is in how to use the reduce files for determining mappability of the reads
+	# They are huge files and are not represented in byte code
+	$ ls -hal chr1/chr1.fa.ppd.reduce
+		-rw-rw----+ 1 dbickhar outside 3.6G Feb  7 16:45 chr1/chr1.fa.ppd.reduce
+	$ head chr1/chr1.fa.ppd.reduce
+		#chr    pos             base    maq     total = >= + <(um)      GMS
+		chr1    000000001       A       (37,-1)(-1,-1)  1 = 1 + 0(0)    99.9800
+		chr1    000000002       A       (37,-1)(-1,-1)  2 = 2 + 0(0)    99.9800
+		chr1    000000003       A       (37,-1)(-1,-1)  3 = 3 + 0(0)    99.9800
+		
+	# My thoughts are to create windows to reduce the number of datapoints and to "repeatmask" the file to remove repeatbases that would skew estimates
+	# First, to increase the portability of the file, I am going to remove all columns apart from the chromosome, position and GMS estimate itself
+	# NOTE: I can combine this with repeatmasking later
+	$ bsub -J chr1 -o test.OUT perl remove_extraneous_columns_GMS.pl ./chr1/chr1.fa.ppd.reduce ./chr1/chr1.fa.gms
+	
+	$ for i in chr*; do bsub -J $i -o $i/$i.remove.OUT perl remove_extraneous_columns_GMS.pl $i/$i.fa.ppd.reduce $i/$i.fa.gms; echo remove_extraneous_columns_GMS.pl $i/$i.fa.ppd.reduce $i/$i.fa.gms; done
+	
+	# Oops! Looks like chr1 only finished up to the 75th megabase. Rerunning it.
+	$ cd chr/chr1; bsub -J chr1redo -o ../../chr1.fa.ppd.OUT  -R 'rusage[mem=4000] span[hosts=1]' -n 4 sh ../../indiv_chr_gma_pipeline.sh ../../chr1.fa.ppd ../../ucsc_nosoft_unmasked_umd3.fa chr1.fa.map chr1.fa.reduce chr1.fa.log ref.fa
+	
+	# OK, I think that I will change the algorithm to the following:
+		- Calculate the GMS in X length, non-overlapping windows (X is based on read length)
+		- Bin the GMS entries into an Arraylist (Bin index could just be the number divided by 50, with non-perfect divisors taking an average of the two overlapping bins)
+		- Use the GMS score (rather than the number 1) to add to the window read count.
+
+	# Great, now all of the GMS score files are invalid after a certain point. I suspect that there is an issue with the ppd file.
+	# Actually, the ppd file looks fine. I think that somewhere along the line, the program runs out of memory or starts screwing around with strings
+	# Going to start over and retry the whole pipeline after reinstalling it and using newer versions of bwa and samtools
+	
+	$ perl -ne 'if($_ =~ /\r/){print "yes\n"; last;}' < ucsc_nosoft_unmasked_umd3.fa
+	# returned nothing, so there are no carriage returns in my file
+	
+	# I think that the program was designed to completely ignore gaps in the creation of the fastq header
+	# I will test this out by checking the total basespace of gaps in the chromosome and then subtracting it from the final length of the chromosome
+	pwd:/home/dbickhar/asg2/reference
+	$ tail chr/chr20/chr20.fa.ppd.reduce
+		chr20   071082115       *       (-1,-1)(-1,-1)  1 = 0 + 1(0)    0.0000
+	$ perl -e '$t; while(<>){chomp; @s = split(/\t/); if($s[0] eq "chr20"){$t += $s[2] - $s[1];}} print "$t\n";' < ../umd3_rmask/umd3_gaps_ftp.bed
+		489396
+	# So, if I'm correct, then 70592719 (71082115 - 489396) should have a value and the remainder should not
+	# Nope, that wasn't it, sadly
+	
+	# ALRIGHT! I found it! The author's use of the ppd format came back to bite him! He created a crappy for loop in genfa.c (last for loop in the file) that would try to parse out 60 bp segments even though the 
+	# .ppd file was in 5000 bp chunks! Homie don't play that way! I changed the for loop so that the iteration is based on the ppd data, and that the position increment changes based on context (not a flat 60bp increase each time)
+	# Here is the altered, but functional, for loop:
+		for( i = start; i < end;  )
+		        {   
+		            if( i < lastpos )
+		            {   // do nothing
+		                //printf("{%d}", i);
+		                i++;
+		            }
+		            else
+		            {
+		                memset( oneline, 0, bpl );
+		                memcpy( oneline, &pDNA[i-start], bpl );
+		
+		                fprintf( ref_fa, "%s\n", oneline );
+		                //printf("[%d: %d]%s\n", i-start, i, oneline );			//
+		                i = i+bpl;
+		            }
+		        }
+	        lastpos = end;
+	       
+	# Here are some of my commands that helped me figure this out (all on my linux virtualbox)
+		pwd: /home/dbickhart/share/test_software/test_files/gma_test
+		  861  less ref.fa
+		  862  less chr29.fa.ppd
+		  863  perl -e '$h = <>; $t = 0; while(<>){chomp; $t += length($_);} print "$t\n";' < ref.fa
+		  864  perl -e '$b = 0; while(<>){if($_ =~ />chr29/){print $_; $b = 1;}elsif($b && !($_ =~ />/)){print $_;}elsif($_ =~ />/){$b = 0;}' < ref.fa > chr29.fa
+		  865  perl -e '$b = 0; while(<>){if($_ =~ />chr29/){print $_; $b = 1;}elsif($b && !($_ =~ />/)){print $_;}elsif($_ =~ />/){$b = 0;}}' < ref.fa > chr29.fa
+		  866  less chr29.fa
+		  867  perl -e '$b = 0; while(<>){if($_ =~ />chr29/){print $_; $b = 1;}elsif($b && !($_ =~ />/)){print $_;}elsif($_ =~ />/){$b = 0;}}' < ucsc_nosoft_unmasked_umd3.fa > chr29.fa
+		  868  ls
+		  869  less chr29.fa
+		  870  perl -e '$h = <>; $t = 0; while(<>){chomp; $t += length($_);} print "$t\n";' < chr29.fa
+		  871  wc -l chr29.fa.ppd
+		  872  perl -e '$h = <>; $t = 0; while(<>){chomp; $n = ($_ =~ tr/Nn/Nn/); $t += $n;} print "$n\n";' < chr29.fa
+		  873  less chr29.fa
+		  874  perl -e '$h = <>; $t = 0; while(<>){chomp; $n = ($_ =~ tr/N/N/); $t += $n;} print "$n\n";' < chr29.fa
+		  875  perl -e '$h = <>; $t = 0; while(<>){chomp; $n = ($_ =~ tr/N/N/); $t += $n;} print "$t\n";' < chr29.fa
+		  876  perl -e '$t = 0; while(<>){chomp; @s = split(/\t/); $n = ($s[1] =~ tr/N/N/); $t += $n;} print "$t\n";' < chr29.fa.ppd 
+		  877  tail chr29.fa.ppd
+		  878  ls
+		  879  wc -l chr29.fa ref.fa
+		  880  wc -l chr29.fa.ppd
+		  881  perl -ne 'chomp; @s = split(/\t/); ($c, $s, $e) = $s[0] =~ /(chr.+):(\d+)-(\d+)>/; print "$c\t$s\t$e\n";' < chr29.fa.ppd
+		  882  perl -ne 'chomp; @s = split(/\t/); ($c, $s, $e) = $s[0] =~ /(chr.+):(\d+)-(\d+)>/; print "$c\t$s\t$e\n";' < chr29.fa.ppd | mergeBed -i stdin
+		  883  cat chr29.fa.ppd | /media/sf_SharedFolders/test_software/gma-0.1.3/bin/mapper tech --illumina -b 60 -x ucsc_nosoft_unmasked_umd3.fa -p ../../gma-0.1.3/bin
+		  884  ls
+		  885  head ref.fa
+		  886  cat chr29.fa.ppd | /media/sf_SharedFolders/test_software/gma-0.1.3/bin/mapper tech --illumina -b 60 -x ucsc_nosoft_unmasked_umd3.fa -p ../../gma-0.1.3/bin
+		  887  cat chr29.fa.ppd | /media/sf_SharedFolders/test_software/gma-0.1.3/bin/mapper tech --illumina -b 60 -x ucsc_nosoft_unmasked_umd3.fa -p ../../gma-0.1.3/bin | more
+		  888  perl -e '$_ = "CTCGGACTCAAGTCCATCGAGCTGGTGATGCCATCCAACCATCTCATCCTCTGTTTTCCC"; print length($_) . "\n";'
+		  889  perl -e '$_ = "ATTGATGTTTACTATATGGG"; print length($_) . "\n";'
+		  890  head chr29.fa.ppd 
+		  891  cat chr29.fa.ppd | /media/sf_SharedFolders/test_software/gma-0.1.3/bin/mapper tech --illumina -b 60 -x ucsc_nosoft_unmasked_umd3.fa -p ../../gma-0.1.3/bin | more
+		  892  cat chr29.fa.ppd | /media/sf_SharedFolders/test_software/gma-0.1.3/bin/mapper tech --illumina -b 60 -x ucsc_nosoft_unmasked_umd3.fa -p ../../gma-0.1.3/bin
+		  893  perl -e '$h = <>; $t = 0; while(<>){chomp; $n = ($_ =~ tr/N/N/); $t += $n;} print "$t\n";' < chr29.fa
+		  894  perl -e '$h = <>; $t = 0; while(<>){chomp; $t += length($_);} print "$t\n";' < chr29.fa
+		  895  less chr29.fa
+		  896  perl -e '$h = <>; $t = 0; while(<>){chomp; $t += length($_);} print "$t\n";' < ref.fa
+
+
+	# there is still an issue with the output of the reference fasta and the interpretation of the results
+	# I'm going to have to write my own program afterall!
+	
+	# I think that I found the issue with the original program: the fasta length of my ucsc fasta file is 50, not 60. So I am rerunning it with the updated settings
+		Lewis:/home/dbickhar/asg2/reference
+		$ cd chr/chr29/ ; bsub -J chr29.fa.ppd -o ../../chr29.fa.ppd.OUT -R 'rusage[mem=3000] span[hosts=1]' -n 4 "../../indiv_chr_gma_pipeline.sh ../../chr29.fa.ppd ../../ucsc_nosoft_unmasked_umd3.fa chr29.fa.ppd.map chr29.fa.ppd.reduce chr29.fa.ppd.log ref.fa chr/chr29";
+		
+		# That actually worked! 
+		# Rerunning it on the other files
+		$ ./full_gen_gma_pipeline.sh
+		
+		# Copying a subset of chr29's numbers to be used in my DOC program's troubleshooting
+		Lewis: /home/dbickhar/asg2/reference/chr/chr29/
+		$ perl -e '$h =<>; while(<>){chomp; @s = split(/\t/); $s[1] *= 1; print "$s[0]\t$s[1]\t$s[5]\n";}' < chr29.fa.ppd.reduce > chr29.fa.ppd.reduce.pos
+		$ gzip chr29.fa.ppd.reduce.pos
+		
+		# Copied the files to my test directories. Now I need to make up a fasta and then test it out
+		pwd: /home/dbickhart/share/umd3_data
+		$ perl -e '$l = "hey"; $b = 0; while(<>){chomp; if($_ =~ /chr29/){ print ">chr29\n"; $b = }elsif($b && !($_ =~ />/)){print "$_\n";}elsif($_ =~ />/){$b = 0;}}' < umd3_kary_extend_hgap.fa > chr29_extend_subset.fa
+		
+		# OK, I rewrote the mapper portion with flags that allow me to skip certain sections
+		# Time to test it out and then I will run the reducer that I will write later
+		
+		Lewis: /home/dbickhar/asg2/reference
+		$ bsub -J mapchr29 -o java_mapper_chr29.OUT -R 'rusage[mem=4000] span[hosts=1]' -n 3 '../jdk1.7.0/bin/java -Xmx3500m -jar ~/bin/GmsCalculationMapper.jar -i ucsc_nosoft_unmasked_umd3.fa -b chr29_bwa_base -s chr29_sort -m chr29_unsort.map -o chr/chr29 -l 50 -f chr29_illumina.fq -c chr29'
+		# Made a mistake with the names of the fastq and reference fasta files. Using my "skip" option to restart from a different point
+		$ bsub -J mapchr29 -o java_mapper_chr29.OUT -R 'rusage[mem=4000] span[hosts=1]' -n 3 '../jdk1.7.0/bin/java -Xmx3500m -jar ~/bin/GmsCalculationMapper.jar -i ucsc_nosoft_unmasked_umd3.fa -b chr29_bwa_base -s chr29_sort -m chr29_unsort.map -o chr/chr29 -l 50 -f chr29_illumina.fq -c chr29 -sf'
+		# OOps! I think that I need to index the fasta based on the newer version of bwa!
+		# That worked, but YASM on my part; made an error in the sam execution module
+		
+		
+		# I am wondering if I can get away with using the existing reducer executable
+		# Going to test it:
+		$ bsub -J sort 'sort chr29_unsort.map > chr29_sorted.map'
+		# Damn, the program actually added on an extra base position because I did not subtract a '1' from the fasta generation
+		# Going to use a crude method of getting around this for now
+		$ perl -lane '@s = split(/:/, $F[0]); if($s[1] ne "*"){ $s[2] -= 1;} print join(":", @s) . "\t$F[1]";' < chr29_sorted.map  > chr29_sorted_corrected.map
+		
+		$ bsub -J chr29 -R 'rusage[mem=4000] span[hosts=1]' -n 4 -oo reducer_test.OUT 'cat chr29_sorted_corrected.map | ../../../gma-0.1.3/bin/reducer tech --illumina 1> chr29_reduced.txt 2> chr29_reduction_error.log'
+		# OK! It worked, but I think that the read length is wrong, so the program did not work quite so well.
+		# Going to apply the reducer using a different length criterion.
+		$ bsub -J chr29 -R 'rusage[mem=4000] span[hosts=1]' -n 4 -o reducer_test.OUT 'cat chr29_sorted_corrected.map | ../../../gma-0.1.3/bin/reducer analyzer -l 50 -q A -s 0.01 -i 0 -d 0 -o 0 -t 20 -f ref.fa 1> chr29_reduced.txt 2> chr29_reduction_error.log'
+		
+		# Not sure if the reducer needs the reference fasta. Removing it and trying again
+		$ bsub -J chr29 -R 'rusage[mem=4000] span[hosts=1]' -n 4 -o reducer_test.OUT 'cat chr29_sorted_corrected.map | ../../../gma-0.1.3/bin/reducer analyzer -l 50 -q A -s 0.01 -i 0 -d 0 -o 0 -t 20 1> chr29_reduced.txt 2> chr29_reduction_error.log'
+		# Well, it worked, but the mapping of repeats seems to be dubious. I'm going to have to work on this later to shore it up.
+		
+		# I think that the error is on my part: I am using the individual base quality instead of the read alignment mapping score.
+		# Retrying this on the Lewis cluster:
+		$ bsub -J mapchr29 -o java_mapper_chr29.OUT -R 'rusage[mem=4000] span[hosts=1]' -n 3 '../jdk1.7.0/bin/java -Xmx3500m -jar ~/bin/GmsCalculationMapper.jar -i ucsc_nosoft_unmasked_umd3.fa -b chr29_bwa_base -s chr29_sort -m chr29_unsort.map -o chr/chr29 -l 50 -f chr29_illumina.fq -c chr29'
+		$ bsub -J chr29 -R 'rusage[mem=4000] span[hosts=1]' -n 4 -o reducer_test.OUT 'cat chr29_sorted.map | ../../../gma-0.1.3/bin/reducer analyzer -l 50 -q A -s 0.01 -i 0 -d 0 -o 0 -t 20 1> chr29_reduced.txt 2> chr29_reduction_error.log'
+		
+		# running the whole shebang
+		$ for i in *.ppd; do chr=`echo $i | cut -d'.' -f1`; echo $chr; mkdir chr/$chr; bsub -J $i -R 'rusage[mem=5000] span[hosts=1]' -o $i.OUT "../jdk1.7.0/bin/java -Xmx4500m -jar ~/bin/GmsCalculationMapper.jar -i ucsc_nosoft_unmasked_umd3.fa -b $chr.bwa_base -s $chr.sort -m $chr.unsort.map -o chr/$chr -l 50 -f $chr.illumina.fq -c $chr"; done
+		$ sleep 8h; for i in chr/chr*; do chr=`echo $i | cut -d'/' -f2`; echo $chr; bsub -J $i.red -o $i/sortred.OUT -R 'rusage[mem=2000]' "sort $i/$chr.unsort.map > $i/$chr.sorted.map; cat $i/$chr.sorted.map | ../gma-0.1.3/bin/reducer analyzer -l 50 -q A -s 0.01 -i 0 -d 0 -o 0 -t 20 1> $i/$chr.reduced.txt 2> $i/$chr.reduction_error.log"; done
+		
+		# I think that it worked! Going to simplify the reduced output and convert it to a simple format
+		$ bsub -J convert -o chr1.reduce perl convert_gms_to_simple.pl chr/chr1/chr1.reduced.txt chr/chr1/chr1.reduced.simple
+		$ bsub -J stats -o chr1.reduced.stats -R 'rusage[mem=4000]' 'cut -f3 chr/chr1/chr1.reduced.simple | perl ../bin/statStd.pl'
+		# The amount of memory was too high
+		# Now to finish up everything
+		$ for i in chr/chr*; do chr=`echo $i| cut -d'/' -f2`; echo $i/$chr.reduced.txt; bsub -J $i perl convert_gms_to_simple.pl $i/$chr.reduced.txt $i/$chr.reduced.simple; done

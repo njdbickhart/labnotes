@@ -1,0 +1,391 @@
+2010_09_21
+__________________________________________________
+Outline of work and preparation for multi-tasking
+__________________________________________________
+
+#Here are my goals for this week:
+	- Finish some datasets with MrFast (develop script to process as many reads as possible)
+	- Re-run Turkey CR1 dataset extraction using George's scripts and notes
+	- Determine what level of help I need with the PE project
+	
+#The skinny:
+	- The NGS data will go public in about 3 months. Once it does, all bets are off
+	
+	- My options for collaboration:
+		- Mississippi State University; Shane Burgiss and Cenk
+		- Can Alkan and friends
+		
+	- My goals are to get a better estimation of the time needed to process all of the reads by trying to finish as much as possible this week
+	
+	- I can probably only run two MrFast processes at a time (hard drive space limitation and server memory limitation)
+	
+#Order of precedence for today:
+	1. Retrieve custom bovine repeat library (David Adelson's library /home/gliu/data10/cattle_gene/assembly4.0/bovine_custom_repeat_lib.fasta)
+		- Run repeatmasker on the UMD3 genome
+			Done: run at 5:15pm using the repeatmasker_batch7.pl script on the individual UMD3 chromosomes
+			Tomorrow: concatenate the files
+		- Use that masked genome file in MrFast alignments
+		
+	2. Do steps in George's turkey analysis
+		- Incorporate consensus into my RepeatMasker file parser and remove asterixed entries
+			Done: used George's script as a model, saved on my Ubuntu virtualbox
+		- Rerun my original script to pull out fastas on the new, cropped, data
+			Done: saved copy on /mnt/data6/gliu/dbickhart/Turkey and ran it at 5pm
+			
+2010_09_22
+#Things I did last night and what I am going to do today:
+	- I tried to run the repeatmasker batch perl script on the UMD3 genome (server 2) using the custom library (David Adelson's) but it was only 10% completed when I came back in today!
+		* Batch 300ish of 4000
+		* Was only using 0.5% of the memory and very little cpu time
+		
+	- Instead I'm going to try to run RepeatMasker on my Ubuntu virtualbox using 5-6 processors
+	
+	(<>) Some thoughts:
+		* Maybe MrFast isn't the way to go?
+		* I am going to try to run BWA and CNV-seq in parallel in order to test their efficacy
+		* Order: 
+			-> BWA with aln for both files 
+			-> BWA sampe with both .sai files (from the aln with both paired end read fastas
+			-> import .sam file into Samtools and create .bam 
+			-> sort .bam in samtools 
+			-> run CNV-seq besthit.pl 
+			-> run CNV-seq
+			
+		* CNV-seq only works on read density-based copy number detection
+		* SVDetect can determine orientation of reads and output to a UCSC-compatible bed file format!
+			-> bowtie -I 150 -X 350  -q -m 2 --un <filename> -S <ebwt filename> -1 <reads1> -2 <reads2> <outputfilename>
+			#Actually, I want to map all paired end sequences without size constraints or orientation, however, the defaults of the program make this difficult
+			-> samtools to create .bam
+			-> 
+		
+#Note: Server 2 cannot compile BWA; it cannot be updated with newer versions of the GCC compiler
+
+#Beginning BWA run:
+	- Indexed the genome (10:44am 9/22/2010 - 12:20am 9/22/2010)
+		./bwa index -p mask_UMD3 -a bwtsw /mnt/gliu1_usb/blackstar/UMD3_masked.fa
+		
+	- Aligned the first set of reads (12:28am 9/22/2010)
+		./bwa aln -t 2 mask_UMD3 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq 081211_s_1_1.sai
+		- got a whole bunch of gibberish!
+		- Since bowtie seems more relevant to my needs, I'm going to try using that aligner first
+	
+#Beginning Bowtie run:
+	- Indexed the genome (12:43pm 9/22/2010)
+		./bowtie-build /mnt/gliu1_usb/blackstar/UMD3_masked.fa /mnt/gliu1_usb/blackstar/UMD3M
+		
+		#Indexing was taking too long. Instead I downloaded the UMD3 (non-repeatmasked?) ebwt from the bowtie website
+		
+		 wget ftp://ftp.cbcb.umd.edu/pub/data/bowtie_indexes/b_taurus.ebwt.zip
+
+	- Ran analysis on the first set of PE reads (4:38pm 9/22/2010)
+		./bowtie 
+			-I 150 
+			-X 350 
+			-q 
+			-m 2 
+			--un 081211_1_un.sam 
+			-S 
+			b_taurus 
+			-1 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq 
+			-2 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq 
+			081211_1_map.sam
+
+2010_9_23
+# I ended the MrFAST run that I started on 9/20 at 3:29pm today. 
+	- It ran FAR too slow!
+	- It used up almost 90% of George's 1 TB drive for only 2 million paired end reads!
+	
+# In other news, Bowtie completed its run and it looks like there might be some results!
+	- Post alignment processing
+		./samtools view -bS -o 081211_1_map.bam ../bowtie-0.12.7/081211_1_map.sam
+		./samtools sort 081211_1_map.bam 081211_1_map_sort.bam  *note: another .bam was added to the end of the filename so, .bam is unnecessary
+		
+	- Everything looks in order; though I'm not sure if I filtered out all of the discordant reads from this initial run! This might be a good thing.
+		- Here's how I'm going to test that: Since I have the unmapped PE reads, I'm going to realign them using bowtie and less restrictive positioning conditions
+		- If some reads map, then I know that I filtered out all the concordant reads! 
+		
+		./bowtie -q -m 2 --un 081211_1_un_rd2 -S b_taurus -1 081211_1_un_1.sam -2 081211_1_un_2.sam 081211_1_dis.sam
+		*Note: crap! I forgot to disable -m (the suppress multiple alignments option) Oh well, trying it anyways
+
+		
+		- It looks like they are! So this means that I can formalize a work-flow for each set of reads!
+		- Now to process and test in SVdetect...
+			 ./samtools view -bS -o 081211_1_dis.bam ../bowtie-0.12.7/081211_1_dis.sam
+			
+		
+	- SVdetect requires some libraries from CPAN. Since I don't have SU priviledges on the server, I installed the .pm files in the SVDetect/lib folder and added a "use lib" path to the SVDetect script
+
+# Since Bowtie finished, and I KNOW that I've filtered out some of the concordant reads, I want to test BWA again.
+	- My initial BWA run ended in gibberish, but this time I'm hoping to get different results with the bowtie filtered reads
+	- Since BWA doesn't automatically filter out the reads like Bowtie does, I can create discordant read fastq's 
+		 ./bwa aln mask_UMD3 /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_un_1.sam > 081211_1_un_1.sai
+		 
+		 	[bwa_aln_core] write to the disk... 0.01 sec
+			[bwa_aln_core] 795283 sequences have been processed.
+
+		 ./bwa aln mask_UMD3 /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_un_2.sam > 081211_1_un_2.sai
+
+			[bwa_aln_core] write to the disk... 0.00 sec
+			[bwa_aln_core] 795283 sequences have been processed.
+
+		 ./bwa sampe mask_UMD3 081211_1_un_1.sai 081211_1_un_2.sai /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_un_1.sam /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_un_2.sam > 081211_1_un_com.sam
+
+			#Takes approximately 10 minutes per 250 thousand reads
+
+____________________________________________________
+Using SVDetect
+____________________________________________________
+
+
+	- Running SVdetect on the discordant reads
+		- First, I filtered the reads in the .bam file
+		
+		perl /mnt/gliu1_usb/dbickhart/SVDetect_r0.6d/scripts/BAM_preprocessingPairs.pl -t 1 -p 1 /mnt/gliu1_usb/dbickhart/samtools-0.1.8/081211_1_dis_sort.bam
+		
+		output:
+			-- using -168.637-307.902 as normal range of insert size
+			-- Total : 804811 pairs analysed
+			-- 754799 pairs whose one or both reads are unmapped
+			-- 50012 mapped pairs
+			---- 24170 abnormal mapped pairs
+			------ 24170 pairs mapped on two different chromosomes
+			------ 0 pairs with incorrect strand orientation and/or pair order
+			------ 0 pairs with incorrect insert size distance
+			---- 25842 correct mapped pairs
+			
+			-- output created: /mnt/gliu1_usb/dbickhart/samtools-0.1.8/081211_1_dis_sort.ab.bam
+
+		- Hmm... apparently the orientation of the reads was impeccable (unlikely) or bowtie filtered out the reads based on orientation (likely)
+		
+		- I'll have to go through the bowtie manual to disable the -fr or other orientation filters
+		
+		- I need to have a "reference numerical index" file for the SVdetect program. 
+			# Format is tab delimited
+			
+			# To get the required information, I used:
+				grep '>' b_tau_umd.fa
+			
+			# Copied the output and pasted it into a spreadsheet file. Saved as a tab delimited text document.
+			
+			# The ChrUn headers are a mess! Decided to delete them for the time being; hope this doesn't affect program usage!
+			
+		- This is a pain: SVDetect requires a configuration file. I'll have to generate one.	
+		
+		- Problem: SVDetect generates errors when I try to run my config file
+			./SVDetect linking -conf 081221sv_config
+			
+			Use of uninitialized value in concatenation (.) or string at ./SVDetect line 419.
+			--
+			Use of uninitialized value in numeric lt (<) at ./SVDetect line 422.
+			# Linking procedure...
+			-- file=/mnt/gliu1_usb/dbickhart/samtools-0.1.8/081211_1_dis_sort.ab.bam
+			-- input format=sam
+			-- type=all
+			-- read1 length=36, read2 length=36
+			-- window size=2000, step length=1000
+			Can't exec "/mnt/gliu1_usb/dbickhart/samttools-0.1.8/samtools": No such file or directory at ./SVDetect line 519.
+			
+			
+		- I believe that this is due to an error in the chromosome length file and the Sam file (because I tested the program on the samples given)
+			- it looks like it. The SAM file includes all of the ChrU contigs and the length file does not. 
+			- This might be causing the faults
+			- downloading the SAM file and pulling information off of it
+			- Nope, if I modify the file, there are still initialization errors.
+			- I might have to get help to set up SVDetect or give it up
+			
+________________________________________________
+Ideas for data pipeline
+________________________________________________
+# My goal is to sequence all of the paired end reads in the Blackstar NGS folder on server 3. 
+
+# Here is my strategy:
+	- Use a run of Bowtie to separate out reads that map to the genome within 3 SD of the mean (for this dataset, it appears that the mean is ~ 280 bp)
+	- The Bowtie run will output the unmapped reads to separate fastq files
+	- Run the unmapped reads using BWA, thereby generating a SAM file that has mapped reads with discordant pairs
+	- Convert SAM file to BAM using Samtools
+	- Sort BAM file using Samtools
+	#- Process BAM file and extract discordant pairs using this command line input:
+		samtools view -bF 0x2 <something.bam> | bamToFastq -bam stdin -fq1 <something.umapped.1.fq> -fq2 <something.unmapped.2.fq>
+		#Might be optional if I use GASV
+	
+	# GASV steps might be premature; I should wait until George can get me the source.
+	- Use GASV BAM preprocessor
+	# Maybe set up HYDRA first? Set it up in my folder
+	- After processing, the bam files using the bamToFastq script for Hydra, then I need to use the pairDiscordants.py script in Hydra
+	- Then I use the bamToBed tool with pairDiscordants.py to generate a .bedpe file
+	- I can then remove duplicates using the dedupDiscordants.py script
+	- Finally, I use Hydra to detect SV breakpoints
+	
+	
+# Initial run (copying previous steps where I filtered out reads and generated bam files):
+	
+	#Bowtie initial filtering
+	./bowtie -I 150 -X 350 -q -m 2 --un 081211_1_un.sam -S b_taurus -1 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq -2 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq 081211_1_map.sam
+
+	#BWA alignment of unmapped
+	./bwa aln mask_UMD3 /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_un_1.sam > 081211_1_un_1.sai
+	./bwa aln mask_UMD3 /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_un_2.sam > 081211_1_un_2.sai
+	./bwa sampe mask_UMD3 081211_1_un_1.sai 081211_1_un_2.sai /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_un_1.sam /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_un_2.sam > 081211_1_un_com.sam
+	
+	#Processing file for hydra
+	samtools view -bS -o ../blackstar/081211_1_un_com.bam 081211_1_un_com.sam
+	samtools view -bF 0x2 081211_1_un_com.bam | bamToFastq -bam stdin -fq1 081211_1_un_com_1.fq -fq2 081211_1_un_com_2.fq	
+	samtools sort 081211_1_un_com.bam 081211_1_un_com_sort
+	bamToBed -i 081211_1_un_com_sort.bam -tag NM | pairDiscordants.py -i stdin -m hydra > 081211_1_un_com.bedpe
+	dedupDiscordants.py -i 081211_1_un_com.bedpe > 081211_1_un_dedup.bedpe
+	hydra -in 081211_1_un_dedup.bedpe -out 081211_1.breakpoints -mld 300 -mno 400 -ms 1
+
+
+	#Ideas
+		The Hydra run didn't produce any results, but I have discordant reads in the .bedpe tab file
+		It is likely because I did not have enough resolution to make the inverted calls
+		I should combine the datasets after completing them in order to make better assessments
+		
+		I could also use CNV-seq on the intial Bowtie alignment in order to assess copy number depth of reads
+		
+2010_09_24
+# Installed CNV-seq in order to test its capabilities for my pipeline
+	- CNV-seq needed ALOT of R packages!
+		-ggplot2
+		-proto
+		-plyr
+		-reshape
+		-CNV (proprietary; included in the binary package of CNV-seq)
+		
+	- Installed them all to my directory on gliu1_usb on server 3
+	
+# Testing CNV-seq on the hits generated by my initial bowtie run (the initial concordant reads)
+	
+	#Turn sam file into sorted BAM file
+	samtools view -bS -o 081211_1_map.bam 081211_1_map.sam
+	samtools sort 081211_1_map.bam 081211_1_map_sort
+	
+	#Create the "hits" file needed for CNV-seq out of the BAM file using their supplied script
+	samtools view /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/081211_1_map_sort.bam | perl -lane 'print "$F[2]\t$F[3]"' > 081211_1_con.hits
+	
+	#That's not all there is to it: the program needs generated "test hits" to simulate 1X coverage!
+	#I will have to design a perl script to do that and implement this stage of the pipeline later
+	
+	
+# Using Samtools to extract nucleotide sequence for analysis
+	# Don't have to do this indexing again!
+	samtools faidx UMD3_masked.fa
+	
+	#Extracts nucleotide sequence into fasta
+	samtools faidx UMD3_masked.fa Chr11:83508093-83522364 > /mnt/gliu1_usb/dbickhart/blackstar/pot_delete_081211.fa
+	
+	#After primer generation, aligns primers to genome to test for specificity
+	./bowtie -c -a -S b_taurus GATGGGAGAACAATGCCTGT,ATCATGGTTGCCACATGTCC
+	
+	
+______________________________________________
+Developing data pipeline
+______________________________________________
+# Alright, it's game-time! My goals are to create a perl script that accepts a newline delimited list of filenames in the directory and processes the reads
+
+# Necessary features of the paired end script: 
+	- gunzips sequence files
+	- processes files into bowtie for initial screen. Unmapped files saved to separate fq files.
+	- regzips sequence files
+	- aligns files using bwa for secondary screen. 
+	- Converts files, using Samtools, into Bam files
+	- Sorts those files using Samtools
+	- Merges those files using Samtools
+	- Extracts discordant reads using Samtools
+	- Sorts them again using Samtools
+	- Processes the files using the BEDtools/pairdiscordants.py script pipeline
+	- Runs in Hydra
+	
+# Ideas for script:
+	- Filename format: <date of run>_<lane>_<paired ends?>_<organism>_<filetype1>_<filetype2>
+	- Make directory in the BLACKSTAR folder for each set of runs
+	- Input text file should have the first line indicate the name of the directory to make
+	
+# Necessary features of the single end script:
+	- gunzips sequence files
+	- processes files into bwa for screen
+	- regzips sequence files
+	- Converts files, using Samtools, into Bam files
+	- Sorts those files using Samtools
+	- Merges those files using Samtools
+	- Sorts them again using Samtools
+	- Create hits file for CNV-seq using the command line PERL script
+	
+# Created two perl scripts based off of these ideas
+	- single_end_process_cnv.pl
+	- paired_end_process_hydra.pl
+	
+# Created batched list of sequence files in the Blackstar folder and then ran the scripts. Both scripts generate a good log of activity so I can check them later
+
+2010_09_25
+# There was an issue with my single end read script: basically, the samtools sorting program automatically adds another ".bam" to the end of the file
+
+# Very annoying, and ruined the automation for generating the merged hit files (the final coalescing of the batch and generation of the input for CNV-seq)
+
+# I can get around this by running:
+	samtools merge merged_sort.bam *.bam.bam
+	samtools view merged_sort.bam | perl -lane 'print "F[2]\t$F[3]"' > merged_sort.hits
+	# I completed this for sembatch1 today and generated the hits file for all the sequences
+
+# The full automation finished in a day! So, I can process the reads into bam format (and generate hit files) within 24-48 hours. Much better than MrFAST!
+
+# The PEM run worked out well: I got back the bedpe files and now it's a simple matter of running them through excel or perl scripting an extraction program. 
+	# With luck, I got very high confidence CNV calls (inversion/translocation/insertion/deletion)
+	# I could possibly create a program to automate primer design for Jessica/Reuben to assay
+	
+2010_09_27
+# Attempted to run hydra to try to find the breakpoints today, but it still is not generating any useful information
+	./hydra -in /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_2_unmapcomp_sort.bedpe -out 081211_2.breakpoints
+	./hydra -in /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_2_unmapcomp_sort.bedpe -out 081211_2.breakpoints -mld 250 -mno 300 -ms 1
+	# both attempts generated 0 byte files as output
+	
+# I also downloaded a script from the HYDRA website that converts the bedpe format into a BED12 format (for loading into UCSC)
+
+# I downloaded the bedpe files from the blackstar paired end run and combined them all into one large excel file (in the future, I could just use the cat command on the server to do this). Here are some immediate features of the data:
+	- there were 3268 lines (ie. 3268 filtered discordant read pairs)
+	- there was one predicted autosomal translocation (chromosome 7 to 8)
+	- there were TONS of predicted ChrUn translocations (perhaps this could be useful to create scaffolds for the unaligned chromosome contigs?)
+	
+# The single end data was also impressive: the first batch of data combined into a "hits" file of about 500 megabytes (these are just the chromosome numbers and locations of the reads)
+
+____________________________________________________
+Final, FINAL attempt at MrFAST
+____________________________________________________
+# OK, the last thing that I can do differently with MrFAST is to chunk the sequence files into smaller bits and then run MrFAST on the smaller files.
+
+# I created a perl script called sequence_chunk.pl that reduces each PE read file into 250,000 reads and converts that file into a standard fq format (as per the convert_seq_fq.pl script I wrote)
+
+# Ran that perl script on the first PE reads and it generated 6 smaller files; same number of files when run on the complementary PE file.
+
+# Started mrfast using the first fragmented PE files at 10:20 ish on Monday 9/27:
+	./mrfast --search /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_masked.fa --pe --discordant-vh --seq1 /mnt/gliu1_usb/blackstar/NGS/081211_1_1_frag1.fq --seq2 /mnt/gliu1_usb/blackstar/NGS/081211_1_2_frag1.fq --min 150 --max 350
+	
+	# It took ~11 minutes to load and map to chromosome 11 (~100 mb file)
+	
+	# So, chromosome 11 represents 4% of the genome; at that rate it will take ~4.58 hours to map this subset of reads to the genome and generate the data
+	
+	# Much "faster" than before, but still not quite as fast as the other alignment programs
+	
+	# My goal is to create sam files via mrfast to compare the variation data with that generated by the Hydra workflow that I used on the paired end reads. If the data is similar, then I know which program to use
+	
+# MrFast would be preferred, but only if it completes within some reasonable amount of time!	
+	# Started other fragments at 1:15 pm on 9/27
+	./mrfast --search /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_masked.fa --pe --discordant-vh --seq1 /mnt/gliu1_usb/blackstar/NGS/081211_HWI-EAS174_s_1_1_sequence_frag6.fq --seq2 /mnt/gliu1_usb/blackstar/NGS/081211_HWI-EAS174_s_1_2_sequence_frag6.fq --min 150 --max 350 -o /mnt/gliu1_usb/dbickhart/blackstar/081211_frag6.sam
+	
+2010_09_28
+# MrFAST update: only the 6th fragment (284768 reads in total) completed by 8:32am today. In total, the program gave a run-time of about 5.8 hours for that many reads.
+
+# Here is what is slowing down MrFAST now: one end anchors! The Fragment6 OEA files are several gigabytes large! I believe that the program is stalled at this point.
+
+# Reducing the size of the chunks down to 150,000 reads per batch (per read pair file) should do the trick
+
+# Redesigned the original chunk perl script to reduce the size of the reads. New features:
+	- Reads are reduced to 150,000 read chunks per file
+	- Creates a "batch" text file for automation by future programs
+	
+# Creating a batch_mrfast.pl script
+	- Accepts several portions of input (@ARGV style)
+	batch_mrfast.pl <batch_header> <number_reads> <frag_number1> <frag_numberN>
+	
+	./mrfast --search /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_masked.fa --pe --discordant-vh --seq1 /mnt/gliu1_usb/blackstar/NGS/081211_HWI-EAS174_s_1_1_sequence_frag1.fq --seq2 /mnt/gliu1_usb/blackstar/NGS/081211_HWI-EAS174_s_1_2_sequence_frag1.fq --min 150 --max 300 -o /mnt/gliu1_usb/dbickhart/blackstar/mrfast/081211_1_frag1.sam
+	

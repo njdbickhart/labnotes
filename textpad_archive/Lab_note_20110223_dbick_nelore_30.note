@@ -1,0 +1,311 @@
+02/23/2011
+# OK, I need to get the nelore 30x alignment completed, but I need to clear some space first!
+# 70 GB are needed for the files that I have currently.
+
+# I am going into the breed_doc folder on server3 and I am moving the alignments to the WD drive that George gave me.
+# Each alignment (and the hits file) takes up about 5-6ish gigs. By the end, I should have saved about 35ish gigs.
+
+# After the transfer and removal steps, I need to convert the sequence text files into fastqs
+# The sequences themselves are in the Illumina Bustard single-line format so they need to be converted by my original blackstar conversion script
+
+# After that, I'll divide the workload between two processors running the cow4 masked reference sequence
+# There are 12 sequence folders, so 6 folders per processor.
+# Also: note that these are paired end sequences; I should run them as regular paired end alignments then run a second time using discordant-vh.
+
+# Oops! one set of read-pair sequences is a bit long: 
+	100219_HWUSI-EAS174_0001	100219 4 PE 120+120
+	
+# Maybe I should crop them all down to 36bp after creating the fastqs.
+
+_________________________________
+Preparing files for sequencing
+_________________________________
+# OK, first I need to get the files out of the single line format
+# I rewrote convert_seq_fastq.pl to account for gzipped single-line files
+$ for i in ./*/*txt*; do echo $i; perl convert_seq_fastq.pl $i; done
+
+# I had to move alot of stuff around on George's USB drive (it was getting full!)
+# Now I'm going to test my split_fastq.pl script 
+$ perl split_fastq.pl 090905_HWUSI-EAS174_0016/s_1_sequence.fq 36
+# OOps! I designed the script to take a list of files at a time! Going to test that.
+
+$  perl split_fastq.pl test_list.txt 36
+
+# Note: I might want to use threads here...
+# Actually, I redesigned the script so it is significantly faster now.
+
+$ perl split_fastq.pl process_list.txt 36
+
+_________________________________
+Sequencing run
+_________________________________
+# Now I'm ready to start making and running the wrappers
+# First, I need a new fasta index file for samtools (since mrsfast does not make a sam file with that information
+$ ../samtools-0.1.8/samtools faidx cow4_36_noun_rmask.fa
+
+# So, now I'm running the files using two wrapper programs:
+	$ nelore_se_wrapper.pl nse_list.txt  (screen -r 11)
+	$ nelore_pe_wrapper.pl npe_list.txt  (screen -r 7)
+	
+# I forgot to include a "rm *.nohit" for the nelore_pe_wrapper.pl, so I'm going to make up a quick an dirty shell script to do it.
+	$ for i in {1..6}; do sleep 6h; rm *.nohit; done
+
+# So, the output of all of this should be unsorted bam files (that I can use to produce bed files using a small script).
+# My se script had a hiccup: I messed up the sam and bam variables (names of input and output files);
+# ran a loop to fix the data and convert the files into bams:
+	$ for i in *.sam; do prefix=`echo $i | cut -d'.' -f1`; name=$prefix".bam"; ../../../samtools-0.1.8/samtools view -bt ../../../alkan_files/cow4_36_noun_rmask.fa.fai $i > $name; done
+	
+# The pe run should still take some time; I can design a script to automate the discordant-vh processing in the meantime.
+# The se run has already completed and I have a while to complete the PE run... I am thinking of trying to run some  of the latter folders using the other copy of the reference genome
+# I will probably just do the last folder
+
+
+# Big problem: my split_fastq.pl script had a huge error in the readname portion of the script. 
+# It did not print out the readname to the fastq! 
+# I am unsure if that really influenced the results of the alignment, but I should really go back and redo it! At least for the paired end segment
+
+# Setting up a test folder to test things out:
+	$ find */s_*_*_sequence.fq_* | head | grep -v s_3_1 | xargs -I {} cp {} ./test
+	# This way I can test a new script I developed called: fix_fastq_headers.pl
+	$ perl fix_fastq_headers.pl test.list
+	# The test worked perfectly. It's now time to stop  the process and reprocess all of the PE reads
+	
+# Reprocessing:
+	$ find */s_*_*_sequence.fq_* > reprocess.list
+	$ perl fix_fastq_headers.pl reprocess.list
+	
+# Initial pem stats:
+	$ wc *.sam
+		139628302  1815167928 23569235743 total
+		
+# Setting up nelore PEM discordant
+	# Now that the Nelore 30x pem doc portion is wrapping up, I need to calculate the average and standard deviation to run the disc portion
+	# Developed a script called calculate_sam_pe_stats.pl that does an "ls" grab of all sam files in a directory and calculates the average, stdev and min/max values for each file
+	$ perl calcluate_sam_pe_stats.pl
+	# I had to make stdout hot in order to print the "log" print statements
+		filename	num	average	std	Max	Min
+		091029__1_0.sam	1833264	152.5157997	31.13803501	245.9299047	59.10169466			<- average length ~150
+		091029__1_10.sam	1287391	152.1663753	31.35043175	246.2176705	58.11508
+		091029__1_12.sam	1889505	152.3497445	31.28419098	246.2023175	58.49717156
+		091029__1_14.sam	1553440	150.914502	31.25338792	244.6746658	57.15433826
+		091029__1_2.sam	2038238	152.9464228	31.10448565	246.2598798	59.6329659
+		091029__1_4.sam	228351	153.8202767	30.13434746	244.2233191	63.4172343
+		091029__1_8.sam	690474	152.4581751	31.3507354	246.5103813	58.40596891
+		091029__2_0.sam	1903921	152.6518805	31.16740994	246.1541103	59.14965069
+		091029__2_10.sam	1292790	152.243864	31.36196061	246.3297459	58.15798221
+		091029__2_12.sam	2034627	152.4581252	31.19576447	246.0454186	58.87083185
+		091029__2_14.sam	1739395	151.2184995	31.11325071	244.5582517	57.8787474
+		091029__2_2.sam	2134885	153.1085923	30.97005007	246.0187425	60.19844207
+		091029__2_4.sam	810084	153.205833	30.54507365	244.8410539	61.57061201
+		091029__2_8.sam	736842	152.4970021	31.29249789	246.3744957	58.6195084
+		091119__1_16.sam	2168091	152.0357282	31.09130036	245.3096293	58.76182712
+		091119__1_18.sam	2005922	152.3664046	30.98751726	245.3289563	59.4038528
+		091119__1_20.sam	1086266	153.0790294	30.7467703	245.3193403	60.83871855
+		091119__1_22.sam	200665	152.2632347	30.71388907	244.4049019	60.12156754
+		091119__1_24.sam	1000753	152.6096739	30.76083767	244.8921869	60.3271609
+		091119__1_26.sam	751508	152.1772716	30.94330404	245.0071837	59.34735944
+		091119__1_28.sam	1026098	151.554411	31.26438478	245.3475653	57.76125664
+		091119__1_30.sam	1452851	151.3282353	31.08417377	244.5807566	58.07571401
+		091119__2_16.sam	2197421	152.0407523	31.04243578	245.1680596	58.91344499
+		091119__2_18.sam	1740778	152.4721377	30.97515362	245.3975986	59.54667687
+		091119__2_20.sam	963684	153.0965846	30.76132438	245.3805577	60.81261141
+		091119__2_22.sam	53761	153.9536653	30.2731492	244.7731129	63.1342177
+		091119__2_24.sam	1091279	152.6934056	30.74255102	244.9210587	60.46575257
+		091119__2_26.sam	799927	152.2195775	30.84899965	244.7665765	59.6725786
+		091119__2_28.sam	895330	151.7021132	30.9851599	244.6575929	58.74663348
+		091119__2_30.sam	1402137	151.4384878	31.05890312	244.6151972	58.26177846
+		091229__1_0.sam	172683	146.8369035	31.41554191	241.0835292	52.59027772
+		091229__1_2.sam	372262	147.5979659	31.13963848	241.0168814	54.17905052
+		091229__1_32.sam	1961884	147.9652727	31.19191644	241.541022	54.38952335
+		091229__1_34.sam	1988683	148.1057117	31.28958507	241.9744669	54.23695645
+		091229__1_36.sam	264569	147.605789	31.94405946	243.4379674	51.77361067
+		091229__1_4.sam	1649373	147.8300918	31.32873796	241.8163057	53.84387791
+		091229__2_0.sam	184158	146.9273993	31.11861294	240.2832381	53.57156046
+		091229__2_2.sam	326303	147.4090401	31.43587382	241.7166615	53.1014186
+		091229__2_32.sam	1982158	147.9127133	31.15063485	241.3646179	54.46080875
+		091229__2_34.sam	1998601	147.9411303	31.21818493	241.5956851	54.28657552
+		091229__2_4.sam	1636404	147.7564807	31.15399425	241.2184634	54.29449791
+		100219__1_6.sam	3112059	240.113716	46.87261854	380.7315716	99.49586042			<- average length ~240
+		100219__2_6.sam	3110294	240.5364692	46.63005002	380.4266193	100.6463192
+		100406__1_10.sam	746399	436.7750466	62.01639586	622.8242342	250.725859		<- average length ~400
+		100406__1_12.sam	590569	433.8540458	65.90493308	631.5688451	236.1392466
+		100406__1_14.sam	556220	434.7554025	64.79009789	629.1256962	240.3851089
+		100406__1_16.sam	563653	434.1905303	65.56167446	630.8755537	237.505507
+		100406__1_18.sam	544019	433.6856066	66.50817387	633.2101282	234.161085
+		100406__1_20.sam	546193	433.4415179	66.7323252	633.6384935	233.2445423
+		100406__1_22.sam	500219	432.3078831	68.54224005	637.9346033	226.681163
+		100406__1_8.sam	647084	435.027814	64.81411464	629.4701579	240.5854701
+		100406__2_10.sam	769284	437.6159767	60.90935131	620.3440306	254.8879227
+		100406__2_12.sam	605831	434.6798414	64.59548566	628.4662984	240.8933844
+		100406__2_14.sam	597749	435.4534445	64.02258228	627.5211914	243.3856977
+		100406__2_16.sam	584722	435.016182	64.30057909	627.9179193	242.1144448
+		100406__2_18.sam	562950	434.5168363	65.15275945	629.9751147	239.058558
+		100406__2_20.sam	573172	434.4951515	65.16947375	630.0035728	238.9867303
+		100406__2_22.sam	529077	433.5715463	66.86993821	634.1813609	232.9617317
+		100406__2_8.sam	688921	436.0999215	63.31621728	626.0485733	246.1512696
+		100419__1_24.sam	548014	206.9820625	49.92778947	356.7654309	57.19869408		<- average length ~200
+		100419__1_26.sam	583102	208.0563178	49.89241354	357.7335584	58.37907713
+		100419__1_28.sam	447639	210.062079	48.52837172	355.6471942	64.47696389
+		100419__1_30.sam	187354	438.752586	52.54565802	596.3895601	281.115612
+		100419__1_32.sam	519380	208.7220667	49.49116018	357.1955472	60.24858614
+		100419__1_34.sam	582568	207.3959177	50.35952349	358.4744882	56.31734727
+		100419__1_36.sam	562351	207.7964563	50.32684639	358.7769955	56.81591713
+		100419__1_38.sam	583943	207.2455531	50.58347862	358.9959889	55.49511722
+		100419__2_24.sam	213886	206.8818062	49.46491491	355.2765509	58.48706146
+		100419__2_26.sam	231232	207.9220826	49.22331831	355.5920375	60.25212764
+		100419__2_28.sam	158888	210.6457064	47.53729709	353.2575977	68.03381514
+		100419__2_30.sam	47299	438.9798304	51.5996774	593.7788626	284.1807982
+		100419__2_32.sam	187446	209.2052431	48.70529943	355.3211414	63.08934483
+		100419__2_34.sam	234220	207.4392836	49.69311232	356.5186205	58.35994663
+		100419__2_36.sam	232333	208.0300345	49.81407484	357.472259	58.58780994
+		100419__2_38.sam	231952	207.1803433	49.88866385	356.8463349	57.51435178
+		TOTAL	72926778	201.2398901	104.3528301	514.2983804	-111.8186002
+
+# Well, the second PE wrapper script did not have the --discordant-vh flag checked, so I lost all that work. 
+# In order to make up for lost time, I cropped out the top files from the npe_list2.txt and placed them in a third list (npe_list3.txt) so that I can run the first wrapper script on them later.
+
+# Running the final set:
+	$ perl nelore_disc_pe_wrapper.pl npe_list3.txt
+
+_________________________________
+Running DoC pipeline
+_________________________________
+# Let's start with the easy stuff:
+	$ for i in *.bam; do echo $i; ../../../samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3]+ 36; print "$F[2]\t$F[3]\t$e";' > $i.bed; done
+	$ cat *.bed > combined_se.bed
+	
+	# For the paired end files:
+	$ for i in *.bam; do echo $i; ../../../samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3]+ 36; print "$F[2]\t$F[3]\t$e";' > $i.bed; done
+	$ cat *.bed > combined_pe.bed
+	
+	$ cat combined_* > total_nelore_doc.bed
+	$ ls -l
+		-rw-rw-r--+ 1 dbickhart mapping 3551107615 2011-03-06 15:43 combined_pe.bed
+		-rw-rw-r--+ 1 dbickhart mapping 1623600848 2011-03-06 14:28 combined_se.bed
+		-rw-rw-r--+ 1 dbickhart mapping 5174708463 2011-03-06 15:57 total_nelore_doc.bed
+		
+	# Given the size, I think that I might be able to get away with running the auto_full_alkan_pipeline.pl script on this one without manipulating the size
+	# here goes!
+	
+	# It worked fairly well 
+		$ wc *.wssd
+		  679  2037 15813 total_nelore_doc_r_file1.bed.final.wssd
+		$ wc *deletions.tab
+ 		  1332  3996 31644 total_nelore_doc_r_file1.bed.final.deletions.tab
+ 	# Exactly what you might expect from a different species (since I used the btau 4.0 assembly and this is indicus)
+ 	
+_________________________________
+Running PEM pipeline
+_________________________________
+# Now to cat all the files and run Variation hunter
+
+$ cat *DIVET* | sort -k 2,3 > nelore_combined_sorted_DIVET.vh
+$ perl /mnt/gliu1_usb/dbickhart/Variationhunter/sort_unique_divet.pl nelore_combined_sorted_DIVET.vh > nelore_combined_fixed_sorted_DIVET.vh
+
+# OK, so here's the issue: the paired end libraries each had different insert sizes. I think that I can just use a base min and max value to try to run the cat file, but I am unsure!
+# Setting initial SV support at 6
+	$ /mnt/gliu1_usb/dbickhart/Variationhunter/VariationHunter_SC -i nelore_combined_fixed_sorted_DIVET.vh -m 60 -M 350 -p 0.05 -s 6
+	$ wc nelore_combined_fixed_sorted_DIVET.vh.SV.Deletion
+	  1321  11889 189030 nelore_combined_fixed_sorted_DIVET.vh.SV.Deletion
+	$ wc nelore_combined_fixed_sorted_DIVET.vh.SV.Insertion
+	  115  1035 16145 nelore_combined_fixed_sorted_DIVET.vh.SV.Insertion
+	$ wc nelore_combined_fixed_sorted_DIVET.vh.SV.Inversion
+	  12  108 1699 nelore_combined_fixed_sorted_DIVET.vh.SV.Inversion
+	  
+# I think that it came out ok!
+# Converting to bed:
+	$ perl convert_divet_to_bed.pl nelore_combined_fixed_sorted_DIVET.vh.SV.Deletion  > nelore_pem_deletion.bed
+	$ perl convert_divet_to_bed.pl nelore_combined_fixed_sorted_DIVET.vh.SV.Insertion > nelore_pem_insertion.bed
+	$ perl -lane 'print "$_\tBINE12";' < nelore_pem_insertion.bed > nelore_pem_name_insertion.bed
+	$ perl -lane 'print "$_\tBINE12";' < nelore_pem_deletion.bed > nelore_pem_name_deletion.bed
+	
+	
+# Actually, I think that the different library sizes gummed up the works here!
+# Segregating the different read lengths so I can run variation hunter on them individually:
+	$ cat 091029* 091119* | sort -k 2,3 > nelore_disc_246_59_sort_DIVET.vh
+	$ cat 100219* | sort -k 2,3 > nelore_disc_380_100_sort_DIVET.vh
+	$ cat 100406* | sort -k 2,3 > nelore_disc_633_240_sort_DIVET.vh
+	$ cat 100419* | sort -k 2,3 > nelore_disc_356_58_sort_DIVET.vh
+	
+$ for i in nelore_disc*; do perl /mnt/gliu1_usb/dbickhart/Variationhunter/sort_unique_divet.pl $i > $i.fixed; done
+
+# Now to run each DIVET file separately
+	$ /mnt/gliu1_usb/dbickhart/Variationhunter/VariationHunter_SC -i nelore_disc_246_59_sort_DIVET.vh.fixed -m 59 -M 246 -p 0.05 -s 6
+	$ /mnt/gliu1_usb/dbickhart/Variationhunter/VariationHunter_SC -i nelore_disc_356_58_sort_DIVET.vh.fixed -m 58 -M 356 -p 0.05 -s 6
+	$ /mnt/gliu1_usb/dbickhart/Variationhunter/VariationHunter_SC -i nelore_disc_380_100_sort_DIVET.vh.fixed -m 100 -M 380 -p 0.05 -s 6
+	$ /mnt/gliu1_usb/dbickhart/Variationhunter/VariationHunter_SC -i nelore_disc_633_240_sort_DIVET.vh.fixed -m 240 -M 633 -p 0.05 -s 6
+	
+________________________________
+Generating major tables
+________________________________
+# OK, I need to alter my scripts and prep the files for generating the tables
+# Prepping the files:
+	 2002  perl -lane 'print "$_\tBINE12";' < total_nelore_doc_r_file1.bed.final.deletions.tab > nelore_doc_deletions.bed
+	 2003  perl -lane 'print "$_\tBINE12";' < total_nelore_doc_r_file1.bed.final.wssd > nelore_doc_insertions.bed
+	 2004  cat ind_an_del_2_cat.bed nelore_doc_deletions.bed > full_doc_ind_delections.bed
+ 	 2005  cat ind_ins_4_named.bed nelore_doc_insertions.bed > full_doc_ind_insertions.bed
+ 	 
+ 	 # For major table 2:
+	 2016  perl bed_tag_change_mine.pl full_doc_ind_deletions.bed doc_del_table2.bed docdel
+	 2017  perl bed_tag_change_mine.pl full_doc_ind_insertions.bed doc_ins_table2.bed docins
+	 2018  perl bed_tag_change_mine.pl full_pem_ind_deletions.bed pem_del_table2.bed pemdel
+	 2019  perl bed_tag_change_mine.pl nelore_pem_name_insertion.bed pem_ins_table2.bed pemins
+	 
+	 $ for i in *.bed; do perl bed_split_by_animal.pl $i; done
+	 # Altered bed_merge_across_method.pl to take ALL breeds into account.
+	$ perl bed_merge_across_method.pl 
+	 
+	 
+	$ cat *.bed > cat_merged_method.bed
+	$ mv cat_merged_method.bed ../
+	
+	# Modified bed_create_merge_method_table.pl to consider pemins tags
+	$ perl bed_create_merge_method_table.pl cat_merged_method.bed
+	
+	# For major table 3:
+	$ for i in full*; do ../../../BEDTools-Version-2.10.1/bin/mergeBed -i $i -nms > $i.merge; done
+	$ ../../../BEDTools-Version-2.10.1/bin/mergeBed -i nelore_pem_name_insertion.bed > nelore_pem_name_insertion.bed.merge
+	
+	$ perl bed_tag_animal_merge_table.pl acgh_gain_retag.bed.merge acgh_loss_retag.bed.merge doc_del_deletions.bed.merge doc_ins_insertions.bed.merge pem_del_deletions.bed.merge bine_pemins_name_insertion.bed.merge snp_gain_retag.bed.merge snp_loss_retag.bed.merge
+	
+	
+# Now I need to rewrite the major table 1 script in order to take ALL breeds and animals into account.
+	# OK, I rewrote the file to take the pemins data
+	# Now to test it out...
+	
+	
+# I just realized why there are fewer than 70 animals: I am missing 20 nelore DoC files!
+$ for i in *final.wssd; do perl -e '$f = $ARGV[0]; chomp $f; @n = split(/\_/, $f); open (IN, "< $f"); while(<IN>){chomp $_; print "$_\t$n[0]\n";}' $i >> cat_nelore_ins.bed; done
+$ for i in ./*/*deletions.tab; do perl -e '$f = $ARGV[0]; chomp $f; @n = split(/\_/, $f); $nam = substr($n[0], 2, 6); open (IN, "< $f"); while(<IN>){chomp $_; print "$_\t$nam\n";}' $i >> cat_nelore_del.bed; done
+
+$ cat full_doc_ind_insertions.bed cat_nelore_ins.bed > final_doc_insertions.bed
+$ cat full_doc_ind_deletions.bed cat_nelore_del.bed > final_doc_delections.bed
+
+perl -e '%a; while(<>){chomp $_; @s = split(/\t/, $_); $a{$s[3]} = 1;} $c = 0; foreach $k (keys(%a)){ $c++;} print "\n$c\n";' < final_doc_insertions.bed
+	72
+
+# table 2:
+	$ perl bed_tag_change_mine.pl final_doc_insertions.bed doc_ins_table2.bed docins
+	$ perl bed_tag_change_mine.pl final_doc_deletions.bed doc_del_table2.bed docdel
+	$ for i in *table2.bed; do perl bed_split_by_animal.pl $i; done
+	$ cat *.bed > cat_merged_method.bed
+	$ perl bed_create_merge_method_table.pl cat_merged_method.bed
+	
+# table 3:
+	$ ../../../BEDTools-Version-2.10.1/bin/mergeBed -i final_doc_insertions.bed -nms > doc_ins_merged.bed
+	$ ../../../BEDTools-Version-2.10.1/bin/mergeBed -i final_doc_deletions.bed -nms > doc_del_merged.bed
+	$ perl bed_tag_animal_merge_table.pl acgh_gain_retag.bed.merge acgh_loss_retag.bed.merge doc_ins_merged.bed doc_del_merged.bed bine_pemins_name_insertion.bed.merge pem_del_deletions.bed.merge snp_gain_retag.bed.merge snp_loss_retag.bed.merge
+	
+# table 1: 
+	$ perl combine_CNVRs_full_table.pl -a final_doc_insertions.bed -b final_doc_deletions.bed -c full_pem_ind_deletions.bed -d acgh_5_3_cat_gain.bed -e acgh_5_3_cat_loss.bed -f snp_all_cat_gain.bed -g snp_all_cat_loss.bed -h nelore_pem_name_insertion.bed
+	
+	
+# Now, I'm going to merge the gains and deletions separately in Bedtools and I'm going to send the results to George
+# I made a quick script that prints out the combined intervals and gives the animal and method numbers for each one. Should be similar to table2, but with the added animal information.
+# Now to merge files and then create the tables
+	$ cat acgh_gain_table2.bed snp_gain_table2.bed doc_ins_table2.bed pem_ins_table2.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > quick_table_gain_merge.bed
+	$ perl bed_quick_table_merge_method.pl quick_table_gain_merge.bed > quick_table_gain_output.tab
+	
+	$ cat acgh_loss_table2.bed snp_loss_table2.bed doc_del_table2.bed pem_del_table2.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > quick_table_loss_merge.bed
+	$ perl bed_quick_table_merge_method.pl quick_table_loss_merge.bed > quick_table_loss_output.tab
+

@@ -1,0 +1,960 @@
+05/16/2013
+# In discussions with George, we decided that it might be best to expand DOC detection to a population level first and then expand from there
+
+# I am going to use the cn.mops method to assess the benefits of using a model on population scale data, and then see if we need adjustments to my current program
+
+# I need to generate a matrix file first before I can use cn.mops
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/
+	$ perl convert_file3_to_matrix_cnmops.pl search './BI*/doc_wins/*R.file3.preNorm.bed'
+	$ mv starter_matrix_file.txt ../cnmops_100_bulls/BI_matrix_file.txt
+	
+	# Now I can load it up and try to run the program
+	Blade14: /mnt/iscsi/vnx_gliu_7/cnmops_100_bulls/
+	$ R
+		> library(cn.mops)
+		> bicnvs <- as.matrix(read.table("BI_matrix_file.txt", header = TRUE, sep = "\t", row.names = 1))
+		> resCNMOPS <- cn.mops(bicnvs)
+		
+		# OK, so the data was loaded, and the process ran (about 30 minutes for the entire thing)
+		# but the chromosomes for each range were not recognized by CNMOPS
+		# I think that I need a new delimiter
+		
+	$ perl -e '$h = <>; print $h; while(<>){my @s = split(/\t/); $s[0] =~ s/:/-/; print join("\t", @s);}' < BI_matrix_file.txt > BI_reformat_matrix_file.txt
+	
+	# Going to try it again with the new delimiters
+	
+	$ R
+		> library(cn.mops)
+		> bicnvs <- as.matrix(read.table("BI_reformat_matrix_file.txt", header = TRUE, sep = "\t", row.names = 1))
+		> resBImops <- cn.mops(bicnvs)
+		
+		# Failed. Going to try one more round of delimiters
+		$ perl -e '$h = <>; print $h; while(<>){my @s = split(/\t/); $s[0] =~ s/chr/Chr_/; $s[0] =~ s/[-:]/_/; print join("\t", @s);}' < BI_matrix_file.txt > BI_reformat_matrix_file.txt
+		
+		> library(cn.mops)
+		> bicnvs <- as.matrix(read.table("BI_reformat_matrix_file.txt", header = TRUE, sep = "\t", row.names = 1))
+		> resBImops <- cn.mops(bicnvs)
+		
+		# Still didn't work! I found out why in the source code (cn.mops.R line 243 - 259)
+		
+		# Going to try another route: GRanges objects
+		
+		> chr <- "hey";
+		> start <- numeric()
+		> end <- numeric()
+		> itr <- 0;
+		> for(v in row.names(bicnvs)){ itr <- itr + 1; temp <- strsplit(v, "_"); chr[itr] <- temp[[1]][2]; start[itr] <- as.numeric(temp[[1]][3]); end[itr] <- as.numeric(temp[[1]][4]);}
+		
+		# NOTE: this takes super long. I might just want to reformat my script output and separate the data
+		# Didn't even work, the start and end coordinates were all just "NA's"
+		
+		$ perl -e '$h = <>; open(CHR, "> chrs.txt"); open(STA, "> start.txt"); open(END, "> end.txt"); while(<>){chomp; @s = split(/\t/); my @cs = split(/[:-]/, $s[0]); print CHR "$cs[0]\n"; print STA "$cs[1]\n"; print END "$cs[2]\n";}' < BI_matrix_file.txt
+		
+		> chr <- as.vector(read.table("chrs.txt", header=FALSE, sep="\n"))
+		> chr <- as.vector(chr$V1)
+		> start <- as.vector(read.table("start.txt", header=FALSE, sep="\n"))
+		> start <- as.vector(as.numeric(start$V1))
+		> end <- as.vector(read.table("end.txt", header=FALSE, sep="\n"))
+		> end <- as.vector(as.numeric(end$V1))
+		
+		> library(cn.mops)
+		> bicnvs <- read.table("BI_reformat_matrix_file.txt", header = TRUE, sep = "\t", row.names = 1)
+		> data.frame2GRanges <- function(df, keepColumns = FALSE, ignoreStrand = FALSE) {
+    			stopifnot(class(df) == "data.frame")
+    			stopifnot(all(c("start", "end") %in% names(df)))
+    			stopifnot(any(c("chr", "seqnames") %in% names(df)))
+    			if("seqnames" %in% names(df))
+    			    names(df)[names(df) == "seqnames"] <- "chr"
+    			if(!ignoreStrand && "strand" %in% names(df)) {
+    			    if(is.numeric(df$strand)) {
+    			        strand <- ifelse(df$strand == 1, "+", "*")
+    			        strand[df$strand == -1] <- "-"
+    			        df$strand <- strand
+    			    }
+    			    gr <- GRanges(seqnames = df$chr,
+    			                  ranges = IRanges(start = df$start, end = df$end),
+    			                  strand = df$strand)
+    			} else {
+    			    gr <- GRanges(seqnames = df$chr,
+    			                  ranges = IRanges(start = df$start, end = df$end))
+    			}
+    			if(keepColumns) {
+    			    dt <- as(df[, setdiff(names(df), c("chr", "start", "end", "strand"))],
+    			                 "DataFrame")
+    			    elementMetadata(gr) <- dt
+    			}
+    			names(gr) <- rownames(df)
+    			gr
+			}
+			
+		> fGrange <- data.frame2GRanges(fdataframe, keepColumns=TRUE, ignoreStrand=TRUE)
+		> save(fGrange, file="BI_genomic_range.Rda")
+		> library(snow)
+		> cnres <- cn.mops(fGrange, parallel=5)
+		> cnres <- calcIntegerCopyNumbers(cnres)
+		> save(cnres, file="BI_CNRES_DATA.RData")
+		
+		> write.table(as.data.frame(cnvs(cnres)), file="BI_cnmops_cnvs_table.tab")
+		> write.table(as.data.frame(cnvr(cnres)), file="BI_cnmops_cnvrs_table.tab")
+		
+	# Now, going to do it all with the Taurus animals
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/
+	$ perl convert_file3_to_matrix_cnmops.pl search './BT*/doc_wins/*R.file3.preNorm.bed'
+	$ mv starter_matrix_file.txt ../cnmops_100_bulls/BT_matrix_file.txt
+	$ cd ../cnmops_100_bulls/
+	$ perl -e '$h = <>; open(CHR, "> chrs.txt"); open(STA, "> start.txt"); open(END, "> end.txt"); while(<>){chomp; @s = split(/\t/); my @cs = split(/[:-]/, $s[0]); print CHR "$cs[0]\n"; print STA "$cs[1]\n"; print END "$cs[2]\n";}' < BT_matrix_file.txt
+	$ R
+		> library(cn.mops)
+		> chr <- as.vector(read.table("chrs.txt", header=FALSE, sep="\n"))
+		> chr <- as.vector(chr$V1)
+		> start <- as.vector(read.table("start.txt", header=FALSE, sep="\n"))
+		> start <- as.vector(as.numeric(start$V1))
+		> end <- as.vector(read.table("end.txt", header=FALSE, sep="\n"))
+		> end <- as.vector(as.numeric(end$V1))
+		
+		> data.frame2GRanges <- function(df, keepColumns = FALSE, ignoreStrand = FALSE) {
+			...
+		> bicnvs <- read.table("BT_matrix_file.txt", header = TRUE, sep = "\t", row.names = 1)
+		> fdataframe <- cbind(seqnames=chr, chr=chr, start=start, end=end, bicnvs)
+		> fGrange <- data.frame2GRanges(fdataframe, keepColumns=TRUE, ignoreStrand=TRUE)
+		> save(fGrange, file="BT_genomic_range.Rda")
+		
+		> library(snow)
+		> cnres <- cn.mops(fGrange, parallel=5)
+		> cnres <- calcIntegerCopyNumbers(cnres)
+		
+		> save(cnres, file="BT_CNRES_DATA.RData")
+		> write.table(as.data.frame(cnvs(cnres)), file="BT_cnmops_cnvs_table.tab")
+		> write.table(as.data.frame(cnvr(cnres)), file="BT_cnmops_cnvr_table.tab")
+		
+# I am also going to run delly to see if I can get another set of results to compare against:
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/
+	$ for i in BT???? BI????; do echo $i; mkdir $i/delly; ../delly_source_v0.0.9/pemgr/delly/delly -o $i/delly/$i.delly.deletions.tab -b $i/delly/$i.delly.breakpoints.tab -g ../reference/umd3_kary_unmask_ngap.fa $i/$i.rg.rd.full.sorted.merged.bam; ../delly_source_v0.0.9/pemgr/duppy/duppy -o $i/delly/$i.duppy.duplications.tab -b $i/delly/$i.duppy.breakpoints.tab -g ../reference/umd3_kary_unmask_ngap.fa $i/$i.rg.rd.full.sorted.merged.bam;  done
+	$ for i in BI????; do echo $i; mkdir $i/delly; ../delly_source_v0.0.9/pemgr/delly/delly -o $i/delly/$i.delly.deletions.tab -b $i/delly/$i.delly.breakpoints.tab -g ../reference/umd3_kary_unmask_ngap.fa $i/$i.rg.rd.full.sorted.merged.bam; ../delly_source_v0.0.9/pemgr/duppy/duppy -o $i/delly/$i.duppy.duplications.tab -b $i/delly/$i.duppy.breakpoints.tab -g ../reference/umd3_kary_unmask_ngap.fa $i/$i.rg.rd.full.sorted.merged.bam;  done
+	
+	# NOTE: Delly takes a long time, so it might be better to fork it out instead of running it on a single core
+	
+________________________________
+Population Alkan discovery
+________________________________
+
+# I have forked out my GenerateDocWindows.jar program to take in multiple samples worth of input in order to create a combined set of control windows
+# Additionally, the program takes preexisting window files (generated from my hand-picked window filtering) to do calculations
+
+# I am going to test it out on Blade 14 to see if it actually generates results
+# Here goes!
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+	$ ~/jdk1.7.0/bin/java -Xmx35g -jar ~/bin/GeneratePopulationDocWindows.jar -I BIBR02 -I BIBR03 -I BIBR04 -I BIBR05 -I BIBR07 -I BIBR08 -I BIBR09 -I BIGI01 -I BIGI02 -I BIGI05 -I BIGI06 -I BIGI07 -I BIGI08 -I BINE01 -I BINE04 -I BINE07 -I BINE09 -I BINE10 -I BINE12 -I BINE13 -S '*.mrsfast.bam' -O doc_calls/population_ -R ~/reference/umd3_kary_nmask_hgap.fa -n 3 -w 5000 -g ~/reference/gms/gms_simplified_list.txt
+	
+	Blade14: /mntiscsi/vnx_gliu_7/100_base_run/doc_calls
+	$ ~/jdk1.7.0/bin/java -Xmx75g -jar ~/bin/GeneratePopulationDocWindows.jar -R ~/reference/umd3_kary_nmask_hgap.fa -O calls -n 3 -S stuff -w 5000 -I BIBR02 -rf1 BIBR02,windows.BIBR02.file1.preNorm.bed -rf2 BIBR02,windows.BIBR02.file2.preNorm.bed -rf3 BIBR02,windows.BIBR02.file3.preNorm.bed -I BIBR03 -rf1 BIBR03,windows.BIBR03.file1.preNorm.bed -rf2 BIBR03,windows.BIBR03.file2.preNorm.bed -rf3 BIBR03,windows.BIBR03.file3.preNorm.bed -I BIBR04 -rf1 BIBR04,windows.BIBR04.file1.preNorm.bed -rf2 BIBR04,windows.BIBR04.file2.preNorm.bed -rf3 BIBR04,windows.BIBR04.file3.preNorm.bed -I BIBR05 -rf1 BIBR05,windows.BIBR05.file1.preNorm.bed -rf2 BIBR05,windows.BIBR05.file2.preNorm.bed -rf3 BIBR05,windows.BIBR05.file3.preNorm.bed -I BIBR07 -rf1 BIBR07,windows.BIBR07.file1.preNorm.bed -rf2 BIBR07,windows.BIBR07.file2.preNorm.bed -rf3 BIBR07,windows.BIBR07.file3.preNorm.bed -I BIBR08 -rf1 BIBR08,windows.BIBR08.file1.preNorm.bed -rf2 BIBR08,windows.BIBR08.file2.preNorm.bed -rf3 BIBR08,windows.BIBR08.file3.preNorm.bed -I BIBR09 -rf1 BIBR09,windows.BIBR09.file1.preNorm.bed -rf2 BIBR09,windows.BIBR09.file2.preNorm.bed -rf3 BIBR09,windows.BIBR09.file3.preNorm.bed -I BIGI01 -rf1 BIGI01,windows.BIGI01.file1.preNorm.bed -rf2 BIGI01,windows.BIGI01.file2.preNorm.bed -rf3 BIGI01,windows.BIGI01.file3.preNorm.bed -I BIGI02 -rf1 BIGI02,windows.BIGI02.file1.preNorm.bed -rf2 BIGI02,windows.BIGI02.file2.preNorm.bed -rf3 BIGI02,windows.BIGI02.file3.preNorm.bed -I BIGI05 -rf1 BIGI05,windows.BIGI05.file1.preNorm.bed -rf2 BIGI05,windows.BIGI05.file2.preNorm.bed -rf3 BIGI05,windows.BIGI05.file3.preNorm.bed -I BIGI06 -rf1 BIGI06,windows.BIGI06.file1.preNorm.bed -rf2 BIGI06,windows.BIGI06.file2.preNorm.bed -rf3 BIGI06,windows.BIGI06.file3.preNorm.bed -I BIGI07 -rf1 BIGI07,windows.BIGI07.file1.preNorm.bed -rf2 BIGI07,windows.BIGI07.file2.preNorm.bed -rf3 BIGI07,windows.BIGI07.file3.preNorm.bed -I BIGI08 -rf1 BIGI08,windows.BIGI08.file1.preNorm.bed -rf2 BIGI08,windows.BIGI08.file2.preNorm.bed -rf3 BIGI08,windows.BIGI08.file3.preNorm.bed -I BINE01 -rf1 BINE01,windows.BINE01.file1.preNorm.bed -rf2 BINE01,windows.BINE01.file2.preNorm.bed -rf3 BINE01,windows.BINE01.file3.preNorm.bed -I BINE04 -rf1 BINE04,windows.BINE04.file1.preNorm.bed -rf2 BINE04,windows.BINE04.file2.preNorm.bed -rf3 BINE04,windows.BINE04.file3.preNorm.bed -I BINE07 -rf1 BINE07,windows.BINE07.file1.preNorm.bed -rf2 BINE07,windows.BINE07.file2.preNorm.bed -rf3 BINE07,windows.BINE07.file3.preNorm.bed -I BINE09 -rf1 BINE09,windows.BINE09.file1.preNorm.bed -rf2 BINE09,windows.BINE09.file2.preNorm.bed -rf3 BINE09,windows.BINE09.file3.preNorm.bed -I BINE10 -rf1 BINE10,windows.BINE10.file1.preNorm.bed -rf2 BINE10,windows.BINE10.file2.preNorm.bed -rf3 BINE10,windows.BINE10.file3.preNorm.bed -I BINE12 -rf1 BINE12,windows.BINE12.file1.preNorm.bed -rf2 BINE12,windows.BINE12.file2.preNorm.bed -rf3 BINE12,windows.BINE12.file3.preNorm.bed -I BINE13 -rf1 BINE13,windows.BINE13.file1.preNorm.bed -rf2 BINE13,windows.BINE13.file2.preNorm.bed -rf3 BINE13,windows.BINE13.file3.preNorm.bed
+	
+	Blade14: /mntiscsi/vnx_gliu_7/100_base_run/doc_calls/calls
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo $i; mkdir $i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o $i/$i.calls -w 5000 -t 4; done
+	$ for i in B*/B*calls.cnvs.bed; do echo $i; cat $i | ~/bin/bed_length_sum.pl ; done | perl -e 'print "file\tintervals\ttotlength\tavg\tmedian\tstdev\n"; while($n = <>){$i = <>; $l = <>; $a = <>; $m = <>; $s =<>; chomp ($n, $i, $l, $a, $m, $s); ($in) = $i =~ /.+:\s+(\d+)/; ($ln) = $l =~ /.+:\s+(\d+)/; ($an) = $a =~ /.+:\s+(\d+)/; ($mn) = $m =~ /.+:\s+(\d+)/; ($sm) = $s =~ /.+:\s+(\d+)/; print "$n\t$in\t$ln\t$an\t$mn\t$sm\n";}'
+		file    intervals       totlength       avg     median  stdev
+		BIBR02/BIBR02.calls.cnvs.bed    19      656589  34557   10399   24621
+		BIBR03/BIBR03.calls.cnvs.bed    210     8343393 39730   36650   31973
+		BIBR04/BIBR04.calls.cnvs.bed    12      409968  34164   22384   13709
+		BIBR05/BIBR05.calls.cnvs.bed    19      773534  40712   26430   44477
+		BIBR07/BIBR07.calls.cnvs.bed    44      1366362 31053   32887   19373
+		BIBR08/BIBR08.calls.cnvs.bed    20      730997  36549   20080   20002
+		BIBR09/BIBR09.calls.cnvs.bed    15      420870  28058   24413   14607
+		BIGI01/BIGI01.calls.cnvs.bed    20      918433  45921   29581   43378
+		BIGI02/BIGI02.calls.cnvs.bed    18      644271  35792   23504   17063
+		BIGI05/BIGI05.calls.cnvs.bed    20      664845  33242   13587   22269
+		BIGI06/BIGI06.calls.cnvs.bed    12      374427  31202   11705   20160
+		BIGI07/BIGI07.calls.cnvs.bed    15      819158  54610   12234   50749
+		BIGI08/BIGI08.calls.cnvs.bed    16      563544  35221   31575   17394
+		BINE01/BINE01.calls.cnvs.bed    19      638655  33613   18105   20201
+		BINE04/BINE04.calls.cnvs.bed    16      753109  47069   14181   48431
+		BINE07/BINE07.calls.cnvs.bed    24      896207  37341   43681   22588
+		BINE09/BINE09.calls.cnvs.bed    15      532990  35532   60128   17773
+		BINE10/BINE10.calls.cnvs.bed    17      533200  31364   19486   22276
+		BINE12/BINE12.calls.cnvs.bed    9       448749  49861   18733   56844
+		BINE13/BINE13.calls.cnvs.bed    34      2097751 61698   45384   54526
+		
+	# OK, so closer checking of the data revealed that some animals had zero value windows included as controls. This is the problem with using a flat stdev percentile cutoff
+	# I am going to use different conditionals in order to remove such windows from the estimate. I may  have to select a different percentile to make this work though.
+	
+	Blade14: /mntiscsi/vnx_gliu_7/100_base_run/doc_calls
+	$ mkdir num_thresh
+	$ ~/jdk1.7.0/bin/java -Xmx75g -jar ~/bin/GeneratePopulationDocWindows.jar -R ~/reference/umd3_kary_nmask_hgap.fa -O num_thresh -n 3 -S stuff -w 5000 -I BIBR02 -rf1 BIBR02,windows.BIBR02.file1.preNorm.bed -rf2 BIBR02,windows.BIBR02.file2.preNorm.bed -rf3 BIBR02,windows.BIBR02.file3.preNorm.bed -I BIBR03 -rf1 BIBR03,windows.BIBR03.file1.preNorm.bed -rf2 BIBR03,windows.BIBR03.file2.preNorm.bed -rf3 BIBR03,windows.BIBR03.file3.preNorm.bed -I BIBR04 -rf1 BIBR04,windows.BIBR04.file1.preNorm.bed -rf2 BIBR04,windows.BIBR04.file2.preNorm.bed -rf3 BIBR04,windows.BIBR04.file3.preNorm.bed -I BIBR05 -rf1 BIBR05,windows.BIBR05.file1.preNorm.bed -rf2 BIBR05,windows.BIBR05.file2.preNorm.bed -rf3 BIBR05,windows.BIBR05.file3.preNorm.bed -I BIBR07 -rf1 BIBR07,windows.BIBR07.file1.preNorm.bed -rf2 BIBR07,windows.BIBR07.file2.preNorm.bed -rf3 BIBR07,windows.BIBR07.file3.preNorm.bed -I BIBR08 -rf1 BIBR08,windows.BIBR08.file1.preNorm.bed -rf2 BIBR08,windows.BIBR08.file2.preNorm.bed -rf3 BIBR08,windows.BIBR08.file3.preNorm.bed -I BIBR09 -rf1 BIBR09,windows.BIBR09.file1.preNorm.bed -rf2 BIBR09,windows.BIBR09.file2.preNorm.bed -rf3 BIBR09,windows.BIBR09.file3.preNorm.bed -I BIGI01 -rf1 BIGI01,windows.BIGI01.file1.preNorm.bed -rf2 BIGI01,windows.BIGI01.file2.preNorm.bed -rf3 BIGI01,windows.BIGI01.file3.preNorm.bed -I BIGI02 -rf1 BIGI02,windows.BIGI02.file1.preNorm.bed -rf2 BIGI02,windows.BIGI02.file2.preNorm.bed -rf3 BIGI02,windows.BIGI02.file3.preNorm.bed -I BIGI05 -rf1 BIGI05,windows.BIGI05.file1.preNorm.bed -rf2 BIGI05,windows.BIGI05.file2.preNorm.bed -rf3 BIGI05,windows.BIGI05.file3.preNorm.bed -I BIGI06 -rf1 BIGI06,windows.BIGI06.file1.preNorm.bed -rf2 BIGI06,windows.BIGI06.file2.preNorm.bed -rf3 BIGI06,windows.BIGI06.file3.preNorm.bed -I BIGI07 -rf1 BIGI07,windows.BIGI07.file1.preNorm.bed -rf2 BIGI07,windows.BIGI07.file2.preNorm.bed -rf3 BIGI07,windows.BIGI07.file3.preNorm.bed -I BIGI08 -rf1 BIGI08,windows.BIGI08.file1.preNorm.bed -rf2 BIGI08,windows.BIGI08.file2.preNorm.bed -rf3 BIGI08,windows.BIGI08.file3.preNorm.bed -I BINE01 -rf1 BINE01,windows.BINE01.file1.preNorm.bed -rf2 BINE01,windows.BINE01.file2.preNorm.bed -rf3 BINE01,windows.BINE01.file3.preNorm.bed -I BINE04 -rf1 BINE04,windows.BINE04.file1.preNorm.bed -rf2 BINE04,windows.BINE04.file2.preNorm.bed -rf3 BINE04,windows.BINE04.file3.preNorm.bed -I BINE07 -rf1 BINE07,windows.BINE07.file1.preNorm.bed -rf2 BINE07,windows.BINE07.file2.preNorm.bed -rf3 BINE07,windows.BINE07.file3.preNorm.bed -I BINE09 -rf1 BINE09,windows.BINE09.file1.preNorm.bed -rf2 BINE09,windows.BINE09.file2.preNorm.bed -rf3 BINE09,windows.BINE09.file3.preNorm.bed -I BINE10 -rf1 BINE10,windows.BINE10.file1.preNorm.bed -rf2 BINE10,windows.BINE10.file2.preNorm.bed -rf3 BINE10,windows.BINE10.file3.preNorm.bed -I BINE12 -rf1 BINE12,windows.BINE12.file1.preNorm.bed -rf2 BINE12,windows.BINE12.file2.preNorm.bed -rf3 BINE12,windows.BINE12.file3.preNorm.bed -I BINE13 -rf1 BINE13,windows.BINE13.file1.preNorm.bed -rf2 BINE13,windows.BINE13.file2.preNorm.bed -rf3 BINE13,windows.BINE13.file3.preNorm.bed
+		[DOC CTRL]Partitioned 1672395 control windows out of 2086766 for window: 0	~80%
+		[DOC CTRL]Partitioned 1752868 control windows out of 2460607 for window: 1	~70%
+		[DOC CTRL]Partitioned 819954 control windows out of 1197860 for window: 2	~80%
+		
+	# OK, let's try running this again
+	
+	Blade14: /mntiscsi/vnx_gliu_7/100_base_run/doc_calls/num_thresh
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo $i; mkdir $i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o $i/$i.calls -w 5000 -t 4; done
+	for i in B*/B*calls.cnvs.bed; do echo $i; cat $i | ~/bin/bed_length_sum.pl ; done | perl -e 'print "file\tintervals\ttotlength\tavg\tmedian\tstdev\n"; while($n = <>){$i = <>; $l = <>; $a = <>; $m = <>; $s =<>; chomp ($n, $i, $l, $a, $m, $s); ($in) = $i =~ /.+:\s+(\d+)/; ($ln) = $l =~ /.+:\s+(\d+)/; ($an) = $a =~ /.+:\s+(\d+)/; ($mn) = $m =~ /.+:\s+(\d+)/; ($sm) = $s =~ /.+:\s+(\d+)/; print "$n\t$in\t$ln\t$an\t$mn\t$sm\n";}'
+		file    intervals       totlength       avg     median  stdev
+		BIBR02/BIBR02.calls.cnvs.bed    17      537560  31621   14321   20012
+		BIBR03/BIBR03.calls.cnvs.bed    66      2910476 44098   33113   36743
+		BIBR04/BIBR04.calls.cnvs.bed    8       268501  33562   20972   17029
+		BIBR05/BIBR05.calls.cnvs.bed    14      596527  42609   9146    50906
+		BIBR07/BIBR07.calls.cnvs.bed    23      807951  35128   13662   21909
+		BIBR08/BIBR08.calls.cnvs.bed    12      514202  42850   40681   22191
+		BIBR09/BIBR09.calls.cnvs.bed    9       241465  26829   16815   18512
+		BIGI01/BIGI01.calls.cnvs.bed    16      737269  46079   19103   46186
+		BIGI02/BIGI02.calls.cnvs.bed    16      569492  35593   23328   18185
+		BIGI05/BIGI05.calls.cnvs.bed    15      513334  34222   11176   21878
+		BIGI06/BIGI06.calls.cnvs.bed    10      333632  33363   10940   21302
+		BIGI07/BIGI07.calls.cnvs.bed    12      659347  54945   48563   51409
+		BIGI08/BIGI08.calls.cnvs.bed    15      408400  27226   12234   14759
+		BINE01/BINE01.calls.cnvs.bed    18      554630  30812   30916   19337
+		BINE04/BINE04.calls.cnvs.bed    13      643532  49502   9811    51859
+		BINE07/BINE07.calls.cnvs.bed    20      725075  36253   40152   20661
+		BINE09/BINE09.calls.cnvs.bed    11      418562  38051   60128   19631
+		BINE10/BINE10.calls.cnvs.bed    14      482846  34489   16958   22892
+		BINE12/BINE12.calls.cnvs.bed    7       383231  54747   12234   61439
+		BINE13/BINE13.calls.cnvs.bed    26      1752156 67390   43809   53680
+		
+	# Still too low. I think that there's a problem with the caller program. Going to have to check it to see if it is discarding anything that it shouldn't.
+	
+	# I found out what was wrong with the caller program and I fixed the padding process to make things more reasonable
+	# I had included a command line toggle (-p) to use the population data
+	# Let's try this again.
+	
+	# For the zero windows cannot be included as controls
+	Blade14: /mntiscsi/vnx_gliu_7/100_base_run/doc_calls/num_thresh
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo $i; mkdir $i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o $i/$i.calls -w 5000 -t 4 -p; done
+	$ perl ~/bin/table_bed_length_sum.pl BIBR02/BIBR02.calls.cnvs.bed BIBR03/BIBR03.calls.cnvs.bed BIBR04/BIBR04.calls.cnvs.bed BIBR05/BIBR05.calls.cnvs.bed BIBR07/BIBR07.calls.cnvs.bed BIBR08/BIBR08.calls.cnvs.bed BIBR09/BIBR09.calls.cnvs.bed BIGI01/BIGI01.calls.cnvs.bed BIGI02/BIGI02.calls.cnvs.bed BIGI05/BIGI05.calls.cnvs.bed BIGI06/BIGI06.calls.cnvs.bed BIGI07/BIGI07.calls.cnvs.bed BIGI08/BIGI08.calls.cnvs.bed BINE01/BINE01.calls.cnvs.bed BINE04/BINE04.calls.cnvs.bed BINE07/BINE07.calls.cnvs.bed BINE09/BINE09.calls.cnvs.bed BINE10/BINE10.calls.cnvs.bed BINE12/BINE12.calls.cnvs.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		BIBR02/BIBR02.calls.cnvs.bed    1062    76752086        72271.2674199623        189541.893784241        29343   2303    4028868
+		BIBR03/BIBR03.calls.cnvs.bed    1776    64891458        36537.9831081081        77741.0830731979        19822   1374    1386961
+		BIBR04/BIBR04.calls.cnvs.bed    1296    132065836       101902.651234568        206815.763473123        52494.5 5829    4660934
+		BIBR05/BIBR05.calls.cnvs.bed    1008    126924996       125917.654761905        279744.45568797 48319.5 5118    4853673
+		BIBR07/BIBR07.calls.cnvs.bed    1117    55100045        49328.5989256938        157637.541399566        21059   4609    4001381
+		BIBR08/BIBR08.calls.cnvs.bed    1252    115013795       91864.053514377 212430.357269829        43030.5 6999    4633461
+		BIBR09/BIBR09.calls.cnvs.bed    1237    137884955       111467.223120453        219073.923998544        54801   6074    4643515
+		BIGI01/BIGI01.calls.cnvs.bed    1235    103055474       83445.7279352227        192257.517019991        36438   5999    4028868
+		BIGI02/BIGI02.calls.cnvs.bed    1280    123182469       96236.30390625  216842.479439585        46801   4486    4620614
+		BIGI05/BIGI05.calls.cnvs.bed    1130    109239750       96672.3451327434        227162.138974345        39409   5080    4589147
+		BIGI06/BIGI06.calls.cnvs.bed    1200    87985622        73321.3516666667        189302.144943433        34285   5999    4567044
+		BIGI07/BIGI07.calls.cnvs.bed    1171    123612097       105561.14175918 239366.350589075        46001   5602    4650496
+		BIGI08/BIGI08.calls.cnvs.bed    773     146862276       189990.007761966        396323.977622977        66242   5682    5376960
+		BINE01/BINE01.calls.cnvs.bed    1198    83856334        69996.9398998331        194541.449985782        27271.5 999     4589147
+		BINE04/BINE04.calls.cnvs.bed    1266    114353704       90326.7804107425        222213.297382417        37805.5 1124    4566044
+		BINE07/BINE07.calls.cnvs.bed    1208    101533474       84050.8890728477        207372.888659039        36011   5999    4591147
+		BINE09/BINE09.calls.cnvs.bed    1097    143450114       130765.828623519        258781.653930879        61762   6999    4662614
+		BINE10/BINE10.calls.cnvs.bed    986     82990826        84169.1947261663        206966.904935731        35659.5 4999    4567044
+		BINE12/BINE12.calls.cnvs.bed    1327    81842686        61674.9706103994        171851.595626431        31927   4589    4666393
+		
+	# For the previous conditional (zero windows can be controls)
+	Blade14: /home/dbickhart/vnx_gliu_7/100_base_run/doc_calls/calls
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo $i; mkdir $i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o $i/$i.calls -w 5000 -t 4 -p; done
+	$ perl ~/bin/table_bed_length_sum.pl BIBR02/BIBR02.calls.cnvs.bed BIBR03/BIBR03.calls.cnvs.bed BIBR04/BIBR04.calls.cnvs.bed BIBR05/BIBR05.calls.cnvs.bed BIBR07/BIBR07.calls.cnvs.bed BIBR08/BIBR08.calls.cnvs.bed BIBR09/BIBR09.calls.cnvs.bed BIGI01/BIGI01.calls.cnvs.bed BIGI02/BIGI02.calls.cnvs.bed BIGI05/BIGI05.calls.cnvs.bed BIGI06/BIGI06.calls.cnvs.bed BIGI07/BIGI07.calls.cnvs.bed BIGI08/BIGI08.calls.cnvs.bed BINE01/BINE01.calls.cnvs.bed BINE04/BINE04.calls.cnvs.bed BINE07/BINE07.calls.cnvs.bed BINE09/BINE09.calls.cnvs.bed BINE10/BINE10.calls.cnvs.bed BINE12/BINE12.calls.cnvs.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		BIBR02/BIBR02.calls.cnvs.bed    864     59165709        68478.8298611111        176290.244511044        27118   2303    3160100
+		BIBR03/BIBR03.calls.cnvs.bed    1935    69380933        35855.7793281654        80275.4906884518        19698   1374    1966574
+		BIBR04/BIBR04.calls.cnvs.bed    1468    115976222       79002.8760217984        188197.389656665        38963   5999    4676496
+		BIBR05/BIBR05.calls.cnvs.bed    1334    92984481        69703.5089955023        181052.361361148        31999   5118    4593147
+		BIBR07/BIBR07.calls.cnvs.bed    1159    51782865        44678.9171699741        120734.500533263        18733   4466    2047725
+		BIBR08/BIBR08.calls.cnvs.bed    1075    82747070        76974.0186046512        201786.259950897        32651   3946    4598147
+		BIBR09/BIBR09.calls.cnvs.bed    1394    103445729       74207.8400286944        171704.570463109        35016.5 6074    4051971
+		BIGI01/BIGI01.calls.cnvs.bed    1092    74703707        68409.9880952381        187106.993929613        28038   3194    4051971
+		BIGI02/BIGI02.calls.cnvs.bed    1186    83959129        70791.8456998314        185588.375322197        31711.5 6042    4598147
+		BIGI05/BIGI05.calls.cnvs.bed    1068    82001467        76780.3998127341        191903.568099595        31913   1063    4061971
+		BIGI06/BIGI06.calls.cnvs.bed    1173    79364095        67659.0750213129        189947.632204376        30999   4023    4585091
+		BIGI07/BIGI07.calls.cnvs.bed    1214    93354992        76898.6754530478        197616.833657215        32572   5720    4598147
+		BIGI08/BIGI08.calls.cnvs.bed    1151    124961386       108567.668114683        231852.984853067        52205   5682    4589147
+		BINE01/BINE01.calls.cnvs.bed    1146    68417947        59701.5244328098        161830.609075698        23892.5 529     3246795
+		BINE04/BINE04.calls.cnvs.bed    1139    84439455        74134.7278314311        211414.691283356        30689   1124    4589147
+		BINE07/BINE07.calls.cnvs.bed    963     69915414        72601.6760124611        202044.108021862        27817   5999    4588147
+		BINE09/BINE09.calls.cnvs.bed    1371    110631035       80693.6797957695        194580.466956808        41251   5428    4675496
+		BINE10/BINE10.calls.cnvs.bed    822     68197787        82965.6776155718        215988.35213069 33179.5 5080    4590147
+		BINE12/BINE12.calls.cnvs.bed    1363    77377214        56769.7828319883        165863.953393241        29728   1907    4574112
+		
+	# Now to see what the overlap is:
+		$ for i in calls/BIBR03/BIBR03.calls.cnvs.bed num_thresh/BIBR03/BIBR03.calls.cnvs.bed; do name=`echo $i | cut -d'/' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $n = $ARGV[1]; while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$n\n";}' $i $name; done | sortBedFileSTDIN.pl | mergeBed -i stdin -n | perl -lane 'if($F[3] > 1){print $_;}' | wc -l
+			1582
+		$ for i in calls/BIBR03/BIBR03.calls.cnvs.bed num_thresh/BIBR03/BIBR03.calls.cnvs.bed; do name=`echo $i | cut -d'/' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $n = $ARGV[1]; while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$n\n";}' $i $name; done | sortBedFileSTDIN.pl | mergeBed -i stdin -n | perl -lane 'if($F[3] == 1){print $_;}' | wc -l
+			482	<- 20% unique completely
+			
+		$ for i in calls/BIBR04/BIBR04.calls.cnvs.bed num_thresh/BIBR04/BIBR04.calls.cnvs.bed; do name=`echo $i | cut -d'/' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $n = $ARGV[1]; while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$n\n";}' $i $name; done | sortBedFileSTDIN.pl | mergeBed -i stdin -n | perl -lane 'if($F[3] > 1){print $_;}' | wc -l
+			1128
+		$ for i in calls/BIBR04/BIBR04.calls.cnvs.bed num_thresh/BIBR04/BIBR04.calls.cnvs.bed; do name=`echo $i | cut -d'/' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $n = $ARGV[1]; while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$n\n";}' $i $name; done | sortBedFileSTDIN.pl | mergeBed -i stdin -n | perl -lane 'if($F[3] == 1){print $_;}' | wc -l
+			258	<- 18% unique completely
+			
+	# What is the major difference here?
+		$ head num_thresh/Normalized.BIBR08.file1.control.bed.stats
+			auto;avg;364.19353533	<- The average is higher because of the removal of zeros from the control windows
+		$ head calls/Normalized.BIBR08.file1.control.bed.stats
+			auto;avg;346.42004115
+			
+		# The stdevs are the same and the medians are very close to the averages for each one
+		# I think that the new criteria I chose are better; this is because I am removing windows that had too few hits to accurately use in the normalization
+		
+	# Now to try it with the normal hit value (not the gms score)
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo C$i; mkdir C$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o C$i/$i.calls -w 5000 -t 4 -p; done
+	# I am noticing that almost half of the CNVs are getting filtered out (as opposed to 20% from the previous runs)
+	$ for i in CB*/B*calls.cnvs.bed; do echo $i; cat $i | ~/bin/bed_length_sum.pl ; done | perl -e 'print "file\tintervals\ttotlength\tavg\tmedian\tstdev\n"; while($n = <>){$i = <>; $l = <>; $a = <>; $m = <>; $s =<>; chomp ($n, $i, $l, $a, $m, $s); ($in) = $i =~ /.+:\s+(\d+)/; ($ln) = $l =~ /.+:\s+(\d+)/; ($an) = $a =~ /.+:\s+(\d+)/; ($mn) = $m =~ /.+:\s+(\d+)/; ($sm) = $s =~ /.+:\s+(\d+)/; print "$n\t$in\t$ln\t$an\t$mn\t$sm\n";}'
+		file    intervals       totlength       avg     median  stdev
+		CBIBR02/BIBR02.calls.cnvs.bed   1013    79570543        78549   24974   208808
+		CBIBR03/BIBR03.calls.cnvs.bed   1894    72787056        38430   15999   81957
+		CBIBR04/BIBR04.calls.cnvs.bed   1099    133551393       121520  247387  236293
+		CBIBR05/BIBR05.calls.cnvs.bed   969     132617797       136860  15999   308195
+		CBIBR07/BIBR07.calls.cnvs.bed   1168    64157311        54929   83594   173355
+		CBIBR08/BIBR08.calls.cnvs.bed   1110    116568657       105016  18740   235249
+		CBIBR09/BIBR09.calls.cnvs.bed   1034    138058474       133518  105586  252506
+		CBIGI01/BIGI01.calls.cnvs.bed   1128    108191310       95914   54180   239438
+		CBIGI02/BIGI02.calls.cnvs.bed   1104    123764776       112105  97598   234831
+		CBIGI05/BIGI05.calls.cnvs.bed   1015    114922881       113224  78478   259446
+		CBIGI06/BIGI06.calls.cnvs.bed   1102    90194786        81846   109919  202816
+		CBIGI07/BIGI07.calls.cnvs.bed   1023    126956931       124102  154922  272587
+		CBIGI08/BIGI08.calls.cnvs.bed   636     150870410       237217  754613  452964
+		CBINE01/BINE01.calls.cnvs.bed   1163    85463078        73485   254857  200988
+		CBINE04/BINE04.calls.cnvs.bed   1162    113762117       97901   66017   237576
+		CBINE07/BINE07.calls.cnvs.bed   1097    102590739       93519   35494   222098
+		CBINE09/BINE09.calls.cnvs.bed   903     143654466       159085  63087   295123
+		CBINE10/BINE10.calls.cnvs.bed   906     86996986        96023   32469   232036
+		CBINE12/BINE12.calls.cnvs.bed   1306    89302068        68378   35165   182117
+		CBINE13/BINE13.calls.cnvs.bed   308     27509124        89315   16792   147686
+		
+# OK, let's try Taurus now
+	Blade14:/home/dbickhart/vnx_gliu_7/100_base_run
+	$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocWindows.jar -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO19 -I BTHO20 -I BTHO22 -I BTHO25 -I BTHO29 -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO48 -I BTHO49 -I BTHO50 -I BTHO51 -I BTHO52 -I BTHO53 -I BTHO54 -I BTHO56 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06 -S '*.mrsfast.bam' -O doc_calls -R ~/reference/umd3_kary_nmask_hgap.fa -n 3 -w 5000 -g ~/reference/gms/gms_simplified_list.txt
+	
+	# I'm worried that this will run out of memory fast. I might want to reduce the overhead by calculating the gms ratio on the fly
+	# Actually, I think that I might have worked out a solution using temporary files to store the data 
+	# Going to test it on data that I already know about
+	# Here goes nothing!
+	$  ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocWindows.jar -S '*.mrsfast.bam' -O doc_calls -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -I BIBR02 -I BIBR03
+	
+	# The numbers are very close to the previous windows. I am fairly happy with the results
+	
+	# OK, now to try taurus again:
+	$  ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocWindows.jar -S '*.mrsfast.bam' -O doc_calls -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO19 -I BTHO20 -I BTHO22 -I BTHO25 -I BTHO29 -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO48 -I BTHO49 -I BTHO50 -I BTHO51 -I BTHO52 -I BTHO53 -I BTHO54 -I BTHO56 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE07 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06
+	
+	# OK, the GMS score may be giving me issues. I'm going to try to run the analysis off of the base windows instead
+	$  ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocWindows.jar -S '*.mrsfast.bam' -O doc_calls -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO19 -I BTHO20 -I BTHO22 -I BTHO25 -I BTHO29 -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO48 -I BTHO49 -I BTHO50 -I BTHO51 -I BTHO52 -I BTHO53 -I BTHO54 -I BTHO56 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06
+		[DOC CTRL]Partitioned 1262740 control windows out of 2086766 for window: 0
+		[DOC CTRL]Partitioned 747283 control windows out of 2460607 for window: 1
+		[DOC CTRL]Partitioned 284989 control windows out of 1197860 for window: 2
+
+	# That's still alot to throw out! I may have to change the window removal thresholds in my map program.
+	# Yeah, the file2 and file3 windows are way too variable.
+	# Trying it again without the thresholds (just normal score, without GMS and 10% window removal).
+	
+	# I found two bugs: (1) the stats for the control windows were not being calculated properly (I was calculating stats across ALL windows!) and (2) the window 3 sex windows were not being normalized
+	# Also, I am increasing the stdev threshold to 20% (the top quintile) in order to remove more potentially variable windows from the population, and I am reducing the sex window norm values by half (to account for maleness)
+	
+	$ cd doc_calls
+	$  ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocWindows.jar -S '*.mrsfast.bam' -O doc_calls -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO19 -I BTHO20 -I BTHO22 -I BTHO25 -I BTHO29 -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO48 -I BTHO49 -I BTHO50 -I BTHO51 -I BTHO52 -I BTHO53 -I BTHO54 -I BTHO56 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06
+	$ for i in BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO29 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO48 BTHO49 BTHO50 BTHO51 BTHO52 BTHO53 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTLM9 BTRO01 BTRO04 BTRO05 BTRO06; do echo $i; mkdir num_thresh/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o num_thresh/$i/$i.calls -w 5000 -t 4 -p; done
+	
+	$ perl ~/bin/table__thresh/BTAN04/BTAN04.calls.cnvs.bed num_thresh/BTAN05/BTAN05.calls.cnvs.bed num_thresh/BTAN06/BTAN06.calls.cnvs.bed num_thresh/BTAN07/BTAN07.calls.cnvs.bed num_thresh/BTAN08/BTAN08.calls.cnvs.bed num_thresh/BTHO02/BTHO02.calls.cnvs.bed num_thresh/BTHO04/BTHO04.calls.cnvs.bed num_thresh/BTHO07/BTHO07.calls.cnvs.bed num_thresh/BTHO08/BTHO08.calls.cnvs.bed num_thresh/BTHO09/BTHO09.calls.cnvs.bed num_thresh/BTHO10/BTHO10.calls.cnvs.bed num_thresh/BTHO19/BTHO19.calls.cnvs.bed num_thresh/BTHO20/BTHO20.calls.cnvs.bed num_thresh/BTHO22/BTHO22.calls.cnvs.bed num_thresh/BTHO25/BTHO25.calls.cnvs.bed num_thresh/BTHO29/BTHO29.calls.cnvs.bed num_thresh/BTHO32/BTHO32.calls.cnvs.bed num_thresh/BTHO42/BTHO42.calls.cnvs.bed num_thresh/BTHO44/BTHO44.calls.cnvs.bed num_thresh/BTHO46/BTHO46.calls.cnvs.bed num_thresh/BTHO47/BTHO47.calls.cnvs.bed num_thresh/BTHO48/BTHO48.calls.cnvs.bed num_thresh/BTHO49/BTHO49.calls.cnvs.bed num_thresh/BTHO50/BTHO50.calls.cnvs.bed num_thresh/BTHO51/BTHO51.calls.cnvs.bed num_thresh/BTHO52/BTHO52.calls.cnvs.bed num_thresh/BTHO53/BTHO53.calls.cnvs.bed num_thresh/BTHO54/BTHO54.calls.cnvs.bed num_thresh/BTHO56/BTHO56.calls.cnvs.bed num_thresh/BTHO57/BTHO57.calls.cnvs.bed num_thresh/BTJE01/BTJE01.calls.cnvs.bed num_thresh/BTJE02/BTJE02.calls.cnvs.bed num_thresh/BTJE03/BTJE03.calls.cnvs.bed num_thresh/BTJE04/BTJE04.calls.cnvs.bed num_thresh/BTJE05/BTJE05.calls.cnvs.bed num_thresh/BTJE08/BTJE08.calls.cnvs.bed num_thresh/BTJE09/BTJE09.calls.cnvs.bed num_thresh/BTJE10/BTJE10.calls.cnvs.bed num_thresh/BTLM01/BTLM01.calls.cnvs.bed num_thresh/BTLM03/BTLM03.calls.cnvs.bed num_thresh/BTLM04/BTLM04.calls.cnvs.bed num_thresh/BTLM07/BTLM07.calls.cnvs.bed num_thresh/BTLM10/BTLM10.calls.cnvs.bed num_thresh/BTLM11/BTLM11.calls.cnvs.bed num_thresh/BTLM9/BTLM9.calls.cnvs.bed num_thresh/BTRO01/BTRO01.calls.cnvs.bed num_thresh/BTRO04/BTRO04.calls.cnvs.bed num_thresh/BTRO05/BTRO05.calls.cnvs.bed num_thresh/BTRO06/BTRO06.calls.cnvs.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		num_thresh/BTAN01/BTAN01.calls.cnvs.bed 1093    65911557        60303.3458371455        129002.128218936        23126   4322    1634325
+		num_thresh/BTAN03/BTAN03.calls.cnvs.bed 1110    76668502        69070.7225225225        154721.8688632  25224.5 4339    1754898
+		num_thresh/BTAN04/BTAN04.calls.cnvs.bed 946     63079036        66679.7420718816        137374.381902801        25098   2392    1752898
+		num_thresh/BTAN05/BTAN05.calls.cnvs.bed 984     62107746        63117.6280487805        127674.36559573 24732.5 5999    1752898
+		num_thresh/BTAN06/BTAN06.calls.cnvs.bed 700     47681193        68115.99        154456.679923313        26211.5 4551    1761734
+		num_thresh/BTAN07/BTAN07.calls.cnvs.bed 876     56312818        64284.0388127854        130945.543781477        24947.5 5051    1759865
+		num_thresh/BTAN08/BTAN08.calls.cnvs.bed 1232    61525981        49939.9196428571        107379.828426162        19861   5999    1488290
+		num_thresh/BTHO02/BTHO02.calls.cnvs.bed 909     57620216        63388.5764576458        136386.955067221        23999   5999    1757865
+		num_thresh/BTHO04/BTHO04.calls.cnvs.bed 564     26109150        46292.8191489362        87604.9056765775        19071.5 6031    1194513
+		num_thresh/BTHO07/BTHO07.calls.cnvs.bed 698     51664470        74017.8653295129        159173.536820474        25739.5 4999    1758935
+		num_thresh/BTHO08/BTHO08.calls.cnvs.bed 905     61006233        67410.2022099447        154299.118973255        25204   1999    1752898
+		num_thresh/BTHO09/BTHO09.calls.cnvs.bed 827     52747023        63781.1644498186        132274.31292686 24498   5028    1758865
+		num_thresh/BTHO10/BTHO10.calls.cnvs.bed 996     53195199        53408.8343373494        128087.60247165 20025.5 5999    1749583
+		num_thresh/BTHO19/BTHO19.calls.cnvs.bed 1524    34357520        22544.3044619423        37934.5948167532        16479.5 3019    1159862
+		num_thresh/BTHO20/BTHO20.calls.cnvs.bed 1066    55236447        51816.5544090056        117367.976229552        19539.5 1158    1457290
+		num_thresh/BTHO22/BTHO22.calls.cnvs.bed 773     47801092        61838.4113842173        138358.717907082        24844   5543    1758935
+		num_thresh/BTHO25/BTHO25.calls.cnvs.bed 1046    48553397        46418.1615678776        100241.311366444        20125   2795    1412822
+		num_thresh/BTHO29/BTHO29.calls.cnvs.bed 1470    42075770        28622.9727891156        45724.7895363051        19439.5 4028    1159862
+		num_thresh/BTHO32/BTHO32.calls.cnvs.bed 644     33534446        52072.1211180124        122228.696966855        18999   1281    1746377
+		num_thresh/BTHO42/BTHO42.calls.cnvs.bed 652     46411198        71182.8190184049        144759.77147372 27625.5 5999    1759734
+		num_thresh/BTHO44/BTHO44.calls.cnvs.bed 622     43842193        70485.8408360129        156128.067072349        25211   3623    1753897
+		num_thresh/BTHO46/BTHO46.calls.cnvs.bed 729     48880115        67050.9122085048        142730.053184874        28590   5587    1757129
+		num_thresh/BTHO47/BTHO47.calls.cnvs.bed 803     56208960        69998.7048567871        150148.028923344        26129   5115    1760317
+		num_thresh/BTHO48/BTHO48.calls.cnvs.bed 1287    40831514        31726.1181041181        74546.1085433838        18972   2397    1746377
+		num_thresh/BTHO49/BTHO49.calls.cnvs.bed 456     27968287        61333.9627192982        135864.469902885        24726   5999    1749583
+		num_thresh/BTHO50/BTHO50.calls.cnvs.bed 718     28810183        40125.6030640669        83145.5388828337        20426   5226    1160957
+		num_thresh/BTHO51/BTHO51.calls.cnvs.bed 731     52163330        71358.8645690835        151849.651114786        28177   5999    1753739
+		num_thresh/BTHO52/BTHO52.calls.cnvs.bed 680     46868297        68923.9661764706        158483.019354516        23231   1873    1749377
+		num_thresh/BTHO53/BTHO53.calls.cnvs.bed 1164    34417341        29568.162371134 61345.3659130873        17558   2762    1160957
+		num_thresh/BTHO54/BTHO54.calls.cnvs.bed 442     24202812        54757.4932126697        108452.317407388        23033   5999    1160957
+		num_thresh/BTHO56/BTHO56.calls.cnvs.bed 6837    185073472       27069.3976890449        27028.8243696859        20033   -4041   1160957
+		num_thresh/BTHO57/BTHO57.calls.cnvs.bed 1290    51753796        40119.2217054264        96205.0863036619        18786   1456    1746377
+		num_thresh/BTJE01/BTJE01.calls.cnvs.bed 1192    48481046        40672.0184563758        98491.6430301314        17612   2115    1480190
+		num_thresh/BTJE02/BTJE02.calls.cnvs.bed 1140    62729841        55026.1763157895        114021.010455466        21719   3974    1489432
+		num_thresh/BTJE03/BTJE03.calls.cnvs.bed 864     53455328        61869.5925925926        125218.722697917        24030   4872    1490584
+		num_thresh/BTJE04/BTJE04.calls.cnvs.bed 765     49145170        64242.0522875817        132843.304050076        26999   5999    1758935
+		num_thresh/BTJE05/BTJE05.calls.cnvs.bed 1513    46261411        30575.949107733 55900.335912387 18378   400     995290
+		num_thresh/BTJE08/BTJE08.calls.cnvs.bed 927     61529351        66374.7044228695        155120.94359344 24999   759     1757129
+		num_thresh/BTJE09/BTJE09.calls.cnvs.bed 764     53590913        70145.1740837696        153714.866716615        25168   5566    1749377
+		num_thresh/BTJE10/BTJE10.calls.cnvs.bed 739     47536526        64325.4749661705        143292.051267034        23942   3423    1750897
+		num_thresh/BTLM01/BTLM01.calls.cnvs.bed 1003    66588529        66389.3609172483        157478.05872981 24999   5122    2012084
+		num_thresh/BTLM03/BTLM03.calls.cnvs.bed 1384    64911199        46901.1553468208        104261.051223931        19009   3115    1459290
+		num_thresh/BTLM04/BTLM04.calls.cnvs.bed 1275    61246770        48036.6823529412        124261.860196945        18628   1403    2007932
+		num_thresh/BTLM07/BTLM07.calls.cnvs.bed 1002    67605085        67470.1447105788        151735.99293421 23594.5 5416    1758865
+		num_thresh/BTLM10/BTLM10.calls.cnvs.bed 1570    66768327        42527.5968152866        95947.3349998814        18791.5 2154    1487290
+		num_thresh/BTLM11/BTLM11.calls.cnvs.bed 813     58277887        71682.5178351784        160256.385064111        25514   5980    1752898
+		num_thresh/BTLM9/BTLM9.calls.cnvs.bed   905     58609594        64761.982320442 147169.589992261        25022   4439    1757865
+		num_thresh/BTRO01/BTRO01.calls.cnvs.bed 904     60747206        67198.2367256637        147203.408168657        25571   2203    1758734
+		num_thresh/BTRO04/BTRO04.calls.cnvs.bed 991     64022415        64603.8496468214        141024.519712008        24289   5999    1752898
+		num_thresh/BTRO05/BTRO05.calls.cnvs.bed 982     63080283        64236.5407331976        133910.341387638        25272   2297    1759865
+		num_thresh/BTRO06/BTRO06.calls.cnvs.bed 985     63520940        64488.2639593909        141344.022779801        24237   2411    1758734
+		
+	# Going to retry the indicus animals to see how different the calls are with the new criteria
+	$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocWindows.jar -S '*.mrsfast.bam' -O doc_calls -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -I BIBR02 -I BIBR03 -I BIBR04 -I BIBR05 -I BIBR07 -I BIBR08 -I BIBR09 -I BIGI01 -I BIGI02 -I BIGI05 -I BIGI06 -I BIGI07 -I BIGI08 -I BINE01 -I BINE04 -I BINE07 -I BINE09 -I BINE10 -I BINE12 -I BINE13
+	$ cd doc_calls/
+	$ mkdir ind_rerun
+	
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo $i; mkdir ind_rerun/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o ind_rerun/$i/$i.calls -w 5000 -t 4 -p; done
+	$ perl ~/bin/table_bed_length_sum.pl ind_rerun/BIBR02/BIBR02.calls.cnvs.bed ind_rerun/BIBR03/BIBR03.calls.cnvs.bed ind_rerun/BIBR04/BIBR04.calls.cnvs.bed ind_rerun/BIBR05/BIBR05.calls.cnvs.bed ind_rerun/BIBR07/BIBR07.calls.cnvs.bed ind_rerun/BIBR08/BIBR08.calls.cnvs.bed ind_rerun/BIBR09/BIBR09.calls.cnvs.bed ind_rerun/BIGI01/BIGI01.calls.cnvs.bed ind_rerun/BIGI02/BIGI02.calls.cnvs.bed ind_rerun/BIGI05/BIGI05.calls.cnvs.bed ind_rerun/BIGI06/BIGI06.calls.cnvs.bed ind_rerun/BIGI07/BIGI07.calls.cnvs.bed ind_rerun/BIGI08/BIGI08.calls.cnvs.bed ind_rerun/BINE01/BINE01.calls.cnvs.bed ind_rerun/BINE04/BINE04.calls.cnvs.bed ind_rerun/BINE07/BINE07.calls.cnvs.bed ind_rerun/BINE09/BINE09.calls.cnvs.bed ind_rerun/BINE10/BINE10.calls.cnvs.bed ind_rerun/BINE12/BINE12.calls.cnvs.bed ind_rerun/BINE13/BINE13.calls.cnvs.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		ind_rerun/BIBR02/BIBR02.calls.cnvs.bed  1154    56944676        49345.4731369151        108466.461216641        20136.5 2370    1751494
+		ind_rerun/BIBR03/BIBR03.calls.cnvs.bed  1571    55728953        35473.5537873966        74996.7923921942        17304   1178    1104995
+		ind_rerun/BIBR04/BIBR04.calls.cnvs.bed  906     64195297        70855.7362030905        158793.389607828        28570.5 5999    2013084
+		ind_rerun/BIBR05/BIBR05.calls.cnvs.bed  1155    55751145        48269.3896103896        120121.429123163        18753   5151    1751494
+		ind_rerun/BIBR07/BIBR07.calls.cnvs.bed  750     36956690        49275.5866666667        112524.435759136        18983.5 4999    1399909
+		ind_rerun/BIBR08/BIBR08.calls.cnvs.bed  1031    66311260        64317.4199806014        144325.122659649        25255   5999    1773723
+		ind_rerun/BIBR09/BIBR09.calls.cnvs.bed  953     61221015        64240.3095487933        139449.076602449        25159   3344    1751494
+		ind_rerun/BIGI01/BIGI01.calls.cnvs.bed  995     57131995        57419.0904522613        157875.011321363        21525   3509    3119461
+		ind_rerun/BIGI02/BIGI02.calls.cnvs.bed  1045    65868526        63032.0822966507        137573.658875169        25236   5999    1753739
+		ind_rerun/BIGI05/BIGI05.calls.cnvs.bed  2029    83384074        41096.1429275505        116263.707962587        17345   2158    3120461
+		ind_rerun/BIGI06/BIGI06.calls.cnvs.bed  837     59567815        71168.2377538829        146985.829573587        28896   4023    1773723
+		ind_rerun/BIGI07/BIGI07.calls.cnvs.bed  1679    74686823        44482.9201905896        107025.627947182        17999   2262    1751494
+		ind_rerun/BIGI08/BIGI08.calls.cnvs.bed  980     56161332        57307.4816326531        131630.573794224        21378.5 711     1749494
+		ind_rerun/BINE01/BINE01.calls.cnvs.bed  1840    73618395        40009.9972826087        93918.0075013601        18045.5 1561    1751494
+		ind_rerun/BINE04/BINE04.calls.cnvs.bed  1079    64089449        59397.0797034291        136138.224040584        22329   2977    1751494
+		ind_rerun/BINE07/BINE07.calls.cnvs.bed  1143    63002593        55120.3788276465        119966.278443862        20035   5602    1751494
+		ind_rerun/BINE09/BINE09.calls.cnvs.bed  978     64468623        65918.8374233129        140081.555459366        26779   4145    1758875
+		ind_rerun/BINE10/BINE10.calls.cnvs.bed  1018    68208793        67002.7436149312        167366.55228958 26629.5 3810    3124461
+		ind_rerun/BINE12/BINE12.calls.cnvs.bed  702     49102985        69947.2720797721        150611.19871726 26161   4795    1760317
+		ind_rerun/BINE13/BINE13.calls.cnvs.bed  1314    67676675        51504.3188736682        117349.028768731        20034.5 2158    1746410
+		
+	
+	# I am discarding about 20% of the windows due to CN issues and padding issues. I am going to try to return to Alkan's methods to see if I can improve my detection methods
+	# I rewrote the DocCNVCaller.jar program to use Alkan's padding method instead of my previous one
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo $i; mkdir ind_rerun/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o ind_rerun/$i/$i.calls -w 5000 -t 4 -p; done
+	# So, the program has greatly decreased the number of CNVs that are filtered out (either because of CN issues and/or padding) Now it is more like 10 or 5%
+	$ perl ~/bin/table_bed_length_sum.pl ind_rerun/BIBR02/BIBR02.calls.cnvs.bed ind_rerun/BIBR03/BIBR03.calls.cnvs.bed ind_rerun/BIBR04/BIBR04.calls.cnvs.bed ind_rerun/BIBR05/BIBR05.calls.cnvs.bed ind_rerun/BIBR07/BIBR07.calls.cnvs.bed ind_rerun/BIBR08/BIBR08.calls.cnvs.bed ind_rerun/BIBR09/BIBR09.calls.cnvs.bed ind_rerun/BIGI01/BIGI01.calls.cnvs.bed ind_rerun/BIGI02/BIGI02.calls.cnvs.bed ind_rerun/BIGI05/BIGI05.calls.cnvs.bed ind_rerun/BIGI06/BIGI06.calls.cnvs.bed ind_rerun/BIGI07/BIGI07.calls.cnvs.bed ind_rerun/BIGI08/BIGI08.calls.cnvs.bed ind_rerun/BINE01/BINE01.calls.cnvs.bed ind_rerun/BINE04/BINE04.calls.cnvs.bed ind_rerun/BINE07/BINE07.calls.cnvs.bed ind_rerun/BINE09/BINE09.calls.cnvs.bed ind_rerun/BINE10/BINE10.calls.cnvs.bed ind_rerun/BINE12/BINE12.calls.cnvs.bed ind_rerun/BINE13/BINE13.calls.cnvs.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		ind_rerun/BIBR02/BIBR02.calls.cnvs.bed  1503    63266280        42093.3333333333        113772.82031419 13735   998     1746738
+		ind_rerun/BIBR03/BIBR03.calls.cnvs.bed  1814    59091537        32575.2684674752        90790.2597760884        13998   998     1746493
+		ind_rerun/BIBR04/BIBR04.calls.cnvs.bed  1310    70896739        54119.6480916031        146235.118174538        15998   998     2002931
+		ind_rerun/BIBR05/BIBR05.calls.cnvs.bed  1411    58590935        41524.4046775337        115513.790209143        14102   1028    1748837
+		ind_rerun/BIBR07/BIBR07.calls.cnvs.bed  960     41608347        43342.028125    117323.287913347        13745   998     1744493
+		ind_rerun/BIBR08/BIBR08.calls.cnvs.bed  1469    72876548        49609.6310415248        138178.930679491        14472   1028    1770641
+		ind_rerun/BIBR09/BIBR09.calls.cnvs.bed  1371    67548645        49269.6170678337        129730.670205797        14309   998     1753837
+		ind_rerun/BIGI01/BIGI01.calls.cnvs.bed  1348    62689940        46505.8902077151        145584.232201082        13998   998     3119308
+		ind_rerun/BIGI02/BIGI02.calls.cnvs.bed  1516    73482543        48471.3344327177        129247.375901166        14486   998     1753837
+		ind_rerun/BIGI05/BIGI05.calls.cnvs.bed  2520    89532742        35528.8658730159        100911.63407294 14198   1123    1753837
+		ind_rerun/BIGI06/BIGI06.calls.cnvs.bed  1207    64678300        53585.9983429992        133468.434936316        16743   998     1766722
+		ind_rerun/BIGI07/BIGI07.calls.cnvs.bed  2094    78838804        37649.858643744 101483.557510127        14134.5 998     1753837
+		ind_rerun/BIGI08/BIGI08.calls.cnvs.bed  1360    62245040        45768.4117647059        122178.414853068        13440   1028    1759864
+		ind_rerun/BINE01/BINE01.calls.cnvs.bed  2213    77547169        35041.6488929056        95275.0153803043        14074   1040    1746493
+		ind_rerun/BINE04/BINE04.calls.cnvs.bed  1489    67554171        45368.8186702485        123015.168969073        14291   998     1748541
+		ind_rerun/BINE07/BINE07.calls.cnvs.bed  1570    66803539        42550.0248407643        109391.524040075        13128   998     1748541
+		ind_rerun/BINE09/BINE09.calls.cnvs.bed  1445    70706497        48931.83183391  126489.926096285        15142   998     1755316
+		ind_rerun/BINE10/BINE10.calls.cnvs.bed  1424    71588233        50272.6355337079        148483.061137992        16503   998     3119308
+		ind_rerun/BINE12/BINE12.calls.cnvs.bed  1026    54005313        52636.7573099415        137076.873291453        15158.5 998     1770641
+		ind_rerun/BINE13/BINE13.calls.cnvs.bed  1800    73113747        40618.7483333333        108980.250505669        14110.5 998     1748738
+		
+	# OK, so even though I do not have a direct overlap method, it looks like I have more chopped up CNVs that cover a slightly larger space in the genome in this dataset
+	# Since I have saved the previous taurus calls, let's try rerunning the taurus windows through the new caller
+	$ for i in BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO29 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO48 BTHO49 BTHO50 BTHO51 BTHO52 BTHO53 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTLM9 BTRO01 BTRO04 BTRO05 BTRO06; do echo $i; mkdir tau_rerun/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o tau_rerun/$i/$i.calls -w 5000 -t 4 -p; done
+	
+	
+# OK, George raised a good point that we will suffer in reviews if we try to push a new method. 
+# Instead, let me try to refine the previous window design and then return to my population based window discovery method later
+	# For starters, I will be using a series of likely blacklist options to filter away control windows (a priori information)
+	# George sent me several acgh designated "blacklist" areas that look to be assembly artifacts
+	
+	pwd: /home/dbickhart/share/100_bulls_project/doc_blacklist
+	# Converting these into bed files first
+	$ perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); $e = $s[1] + $s[3]; print "$s[0]\t$s[1]\t$e\tblacklist20k\n";}' < interval_20k.txt > interval_20k.bed
+	$ perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); $e = $s[1] + $s[3]; print "$s[0]\t$s[1]\t$e\tblacklist50k\n";}' < interval_50k.txt > interval_50k.bed
+	$ perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); $e = $s[1] + $s[3]; print "$s[0]\t$s[1]\t$e\tblacklist100k\n";}' < interval_100k.txt > interval_100k.bed
+	
+	$ table_bed_length_sum.pl interval_20k.bed interval_50k.bed interval_100k.bed 
+		FName	IntNum	TotLen	LenAvg	LenStdev	LenMedian	SmallestL	LargestL
+		interval_20k.bed	3243	88973263	27435.4804193648	26478.7989429788	23041	20241	1092641
+		interval_50k.bed	96	10091136	105116	128428.341725389	67141	50341	1092641
+		interval_100k.bed	25	5434725	217389	213926.127660929	137141	100741	1092641
+		
+	# So we're looking at 100mb worth of questionable areas in the genome. Not a bad start
+	
+	# Now I want to include all regions in the genome that have an average GMS score below 0.75
+	# Actually, scratch that. Let's just use the DTTRACE reads mapped to the UMD3 genome instead
+	$ table_bed_length_sum.pl umd3_dttrace_hits_umd3_template_file1.bed.final.wssd umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd
+		FName	IntNum	TotLen	LenAvg	LenStdev	LenMedian	SmallestL	LargestL
+		umd3_dttrace_hits_umd3_template_file1.bed.final.wssd	1423	38775000	27248.7702037948	41523.3409038651	16748	10012	750222
+		umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd	179	13464483	75220.5754189944	179055.967760399	26000	10183	1685616
+		
+	# Now, all I have to do is concatenate this, merge it (keep the names) and send it out as a massive blacklist file
+	$ cat umd3*.wssd | perl -ne 'chomp; print $_ . "\tdttrace\n";' | sortBedFileSTDIN.pl > dttrace_umd3_wssds.bed
+	$ cat *.bed | mergeBed -i stdin -nms | bed_length_sum.pl 
+		Interval Numbers:	4966
+		Total Length:		156738607
+		Length Average:		31562.3453483689
+		Length Median:		22341
+		Length Stdev:		54958.1001315052
+		Smallest Length:	10012
+		Largest Length:		1685616
+	
+	$ cat interval_20k.bed interval_50k.bed interval_100k.bed dttrace_umd3_wssds.bed | mergeBed -i stdin -nms | sortBedFileSTDIN.pl > umd3_assembly_blacklist.bed
+	# I manually removed chrUn from the list
+	
+	# Let's test this out
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+	$ mkdir doc_oldschool
+	$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BIBR02 -I BIBR03 -I BIBR04 -I BIBR05 -I BIBR07 -I BIBR08 -I BIBR09 -I BIGI01 -I BIGI02 -I BIGI05 -I BIGI06 -I BIGI07 -I BIGI08 -I BINE01 -I BINE04 -I BINE07 -I BINE09 -I BINE10 -I BINE12 -I BINE13
+		[DOC CTRL]Partitioned 6289 control windows out of 2093867 for window: 0
+		[DOC CTRL]Partitioned 118567 control windows out of 2470021 for window: 1
+		[DOC CTRL]Partitioned 80295 control windows out of 1263905 for window: 2
+		
+		# OK, way too much filtering.
+		# Let's see if the windows are ok
+		$ wc -l ~/reference/*.file?
+		  2093867 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.50.file1
+		  2470021 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.50.file2
+		  1263905 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.50.file3
+		  2086766 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.file1
+		  2460607 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.file2
+		  1197860 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.file3
+		 11573026 total
+		 
+		# A little unexpected; I thought that the windows would be fewer for the required 50bp absolute length
+		# Let's check this out
+		$ samtools faidx /home/dbickhart/reference/umd3_kary_nmask_hgap.fa chr1:39702-52494 | perl -e 'while(<>){if($_ =~ />/){next;} else{chomp; ($t) = $_ =~ tr/ACGT/ACGT/; $n += $t;}} print "$n\n";'
+			4948 <- ok, so this is a problem since I saw several "one" base regions in this dataset
+			# I need to reset the "temp" counter whenever a "N" is encountered
+		
+		# I'm also going to remove that interval_20k block, since I think that it only takes into account bad repetitive areas in the genome.
+		pwd: /
+		$ cat interval_50k.bed interval_100k.bed dttrace_umd3_wssds.bed | mergeBed -i stdin -nms | sortBedFileSTDIN.pl | bed_length_sum.pl 
+			Interval Numbers:	1723
+			Total Length:		67765344
+			Length Average:		39329.857225769
+			Length Median:		18000
+			Length Stdev:		85400.7276818472
+			Smallest Length:	10012
+			Largest Length:		1685616
+			
+		# Well, wait, I think that I found my problem. I was excluding all windows that did not have values 10* above the average. We'll try it again with the base blacklist
+		$ rm /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.50.lock
+		$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BIBR02 -I BIBR03 -I BIBR04 -I BIBR05 -I BIBR07 -I BIBR08 -I BIBR09 -I BIGI01 -I BIGI02 -I BIGI05 -I BIGI06 -I BIGI07 -I BIGI08 -I BINE01 -I BINE04 -I BINE07 -I BINE09 -I BINE10 -I BINE12 -I BINE13
+		$ wc -l ~/reference/*.file?
+		  2081852 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.50.file1
+		  2460435 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.50.file2
+		  1175858 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.50.file3
+		  2086766 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.file1
+		  2460607 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.file2
+		  1197860 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.file3
+		 11463378 total
+		
+		# OK, this makes more sense. 
+		$ cut -f4 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.file1 | statStd.pl
+			total  2086766
+			Minimum 0.25999999
+			Maximum 0.73580003
+			Average 0.407207
+			Median 0.3906
+			Standard Deviation     0.074610
+			Mode(Highest Distributed Value) 0.34799999
+		
+		$ cut -f4 /home/dbickhart/reference/umd3_kary_nmask_hgap.fa.5000.50.file1 | statStd.pl
+			total  2081852
+			Minimum 0.22340000
+			Maximum 0.73460001
+			Average 0.381585
+			Median 0.3644
+			Standard Deviation     0.076777
+			Mode(Highest Distributed Value) 0.33239999	
+			
+		 # OK, so the GC percentage has changed dramatically as well, since I only add that if the interval is longer than 50 bp.
+		 # I'm not sure if I should keep it that way... maybe let's run with it for now.
+		 $ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BIBR02 -I BIBR03 -I BIBR04 -I BIBR05 -I BIBR07 -I BIBR08 -I BIBR09 -I BIGI01 -I BIGI02 -I BIGI05 -I BIGI06 -I BIGI07 -I BIGI08 -I BINE01 -I BINE04 -I BINE07 -I BINE09 -I BINE10 -I BINE12 -I BINE13
+		 	[DOC CTRL]Partitioned 2070596 control windows out of 2081852 for window: 0
+		 	[DOC CTRL]Partitioned 2348429 control windows out of 2460435 for window: 1
+			[DOC CTRL]Partitioned 1105818 control windows out of 1175858 for window: 2
+			
+			# Damn, too few.
+		
+		# OK, so let's try the avg * 5 thresholds in the caller
+		$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BIBR02 -I BIBR03 -I BIBR04 -I BIBR05 -I BIBR07 -I BIBR08 -I BIBR09 -I BIGI01 -I BIGI02 -I BIGI05 -I BIGI06 -I BIGI07 -I BIGI08 -I BINE01 -I BINE04 -I BINE07 -I BINE09 -I BINE10 -I BINE12 -I BINE13
+			[DOC CTRL]Partitioned 1845186 control windows out of 2086766 for window: 0
+			[DOC CTRL]Partitioned 1990072 control windows out of 2460607 for window: 1
+			[DOC CTRL]Partitioned 938294 control windows out of 1197860 for window: 2
+			
+			# OK, that, I think, is more reasonable.
+			$ head doc_oldschool/Normalized.BIBR02.file1.control.bed.stats
+				auto;avg;246.41714227
+				auto;std;42.41328937	<- not too bad
+				auto;median;242.87403546
+				sex;avg;151.05263688
+				sex;std;42.20426907
+				sex;median;143.71598109
+				
+		# Here is the caller
+		$ cd doc_oldschool/
+		$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo $i; mkdir indicus; mkdir indicus/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o indicus/$i/$i.calls -w 5000 -t 4 -p; done
+		
+		
+		$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13; do echo -n indicus/$i/$i.calls.cnvs.bed" "; done; echo
+		$ perl ~/bin/table_bed_length_sum.pl indicus/BIBR02/BIBR02.calls.cnvs.bed indicus/BIBR03/BIBR03.calls.cnvs.bed indicus/BIBR04/BIBR04.calls.cnvs.bed indicus/BIBR05/BIBR05.calls.cnvs.bed indicus/BIBR07/BIBR07.calls.cnvs.bed indicus/BIBR08/BIBR08.calls.cnvs.bed indicus/BIBR09/BIBR09.calls.cnvs.bed indicus/BIGI01/BIGI01.calls.cnvs.bed indicus/BIGI02/BIGI02.calls.cnvs.bed indicus/BIGI05/BIGI05.calls.cnvs.bed indicus/BIGI06/BIGI06.calls.cnvs.bed indicus/BIGI07/BIGI07.calls.cnvs.bed indicus/BIGI08/BIGI08.calls.cnvs.bed indicus/BINE01/BINE01.calls.cnvs.bed indicus/BINE04/BINE04.calls.cnvs.bed indicus/BINE07/BINE07.calls.cnvs.bed indicus/BINE09/BINE09.calls.cnvs.bed indicus/BINE10/BINE10.calls.cnvs.bed indicus/BINE12/BINE12.calls.cnvs.bed indicus/BINE13/BINE13.calls.cnvs.bed
+			FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+			indicus/BIBR02/BIBR02.calls.cnvs.bed    564     35526243        62989.7925531915        132817.243883222        23319   998     1412821
+			indicus/BIBR03/BIBR03.calls.cnvs.bed    474     28349285        59808.6181434599        125903.000842152        19399   998     1344742
+			indicus/BIBR04/BIBR04.calls.cnvs.bed    648     40612077        62672.9583333333        143475.62482066 20487.5 998     1457853
+			indicus/BIBR05/BIBR05.calls.cnvs.bed    527     34203009        64901.3453510436        157648.996959631        17896   998     1448611
+			indicus/BIBR07/BIBR07.calls.cnvs.bed    401     25574221        63776.1122194514        131652.492520585        18875   998     1259557
+			indicus/BIBR08/BIBR08.calls.cnvs.bed    607     42106588        69368.3492586491        165095.646920741        18340   998     1544385
+			indicus/BIBR09/BIBR09.calls.cnvs.bed    613     40018467        65282.9804241436        145450.735479553        17998   998     1412821
+			indicus/BIGI01/BIGI01.calls.cnvs.bed    579     36362547        62802.3264248705        148987.38177423 19368   998     1448611
+			indicus/BIGI02/BIGI02.calls.cnvs.bed    661     41178269        62296.9273827534        147964.754876743        17998   998     1460289
+			indicus/BIGI05/BIGI05.calls.cnvs.bed    639     39893642        62431.3646322379        140408.346051007        18998   998     1449754
+			indicus/BIGI06/BIGI06.calls.cnvs.bed    603     39109250        64857.7943615257        148936.624278205        20730   998     1457853
+			indicus/BIGI07/BIGI07.calls.cnvs.bed    638     38157104        59807.3730407524        128923.402872194        16998   1028    1412821
+			indicus/BIGI08/BIGI08.calls.cnvs.bed    604     34487694        57098.8311258278        136251.535328908        16217   998     1448611
+			indicus/BINE01/BINE01.calls.cnvs.bed    610     34800890        57050.6393442623        124575.57279893 17277   998     1412821
+			indicus/BINE04/BINE04.calls.cnvs.bed    610     38192600        62610.8196721311        145667.713952805        19647   998     1540385
+			indicus/BINE07/BINE07.calls.cnvs.bed    598     38511061        64399.7675585284        138192.625166163        18751   998     1412821
+			indicus/BINE09/BINE09.calls.cnvs.bed    665     39380191        59218.3323308271        133208.682158402        18299   998     1457853
+			indicus/BINE10/BINE10.calls.cnvs.bed    594     39526117        66542.2845117845        156084.905337136        19968   998     1544385
+			indicus/BINE12/BINE12.calls.cnvs.bed    566     34240227        60495.1007067138        139986.847806326        18936.5 1028    1448611
+			indicus/BINE13/BINE13.calls.cnvs.bed    654     39457498        60332.5657492355        128756.909749103        19537.5 998     1448611
+			
+		# So, less than half the number of cnvs and half the megabases
+		# Let's try taurus now
+		$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocWindows.jar -S '*.mrsfast.bam' -O doc_calls -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO19 -I BTHO20 -I BTHO22 -I BTHO25 -I BTHO29 -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO48 -I BTHO49 -I BTHO50 -I BTHO51 -I BTHO52 -I BTHO53 -I BTHO54 -I BTHO56 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06
+			[DOC CTRL]Partitioned 1664875 control windows out of 2086766 for window: 0
+			[DOC CTRL]Partitioned 1561224 control windows out of 2460607 for window: 1
+			[DOC CTRL]Partitioned 750506 control windows out of 1197860 for window: 2
+		$ cd doc_oldschool
+		$ mkdir taurus
+		# Damn, I accidentally remade the taurus windows in the doc_calls folder instead of the doc_oldschool folder
+		$ for i in BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO29 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO48 BTHO49 BTHO50 BTHO51 BTHO52 BTHO53 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTLM9 BTRO01 BTRO04 BTRO05 BTRO06; do echo $i; mkdir taurus/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 ../doc_calls/Normalized.$i.file1.bed -f2 ../doc_calls/Normalized.$i.file2.bed -f3 ../doc_calls/Normalized.$i.file3.bed -s1 ../doc_calls/Normalized.$i.file1.control.bed.stats -s2 ../doc_calls/Normalized.$i.file2.control.bed.stats -s3 ../doc_calls/Normalized.$i.file3.control.bed.stats -o taurus/$i/$i.calls -w 5000 -t 4 -p; done
+		$ for i in taurus/*/*.calls.cnvs.bed; do echo -n $i" "; done; echo
+		$ perl ~/bin/table_bed_length_sum.pl taurus/BTAN01/BTAN01.calls.cnvs.bed taurus/BTAN03/BTAN03.calls.cnvs.bed taurus/BTAN04/BTAN04.calls.cnvs.bed taurus/BTAN05/BTAN05.calls.cnvs.bed taurus/BTAN06/BTAN06.calls.cnvs.bed taurus/BTAN07/BTAN07.calls.cnvs.bed taurus/BTAN08/BTAN08.calls.cnvs.bed taurus/BTHO02/BTHO02.calls.cnvs.bed taurus/BTHO04/BTHO04.calls.cnvs.bed taurus/BTHO07/BTHO07.calls.cnvs.bed taurus/BTHO08/BTHO08.calls.cnvs.bed taurus/BTHO09/BTHO09.calls.cnvs.bed taurus/BTHO10/BTHO10.calls.cnvs.bed taurus/BTHO19/BTHO19.calls.cnvs.bed taurus/BTHO20/BTHO20.calls.cnvs.bed taurus/BTHO22/BTHO22.calls.cnvs.bed taurus/BTHO25/BTHO25.calls.cnvs.bed taurus/BTHO29/BTHO29.calls.cnvs.bed taurus/BTHO32/BTHO32.calls.cnvs.bed taurus/BTHO42/BTHO42.calls.cnvs.bed taurus/BTHO44/BTHO44.calls.cnvs.bed taurus/BTHO46/BTHO46.calls.cnvs.bed taurus/BTHO47/BTHO47.calls.cnvs.bed taurus/BTHO48/BTHO48.calls.cnvs.bed taurus/BTHO49/BTHO49.calls.cnvs.bed taurus/BTHO50/BTHO50.calls.cnvs.bed taurus/BTHO51/BTHO51.calls.cnvs.bed taurus/BTHO52/BTHO52.calls.cnvs.bed taurus/BTHO53/BTHO53.calls.cnvs.bed taurus/BTHO54/BTHO54.calls.cnvs.bed taurus/BTHO57/BTHO57.calls.cnvs.bed taurus/BTJE01/BTJE01.calls.cnvs.bed taurus/BTJE02/BTJE02.calls.cnvs.bed taurus/BTJE04/BTJE04.calls.cnvs.bed taurus/BTJE05/BTJE05.calls.cnvs.bed taurus/BTJE08/BTJE08.calls.cnvs.bed taurus/BTJE09/BTJE09.calls.cnvs.bed taurus/BTJE10/BTJE10.calls.cnvs.bed taurus/BTLM01/BTLM01.calls.cnvs.bed taurus/BTLM03/BTLM03.calls.cnvs.bed taurus/BTLM04/BTLM04.calls.cnvs.bed taurus/BTLM07/BTLM07.calls.cnvs.bed taurus/BTLM10/BTLM10.calls.cnvs.bed taurus/BTLM11/BTLM11.calls.cnvs.bed taurus/BTLM9/BTLM9.calls.cnvs.bed taurus/BTRO01/BTRO01.calls.cnvs.bed taurus/BTRO04/BTRO04.calls.cnvs.bed taurus/BTRO05/BTRO05.calls.cnvs.bed taurus/BTRO06/BTRO06.calls.cnvs.bed
+			FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+			taurus/BTAN01/BTAN01.calls.cnvs.bed     1626    71445919        43939.6795817958        119685.078431765        13693.5 1122    1754864
+			taurus/BTAN03/BTAN03.calls.cnvs.bed     1691    80617291        47674.329390893 127572.282684073        14499   1096    1754864
+			taurus/BTAN04/BTAN04.calls.cnvs.bed     1442    70181487        48669.5471567268        120292.894774232        14585   998     1757864
+			taurus/BTAN05/BTAN05.calls.cnvs.bed     1370    65023489        47462.400729927 117537.140048871        14998   998     1752897
+			taurus/BTAN06/BTAN06.calls.cnvs.bed     944     49165567        52082.1684322034        136304.054284516        17243.5 998     1724676
+			taurus/BTAN07/BTAN07.calls.cnvs.bed     1266    59687227        47146.3088467615        116963.967108818        14485   998     1758733
+			taurus/BTAN08/BTAN08.calls.cnvs.bed     1646    67753535        41162.5364520049        110817.689004781        13297.5 1075    1721676
+			taurus/BTHO02/BTHO02.calls.cnvs.bed     1327    61760719        46541.6119065561        122018.873635851        14111   998     1717952
+			taurus/BTHO04/BTHO04.calls.cnvs.bed     639     29329342        45898.813771518 112492.466827115        17128   1998    1718676
+			taurus/BTHO07/BTHO07.calls.cnvs.bed     938     53080826        56589.3667377399        141083.204084083        17006.5 1122    1722952
+			taurus/BTHO08/BTHO08.calls.cnvs.bed     1314    67020045        51004.600456621 137802.297322704        14609.5 998     1757864
+			taurus/BTHO09/BTHO09.calls.cnvs.bed     1149    57607141        50136.7632724108        126957.101974161        15171   998     1754864
+			taurus/BTHO10/BTHO10.calls.cnvs.bed     1315    56944309        43303.6570342205        119573.329542554        14346   998     1718676
+			taurus/BTHO19/BTHO19.calls.cnvs.bed     1656    33426433        20185.0440821256        56297.2664319183        14129.5 998     1718676
+			taurus/BTHO20/BTHO20.calls.cnvs.bed     1442    61676976        42771.8280166436        118177.084743941        13841   998     1716676
+			taurus/BTHO22/BTHO22.calls.cnvs.bed     1012    48558366        47982.5750988142        123070.918842232        16025.5 998     1757864
+			taurus/BTHO25/BTHO25.calls.cnvs.bed     1338    55380322        41390.375186846 111997.461857216        14078.5 998     1716676
+			taurus/BTHO29/BTHO29.calls.cnvs.bed     1836    41306906        22498.3148148148        59040.1305797569        13420.5 998     1718676
+			taurus/BTHO32/BTHO32.calls.cnvs.bed     767     35148233        45825.5971316819        117102.588205294        15908   1440    1718676
+			taurus/BTHO42/BTHO42.calls.cnvs.bed     900     49336310        54818.1222222222        133797.564162069        16947.5 998     1752897
+			taurus/BTHO44/BTHO44.calls.cnvs.bed     886     46839076        52865.7742663657        138220.817401973        16102   998     1757864
+			taurus/BTHO46/BTHO46.calls.cnvs.bed     1049    54457099        51913.3450905624        133334.319557816        15567   998     1752128
+			taurus/BTHO47/BTHO47.calls.cnvs.bed     1163    61222065        52641.5004299226        135541.295141259        14998   998     1757316
+			taurus/BTHO48/BTHO48.calls.cnvs.bed     1450    40618294        28012.6165517241        76251.971690274 14716   998     1719676
+			taurus/BTHO49/BTHO49.calls.cnvs.bed     598     29581431        49467.2759197324        124311.516571206        16486.5 1021    1745127
+			taurus/BTHO50/BTHO50.calls.cnvs.bed     844     31127065        36880.4087677725        99007.3996448069        15320.5 998     1716676
+			taurus/BTHO51/BTHO51.calls.cnvs.bed     1062    58338053        54932.2532956685        139534.235726669        16157.5 998     1754203
+			taurus/BTHO52/BTHO52.calls.cnvs.bed     959     49212656        51316.6381647549        137790.637956004        13998   998     1721676
+			taurus/BTHO53/BTHO53.calls.cnvs.bed     1289    33066193        25652.5934833204        60457.4588363486        13894   998     1160956
+			taurus/BTHO54/BTHO54.calls.cnvs.bed     537     26457839        49269.7188081937        125964.322010915        16318   998     1716676
+			taurus/BTHO57/BTHO57.calls.cnvs.bed     1563    55163410        35293.2885476647        98114.8023828593        14128   998     1718676
+			taurus/BTJE01/BTJE01.calls.cnvs.bed     1466    56563063        38583.2626193724        111094.680125007        13409   998     1718676
+			taurus/BTJE02/BTJE02.calls.cnvs.bed     1597    68341696        42793.7983719474        117098.118003212        14149   998     1746738
+			taurus/BTJE04/BTJE04.calls.cnvs.bed     1057    51528765        48750.0141911069        117136.359518744        17614   0       1759864
+			taurus/BTJE05/BTJE05.calls.cnvs.bed     1729    50215027        29042.8149219202        80104.2336819291        14440   998     1716676
+			taurus/BTJE08/BTJE08.calls.cnvs.bed     1333    65103335        48839.7111777945        136083.052802957        14270   998     1747897
+			taurus/BTJE09/BTJE09.calls.cnvs.bed     1145    59224598        51724.5397379913        135623.300199697        14472   998     1721676
+			taurus/BTJE10/BTJE10.calls.cnvs.bed     985     52254161        53049.90964467  139171.032726138        15119   998     1746409
+			taurus/BTLM01/BTLM01.calls.cnvs.bed     1489    71717460        48164.8488918737        135471.218972419        14998   998     2002931
+			taurus/BTLM03/BTLM03.calls.cnvs.bed     1786    69471559        38897.8493840985        106005.294238593        14020.5 1050    1716676
+			taurus/BTLM04/BTLM04.calls.cnvs.bed     1683    67231229        39947.2543077837        122494.794588352        13457   998     2002931
+			taurus/BTLM07/BTLM07.calls.cnvs.bed     1492    72587811        48651.3478552279        132531.654703906        14401.5 998     1754864
+			taurus/BTLM10/BTLM10.calls.cnvs.bed     1920    72419615        37718.5494791667        104100.606342283        14998   998     1718676
+			taurus/BTLM11/BTLM11.calls.cnvs.bed     1255    64938055        51743.4701195219        142524.4728598  13509   998     1716676
+			taurus/BTLM9/BTLM9.calls.cnvs.bed       1269    63034018        49672.1970055162        133879.473882571        15001   1028    1752864
+			taurus/BTRO01/BTRO01.calls.cnvs.bed     1303    64260347        49317.2271680737        127663.519768815        14750   998     1755316
+			taurus/BTRO04/BTRO04.calls.cnvs.bed     1528    71023870        46481.5903141361        125982.181286767        13572.5 998     1754864
+			taurus/BTRO05/BTRO05.calls.cnvs.bed     1447    68348896        47234.8970283345        121046.436500509        13998   1007    1754864
+			taurus/BTRO06/BTRO06.calls.cnvs.bed     1470    69147835        47039.343537415 128863.849453947        13488   998     1757864
+			
+	# Oops! I also screwed up and used the wrong program!
+		Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+		$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO19 -I BTHO20 -I BTHO22 -I BTHO25 -I BTHO29 -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO48 -I BTHO49 -I BTHO50 -I BTHO51 -I BTHO52 -I BTHO53 -I BTHO54 -I BTHO56 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06
+			[DOC CTRL]Partitioned 1396965 control windows out of 2086766 for window: 0
+			[DOC CTRL]Partitioned 827271 control windows out of 2460607 for window: 1
+			[DOC CTRL]Partitioned 310860 control windows out of 1197860 for window: 2
+			
+			# Probably too few! I noticed that my control calculation still uses the stdev scale. I might have to revise that and rerun all of the data.
+			# I'll still go through with the calling
+		$ cd doc_oldschool/
+		$ for i in BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO29 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO48 BTHO49 BTHO50 BTHO51 BTHO52 BTHO53 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTLM9 BTRO01 BTRO04 BTRO05 BTRO06; do echo $i; mkdir ntaurus/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o ntaurus/$i/$i.calls -w 5000 -t 4 -p; done
+		$ for i in ntaurus/*/*.calls.cnvs.bed; do echo -n $i" "; done; echo
+		$ perl ~/bin/table_bed_length_sum.pl ntaurus/BTAN01/BTAN01.calls.cnvs.bed ntaurus/BTAN03/BTAN03.calls.cnvs.bed ntaurus/BTAN04/BTAN04.calls.cnvs.bed ntaurus/BTAN05/BTAN05.calls.cnvs.bed ntaurus/BTAN06/BTAN06.calls.cnvs.bed ntaurus/BTAN07/BTAN07.calls.cnvs.bed ntaurus/BTAN08/BTAN08.calls.cnvs.bed ntaurus/BTHO02/BTHO02.calls.cnvs.bed ntaurus/BTHO04/BTHO04.calls.cnvs.bed ntaurus/BTHO07/BTHO07.calls.cnvs.bed ntaurus/BTHO08/BTHO08.calls.cnvs.bed ntaurus/BTHO09/BTHO09.calls.cnvs.bed ntaurus/BTHO10/BTHO10.calls.cnvs.bed ntaurus/BTHO19/BTHO19.calls.cnvs.bed ntaurus/BTHO20/BTHO20.calls.cnvs.bed ntaurus/BTHO22/BTHO22.calls.cnvs.bed ntaurus/BTHO25/BTHO25.calls.cnvs.bed ntaurus/BTHO29/BTHO29.calls.cnvs.bed ntaurus/BTHO32/BTHO32.calls.cnvs.bed ntaurus/BTHO42/BTHO42.calls.cnvs.bed ntaurus/BTHO44/BTHO44.calls.cnvs.bed ntaurus/BTHO46/BTHO46.calls.cnvs.bed ntaurus/BTHO47/BTHO47.calls.cnvs.bed ntaurus/BTHO48/BTHO48.calls.cnvs.bed ntaurus/BTHO49/BTHO49.calls.cnvs.bed ntaurus/BTHO50/BTHO50.calls.cnvs.bed ntaurus/BTHO51/BTHO51.calls.cnvs.bed ntaurus/BTHO52/BTHO52.calls.cnvs.bed ntaurus/BTHO53/BTHO53.calls.cnvs.bed ntaurus/BTHO54/BTHO54.calls.cnvs.bed ntaurus/BTHO57/BTHO57.calls.cnvs.bed ntaurus/BTJE01/BTJE01.calls.cnvs.bed ntaurus/BTJE02/BTJE02.calls.cnvs.bed ntaurus/BTJE03/BTJE03.calls.cnvs.bed ntaurus/BTJE04/BTJE04.calls.cnvs.bed ntaurus/BTJE05/BTJE05.calls.cnvs.bed ntaurus/BTJE08/BTJE08.calls.cnvs.bed ntaurus/BTJE09/BTJE09.calls.cnvs.bed ntaurus/BTJE10/BTJE10.calls.cnvs.bed ntaurus/BTLM01/BTLM01.calls.cnvs.bed ntaurus/BTLM03/BTLM03.calls.cnvs.bed ntaurus/BTLM04/BTLM04.calls.cnvs.bed ntaurus/BTLM07/BTLM07.calls.cnvs.bed ntaurus/BTLM10/BTLM10.calls.cnvs.bed ntaurus/BTLM11/BTLM11.calls.cnvs.bed ntaurus/BTLM9/BTLM9.calls.cnvs.bed ntaurus/BTRO01/BTRO01.calls.cnvs.bed ntaurus/BTRO04/BTRO04.calls.cnvs.bed ntaurus/BTRO05/BTRO05.calls.cnvs.bed ntaurus/BTRO06/BTRO06.calls.cnvs.bed
+			FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+			ntaurus/BTAN01/BTAN01.calls.cnvs.bed    644     38127615        59204.3711180124        142101.9864596  17517   998     1544385
+			ntaurus/BTAN03/BTAN03.calls.cnvs.bed    725     41570079        57338.04        135706.593439705        17196   998     1459289
+			ntaurus/BTAN04/BTAN04.calls.cnvs.bed    677     39783633        58764.5982274741        125081.220484404        17642   998     1412821
+			ntaurus/BTAN05/BTAN05.calls.cnvs.bed    650     38905301        59854.3092307692        130576.582270546        17575   998     1483289
+			ntaurus/BTAN06/BTAN06.calls.cnvs.bed    514     32423841        63081.4027237354        147379.761091529        19837.5 998     1444611
+			ntaurus/BTAN07/BTAN07.calls.cnvs.bed    658     35895358        54552.2158054711        123815.340564031        15327   998     1459289
+			ntaurus/BTAN08/BTAN08.calls.cnvs.bed    627     35517549        56646.8086124402        131314.849697535        16334   998     1455853
+			ntaurus/BTHO02/BTHO02.calls.cnvs.bed    667     35972640        53931.9940029985        127818.863397532        15018   998     1445611
+			ntaurus/BTHO04/BTHO04.calls.cnvs.bed    436     19597975        44949.4839449541        96305.24491215  15118   1348    1160956
+			ntaurus/BTHO07/BTHO07.calls.cnvs.bed    549     34703474        63212.1566484517        142666.132237678        19998   998     1487289
+			ntaurus/BTHO08/BTHO08.calls.cnvs.bed    693     41130859        59351.8888888889        136913.200157493        17424   998     1459289
+			ntaurus/BTHO09/BTHO09.calls.cnvs.bed    617     35975761        58307.5542949757        131042.73817143 17998   998     1412821
+			ntaurus/BTHO10/BTHO10.calls.cnvs.bed    584     33280880        56987.8082191781        122523.605406673        18075   998     1400821
+			ntaurus/BTHO19/BTHO19.calls.cnvs.bed    1345    24808543        18445.0133828996        40438.6423389426        12998   998     1159861
+			ntaurus/BTHO20/BTHO20.calls.cnvs.bed    587     36074806        61456.2282793867        136754.204961965        18023   998     1400821
+			ntaurus/BTHO22/BTHO22.calls.cnvs.bed    513     30472478        59400.5419103314        138339.934782324        18998   998     1448611
+			ntaurus/BTHO25/BTHO25.calls.cnvs.bed    518     31575987        60957.5038610039        139233.093809869        18232.5 998     1399821
+			ntaurus/BTHO29/BTHO29.calls.cnvs.bed    3492    67963916        19462.7479954181        36086.9155578983        10621.5 998     1159861
+			ntaurus/BTHO32/BTHO32.calls.cnvs.bed    458     22509796        49148.0262008734        106355.328486211        15260.5 998     1266571
+			ntaurus/BTHO42/BTHO42.calls.cnvs.bed    558     32619789        58458.4032258065        128813.120027083        17302   998     1412821
+			ntaurus/BTHO44/BTHO44.calls.cnvs.bed    559     31428571        56222.8461538462        126587.160478807        15998   998     1412821
+			ntaurus/BTHO46/BTHO46.calls.cnvs.bed    617     34785087        56377.7747163695        131218.871461378        17998   998     1431611
+			ntaurus/BTHO47/BTHO47.calls.cnvs.bed    647     37954299        58661.9768160742        133553.429985926        17998   998     1460289
+			ntaurus/BTHO48/BTHO48.calls.cnvs.bed    3362    78767237        23428.6844140393        39219.5122540353        14992   998     1160956
+			ntaurus/BTHO49/BTHO49.calls.cnvs.bed    931     29711719        31913.7690655209        73196.8148819236        14850   1242    1160956
+			ntaurus/BTHO50/BTHO50.calls.cnvs.bed    1986    49377074        24862.5750251762        50959.4648132813        14743.5 998     1160956
+			ntaurus/BTHO51/BTHO51.calls.cnvs.bed    603     38286706        63493.7081260365        138378.688713655        18598   998     1459289
+			ntaurus/BTHO52/BTHO52.calls.cnvs.bed    522     33041598        63298.0804597701        151380.214807592        17991.5 998     1459289
+			ntaurus/BTHO53/BTHO53.calls.cnvs.bed    3081    65023506        21104.6757546251        38499.3084950148        13396   998     1160956
+			ntaurus/BTHO54/BTHO54.calls.cnvs.bed    388     18308302        47186.3453608247        102472.325729545        16222   998     1160956
+			ntaurus/BTHO57/BTHO57.calls.cnvs.bed    488     28497675        58396.875       127300.502188923        18060   998     1385908
+			ntaurus/BTJE01/BTJE01.calls.cnvs.bed    518     31691012        61179.5598455598        136938.923897974        20629.5 998     1399821
+			ntaurus/BTJE02/BTJE02.calls.cnvs.bed    602     38376431        63748.2242524917        140645.948928286        17991   998     1412821
+			ntaurus/BTJE03/BTJE03.calls.cnvs.bed    601     36601453        60900.9201331115        140858.861886276        17098   998     1459289
+			ntaurus/BTJE04/BTJE04.calls.cnvs.bed    526     31959129        60758.8003802281        133133.650890586        18473   998     1412821
+			ntaurus/BTJE05/BTJE05.calls.cnvs.bed    550     22453770        40825.0363636364        92962.3697293918        16960.5 998     1266571
+			ntaurus/BTJE08/BTJE08.calls.cnvs.bed    647     39161447        60527.7387944359        143645.085960344        16842   998     1483289
+			ntaurus/BTJE09/BTJE09.calls.cnvs.bed    578     36785657        63643.0051903114        147967.451732218        18335.5 998     1448611
+			ntaurus/BTJE10/BTJE10.calls.cnvs.bed    540     33942527        62856.5314814815        143642.226737838        17451.5 1066    1400821
+			ntaurus/BTLM01/BTLM01.calls.cnvs.bed    590     39199770        66440.2881355932        168844.25265759 19017   998     1984689
+			ntaurus/BTLM03/BTLM03.calls.cnvs.bed    607     36154341        59562.3410214168        129925.611357069        17123   998     1412821
+			ntaurus/BTLM04/BTLM04.calls.cnvs.bed    546     36417438        66698.6043956044        163121.957826064        18719.5 1361    1984689
+			ntaurus/BTLM07/BTLM07.calls.cnvs.bed    649     41032075        63223.5362095532        153531.735722886        16998   998     1544385
+			ntaurus/BTLM10/BTLM10.calls.cnvs.bed    580     35525489        61250.8431034483        142532.027447619        17367   998     1400821
+			ntaurus/BTLM11/BTLM11.calls.cnvs.bed    677     38799781        57311.3456425406        139691.984612565        15998   998     1456853
+			ntaurus/BTLM9/BTLM9.calls.cnvs.bed      574     36520863        63625.1968641115        151105.285199161        17072   998     1459289
+			ntaurus/BTRO01/BTRO01.calls.cnvs.bed    652     38833371        59560.3849693252        132710.601849033        16124   998     1483289
+			ntaurus/BTRO04/BTRO04.calls.cnvs.bed    698     39652957        56809.393982808 128504.062274047        16454   998     1459289
+			ntaurus/BTRO05/BTRO05.calls.cnvs.bed    666     38495385        57800.8783783784        126967.918833044        16402.5 998     1459289
+			ntaurus/BTRO06/BTRO06.calls.cnvs.bed    689     39859797        57851.6647314949        132400.695259234        15966   998     1412821
+
+	$ cat ntaurus/BTAN01/BTAN01.calls.cnvs.bed ntaurus/BTAN03/BTAN03.calls.cnvs.bed ntaurus/BTAN04/BTAN04.calls.cnvs.bed ntaurus/BTAN05/BTAN05.calls.cnvs.bed ntaurus/BTAN06/BTAN06.calls.cnvs.bed ntaurus/BTAN07/BTAN07.calls.cnvs.bed ntaurus/BTAN08/BTAN08.calls.cnvs.bed ntaurus/BTHO02/BTHO02.calls.cnvs.bed ntaurus/BTHO04/BTHO04.calls.cnvs.bed ntaurus/BTHO07/BTHO07.calls.cnvs.bed ntaurus/BTHO08/BTHO08.calls.cnvs.bed ntaurus/BTHO09/BTHO09.calls.cnvs.bed ntaurus/BTHO10/BTHO10.calls.cnvs.bed ntaurus/BTHO19/BTHO19.calls.cnvs.bed ntaurus/BTHO20/BTHO20.calls.cnvs.bed ntaurus/BTHO22/BTHO22.calls.cnvs.bed ntaurus/BTHO25/BTHO25.calls.cnvs.bed ntaurus/BTHO29/BTHO29.calls.cnvs.bed ntaurus/BTHO32/BTHO32.calls.cnvs.bed ntaurus/BTHO42/BTHO42.calls.cnvs.bed ntaurus/BTHO44/BTHO44.calls.cnvs.bed ntaurus/BTHO46/BTHO46.calls.cnvs.bed ntaurus/BTHO47/BTHO47.calls.cnvs.bed ntaurus/BTHO48/BTHO48.calls.cnvs.bed ntaurus/BTHO49/BTHO49.calls.cnvs.bed ntaurus/BTHO50/BTHO50.calls.cnvs.bed ntaurus/BTHO51/BTHO51.calls.cnvs.bed ntaurus/BTHO52/BTHO52.calls.cnvs.bed ntaurus/BTHO53/BTHO53.calls.cnvs.bed ntaurus/BTHO54/BTHO54.calls.cnvs.bed ntaurus/BTHO57/BTHO57.calls.cnvs.bed ntaurus/BTJE01/BTJE01.calls.cnvs.bed ntaurus/BTJE02/BTJE02.calls.cnvs.bed ntaurus/BTJE03/BTJE03.calls.cnvs.bed ntaurus/BTJE04/BTJE04.calls.cnvs.bed ntaurus/BTJE05/BTJE05.calls.cnvs.bed ntaurus/BTJE08/BTJE08.calls.cnvs.bed ntaurus/BTJE09/BTJE09.calls.cnvs.bed ntaurus/BTJE10/BTJE10.calls.cnvs.bed ntaurus/BTLM01/BTLM01.calls.cnvs.bed ntaurus/BTLM03/BTLM03.calls.cnvs.bed ntaurus/BTLM04/BTLM04.calls.cnvs.bed ntaurus/BTLM07/BTLM07.calls.cnvs.bed ntaurus/BTLM10/BTLM10.calls.cnvs.bed ntaurus/BTLM11/BTLM11.calls.cnvs.bed ntaurus/BTLM9/BTLM9.calls.cnvs.bed ntaurus/BTRO01/BTRO01.calls.cnvs.bed ntaurus/BTRO04/BTRO04.calls.cnvs.bed ntaurus/BTRO05/BTRO05.calls.cnvs.bed ntaurus/BTRO06/BTRO06.calls.cnvs.bed | sortBedFileSTDIN.pl | mergeBed -i stdin | bed_length_sum.pl
+	        Interval Numbers:       7532	<- This is actually not unreasonable
+	        Total Length:           196,224,532	<- Neither is this
+	        Length Average:         26052.1152416357
+	        Length Median:          22038.5
+        	Length Stdev:           75843.3197480446
+        $ perl ~/bin/table_bed_length_sum.pl ntaurus/BTAN01/BTAN01.calls.cnvs.bed ntaurus/BTAN03/BTAN03.calls.cnvs.bed ntaurus/BTAN04/BTAN04.calls.cnvs.bed ntaurus/BTAN05/BTAN05.calls.cnvs.bed ntaurus/BTAN06/BTAN06.calls.cnvs.bed ntaurus/BTAN07/BTAN07.calls.cnvs.bed ntaurus/BTAN08/BTAN08.calls.cnvs.bed ntaurus/BTHO02/BTHO02.calls.cnvs.bed ntaurus/BTHO04/BTHO04.calls.cnvs.bed ntaurus/BTHO07/BTHO07.calls.cnvs.bed ntaurus/BTHO08/BTHO08.calls.cnvs.bed ntaurus/BTHO09/BTHO09.calls.cnvs.bed ntaurus/BTHO10/BTHO10.calls.cnvs.bed ntaurus/BTHO19/BTHO19.calls.cnvs.bed ntaurus/BTHO20/BTHO20.calls.cnvs.bed ntaurus/BTHO22/BTHO22.calls.cnvs.bed ntaurus/BTHO25/BTHO25.calls.cnvs.bed ntaurus/BTHO29/BTHO29.calls.cnvs.bed ntaurus/BTHO32/BTHO32.calls.cnvs.bed ntaurus/BTHO42/BTHO42.calls.cnvs.bed ntaurus/BTHO44/BTHO44.calls.cnvs.bed ntaurus/BTHO46/BTHO46.calls.cnvs.bed ntaurus/BTHO47/BTHO47.calls.cnvs.bed ntaurus/BTHO48/BTHO48.calls.cnvs.bed ntaurus/BTHO49/BTHO49.calls.cnvs.bed ntaurus/BTHO50/BTHO50.calls.cnvs.bed ntaurus/BTHO51/BTHO51.calls.cnvs.bed ntaurus/BTHO52/BTHO52.calls.cnvs.bed ntaurus/BTHO53/BTHO53.calls.cnvs.bed ntaurus/BTHO54/BTHO54.calls.cnvs.bed ntaurus/BTHO57/BTHO57.calls.cnvs.bed ntaurus/BTJE01/BTJE01.calls.cnvs.bed ntaurus/BTJE02/BTJE02.calls.cnvs.bed ntaurus/BTJE03/BTJE03.calls.cnvs.bed ntaurus/BTJE04/BTJE04.calls.cnvs.bed ntaurus/BTJE05/BTJE05.calls.cnvs.bed ntaurus/BTJE08/BTJE08.calls.cnvs.bed ntaurus/BTJE09/BTJE09.calls.cnvs.bed ntaurus/BTJE10/BTJE10.calls.cnvs.bed ntaurus/BTLM01/BTLM01.calls.cnvs.bed ntaurus/BTLM03/BTLM03.calls.cnvs.bed ntaurus/BTLM04/BTLM04.calls.cnvs.bed ntaurus/BTLM07/BTLM07.calls.cnvs.bed ntaurus/BTLM10/BTLM10.calls.cnvs.bed ntaurus/BTLM11/BTLM11.calls.cnvs.bed ntaurus/BTLM9/BTLM9.calls.cnvs.bed ntaurus/BTRO01/BTRO01.calls.cnvs.bed ntaurus/BTRO04/BTRO04.calls.cnvs.bed ntaurus/BTRO05/BTRO05.calls.cnvs.bed ntaurus/BTRO06/BTRO06.calls.cnvs.bed | perl -e 'while(<>){@s = split(/\t/); $t += $s[2];} print "$t\n";'
+		1,845,554,747
+
+	# OK, let's change up the control window selection of my program to use 7 * the average for the upper end window selection
+	$ ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I BTAN01 -I BTAN03 -I BTAN04 -I BTAN05 -I BTAN06 -I BTAN07 -I BTAN08 -I BTHO02 -I BTHO04 -I BTHO07 -I BTHO08 -I BTHO09 -I BTHO10 -I BTHO19 -I BTHO20 -I BTHO22 -I BTHO25 -I BTHO29 -I BTHO32 -I BTHO42 -I BTHO44 -I BTHO46 -I BTHO47 -I BTHO48 -I BTHO49 -I BTHO50 -I BTHO51 -I BTHO52 -I BTHO53 -I BTHO54 -I BTHO56 -I BTHO57 -I BTJE01 -I BTJE02 -I BTJE03 -I BTJE04 -I BTJE05 -I BTJE08 -I BTJE09 -I BTJE10 -I BTLM01 -I BTLM03 -I BTLM04 -I BTLM07 -I BTLM10 -I BTLM11 -I BTLM9 -I BTRO01 -I BTRO04 -I BTRO05 -I BTRO06
+		[DOC CTRL]Partitioned 1422875 control windows out of 2086766 for window: 0
+		[DOC CTRL]Partitioned 860526 control windows out of 2460607 for window: 1
+		[DOC CTRL]Partitioned 321165 control windows out of 1197860 for window: 2
+		
+	$ cd doc_oldschool/
+	$ for i in BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO29 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO48 BTHO49 BTHO50 BTHO51 BTHO52 BTHO53 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTLM9 BTRO01 BTRO04 BTRO05 BTRO06; do echo $i; mkdir otaurus/$i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o otaurus/$i/$i.calls -w 5000 -t 4 -p; done
+	$ perl ~/bin/table_bed_length_sum.pl otaurus/BTAN01/BTAN01.calls.cnvs.bed otaurus/BTAN03/BTAN03.calls.cnvs.bed otaurus/BTAN04/BTAN04.calls.cnvs.bed otaurus/BTAN05/BTAN05.calls.cnvs.bed otaurus/BTAN06/BTAN06.calls.cnvs.bed otaurus/BTAN07/BTAN07.calls.cnvs.bed otaurus/BTAN08/BTAN08.calls.cnvs.bed otaurus/BTHO02/BTHO02.calls.cnvs.bed otaurus/BTHO04/BTHO04.calls.cnvs.bed otaurus/BTHO07/BTHO07.calls.cnvs.bed otaurus/BTHO08/BTHO08.calls.cnvs.bed otaurus/BTHO09/BTHO09.calls.cnvs.bed otaurus/BTHO10/BTHO10.calls.cnvs.bed otaurus/BTHO19/BTHO19.calls.cnvs.bed otaurus/BTHO20/BTHO20.calls.cnvs.bed otaurus/BTHO22/BTHO22.calls.cnvs.bed otaurus/BTHO25/BTHO25.calls.cnvs.bed otaurus/BTHO29/BTHO29.calls.cnvs.bed otaurus/BTHO32/BTHO32.calls.cnvs.bed otaurus/BTHO42/BTHO42.calls.cnvs.bed otaurus/BTHO44/BTHO44.calls.cnvs.bed otaurus/BTHO46/BTHO46.calls.cnvs.bed otaurus/BTHO47/BTHO47.calls.cnvs.bed otaurus/BTHO48/BTHO48.calls.cnvs.bed otaurus/BTHO49/BTHO49.calls.cnvs.bed otaurus/BTHO50/BTHO50.calls.cnvs.bed otaurus/BTHO51/BTHO51.calls.cnvs.bed otaurus/BTHO52/BTHO52.calls.cnvs.bed otaurus/BTHO53/BTHO53.calls.cnvs.bed otaurus/BTHO54/BTHO54.calls.cnvs.bed otaurus/BTHO57/BTHO57.calls.cnvs.bed otaurus/BTJE01/BTJE01.calls.cnvs.bed otaurus/BTJE02/BTJE02.calls.cnvs.bed otaurus/BTJE03/BTJE03.calls.cnvs.bed otaurus/BTJE04/BTJE04.calls.cnvs.bed otaurus/BTJE05/BTJE05.calls.cnvs.bed otaurus/BTJE08/BTJE08.calls.cnvs.bed otaurus/BTJE09/BTJE09.calls.cnvs.bed otaurus/BTJE10/BTJE10.calls.cnvs.bed otaurus/BTLM01/BTLM01.calls.cnvs.bed otaurus/BTLM03/BTLM03.calls.cnvs.bed otaurus/BTLM04/BTLM04.calls.cnvs.bed otaurus/BTLM07/BTLM07.calls.cnvs.bed otaurus/BTLM10/BTLM10.calls.cnvs.bed otaurus/BTLM11/BTLM11.calls.cnvs.bed otaurus/BTLM9/BTLM9.calls.cnvs.bed otaurus/BTRO01/BTRO01.calls.cnvs.bed otaurus/BTRO04/BTRO04.calls.cnvs.bed otaurus/BTRO05/BTRO05.calls.cnvs.bed otaurus/BTRO06/BTRO06.calls.cnvs.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		otaurus/BTAN01/BTAN01.calls.cnvs.bed    508     32234288        63453.3228346457        153181.738512946        18850.5 998     1544385
+		otaurus/BTAN03/BTAN03.calls.cnvs.bed    537     34642705        64511.5549348231        147029.734247984        20074   998     1459289
+		otaurus/BTAN04/BTAN04.calls.cnvs.bed    520     31988960        61517.2307692308        127383.135810831        20923.5 998     1412821
+		otaurus/BTAN05/BTAN05.calls.cnvs.bed    514     31985762        62229.1089494163        134715.037738318        18998   998     1412821
+		otaurus/BTAN06/BTAN06.calls.cnvs.bed    426     28613228        67167.2018779343        156986.737941874        19745   998     1444611
+		otaurus/BTAN07/BTAN07.calls.cnvs.bed    505     30576254        60547.0376237624        133943.749945084        18998   998     1412821
+		otaurus/BTAN08/BTAN08.calls.cnvs.bed    504     30505283        60526.3551587302        138989.184231879        17583.5 998     1455853
+		otaurus/BTHO02/BTHO02.calls.cnvs.bed    540     30717859        56884.9240740741        136153.306118983        17617   998     1444611
+		otaurus/BTHO04/BTHO04.calls.cnvs.bed    339     17127549        50523.7433628319        106692.167474096        15168   998     1160956
+		otaurus/BTHO07/BTHO07.calls.cnvs.bed    459     31039043        67623.1873638344        151554.298863131        20450   998     1459289
+		otaurus/BTHO08/BTHO08.calls.cnvs.bed    541     34052401        62943.4399260628        136632.183793754        18586   998     1412821
+		otaurus/BTHO09/BTHO09.calls.cnvs.bed    485     31409421        64761.6927835052        142548.490145238        19140   998     1412821
+		otaurus/BTHO10/BTHO10.calls.cnvs.bed    495     29181892        58953.3171717172        128107.98158887 19467   998     1399821
+		otaurus/BTHO19/BTHO19.calls.cnvs.bed    847     15840409        18701.7815820543        49447.5705736359        11007   998     1159861
+		otaurus/BTHO20/BTHO20.calls.cnvs.bed    502     32480560        64702.3107569721        141336.038643924        18109   998     1399821
+		otaurus/BTHO22/BTHO22.calls.cnvs.bed    448     26909017        60064.7700892857        143826.470866722        17339   998     1447611
+		otaurus/BTHO25/BTHO25.calls.cnvs.bed    440     28871909        65617.975       142836.288369864        20557.5 998     1385908
+		otaurus/BTHO29/BTHO29.calls.cnvs.bed    4050    78071485        19276.9098765432        35206.6117118737        9717.5  998     1159861
+		otaurus/BTHO32/BTHO32.calls.cnvs.bed    376     20089679        53429.9973404255        115093.792907468        15878.5 998     1266571
+		otaurus/BTHO42/BTHO42.calls.cnvs.bed    450     28239786        62755.08        137417.202104226        17104.5 998     1412821
+		otaurus/BTHO44/BTHO44.calls.cnvs.bed    462     26890996        58205.619047619 130704.926286968        16635.5 998     1412821
+		otaurus/BTHO46/BTHO46.calls.cnvs.bed    501     30591610        61061.0978043912        139196.504495755        20297   998     1431611
+		otaurus/BTHO47/BTHO47.calls.cnvs.bed    494     31954184        64684.5829959514        147208.74054279 19043.5 998     1448611
+		otaurus/BTHO48/BTHO48.calls.cnvs.bed    3676    84751473        23055.3517410229        36417.6187988641        14799.5 998     1160956
+		otaurus/BTHO49/BTHO49.calls.cnvs.bed    1095    32199298        29405.7515981735        65038.5019691511        15063   1313    1160956
+		otaurus/BTHO50/BTHO50.calls.cnvs.bed    2245    53510121        23835.243207127 47613.0274108034        14669   998     1160956
+		otaurus/BTHO51/BTHO51.calls.cnvs.bed    489     32998236        67481.0552147239        143997.270938903        20368   998     1412821
+		otaurus/BTHO52/BTHO52.calls.cnvs.bed    432     28614128        66236.4074074074        154581.546886161        17881.5 998     1446611
+		otaurus/BTHO53/BTHO53.calls.cnvs.bed    3160    69021684        21842.3050632911        37892.9389465329        13922   998     1160956
+		otaurus/BTHO54/BTHO54.calls.cnvs.bed    351     16803049        47871.9344729345        106663.14614259 15378   1154    1160956
+		otaurus/BTHO57/BTHO57.calls.cnvs.bed    427     25562458        59865.2412177986        123551.905843287        20700   998     1266571
+		otaurus/BTJE01/BTJE01.calls.cnvs.bed    451     28290986        62729.4589800443        143145.366863196        20998   998     1390821
+		otaurus/BTJE02/BTJE02.calls.cnvs.bed    502     33132425        66000.8466135458        145854.291329851        19155   998     1412821
+		otaurus/BTJE03/BTJE03.calls.cnvs.bed    474     31669164        66812.582278481 152040.57505888 19354   998     1448611
+		otaurus/BTJE04/BTJE04.calls.cnvs.bed    449     28232419        62878.438752784 136996.817729745        19202   998     1412821
+		otaurus/BTJE05/BTJE05.calls.cnvs.bed    482     20193651        41895.5414937759        97538.5294832908        16616   998     1266571
+		otaurus/BTJE08/BTJE08.calls.cnvs.bed    512     32750230        63965.29296875  147441.249564803        18022.5 998     1447611
+		otaurus/BTJE09/BTJE09.calls.cnvs.bed    477     31482926        66001.9412997904        150027.352936247        19998   998     1447611
+		otaurus/BTJE10/BTJE10.calls.cnvs.bed    446     30571918        68546.9013452915        151084.74687516 17527.5 1440    1399821
+		otaurus/BTLM01/BTLM01.calls.cnvs.bed    459     32651228        71135.5729847495        172781.116459697        20569   998     1974689
+		otaurus/BTLM03/BTLM03.calls.cnvs.bed    492     31191702        63397.7682926829        135065.988513531        19017   998     1412821
+		otaurus/BTLM04/BTLM04.calls.cnvs.bed    439     32317186        73615.4578587699        171617.311159522        20400   1239    1973689
+		otaurus/BTLM07/BTLM07.calls.cnvs.bed    521     35018374        67213.7696737044        153210.077992466        17998   998     1444611
+		otaurus/BTLM10/BTLM10.calls.cnvs.bed    491     31667115        64495.1425661914        148194.696580074        18998   998     1389821
+		otaurus/BTLM11/BTLM11.calls.cnvs.bed    530     33491136        63190.8226415094        150974.051355075        17211.5 998     1446611
+		otaurus/BTLM9/BTLM9.calls.cnvs.bed      480     32091691        66857.6895833333        153627.346840704        19647   998     1444611
+		otaurus/BTRO01/BTRO01.calls.cnvs.bed    533     34123785        64022.1106941839        135551.162899491        18875   1242    1412821
+		otaurus/BTRO04/BTRO04.calls.cnvs.bed    544     33032800        60722.0588235294        133227.744133002        17146.5 998     1412821
+		otaurus/BTRO05/BTRO05.calls.cnvs.bed    533     33222163        62330.5121951219        130946.781846337        19353   998     1412821
+		otaurus/BTRO06/BTRO06.calls.cnvs.bed    539     33938383        62965.4601113173        135868.990206741        18998   998     1412821
+		
+	# I think that this damaged the performance, actually. I will stick with the old 5 * and 5 / criteria for the averages
+	# I will use the ntaurus folder for future analysis
+	
+	# Now to compare against the REALLY old-school, hand-rolled control window design.
+	# Creating control windows from my old umd3 test:
+		Blade14: /mnt/iscsi/vnx_gliu_7/Umd3_windows
+		$ intersectBed -a umd3_gc_file1.bed -b btan02_hits_final_sub_file1_control_rmask.bed -wa | uniq > umd3_gc_file1_control.bed
+		$ intersectBed -a umd3_gc_file3.bed -b btan02_hits_final_sub_file3_control_rmask.bed -wa | uniq > umd3_gc_file3_control.bed
+
+		# Now to run them in my window generation program to test them against the previous windows.
+		# To avoid the potential for any population cross-over, I am going to run the command on each individual animal separately
+		
+		Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+		$ for i in BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO29 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO48 BTHO49 BTHO50 BTHO51 BTHO52 BTHO53 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTLM9 BTRO01 BTRO04 BTRO05 BTRO06; do echo $i; ~/jdk1.7.0/bin/java -Xmx90g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.mrsfast.bam' -O doc_oldoldschool -R ~/reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -g ~/reference/gms/gms_simplified_list.txt -bl ../reference/umd3_assembly_blacklist.bed -ng -rl 50 -I $i -f1 ../Umd3_windows/umd3_gc_file1.bed -f2 ../Umd3_windows/umd3_gc_file2.bed -f3 ../Umd3_windows/umd3_gc_file3.bed -f1c ../Umd3_windows/umd3_gc_file1_control.bed -f3c ../Umd3_windows/umd3_gc_file3_control.bed; done
+
+
+# Lewis cluster
+	$ bsub -J pop_doc_calls -oo pop_doc_calls.stdout.out -n 10 -R 'rusage[mem=20000] span[hosts=1]' /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -Xmx19g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.sorted.bam' -O old_school_doc -R /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -n10 -w 5000 -g /ibfs7/asg2/bickhartd/reference/gms/fake_gms_list.txt -ng -rl 50 -bl /ibfs7/asg2/bickhartd/reference/umd3_assembly_blacklist.bed -I AN0219 -I AN0342 -I AN0447 -I AN0458 -I AN0544 -I AN0626 -I AN0728 -I AN0828 -I AN1717 -I AN1776 -I AN4517
+	$ for i in AN0219 AN0342 AN0447 AN0458 AN0544 AN0626 AN0728 AN0828 AN1717 AN1776 AN4517; do echo $i; mkdir $i; bsub -J $i -oo $i.stdout.out -R 'rusage[mem=4000] span[hosts=1]' -n 4 "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -Xmx3500m -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o $i/$i.calls -w 5000 -t 3 -p"; done
+	$ bsub -J stats -oo bedstats.stdout.out perl ~/bin/table_bed_length_sum.pl AN0219/AN0219.calls.cnvs.bed AN0342/AN0342.calls.cnvs.bed AN0447/AN0447.calls.cnvs.bed AN0458/AN0458.calls.cnvs.bed AN0544/AN0544.calls.cnvs.bed AN0626/AN0626.calls.cnvs.bed AN0728/AN0728.calls.cnvs.bed AN0828/AN0828.calls.cnvs.bed AN1717/AN1717.calls.cnvs.bed AN1776/AN1776.calls.cnvs.bed AN4517/AN4517.calls.cnvs.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		AN0219/AN0219.calls.cnvs.bed    714     43081836        60338.7058823529        141882.263099263        19142.5 998     1544659
+		AN0342/AN0342.calls.cnvs.bed    768     46253004        60225.265625    140963.396460322        17888.5 998     1583659
+		AN0447/AN0447.calls.cnvs.bed    723     41270378        57082.1272475795        131552.349903454        19146   998     1583659
+		AN0458/AN0458.calls.cnvs.bed    780     46276720        59329.1282051282        138884.034865613        20029.5 998     1583659
+		AN0544/AN0544.calls.cnvs.bed    737     45885678        62260.078697422 141487.321184704        18998   998     1459865
+		AN0626/AN0626.calls.cnvs.bed    732     44294096        60511.0601092896        139823.717983918        18998   998     1459865
+		AN0728/AN0728.calls.cnvs.bed    761     47314854        62174.5781865966        142201.273129636        21390   998     1459865
+		AN0828/AN0828.calls.cnvs.bed    729     43960188        60302.0411522634        148290.275372181        18998   998     1634659
+		AN1717/AN1717.calls.cnvs.bed    749     45052273        60149.8971962617        140075.531499326        19456   998     1593659
+		AN1776/AN1776.calls.cnvs.bed    758     42875814        56564.3984168865        124097.610434811        18681.5 998     1583659
+		AN4517/AN4517.calls.cnvs.bed    797     46303541        58097.2910915935        128312.103248215        18950   998     1583659
+	
+# POD
+	$ ~/jdk1.7.0/bin/java -Xmx19g -jar ~/bin/GeneratePopulationDocFragWindows.jar -S '*.sorted.bam' -O doc_data -R ../reference/umd3_kary_nmask_hgap.fa -n10 -w 5000 -g ../reference/gmslist.txt -ng -rl 50 -bl ../reference/umd3_assembly_blacklist.bed -I chairman -I chief -I elevation -I ivanhoe -I starbuck
+	$ for i in chairman chief elevation ivanhoe starbuck; do echo $i; mkdir $i; ~/jdk1.7.0/bin/java -Xmx5g -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o $i/$i.calls -t 5 -p -w 5000; done
+	$ perl ~/bin/table_bed_length_sum.pl chairman/chairman.calls.cnvs.bed chief/chief.calls.cnvs.bed elevation/elevation.calls.cnvs.bed ivanhoe/ivanhoe.calls.cnvs.bed starbuck/starbuck.calls.cnvs.bed
+		FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+		chairman/chairman.calls.cnvs.bed        581     33795806        58168.3407917384        139732.009460872        17761   1028    1443517
+		chief/chief.calls.cnvs.bed      641     41900809        65367.8767550702        154553.317988092        18089   998     1458865
+		elevation/elevation.calls.cnvs.bed      496     29999988        60483.8467741935        137790.752630679        21074.5 1028    1413156
+		ivanhoe/ivanhoe.calls.cnvs.bed  757     31927032        42175.7357992074        113332.675542766        14039   998     1389156
+		starbuck/starbuck.calls.cnvs.bed        630     40543006        64353.9777777778        151763.412150758        18985.5 1122    1466127
+_______________________________
+ACGH comparison and validation
+_______________________________
+
+# I need to get the CGH segments and do a comparison with my existing indicus results
+# I wrote a script to process the segment files and to create a CNV list
+
+pwd: /home/dbickhart/share/100_bulls_project
+$ perl -lane '%h = ("hol" => "BTHO", "ang" => "BTAN", "jer" => "BTJE", "lim" => "BTLM", "bra" => "BIBR", "nel" => "BINE", "ho" => "BTHO", "br" => "BIBR", "an" => "BTAN", "je" => "BTJE", "lm" => "BTLM", "ne" => "BINE"); if($F[1] =~ /^(\D{3})(\d{2})$/){ $t = $h{lc($1)}; $F[1] = "$t$2";}elsif($F[1] =~ /^(\D{2})(\d{2})$/){ $t = $h{lc($1)}; $F[1] = "$t$2";} print "\"$F[0]\" => \"$F[1]\",";' < acgh_table.txt
+
+$ for i in `ls acgh/28379/segMNT_segtable/*_12000bp_*`; do perl acgh_associate_cnvs.pl $i; done | sortBedFileSTDIN.pl | perl -lane 'if($F[2] - $F[1] > 1000000){next;}else{print $_;}' | bed_length_sum.pl 
+	Interval Numbers:	4039
+	Total Length:		335126813
+	Length Average:		82972.719237435
+	Length Median:		36000
+	Length Stdev:		138586.009935243
+	Smallest Length:	6651
+	Largest Length:		972000
+	
+$ for i in `ls acgh/28379/segMNT_segtable/*_12000bp_*`; do perl acgh_associate_cnvs.pl $i; done | sortBedFileSTDIN.pl | perl -lane 'if($F[2] - $F[1] > 1000000){next;}else{print $_;}' > acgh/28379/28379_individual_cnvs_list.bed
+
+$ grep BIBR acgh/28379/28379_individual_cnvs_list.bed | mergeBed -i stdin | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tacgh_bibr";' > ACGHBIBR_cnv.bed
+
+$ cat ACGHBIBR_cnv.bed | bed_length_sum.pl 
+	Interval Numbers:	225
+	Total Length:		23826235
+	Length Average:		105894.377777778
+	Length Median:		36000
+	Length Stdev:		190811.674589707
+	Smallest Length:	6651
+	Largest Length:		1656000
+	
+# Now to prepare my cnv calls
+$ cat popdoc/BIBR*.calls.cnvs.bed | mergeBed -i stdin | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tdoc_bibr";' > DOCBIBR_cnv.bed
+$ cat DOCBIBR_cnv.bed | bed_length_sum.pl 
+	Interval Numbers:	8744
+	Total Length:		708574184
+	Length Average:		81035.4739249771
+	Length Median:		32515.5
+	Length Stdev:		195858.11066813
+	Smallest Length:	1374
+	Largest Length:		4853673
+	
+# OK, that's way too much. Let's try it with just the autosomes
+$ perl -lane 'if($F[0] ne "chrX"){print $_;}' < DOCBIBR_cnv.bed | bed_length_sum.pl 
+	Interval Numbers:	4109
+	Total Length:		205809115
+	Length Average:		50087.3971769287
+	Length Median:		21999
+	Length Stdev:		110258.238810989
+	Smallest Length:	1374
+	Largest Length:		1459290
+	
+# Better, but not perfect. About 10% of the genome.
+
+# OK, so I have to prepare only the autosomes for this comparison.
+$ perl -lane 'if($F[0] ne "chrX"){print $_;}' < ACGHBIBR_cnv.bed > ACGHBIBR_autosomes_cnv.bed
+$ perl -lane 'if($F[0] ne "chrX"){print $_;}' < DOCBIBR_cnv.bed > DOCBIBR_autosomes_cnv.bed
+$ cat cnv_calls/mrsfast_doc/BIBR*.cnvs.bed | perl -lane 'if($F[0] ne "chrX"){print $_;}' | mergeBed -i stdin | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tindiv_bibr";' > INDIVBIBR_autosomes_cnv.bed
+
+# There is something really wrong with some of my holstein data. I think I found out the reason why
+# Here is the avg/stdev ratio for my animals:
+	$ for i in ../BTHO??; do e=`basename $i`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my ($avg, $std); while(<IN>){chomp; @s = split(/;/); if($_ =~ /auto;avg/){$avg = $s[2];}elsif($_ =~ /auto;std/){$std = $s[2];}} print "$ARGV[1]:\t" . ($avg / $std) . "\n";' Normalized.$e.file1.control.bed.stats $e ; done
+	BTHO02: 5.02501511630793
+	BTHO04: 2.53104011865444
+	BTHO07: 4.58628975629872
+	BTHO08: 4.73054779535656
+	BTHO09: 4.6907868437867
+	BTHO10: 5.60556458245348
+->	BTHO19: 1.2426537124118
+	BTHO20: 5.45315098724506
+	BTHO22: 5.10160611699795
+	BTHO25: 5.08177490265388
+->	BTHO29: 1.37578464216969
+	BTHO32: 3.22081092809718
+	BTHO42: 3.80831136437311
+	BTHO44: 3.70188107583651
+	BTHO46: 4.13493122022902
+	BTHO47: 4.2995269834412
+->	BTHO48: 1.61457088248232
+->	BTHO49: 2.15052650321039
+->	BTHO50: 1.89040834187206
+	BTHO51: 4.23960451187728
+	BTHO52: 4.16159920205534
+->	BTHO53: 1.60163218747799
+	BTHO54: 2.37869783648863
+->	BTHO56: 0.986264591377035
+	BTHO57: 4.70840623603968
+	
+__________________________
+CNVnator Work
+__________________________
+# Converting it into a format that I can use:
+	pwd: /home/dbickhart/share/100_bulls_project/cnv_calls/cnvnator
+	$ for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09 BIGI01 BIGI02 BIGI05 BIGI06 BIGI07 BIGI08 BINE01 BINE04 BINE07 BINE09 BINE10 BINE12 BINE13 BINE23 BTAN01 BTAN03 BTAN04 BTAN05 BTAN06 BTAN07 BTAN08 BTHO02 BTHO04 BTHO07 BTHO08 BTHO09 BTHO10 BTHO19 BTHO20 BTHO22 BTHO25 BTHO32 BTHO42 BTHO44 BTHO46 BTHO47 BTHO51 BTHO52 BTHO54 BTHO56 BTHO57 BTJE01 BTJE02 BTJE03 BTJE04 BTJE05 BTJE07 BTJE08 BTJE09 BTJE10 BTLM01 BTLM03 BTLM04 BTLM07 BTLM10 BTLM11 BTRO01 BTRO04 BTRO05 BTRO06; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); ($c, $t, $e) = $s[1] =~ /(chr.+):(\d+)-(\d+)/; $v = substr($s[0], 0, 3); print "$c\t$t\t$e\t$ARGV[1]:$v\n";}' $i.cnvnator.calls $i | intersectBed -a stdin -b ../../../umd3_data/gap.bed -v -wa; done | sortBedFileSTDIN.pl | mergeBed -i stdin -nms > cnvnator_cnvrs_named.bed
+	

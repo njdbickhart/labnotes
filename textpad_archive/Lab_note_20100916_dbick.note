@@ -1,0 +1,187 @@
+2010_09_16
+_______________________________________________
+Running MrFast
+_______________________________________________
+
+#First things first: determine if the UMD3.1 assembly of B_tau is similar to the UMD3 assembly that George has
+
+	#How to accomplish this: 
+		1. Download fastas locally
+	
+		2. Run Mummer on the old UMD3 fastas using my new UMD3.1 fastas as references
+	
+		3. Check resulting plots for inconsistencies
+	
+	#Locations of George's assemblies:
+		server2:/home/gliu/data10/cow4/cow4segdup/singleBAC (main directory)
+		Sub folders:
+			myUMD3
+			UMD3
+		
+	#Downloading both assemblies to my SharedFolders directory
+
+	#Mummer analysis
+		- I made an initial mistake: I tried to analyze the fastas using a package perl script with nucmer as the running program.
+	
+		- That was a mistake (using nucmer, that is) simply because nucmer was far too specific for these larger files.
+	
+		- I used Mummer instead, and found out that only one "MUM" location was being generated for each chromosome comparison. This means that they are identical.
+	
+#mrfast_automation.pl
+	- Uses a textfile derived from the directory information of the sequence reads in order to automate MrFast. Composition:
+		[0] The working directory of the sequence reads
+		[1] The filename of the first sequence read file
+		..
+		[n] The filename of the nth sequence read file
+		
+	- Also requires:
+		-The working directory of the index file
+		-Your output directory
+		
+	- Accepts files only in a .gz format (because the '--comp' flag is turned on)
+	
+	- Later iterations may use "forks" to parrallelize the analysis
+	
+	- Produces an outfile in the same directory called: mrfast_auto.log
+	
+	#For this run:
+		- Index location:
+			/mnt/gliu1_usb/B_tau_UMD_3.1/b_tau_umd.fa
+		
+		- Sequence file
+			seq_load.txt
+		
+		- Output directory:
+			/mnt/gliu1_usb/dbickhart/blackstar
+	
+		#Important note! Do not list the index file itself, rather, the fasta file that was indexed!
+	
+#There was a slight error with my perl script; I ran MrFast without the script today and I will try to optimize the script tomorrow. (error messages for (there are no read files) were being generated)
+
+
+2010_09_17
+#None of the reads mapped for my run last night! Now onto troubleshooting:
+
+	#Started a run using normal command line settings:
+		./mrfast --search /mnt/gliu1_usb/B_tau_UMD_3.1/b_tau_umd.fa --seq /mnt/gliu1_usb/blackstar/NGS/090220_HWI-EAS174_s_1_sequence.txt.gz --seqcomp -o /mnt/gliu1_usb/dbickhart/blackstar/090220_s_1_seq.sam
+
+		#Program started but then terminated with a "segmentation fault" error
+	
+		#Tried to output to the same directory, but still incurred a "segmentation fault"
+		./mrfast --search /mnt/gliu1_usb/B_tau_UMD_3.1/b_tau_umd.fa --seq /mnt/gliu1_usb/blackstar/NGS/090220_HWI-EAS174_s_1_sequence.txt.gz --seqcomp -o 090220_s_1_seq.sam
+
+		#Ran "make" to try to recompile the executables
+	
+	#Next I downgraded to mrfast-2.0.0.2 and ran the same command and still received a segmentation fault error.
+
+	#Something that worked:
+		./mrfast --search /mnt/gliu1_usb/B_tau_UMD_3.1/b_tau_umd.fa --seq /mnt/gliu1_usb/blackstar/NGS/090116_HWI-EAS174_s_1_sequence.txt
+	
+		-I had gunziped the sequence file before passing it to mrfast
+	
+		-I also used a different sequence file, so that might have done it too; I will have to check 090220_HWI-EAS174_s_1_sequence.txt to see if it is giving the segfaults
+	
+		#note: 090220_s_1 was the sequence that I used last night and it did not map; I should compile BWA in order to test mapping of this file against the genome
+	
+		#Results: No mapped reads for 090116_HWI-EAS174_s_1_sequence.txt  <-- will test with another assembly program
+	
+	#Since single mapped reads failed, I will try to run paired end reads in the hope that this might work
+
+#Some troubleshooting steps that I can try and that I have already tried:
+	- ungzip files (tried on larger files)
+	
+	- crop files for smaller dataset assembly
+		tail 090116_HWI-EAS174_s_1_sequence.txt > 090116_s_1_sequence.txt
+		./mrfast --search /mnt/gliu1_usb/B_tau_UMD_3.1/b_tau_umd.fa --seq 090116_s_1_sequence.txt
+		#Resulted in a segmentation error
+	
+	- run sequence files in same directory as mrFAST
+	
+	- reindex genome file
+	
+	- run mrFAST on individual chromosome indicies
+	
+	- run paired end analysis
+	
+	- run program through gdb
+		
+		gdb --args mrfast --search /mnt/gliu1_usb/B_tau_UMD_3.1/b_tau_umd.fa --seq 090116_s_1_sequence.txt
+		run
+			warning: no loadable sections found in added symbol-file system-supplied DSO at 0x7fffd0ffd000
+			(no debugging symbols found)
+			2 sequences are read in 0.00. (1 discarded) [Mem:0.00 M]
+			-----------------------------------------------------------------------------------------------------------
+			|     Genome Name |    Loading Time |    Mapping Time | Memory Usage(M) |  Total Mappings    Mapped reads |
+			-----------------------------------------------------------------------------------------------------------
+			
+			Program received signal SIGSEGV, Segmentation fault.
+			0x0000000000434fd8 in _int_malloc ()
+
+	#Some notes:
+		- Fasta files provided in the blackstar folder don't appear to have standard FASTQ formating
+	
+		- How were they generated?
+
+
+	
+#Changing the format
+	- Created perl script to change the format of the sequencing reads into proper FASTQ formating
+	
+	- FASTQ has four lines, whereas these sequence reads were... compressed(?).. into one line
+		@Sequence header
+		(Sequence)
+		+
+		(Phred scores)
+		
+	- Perl script name is: convert_seq_fastq.pl  <- and it accepts ARGV (command line) file input
+	
+	- Used convert_seq_fastq.pl on 081211_HWI-EAS174_s_1_1_sequence and 081211_HWI-EAS174_s_1_2_sequence
+		- I'm assuming that both (based on the file names) are paired end reads from the first lane of a run
+		
+		- moved both *.fq files to the mrfast directory for paired end analysis
+		
+		
+	
+	
+#Started a paired end search using one of the initial runs for Blackstar
+	> ./mrfast 
+		--search /mnt/gliu1_usb/B_tau_UMD_3.1/b_tau_umd.fa 
+		--pe 
+		--seq1 081211_HWI-EAS174_s_1_1_sequence.fq 
+		--seq2 081211_HWI-EAS174_s_1_2_sequence.fq 
+		--min 150 
+		--max 250 
+		-o /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_pe.sam
+		
+	#I am assuming that they used the initial Illumina guidelines for mRNA -seq and gel extracted ~200bp fragments; could be very wrong
+	
+	#Started analysis at 4:10pm on Friday the 17th of September
+		-"Top" analysis of process:
+		28077 dbickhar  20   0 11.5g 9.7g  356 R  100 15.4  53:19.17 mrfast
+	
+	
+(<>) Questions for the people who sequenced the genome (Tad?)
+	# Post-sequencing file manipulation?
+	
+	# Phred score value tables? (Solexa, Sanger or Illumina 1.5+?)
+	
+	# Paired end sequencing fragment sizes?
+
+_________________________________________________________
+Comparison testing with Bowtie
+_________________________________________________________
+
+#I started losing confidence with MrFast, so I wanted to compare its output to that of a fast, memory efficient program
+
+#Unzipped Bowtie and Samtools to my directory (/mnt/gliu1_usb/dbickhart/) and built an index of the UMD3.1 fasta (b_tau_umd3.fa)
+	-Bowtie has a *.sh script that indexes the UMD3.0 B_tau genome automatically (in bowtie's "scripts" directory)
+	
+	-UMD3.0 does not differ in sequence composition from UMD3.1, so this is an option if everything goes south
+	
+#After I figured out what was wrong with MrFast (the input file formats) I stopped indexing the UMD3 genome (it would have taken ~10 hours)
+
+
+	
+	
+
+

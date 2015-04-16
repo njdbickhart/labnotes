@@ -1,0 +1,205 @@
+2010_10_18 - 2010_10_24
+# Today I am going to find out the average error rate for the sequencing text files (paired end only)
+# In order to do this, I will use my parsing script: calculate_avg_qs.pl to determine the average quality score of the datasets
+
+# Later, I could modify the script to determine the average error rate of each read individually, so that we can screen the reads out
+# Alternatively, I could find a setting on the alignment programs to filter the reads out during the process
+
+$ find 081211* | xargs -n 1 -t perl convert_seq_fastq.pl
+$ perl -in sequence >> quality_scores_pem.txt
+
+# The dataset suggests that the second set of reads (in all cases) was at least 6 points lower, on average, than the first set of reads in each case.
+# This makes sense, but spells trouble for our analysis of blackstar (at least!)
+
+(<>) Holstein read qualities
+
+# I will run the quality score calculation script on the Holstein data tomorrow
+# I modified my calculation script to accept ARGV input (in order to "automate" it using the xargs command) and I changed the hash scale to the Sanger format
+
+# I'm feeling bold, so I am estimating that the bunzip will take about 5 ish hours (probably (hopefully) less)
+$ sleep 7h ; find *.fastq | xargs calculate_avg_qs_ARGV.pl >> holstein_qualities.txt
+
+# I forgot to include the -n 1 option and the "perl" interpreter, so that didn't work
+$ find *.fastq | xargs -n 1 perl calculate_avg_qs_ARGV.pl >> holstein_qualities.txt
+
+# I created a script to parse out the data from the calculate_avg_qs_ARGV.pl script into an excel loadable format. It is called process_ps_data_file.pl
+# The script did its job well, but I forgot to include a section for extracting the average quality score of each read! Did that using a command line perl script:
+	$ perl -n -e '($a) = $_ perl -n -e '($a) = $_ =~ /.*was\s(\d{2}\.\d+)\swith/; if ($a){print "$a\t";}' < holstein_qualities.txt >holstein_avg_qs.txt
+
+
+_______________________________________________
+Running CNV-SEQ on the 7.1x coverage genome
+_______________________________________________
+# In order to try to discern CNV's from the 7x coverage cow genome, I will have to align reads against the cow4 assembly and then process them into "hits" files
+
+# This way, I can run them through CNV-seq on my linux virtualbox (the only place where the program seems to work! It does not work on server 3)
+
+Path to 7x coverage files: /mnt/data100/mespar1/external/fleckvieh/
+Cattle breed: Fleckvieh
+Paper URL: http://genomebiology.com/2009/10/8/R82
+Type of reads: paired end
+Quality scores: Sanger style
+My working directory: /mnt/gliu1_usb/dbickhart/holstein_7x
+
+# Testing on one of the sets of reads
+# I will use the BWA index in the /mnt/gliu1_usb/dbickhart/blackstar/small folder (masked only once).
+# Index both fastq files then align
+# I will save the results for further alignment (possibly novoalign/hydra analysis) but I will attempt to run cnv-seq on this preliminary output just to see if I get any results
+
+	$ ../bwa-0.5.8a/bwa aln ../blackstar/small/bwa_cow4_index hmgu_080902_HWI-EAS186_307H5AAXX_2.1.fastq > 080802_2_1.sai
+	$ ../bwa-0.5.8a/bwa aln ../blackstar/small/bwa_cow4_index hmgu_080902_HWI-EAS186_307H5AAXX_2.2.fastq > 080802_2_2.sai
+
+	$ ../bwa-0.5.8a/bwa sampe ../blackstar/small/bwa_cow4_index 080802_2_1.sai 080802_2_2.sai hmgu_080902_HWI-EAS186_307H5AAXX_2.1.fastq hmgu_080902_HWI-EAS186_307H5AAXX_2.2.fastq > 080902_2.sam
+	
+	$ ../samtools-0.1.8/samtools view -bS -o 080902_2.bam 080902_2.sam
+	$ ../samtools-0.1.8/samtools sort -n 080902_2.bam 080902_2_sorted
+	$ ../samtools-0.1.8/samtools view -bF 0x2 080902_2_sorted.bam | ../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 080902_2_1_tier2.fq -fq2 080902_2_2_tier2.fq
+
+	$ ../novocraft/novoalign -d ../blackstar/small/novo_cow4_index -f 080902_2_1_tier2.fq 080902_2_2_tier2.fq -o SAM -r R -i PE 250,50 -H > 080902_2_tier2.sam
+
+
+# Then for CNV-seq:
+	$ ../bwa-0.5.8a/bwa samse -n 10 ../blackstar/small/bwa_cow4_index 080802_2_1.sai hmgu_080902_HWI-EAS186_307H5AAXX_2.1.fastq > 080902_2_1_se.sam
+	$ ../bwa-0.5.8a/bwa samse -n 10 ../blackstar/small/bwa_cow4_index 080802_2_2.sai hmgu_080902_HWI-EAS186_307H5AAXX_2.2.fastq > 080902_2_2_se.sam
+	# convert to bam then sort
+	$ ../samtools-0.1.8/samtools view -bS -o 080902_2_1_se.bam 080902_2_1_se.sam
+	$ ../samtools-0.1.8/samtools view -bS -o 080902_2_2_se.bam 080902_2_2_se.sam
+	# Since read name is not important for the CNV-seq analysis, I do not believe that sorting by -n is a good idea
+	$ ../samtools-0.1.8/samtools sort 080902_2_2_se.bam 080902_2_2_sorted
+	$ ../samtools-0.1.8/samtools sort 080902_2_1_se.bam 080902_2_1_sorted
+	# Create hit files
+	$ ../samtools-0.1.8/samtools view 080902_2_1_sorted.bam | perl -lane 'print "$F[2]\t$F[3]"' > 080902_2_1.hits
+	$ ../samtools-0.1.8/samtools view 080902_2_2_sorted.bam | perl -lane 'print "$F[2]\t$F[3]"' > 080902_2_2.hits
+	# Remove non-mapping bases
+	$ perl -n -e 'if($_ =~ /\*/){next;}else{print $_;}' < 080902_2_1.hits > 080902_2_1_crop.hits
+	$ perl -n -e 'if($_ =~ /\*/){next;}else{print $_;}' < 080902_2_2.hits > 080902_2_2_crop.hits
+	# Merge and sort
+	$ cat 080902_*_crop.hits > 080902_2_m.hits
+	$ perl -e '@a; $x=0; while(<>){$a[$x]=$_;$x+=1;}@s = sort {$a cmp $b} @a; foreach (@a){print $_;}' < 080902_2_m.hits > 080902_2_m_s.hits
+
+	# NOTE: the simulation hits (test.hits) that I generated do not have the 'chr' string before chromosome numbers. 
+	# Used a command line perl script to remove the 'chr' from the column
+	$ perl -n -e '$_ =~ s/chr//g; print $_;' < 080902_2_m_s.hits > 080902_2_m_s_c.hits
+	
+	# Run CNV-Seq
+	$ perl cnv-seq.pl --test 080902_2_m_s_c.hits --ref test.hits --genome-size 2500000000
+		# got the "can't use an undefined value as an ARRAY reference error" like before
+		# debugging...
+		# Apparently the reference (test.hits) produces the error at the last line
+		# This could be due to a \n
+		# It is not, instead, it looks like my test.hits and ref.hits files are only for chromosome 1!
+		# copying over my full set of test hits UMD3_simulation.hits 
+		
+	# Apparently I was able to work CNV-seq on server 3, so I will try a run in my CNV-seq directory as a backup
+	$ ./cnv-seq.pl --test /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_m_s.hits --ref UMD3_simulation.hits --genome-size 2500000000
+		# That failed too
+		# There is obviously a difference in the chromosome counts between the sets
+		# Using the following perl script to try to identify the chromosome number differences
+		$ perl -e '%h; while(<>){@a=split(/\t/, $_);$h{$a[0]} += 1;} foreach(%h){print "$_\n"};' < UMD3_simulation_c.hits
+		# It was the freaking ChrUN contigs! Removing them using this script
+		$ perl -n -e '@a = split(/\t/, $_); if($a[0] =~ /7180/){next;}else{print $_;}' < UMD3_simulation_c.hits > UMD3_simulation_nu.hits
+	
+	# Trying this again
+	$ perl cnv-seq.pl --test 080902_2_m_s_c.hits --ref UMD3_simulation_nu.hits --genome-size 2500000000
+	# Still didn't work! Trying the perl script to test for chromosome number fidelity
+		$ perl -e '%h; while(<>){@a=split(/\t/, $_);$h{$a[0]} += 1;} foreach(%h){print "$_\n"};' < UMD3_simulation_nu.hits
+		$ perl -e '%h; while(<>){@a=split(/\t/, $_);$h{$a[0]} += 1;} foreach(%h){print "$_\n"};' < 080902_2_m_s_c.hits
+		# My 080902_2_m_s_c.hits file has a chrunall chromosome! 
+		$ perl -n -e '@a = split(/\t/, $_); if($a[0] =~ /UnAll/){next;}else{print $_;}' < 080902_2_m_s_c.hits > 080902_2_m_s_u.hits
+	$ perl cnv-seq.pl --test 080902_2_m_s_u.hits --ref UMD3_simulation_nu.hits --genome-size 2500000000
+	# It worked! So the issues with this program arise when the chromosome numbers/names are different
+	# I think that running this program on simulations derived from the cow4 genome would be significantly better, so I will use my generate_simulation_reads.pl script on the cow4 fasta
+		# I probably won't have to do the massive amounts of manipulation like I had to with the other file (since this is coming from the same genome fasta)
+		$ ../bwa-0.5.8a/bwa aln ../blackstar/small/bwa_cow4_index cow4_simulation.fq > cow4_simulation.sai
+		$ sleep 10h ; ../bwa-0.5.8a/bwa samse -n 10 ../blackstar/small/bwa_cow4_index cow4_simulation.sai cow4_simulation.fq > cow4_simulation.sam
+		
+		$ ../samtools-0.1.8/samtools view -bS -o cow4_simulation.bam cow4_simulation.sam
+		$ ../samtools-0.1.8/samtools sort cow4_simulation.bam cow4_simulation_sorted
+
+		$ ../samtools-0.1.8/samtools view cow4_simulation_sorted.bam | perl -lane 'if($F[2] =~ /\*/){next;}else{print "$F[2]\t$F[3]"}' > cow4_simulation_full.hits
+		# This command line script might be a better way of extracting the "hits" information if it ignores the unmapped reads (that give a mapping position of 0)
+		
+		
+# I created a script to automate the CNV-seq process, and it uses as many threads as indicated by the user!
+	# Running it on the holstein 7x data
+	$ perl create_hits_cnvseq.pl --in holstein_hits.txt --out_dir /mnt/gliu1_usb/dbickhart/holstein_7x/hits --thread 4
+	
+# Program completed far faster than expected. Now to test it in CNV-seq:
+
+	$ perl cnv-seq.pl --ref cow4_simulation_full.hits --test /mnt/gliu1_usb/dbickhart/holstein_7x/hits/merged.hits --genome-size 2500000000
+	# Generated the following file: merged.hits-vs-cow4_simulation_full.hits.log2-0.6.pvalue-0.001.minw-4.cnv
+	
+		
+###############################################
+#                                             #
+#		Procedure		      #
+#                                             #
+###############################################
+
+(<>) Main procedure for generating .hits files for CNV-seq:
+
+	$ ../bwa-0.5.8a/bwa aln ../blackstar/small/bwa_cow4_index hmgu_080902_HWI-EAS186_307H5AAXX_2.1.fastq > 080802_2_1.sai
+	$ ../bwa-0.5.8a/bwa aln ../blackstar/small/bwa_cow4_index hmgu_080902_HWI-EAS186_307H5AAXX_2.2.fastq > 080802_2_2.sai
+	$ ../bwa-0.5.8a/bwa samse -n 10 ../blackstar/small/bwa_cow4_index 080802_2_1.sai hmgu_080902_HWI-EAS186_307H5AAXX_2.1.fastq > 080902_2_1_se.sam
+	$ ../bwa-0.5.8a/bwa samse -n 10 ../blackstar/small/bwa_cow4_index 080802_2_2.sai hmgu_080902_HWI-EAS186_307H5AAXX_2.2.fastq > 080902_2_2_se.sam
+	$ ../samtools-0.1.8/samtools view -bS -o 080902_2_1_se.bam 080902_2_1_se.sam
+	$ ../samtools-0.1.8/samtools view -bS -o 080902_2_2_se.bam 080902_2_2_se.sam
+	$ ../samtools-0.1.8/samtools sort 080902_2_2_se.bam 080902_2_2_sorted
+	$ ../samtools-0.1.8/samtools sort 080902_2_1_se.bam 080902_2_1_sorted
+	$ ../samtools-0.1.8/samtools merge out.bam in.bam ...
+	$ ../samtools-0.1.8/samtools view cow4_simulation_sorted.bam | perl -lane 'if($F[2] =~ /\*/){next;}else{print "$F[2]\t$F[3]"}' > cow4_simulation_full.hits
+
+(<>) If there are multiple .hits files that need to be merged for CNV-seq processing:
+	
+	$ cat 080902_*_crop.hits > 080902_2_m.hits
+	$ perl -e '@a; $x=0; while(<>){$a[$x]=$_;$x+=1;}@s = sort {$a cmp $b} @a; foreach (@a){print $_;}' < 080902_2_m.hits > 080902_2_m_s.hits
+	
+(<>) Prior to running CNV-seq, you must ensure that the chromosome names are identical in both spelling and number (ie. count and labels must be identical in the test hits and ref hits files)
+
+	# If the same reference genome is used in the alignment of the ref hits and test hits files, then there is likely to be no difference.
+	
+	# To test this:
+	$ grep 'chr' reference_genome.fa
+	$ grep 'chr' other_reference_genome.fa
+	
+	# Or, if you are testing on hit files:
+	$ perl -e '%h; while(<>){@a=split(/\t/, $_);$h{$a[0]} += 1;} foreach(%h){print "$_\n"};' < UMD3_simulation_nu.hits
+	$ perl -e '%h; while(<>){@a=split(/\t/, $_);$h{$a[0]} += 1;} foreach(%h){print "$_\n"};' < 080902_2_m_s_c.hits
+	
+(<>) Final run of hits files through CNV-seq and generating output:
+	
+	$ perl cnv-seq.pl --test 080902_2_m_s_c.hits --ref test.hits --genome-size 2500000000
+	
+	(<>) This is a good point to transition to a GUI-based OS, simply so that you can view the R plot data as you generate it
+	$ R
+	> library(cnv)
+	> data <- read.delim("merged_Chr1.hits-vs-UMD3_Chr1.hits.log2-0.6.pvalue-0.001.minw-4.cnv")
+	> cnv.print(data)											# This just checks to see if the data loaded properly
+	> plot.cnv(data, CNV=4, upstream=4e+6, downstream=4e+6)
+	> plot.cnv.all(data, ylim=c(-4,4))
+	> dev.copy(pdf,'cnv_umd3_blackstar.pdf')
+	> dev.off()
+	
+
+_______________________________________________
+Some notes on CNVer
+_______________________________________________
+# Takes both Paired end data and single end data and makes a donor graph comparison between the two sets.
+# Makes predictions off of read depth and pair orientation
+# Could be useful, but the programmers require the use of a bowtie "concise" format (--concise tag during the bowtie run) AND they have chromosome numbers/positions for humans
+# I could attempt to run cow reads on it, but I am unsure about the output
+
+# How to install:
+	- Before I forget, installing CNVer requires a little bit more effort than usual
+	- First, ./configure and make
+	- Second, download cs2 flow solver
+		$ wget http://www.igsystems.com/cs2/cs2-4.3.tar
+	- Third, open the run_pipeline.sh script and add the following two lines:
+		CNVER_FOLDER=/mnt/gliu1_usb/dbickhart/cnver-0.7.2/src
+		CS2_PATH=/mnt/gliu1_usb/dbickhart/cnver-0.7.2/cs2-4.3
+
+
+# Creating a bowtie index for CNVer:
+	$ ./bowtie-build /mnt/data110/gliu/cow4.fa /mnt/gliu1_usb/dbickhart/bowtie-0.12.7/indexes/cow4_index
+	
+# I think that I will hold off on progressing further with CNVer. I will have to remember this segment, but it is not a high priority right now

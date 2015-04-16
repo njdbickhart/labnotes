@@ -1,0 +1,225 @@
+03/29/2012
+# This will be my note file for trying to wrangle GenomeStudio into generating a SNP txt file with genotypes so that I can run PENNCNV on the data and produce some results.
+# Necessary files:
+	1. SNP manifest files (2 files) arranged in a separate "manifest" folder
+	2. Samplesheet csv file (containing the animal information necessary for the analysis)
+	
+# Converting the samplesheet into a usable format for genomestudio
+	pwd: /home/dbickhart/share/tad_brown_swiss
+	$ ls > directory.txt    <- editted this file in kwrite
+	$ perl select_specific_samples.pl directory.txt HDmaster_01-04-2011.csv > filtered_sample_sheet.csv
+	
+	# Now to try to load that into the program
+	# OK, so what I had to end up doing was loading the SNP manifest and then adding directories of files
+	# Genome studio loaded all the files and then I just had to select "cluster SNPs"
+	
+	# Then it asked me if I wanted to calculate SNP statistics, and I selected "yes"
+	# Splitting the illumina report
+	Server 3: /mnt/data110/dbickhart/tad_brown_swiss
+	$ mkdir signal
+	$ perl ../penncnv/kcolumn.pl brown_swiss_genotype_calls.txt split 3 -heading 3 -tab -out sample
+		ERROR: cannot open sample.split1021 for writting after opening 1020 files: Too many open files
+		# I will have to create a Java program or recode his script
+		# I will try using the start_split and end_split qualifiers
+		$ perl ../penncnv/kcolumn.pl brown_swiss_genotype_calls.txt split 3 -heading 3 -tab -out sample --start_split 1 --end_split 1015
+		$ perl ../penncnv/kcolumn.pl brown_swiss_genotype_calls.txt split 3 -heading 3 -tab -out sample --start_split 1016 --end_split 2035
+		$ perl ../penncnv/kcolumn.pl brown_swiss_genotype_calls.txt split 3 -heading 3 -tab -out sample -start_split 2036
+	
+	
+# Running PENNCNV
+	# I untared PENNCNV on Server 3 and checked to make sure that all the Perl dependencies were in place
+	# I will have to correct the SNP array for genomic waves (GC_model file) and create a PFB file(using compile_pfb.pl)
+	# Actually, it looks like compile_pfb.pl was the script that Yali asked me to create a java version for (it opens thousands of filehandles all at once!)
+	# My Java program is calculate_snp_hash_mean.jar but I think that I'll use Kai's compile_pfb.pl script for now (until it crashes)
+	# I think that I have way too many samples to run Kai's script. I need to use my java program
+	Server3:/mnt/data110/dbickhart/tad_brown_swiss/
+	
+	$ mkdir samples
+	$ mv sample.* ./samples
+	$ ls ./*/sample.* > sample_list.txt   */
+	
+	$ ~/jdk1.6.0_26/bin/java -jar ../penncnv/calculate_snp_hash_mean.jar sample_list.txt java_snp_average.txt
+	# I have rewritten my java program to produce suitable output for the pfb file for Kai's pipeline
+	# After this, I will create a GC file similar to Yali's style
+	
+	# GC file creation
+	$ perl ../penncnv/cal_gc_snp.pl ../penncnv/umd3_gc5Base.txt.sorted ./java_snp_average.txt -out ./bsnp770k.umd3.gcmodel
+		NOTICE: Finished reading chr and position information for 784932 markers in 32 chromosomes
+		NOTICE: Finish processing 519695 lines in GC file
+		
+	# Now to test the HMM (which predicts the CNVs)
+	$ perl ../penncnv/detect_cnv.pl -test -hmm ../penncnv/lib/hhall.hmm -pfb java_snp_average.txt  -list sample_list.txt  -lastchr 29 -log auto_snp770.log -out auto_snp770.rawcnv
+		NOTICE: All program notification/warning messages that appear in STDERR will be also written to log file auto_snp770.log
+		NOTICE: Reading marker coordinates and population frequency of B allele (PFB) from java_snp_average.txt ... Done with 784586 records (2213 records in chr 0,MT were discarded)
+		NOTICE: Reading LRR and BAF values for from ./samples/sample.split1 ... Done with 784586 records in 31 chromosomes (2213 records are discarded due to lack of PFB information for the markers)
+		NOTICE: Data from chromosome X,Y will not be used in analysis
+		NOTICE: Median-adjusting LRR values for all autosome markers from ./samples/sample.split1 by 0.0382
+		NOTICE: Median-adjusting BAF values for all autosome markers from ./samples/sample.split1 by -0.0135
+		NOTICE: quality summary for ./samples/sample.split1: LRR_mean=0.0039 LRR_median=0.0000 LRR_SD=0.1375 BAF_mean=0.4996 BAF_median=0.5000 BAF_SD=0.0334 BAF_DRIFT=0.000231 WF=0.0132 GCWF=0.0005
+		NOTICE: Reading LRR and BAF values for from ./samples/sample.split10 ... Done with 784586 records in 31 chromosomes (2213 records are discarded due to lack of PFB information for the markers)
+		...
+		WARNING: Sample from ./samples/sample.split100 does not pass default quality control criteria due to its waviness factor values (wf=-0.064429995)!
+		WARNING: Small-sized CNV calls may not be reliable and should be interpreted with caution!
+		#This will probably repeat for each file
+		
+		# Several of the files had "warning" text suggesting that several values were "off" for the entire array
+		# Mostly, I believe this is due to the genomic "waves" corresponding to GC content in the hybridization. 
+		
+		$ wc -l auto_snp770.rawcnv
+			576125 auto_snp770.rawcnv	<- raw cnv calls
+	# Filtering the data
+	$ ../penncnv/filter_cnv.pl auto_snp770.rawcnv -qclogfile auto_snp770.log -qclrrsd 0.3 -qcwf 0.05 -qcbafdrift 0.01 -qcnumcnv 100 -qcpassout auto_snp770_filtered.cnv -qcsumout auto_snp_770_sum.out -out auto_snp770.final.cnv
+		NOTICE: Writting 1456 file names that pass QC to qcpass file auto_snp770_filtered.cnv
+		NOTICE: Writting 2382 records of QC summary to qcsum file auto_snp_770_sum.out
+		
+		# auto_snp770_filtered.cnv contains the sample names that passed the filtration step
+		# auto_snp770.final.cnv contains the cnv calls that passed filtration and are the final dataset
+		
+	# Now to check to see if any cnvs were called in the final filtered results.
+	$ perl -lane '($c, $s, $e) = $F[0] =~ m/(chr.+):(\d+)-(\d+)/; if ($c eq "chr4" && $s <= 49718591 && $e >= 49651810){ print $_;}' < auto_snp770.final.cnv
+		# Nothing. Let's check the raw calls to be thorough
+		
+	$ perl -lane '($c, $s, $e) = $F[0] =~ m/(chr.+):(\d+)-(\d+)/; if ($c eq "chr4" && $s <= 49718591 && $e >= 49651810){ print $_;}' < auto_snp770.rawcnv
+		chr4:49668303-49712655        numsnp=37     length=44,353      state2,cn=1 ./samples/sample.split1016 startsnp=BovineHD4100002862 endsnp=BovineHD0400013707
+		chr4:49700080-49708024        numsnp=6      length=7,945       state5,cn=3 ./samples/sample.split1289 startsnp=BovineHD0400013699 endsnp=BovineHD0400013704
+		chr4:49675204-49717334        numsnp=34     length=42,131      state5,cn=3 ./samples/sample.split1295 startsnp=BovineHD0400013677 endsnp=BTA-70321-no-rs
+		chr4:49674288-49711497        numsnp=32     length=37,210      state5,cn=3 ./samples/sample.split1296 startsnp=BovineHD0400013676 endsnp=BovineHD0400013706
+		chr4:42567472-50526120        numsnp=2333   length=7,958,649   state5,cn=3 ./samples/sample.split1303 startsnp=BovineHD0400011684 endsnp=BovineHD0400013951
+		chr4:49685654-49773151        numsnp=55     length=87,498      state2,cn=1 ./samples/sample.split1358 startsnp=BovineHD0400013685 endsnp=BovineHD0400013737
+		chr4:49110408-51294933        numsnp=690    length=2,184,526   state5,cn=3 ./samples/sample.split1417 startsnp=BovineHD0400013492 endsnp=BovineHD0400014195
+		chr4:49006798-54063010        numsnp=1471   length=5,056,213   state5,cn=3 ./samples/sample.split1752 startsnp=BovineHD0400013456 endsnp=Hapmap48445-BTA-70755
+		chr4:49668303-49740381        numsnp=56     length=72,079      state2,cn=1 ./samples/sample.split1895 startsnp=BovineHD4100002862 endsnp=BovineHD0400013723
+		chr4:49656613-49681872        numsnp=15     length=25,260      state5,cn=3 ./samples/sample.split1940 startsnp=BovineHD0400013670 endsnp=BovineHD0400013682
+		chr4:49609269-50450985        numsnp=272    length=841,717     state2,cn=1 ./samples/sample.split200 startsnp=BovineHD0400013660 endsnp=BovineHD0400013921
+		chr4:49630735-49728555        numsnp=56     length=97,821      state2,cn=1 ./samples/sample.split2061 startsnp=BovineHD0400013665 endsnp=BovineHD0400013716
+		chr4:49668303-50255332        numsnp=203    length=587,030     state2,cn=1 ./samples/sample.split2105 startsnp=BovineHD4100002862 endsnp=BovineHD0400013867
+		chr4:49657974-49725619        numsnp=46     length=67,646      state5,cn=3 ./samples/sample.split2110 startsnp=BovineHD0400013671 endsnp=BovineHD0400013713
+		chr4:49657974-49725619        numsnp=46     length=67,646      state5,cn=3 ./samples/sample.split2111 startsnp=BovineHD0400013671 endsnp=BovineHD0400013713
+		chr4:48360204-61617458        numsnp=3649   length=13,257,255  state5,cn=3 ./samples/sample.split2380 startsnp=BovineHD0400013296 endsnp=BovineHD0400016894
+		chr4:39857124-57791725        numsnp=4886   length=17,934,602  state5,cn=3 ./samples/sample.split2381 startsnp=BovineHD0400011073 endsnp=BovineHD0400015763
+		chr4:48808737-49652448        numsnp=265    length=843,712     state5,cn=3 ./samples/sample.split2382 startsnp=BovineHD0400013398 endsnp=BovineHD0400013669
+		chr4:49657974-49746107        numsnp=59     length=88,134      state5,cn=3 ./samples/sample.split261 startsnp=BovineHD0400013671 endsnp=BovineHD0400013725
+		chr4:49675204-49708024        numsnp=29     length=32,821      state5,cn=3 ./samples/sample.split328 startsnp=BovineHD0400013677 endsnp=BovineHD0400013704
+		chr4:49668303-59816937        numsnp=2698   length=10,148,635  state5,cn=3 ./samples/sample.split345 startsnp=BovineHD4100002862 endsnp=BovineHD0400016228
+		chr4:49668303-49735801        numsnp=51     length=67,499      state5,cn=3 ./samples/sample.split438 startsnp=BovineHD4100002862 endsnp=BovineHD0400013719
+		chr4:49647788-49725619        numsnp=49     length=77,832      state5,cn=3 ./samples/sample.split581 startsnp=BovineHD0400013668 endsnp=BovineHD0400013713
+		chr4:49511418-49813734        numsnp=128    length=302,317     state5,cn=3 ./samples/sample.split765 startsnp=BovineHD0400013633 endsnp=BovineHD0400013754
+		chr4:49593340-50775023        numsnp=395    length=1,181,684   state5,cn=3 ./samples/sample.split852 startsnp=BovineHD0400013657 endsnp=BovineHD0400014036
+		chr4:48665901-63005973        numsnp=3899   length=14,340,073  state5,cn=3 ./samples/sample.split854 startsnp=BovineHD0400013378 endsnp=BovineHD0400017249
+		chr4:49290352-60724299        numsnp=3071   length=11,433,948  state5,cn=3 ./samples/sample.split855 startsnp=BovineHD0400013550 endsnp=BovineHD0400016531
+		chr4:49668303-50632060        numsnp=329    length=963,758     state5,cn=3 ./samples/sample.split856 startsnp=BovineHD4100002862 endsnp=BovineHD0400013989
+		chr4:49668303-49727667        numsnp=46     length=59,365      state5,cn=3 ./samples/sample.split901 startsnp=BovineHD4100002862 endsnp=BovineHD0400013715
+		
+	# Now to create a table with each sample name next to each plate name (derived from the genotype calls)
+	$ perl -e '$h =<>; @s = split(/\t/, $h); $c = 1; for ($i = 3; $i < scalar(@s); $i += 3){($plate) = $s[$i] =~ m/(.+)\.GType/; print "$plate\tsample.split$c\n"; $c++;}' < brown_swiss_genotype_calls.txt > sample_split.key
+	$ perl -e 'chomp (@ARGV); open(CSV, "< $ARGV[0]"); open(SAM, "< $ARGV[1]"); while($l = <CSV>){if($l =~ /Index/){last;}} while($l = <CSV>){$l =~ s/\r//g; @s = split(/,/, $l); $samp{"$s[8]_$s[9]"} = [$s[3], $s[1], $s[16], $s[15]];} close CSV; while($l = <SAM>){ chomp($l); @s = split(/\t/, $l); if(exists($samp{$s[0]})){print "$s[0]\t$s[1]\t" . join("\t", @{$samp{$s[0]}}) . "\n";}else{print STDERR "Could not find $s[0]!\n"; print "$s[0]\t$s[1]\n"; $n++;}} print STDERR "$n entries not found\n";' filtered_sample_sheet.csv sample_split.key > full_sample_list.key
+		396 entries not found
+		1986 entries found
+		# So, I'm missing some animal data from the list.
+		
+		# Checking the animals that had raw calls in the region, but were filtered out later:
+		$ perl -lane '($c, $s, $e) = $F[0] =~ m/(chr.+):(\d+)-(\d+)/; if ($c eq "chr4" && $s <= 49718591 && $e >= 49651810){ @s = split(/\//, $F[4]); print "$s[-1]";}' < auto_snp770.rawcnv | perl -e 'chomp(@ARGV); open(SAM, "< $ARGV[0]"); $h = <>; while(<SAM>){ chomp; @s = split(/\t/); $v{$s[1]} = [$s[2], $s[4]];} while(<STDIN>){chomp; if(exists($v{$_})){print join("\t", @{$v{$_}}) . "\n";}else{ print STDERR "Could not find $_\n";}}' full_sample_list.key
+			
+			NE003818        NEL
+			NE001990        NEL
+			NE002006        NEL
+			8138    HO%
+			B-60    NEL
+			007HO06352      HO
+			5026    SNG
+			PRE GIN SAC 1456        HO
+			PRE-GIN SAC 1151        HO
+			7813    HO%
+			6290    HO%
+			B-244   NEL
+			NE003384        NEL
+			NE003385        NEL
+			NE003493        NEL
+			NE003767        NEL
+			NE003779        NEL
+			NE001990        NEL
+			
+			Aurochs AUR
+			3012    HO
+			NE003385        NEL
+			NE003384        NEL
+			NE003888        NEL
+			NE003891        NEL
+			NE003880        NEL
+			B-103   NEL
+			3224    HO
+			# Gaps indicate that I am missing data for those animals
+			
+			
+	# George would like me to test the data against Yali's pfb file
+	# Maybe I'll just use the brown swiss animals to save some time
+	$ perl -lane 'if($F[4] eq "BS"){print "./samples/$F[1]";}' < full_sample_list.key > brown_swiss_only.list
+	
+	# Differences between my pfb and yali's
+		$ wc -l bsnp50umd3.pfb java_snp_average.txt
+		  	784587 bsnp50umd3.pfb
+		  	786800 java_snp_average.txt
+ 			1571387 total
+ 	
+ 	$ perl ../penncnv/detect_cnv.pl -test -hmm ../penncnv/lib/hhall.hmm -pfb bsnp50umd3.pfb  -list brown_swiss_only.list  -lastchr 29 -log bs_auto_snp770.log -out bs_auto_snp770.rawcnv
+ 	$ ../penncnv/filter_cnv.pl bs_auto_snp770.rawcnv -qclogfile bs_auto_snp770.log -qclrrsd 0.3 -qcwf 0.05 -qcbafdrift 0.01 -qcnumcnv 100 -qcpassout bs_auto_snp770_filtered.cnv -qcsumout bs_auto_snp_770_sum.out -out bs_auto_snp770.final.cnv
+ 	
+ 	# Comparing to the filtered cnv from before
+ 	$ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); open(CNV, "< $ARGV[1]") || die "Could not open $ARGV[1]\n"; @list; while($j = <IN>){chomp $j; push(@list, $j);}close IN; while($line = <CNV>){chomp $line; @s = split(/\s+/, $line); foreach $z(@list){if ($s[4] eq $z){print $line . "\n";}}}' brown_swiss_only.list auto_snp770.final.cnv > bs_from_filtered_full_cnv.cnv
+ 	$ wc -l bs_from_filtered_full_cnv.cnv bs_auto_snp770.final.cnv
+		  2937 bs_from_filtered_full_cnv.cnv
+		  2961 bs_auto_snp770.final.cnv
+		  5898 total
+		# Very similar in number, lets check the content
+		$ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); open(CNV, "< $ARGV[0]"); while($l = <IN>){chomp $l; @s = split(/\s+/, $l); ($c, $st, $en) = $s[0] =~ m/(chr.+):(\d+)-(\d+)/; push(@a, [$c, $st, $en]);}close IN; while($l = <CNV>){$is = 0; chomp $l; @s = split(/\s+/, $l); ($c, $st, $en) = $s[0] =~ m/(chr.+):(\d+)-(\d+)/; foreach $z (@a){if($z->[0] eq $c && $z->[1] <= $en && $z->[2] >= $st){$is = 1; last;}} if($is){print "1\n";}else{print "0\n";}}' bs_auto_snp770.final.cnv bs_from_filtered_full_cnv.cnv | statStd.pl
+		  	total   2961
+			Minimum 1
+			Maximum 1
+			Average 1.000000
+		# So it looks like the CNVs were very similar, except that they were broken up in one location or another
+		# Checking it against the chr4 region again to see if there was any difference.
+		$ perl -lane '($c, $s, $e) = $F[0] =~ m/(chr.+):(\d+)-(\d+)/; if ($c eq "chr4" && $s <= 49718591 && $e >= 49651810){ print $_;}' < bs_from_filtered_full_cnv.cnv
+		$ perl -lane '($c, $s, $e) = $F[0] =~ m/(chr.+):(\d+)-(\d+)/; if ($c eq "chr4" && $s <= 49718591 && $e >= 49651810){ print $_;}' < bs_auto_snp770.final.cnv
+		
+		# Nothing in both cases
+		# Printing out the bed formatted files
+		$ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); open(CNV, "< $ARGV[1]"); %k; $h = <IN>; while($l = <IN>){chomp $l; @s = split(/\t/, $l); $k{$s[1]} = [$s[2], $s[3], $s[4], $s[5]]; } close IN; print "chr\tstart\tend\tcn\tsample_name\tsample_id\tbreed\tgender\n"; while($l = <CNV>){ chomp $l; @s = split(/\s+/, $l); ($c, $st, $en) = $s[0] =~ m/(chr.+):(\d+)-(\d+)/; @w = split(/,/, $s[3]); ($r) = $w[-1] =~ m/cn=(\d+)/; @j = split(/\//, $s[4]); @v = @{$k{$j[-1]}}; print "$c\t$st\t$en\t$r\t" . join("\t", @v) . "\n";}' full_sample_list.key bs_auto_snp770.final.cnv > brown_swiss_final_cnvs.bed
+		
+		
+# Checking TFBS sites in Matt's data really quickly
+	# Signed up for Matinspector and ran the cow4 region of DNA through the inspector program. Reminder: coords will be for cow4 assembly
+	# The analogous cow4 region is: chr4:51395915-51462700
+	
+	# Matinspector
+		# Uploaded raw fasta sequence
+		# Set core similarity score to 0.90
+		# Set matrix similarity score to opt + 0.10
+		# All other options set to default
+		# This gave me 467 matches that I exported to excel format
+		
+	# TFLOC
+		# Downloaded the mafsinregion executable from UCSC's tool box
+		# Also downloaded UCSC's 5 way maf file for cow4
+		# I will create a bed file with the coords for cow4, slice the maf file to extract just that region, then run the region through tfloc to generate some results
+		pwd: /home/dbickhart/share/tfbs_project
+		$ gunzip bosTau4.5way.maf.gz
+		$ ./mafsInRegion.exe matts_coords.bed matts_maf_chr4.maf bosTau4.5way.maf
+		
+		# That created a mess of maf files
+		# I created a script to process the maf files and make them into a contiguous stretch to run through tfloc (I might just run them through tfloc without a pipeline script!)
+		$ perl process_maf_slice.pl matts_maf_chr4.maf > matts_maf_reformatted.maf
+		
+		# Wait, I just remembered that I need to select a specific matrix from the transfac file each time. 
+		$ mkdir maf
+		$ mv matts_maf_reformatted.maf ./maf
+		$ perl tfloc_custom_runner_script.pl -i . -t MATRIX_BS_STATS -c 00 -s matt -p 4
+		
+		# Now to format the data into a bed style
+		# modified create_custom_bed_track_from_raw_tfbs_predictions.pl to do this again with an extra argv input
+		$ perl rewritten_scripts/create_custom_bed_track_from_raw_tfbs_predictions.pl tfbs_new_matt_4.txt tfloc_brown_swiss_chr4_btau4_segment_predictions.bed chr4 51395915 51462700 0 1
+		
+	# going to try to migrate my cow4 predictions to UMD3
+		$ ../liftOver bs_jaspar_pf.bed ../bosTau4ToBosTauMd3.over.chain bs_umd3_jaspar_pf.bed tfloc_bs_unmapped.info
+		$ ../liftOver bs_jaspar_core.bed ../bosTau4ToBosTauMd3.over.chain bs_umd3_jaspar_core.bed tfloc_bs_unmapped.info
+		$ ../liftOver bs_jaspar_mf.bed ../bosTau4ToBosTauMd3.over.chain bs_umd3_jaspar_mf.bed tfloc_bs_unmapped.info
+		# All of them lifted over!

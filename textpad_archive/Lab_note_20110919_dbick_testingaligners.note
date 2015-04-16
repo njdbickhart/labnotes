@@ -1,0 +1,530 @@
+09/19/2011
+# This file contains my notes on preparing for the moderate coverage, population-based sequencing project that we are planning to perform. 
+# We need to pick an alignment program and I need to figure out which one is best for our analysis.
+
+___________________________
+Pros and cons of aligners
+___________________________
+
+# Mrsfast
+	- Previously used.
+	- Fast
+	- Reports all read mapping locations
+	- Does not report best mapping location or alignment scores
+	- Does not do a gapped alignment
+	- Can be used in conjunction with Variation hunter
+	- Can be used in conjunction with Alkan's WSSD algorithm
+	
+# MrFAST
+
+# Mosaik
+	- Fast
+	- Can report read mapping locations
+	
+	
+___________________________
+Testing new MrFAST
+___________________________
+
+# MrFAST just had a new release that allows for the limitation of OEA and DIVET reportings
+# This might just speed up the paired end analysis, though I am not holding my breath...
+# I am going to split fastqs into 100,000 read files (two paired end files, so 200,000 reads in total) and align them using the new version
+# I will try this with --discordant-vh analysis as well, with the new settings checked to limit discordant output. 
+	pwd: /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs
+	# These are 75bp read length sequence files
+	$ gunzip -c BTAN01P.FC42N19.3.1.15.fq.gz | perl -e '$c = 0; while(<>){print $_; $c++; if($c > 399999){last;}}' > btan01p_temp_1.fa
+	$ gunzip -c BTAN01P.FC42N19.3.2.15.fq.gz | perl -e '$c = 0; while(<>){print $_; $c++; if($c > 399999){last;}}' > btan01p_temp_2.fa
+	
+	# I will use this reference genome fasta in the alignment: /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked
+	# UCSC didn't do the best job masking it, so hopefully this is a good measure of how much time the alignment might take with a shoddily masked sequence
+	# Indexing:
+	$ /mnt/data110/dbickhart/mrfast-2.1.0.0/mrfast --index ucsc_bosTau4.fa.masked
+		DONE in 1263.97s!
+		
+	
+	pwd: /mnt/data8/dbickhart/mrfast_test
+	$ time /mnt/data110/dbickhart/mrfast-2.1.0.0/mrfast --search /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked --pe --seq1 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_1.fa --seq2 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_2.fa --max 300 --min 150 --discordant-vh --maxoea 100 --maxdis 100 -o angus_01_test.sam
+		198970 sequences are read in 1.65. (515 discarded) [Mem:121.57 M]
+		Post Processing Time:               0.21
+		Total Time:                       557.10
+		Total No. of Reads:               198970
+		Total No. of Mappings:                 0
+		Avg No. of locations verified:         0
+		
+		
+		real    9m18.604s
+		user    8m43.928s
+		sys     0m33.722s
+
+	# 600,000,000,000 bases / 200bp (read length) / 200,000 (current number of simultaneous reads) / 6 (number of parallel processors, potentially) = 2500 iterations per run of the Hiseq 2000.
+	# Using MrFAST at these settings, it would take 16 days to process all of the reads from one run of the hiseq, assuming no interuptions. 
+	# Let's try it using slightly more reads, say, 600,000.
+	pwd: /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs
+	$ gunzip -c BTAN01P.FC42N19.3.1.15.fq.gz | perl -e '$c = 0; while(<>){print $_; $c++; if($c > 1199999){last;}}' > btan01p_temp_1.fa
+	$ gunzip -c BTAN01P.FC42N19.3.2.15.fq.gz | perl -e '$c = 0; while(<>){print $_; $c++; if($c > 1199999){last;}}' > btan01p_temp_2.fa
+	
+	pwd: /mnt/data8/dbickhart/mrfast_test
+	$ time /mnt/data110/dbickhart/mrfast-2.1.0.0/mrfast --search /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked --pe --seq1 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_1.fa --seq2 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_2.fa --max 300 --min 150 --discordant-vh --maxoea 100 --maxdis 100 -o btan01_test2.sam
+		596830 sequences are read in 5.04. (1585 discarded) [Mem:364.93 M]
+		Total Time:                       831.08
+		real    13m55.102s
+		user    13m21.455s
+		sys     0m32.369s
+	
+	# 600,000,000,000 bases / 200bp (read length) / 600,000 (current number of simultaneous reads) / 6 (number of parallel processors, potentially) = 833.33 iterations
+	# So, using that number of reads, in parallel, Mrfast would only take 8 days. Much better. 
+	# only about 30368 reads mapped under those settings. Perhaps I should increase the size of my read min and max values? 
+	$ time /mnt/data110/dbickhart/mrfast-2.1.0.0/mrfast --search /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked --pe --seq1 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_1.fa --seq2 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_2.fa --max 500 --min 100 --discordant-vh --maxoea 100 --maxdis 100 -o btan01_test2.sam
+		596830 sequences are read in 4.86. (1585 discarded) [Mem:364.93 M]
+		Total Time:                       852.36
+		$ wc btan01_test2.sam
+ 			 30368  So, it must just be the crappy quality of the reads then. 
+ 			 
+ 	# MrsFAST by comparison:
+ 	pwd: /mnt/data8/dbickhart/mrfast_test
+ 	$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked --pe --seq1 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_1.fa --seq2 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_2.fa -o mrfast_btan01_test.sam --min 100 --max 500
+ 		596830 sequences are read in 3.53. (1585 discarded) [Mem:169.04 M]
+ 		# Already, the sam file is 4 times the size of the others and we aren't halfway done!
+ 		$ wc mrfast_btan01_test.sam
+   			80158  1042054 18938130 mrfast_btan01_test.sam
+   		# almost triple!
+   		
+   	
+   	# Found a Bioinformatics paper that casts doubt on the accurracy of MrFAST and MrsFAST, so I need to test out Soap2 and Novoalign quickly
+   	# Indexing a novoalign version of the ucscmasked file.
+   	$ /mnt/gliu1_usb/dbickhart/novocraft/novoindex -k 14 -s 3 -n novo_ucsc_masked novo_ucsc_masked.index ucsc_bosTau4.fa.masked
+   		Usage:
+		    novoalign options
+		
+		Options:
+		    -d dbname      Full pathname of indexed reference sequence from novoindex
+		
+		Options for Read processing:
+		    -f read1 read2     Filenames for the read sequences for Side 1 & 2.
+		                   If only one file is specified then single end reads are processed.
+		                   If two files are specified then the program will operate in paired end mode.
+		    -F format      Specifies a read file format. For Fastq '_sequence.txt' files from Illumina
+		                   Pipeline 1.3 please specify -F ILMFQ.
+		    -H             Hard clip trailing bases with quality <= 2
+		    -l 99          Sets the minimum information content for a read in base pairs. Default log4(Ng) + 5
+		                   where Ng is the length of the reference genome. Measure uses base qualities
+		                   to determine information content of the read in bits and divides by 2 to get
+		                   effective length in bases.
+		    -n 99          Truncate reads to the specified length before alignment. Default is 150.
+		    -p 99,99 [0.9,99]
+		                   Sets polyclonal filter thresholds.  The first pair of values (n,t) sets
+		                   the number of bases and threshold for the first 20 base pairs of each read.
+		                   If there are n or more bases with phred quality below t then the read is
+		                   flagged as polyclonal and will not be aligned. The alignment status is 'QC'.
+		                   The second pair of values applies to the entire read rather than just the first 20bp
+		                   and is entered as fraction of bases in the read below the threshold.
+		                   Setting -p -1 disables the filter. Default -p -1,10 -1,10
+		    -a [read1 adapter] [read2 adapter]
+		                   Enables adapter stripping from 3' end of reads before aligning. The second
+		                   adapter is used for the second read in paired end mode.
+		                   Default adapter sequence for single end is TCGTATGCCGTCTTCTGCTTG.
+		                   Default adapter sequences for paired end reads are:
+		                           Read1: AGATCGGAAGAGCGGTTCAGCAGGAATGCCGAG
+		                           Read2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTA
+		    -h 99 [99]     Sets homopolymer and optional dinucleotide filter score. Any read that
+		                   matches a homopolymer or dinuc with score less than or equal to this
+		                   threshold will skipped (reported as QC).
+		                   Default 20 for homopolymer and 20 for dinucleotides.
+		Options for alignment scoring:
+		    -t 99          Sets the maximum alignment score acceptable for the best alignment. Default Automatic.
+		                   In automatic mode the threshold is set based on read length, genome size and other
+		                   factors (see manual).
+		                   For pairs the threshold applies to the fragment and includes both ends and the length penalty.
+		    -g 99          Sets the gap opening penalty. Default 40
+		    -x 99          Sets the gap extend penalty. Default 15
+		    -u 99          Penalty for unconverted CHG or CHH cytosine in bisulfite alignment mode. Default 0
+		                   For plants 6 may be a good value.
+		    -b mode        Sets Bisulphite alignment mode. Values for mode are:
+		                        4 - Aligns in 4 possible combinations of direction and index. (Default)
+		                        2 - Aligns reads in forward direction using CT index and in reverse complement using the GA index.
+		    -N 999         Sets the number of bp of source DNA that are not represented in the reference sequences (index). This
+		                   value is used in calculation of prior probability that the read originated in sequence that we cannot
+		                   align to because it is not in the reference sequence set. By default we use the number of bases coded
+		                   as N's in the reference genome. Set to zero to disable inclusion of this in quality calculations.
+		
+		Options for reporting:
+		    -o format [readgroup]
+		                   Specifies the report format. Native, Pairwise, SAM. Default is Native.
+		                   Optionally followed by SAM @RG record.
+		                   Refer to manual for details additional options.
+		    -o Softclip    Turns on soft clipping of alignments. Default for SAM report format.
+		    -o FullNW      Turns off soft clipping of alignments. Default for Pairwise and Native report formats.
+		    -R 99          Sets score difference between best and second best alignment for calling a repeat. Default 5.
+		    -r strategy [limit]
+		                   Sets strategy for reporting repeats. 'None', 'Random', 'All', 'Exhaustive',
+		                   or a posterior probability limit. Default None.
+		                   For -rAll & -rEx you can also specify a limit on the maximum number of alignments reported per read.
+		    -Q 99          Sets lower limit on alignment quality for reporting. Default 0.
+		    -e 999         Sets a limit on number of alignments for a single read.
+		                   This limit applies to the number of alignments with score equal to that of the best
+		                   alignment. Alignment process will stop when the limit is reached.
+		                   Default 1000 in default report mode, off for other modes.
+		    -q 9           Sets number of decimal places for quality score. Default zero.
+		    -K [file]      Collects mismatch statistics for quality calibration by position in the read
+		                   and called base quality. Mismatch counts are written to the named file after
+		                   all reads are processed. When used with -k option the mismatch counts include
+		                   any read from the input quality calibration file.
+		
+		Paired End Options:
+		    -i [mode] 99 99
+		                   Sets approximate fragment length and standard deviation. Mode is 'MP' for mate
+		                   pairs and 'PE' for paired end, the mode changes the expected orientation of reads
+		                  in a proper pair.
+		                   Default -i PE 250 30
+		    -v 99          Sets the structural variation penalty for chimeric fragments. Default 70
+		    -v 99 99       Sets the structural variation penalty for chimeric fragments.
+		                    1) Penalty for SVs within one sequence
+		                    2) Penalty for SVs across different sequences.
+		    -v 99 99 99 regex
+		                   Sets the structural variation penalty for chimeric fragments. The three values are for:
+		                    1) Penalty for SVs within a group of sequences as defined by the regular expression.
+		                    2) Penalty for SVs within a single sequence
+		                    3) Penalty for SVs different sequence and group.
+		                   regex defines a regular expression applied to headers of indexed sequences. The regular
+		                   expression should define one field that is used to define sequence groups.
+		
+		Single End Options:
+		    -m [99]        Sets miRNA mode. In this mode each alignment to a read is given an additional
+		                   score based on nearby alignment to the opposite strand of the read. Optional
+		                   parameter sets maximum distance in bp between alignment and it's reverse complement, Default 100bp.
+		                   Setting miRNA mode changes the default report mode to 'All'.
+		    -s 9           Turns on read trimming and sets trimming step size. Default step size is 2bp.
+		                   Unaligned reads are trimmed until they align or fail the QC tests.
+		
+		 (c) 2008, 2009, 2010 NovoCraft Technologies Sdn Bhd
+		
+	$ time /mnt/data110/dbickhart/novocraft/novoalign -d /mnt/data110/dbickhart/reference/novo_ucsc_masked.index -f /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_1.fa /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_2.fa -r All -i PE 250 75 > btan01_novoalign_test.sam
+		
+		real    133m59.693s
+		user    133m39.361s
+		sys     0m13.167s
+
+	
+	$ time /mnt/data110/dbickhart/novocraft/novoalign -d /mnt/data110/dbickhart/reference/novo_ucsc_masked.index -f /mnt/gliu1_usb/dbic
+	khart/breed_doc/angus/fastqs/btan01p_temp_1.fa /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/btan01p_temp_2.fa -r Random -i PE 250 75 > btan01_novoalign_test_rand
+	om.sam
+		real    134m10.723s
+		user    133m39.604s
+		sys     0m13.291s
+
+	# Let's try that with a larger file, sam output and a limit on the number of map locations to report
+	# 23706691 paired end reads
+	$ time /mnt/data110/dbickhart/novocraft/novoalign -d /mnt/data110/dbickhart/reference/novo_ucsc_masked.index -f /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq -r All -i PE 250 75 -o SAM -e 10 > btan01_novoalign_test_all_huge.sam
+		#       Paired Reads: 23706691
+		#      Pairs Aligned:  2666266
+		#     Read Sequences: 47413382
+		#            Aligned:  9982143
+		#   Unique Alignment:  9249160
+		#   Gapped Alignment:   598874
+		#     Quality Filter:  1326044
+		# Homopolymer Filter:     3706
+		#       Elapsed Time: 760583.125 (sec.)
+		#           CPU Time: 12653.0 (min.)
+		# Fragment Length Distribution
+		#       From    To      Count
+		#       56      63      174
+		#       64      71      1881
+		#       72      79      5248
+		#       80      87      6840
+		#       88      95      7055
+		#       96      103     6901
+		#       104     111     6639
+		#       112     119     6379
+		#       120     127     5822
+		#       128     135     5471
+		#       136     143     5452
+		#       144     151     5261
+		#       152     159     4824
+		#       160     167     4689
+		#       168     175     4358
+		#       176     183     4190
+		#       184     191     4112
+		#       192     199     4476
+		#       200     207     5709
+		#       208     215     8766
+		#       216     223     15084
+		#       224     231     24214
+		#       232     239     45889
+		#       240     247     103617
+		#       248     255     207181
+		#       256     263     279416
+		#       264     271     278231
+		#       272     279     241596
+		#       280     287     207449
+		#       288     295     177265
+		#       296     303     149594
+		#       304     311     125719
+		#       312     319     105514
+		#       320     327     87609
+		#       328     335     73667
+		#       336     343     62901
+		#       344     351     52563
+		#       352     359     42417
+		#       360     367     30648
+		#       368     375     20117
+		#       376     383     11305
+		#       384     391     5664
+		#       392     399     2855
+		#       400     407     1842
+		#       408     415     1246
+		#       416     423     865
+		#       424     431     562
+		#       432     439     347
+		#       440     447     188
+		#       448     455     118
+		#       456     463     77
+		#       464     471     56
+		#       472     479     51
+		#       480     487     36
+		#       488     495     40
+		#       496     503     33
+		#       504     511     39
+		#       512     519     51
+		#       520     527     24
+		#       528     535     28
+		#       536     543     31
+		#       544     551     18
+		#       552     559     9
+		# Mean   280, Std Dev  45.2
+		# Done at Sat Oct  1 10:43:55 2011
+
+		
+		real    12676m24.394s
+		user    12638m57.269s
+		sys     14m5.682s
+		
+	$cat btan01_novoalign_test_all_huge.sam | sam_stats.pl
+		********************************
+		Total mappings:         18968013
+		Total pairs:            9531382
+		Map score average:      62.543181987486
+		Map score stdev:        71.4764523802248
+		Pair length average:    74277.4324001493
+		Pair length median:     124
+		Pair length stdev:      2069332.67856343
+		Unique read names:      1
+		Read map max:           9531382
+		Read map min:           9531382
+		Average map times:      9531382
+		********************************
+	
+	
+	
+# Testing Soap version 2
+	pwd: /mnt/data8/dbickhart/mrfast_test
+	$ /mnt/data110/dbickhart/soap2.21release/soap -a /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq -b /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq -D /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked.index -r 2 -2 btan01_soap_unpaired.sam -o btan01_soap_paired_maps.sam -m 150 -x 350 -v 3 -p 4
+		Total Pairs: 23706691 PE
+		Paired:      1019675 ( 4.30%) PE
+		Singled:     3893961 ( 8.21%) SE
+		Total Elapsed Time:         2506.02
+		      - Load Index Table:      7.59
+		      - Alignment:          2498.43
+		
+		SOAPaligner/soap2 End
+		Fri Sep 23 10:11:11 2011
+
+	# Very good diagnostics and not bad on time. 
+	# About 45 minutes for 23 million PE reads
+	# However, I need to now convert the files into actual sam files (they are in a SOAP proprietary format)
+	$ perl /mnt/data110/dbickhart/soap2.21release/soap2sam.pl -p btan01_soap_paired_maps.soap > btan01_soap_paired_maps.sam
+	$ perl /mnt/data110/dbickhart/soap2.21release/soap2sam.pl -p btan01_soap_unpaired.soap > btan01_soap_unpaired.sam 
+	
+	# Testing it out without the "all" option selected
+	$ /mnt/data110/dbickhart/soap2.21release/soap -a /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq -b /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq -D /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked.index -r 0 -2 btan01_soap_notall_unpaired.sam -o btan01_soap_notall_paired_maps.sam -m 150 -x 350 -v 3 -p 4
+		Total Pairs: 23706691 PE
+		Paired:      939950 ( 3.96%) PE
+		Singled:     3503397 ( 7.39%) SE
+		Total Elapsed Time:         2523.48
+		      - Load Index Table:      7.72
+		      - Alignment:          2515.76
+
+# Testing Mrsfast PEM mapping
+	pwd: /mnt/data8/dbickhart/mrfast_test
+	$ time /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked --pe --seq1 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq --seq2 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq --max 500 --min 100 --discordant-vh -o mrsfast_pe_angus_01_test.sam
+	# This uses the index that MrFast had created for the reference. 
+	# Not sure if the indexing method is the same, or if the two programs require different indexes
+	# Not certain that it worked... maybe the indexes were different?
+		Post Processing Time:               0.43
+		Total Time:                     31782.29
+		Total No. of Reads:             47098746
+		Total No. of Mappings:                 0
+		Avg No. of locations verified:      2186
+	
+	
+		real    531m11.566s
+		user    526m34.101s
+		sys     2m48.624s
+		
+	# I forgot; the discordant-vh option does not produce a .sam file! I need to remove that to get accurate mapping results
+	$ time /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/data110/dbickhart/reference/ucsc_bosTau4.fa.masked --pe --seq1 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq --seq2 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq --max 500 --min 100 -o mrsfast_pe_angus_01_test.sam
+		Total Time:                     28003.84
+		Total No. of Reads:             47098746
+		Total No. of Mappings:                 0
+		Avg No. of locations verified:      2216
+		
+		
+		real    468m35.557s
+		user    463m3.369s
+		sys     3m4.588s
+	
+	
+	
+# Retesting Mosaik
+	# First, I need to rebuild the reference genome hash
+	pwd: /mnt/data110/dbickhart/reference
+	$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikBuild -fr ucsc_bosTau4.fa.masked -oa ucsc_bTau4_ref.dat
+	$ export MOSAIK_TMP=/mnt/data110/dbickhart/reference/tmp
+	$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikJump -ia ucsc_bTau4_ref.dat -out ucsc_btau4_ref -hs 14
+	
+	pwd: /mnt/data8/dbickhart/mrfast_test
+	$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikBuild -q /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq -q2 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq -out mosaik_btan01p_test.dat -st illumina
+	# This gave a read name synchronization error: it requires that the read names be identical.
+	# Created a script to make the read names identical
+	$ synchronize_fastq_names_pe.pl /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq
+	$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikBuild -q /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq.syn -q2 /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq.syn -out mosaik_btan01p_test.dat -st illumina
+	# That worked!
+		Filtering statistics:
+		============================================
+		# mates deleted:            110786 (  0.2 %)
+		# leading N's trimmed:       33836
+		# lagging N's trimmed:       88282
+		--------------------------------------------
+		# reads written:          23695730
+		# bases written:        3547572582
+		
+		MosaikBuild CPU time: 265.890 s, wall time: 276.485 s
+	
+	$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikAligner -in mosaik_btan01p_test.dat -out mosaik_btan01p_test_align.dat -ia /mnt/data110/dbickhart/reference/ucsc_bTau4_ref.dat -hs 14 -mm 4 -mhp 100 -act 20 -j /mnt/data110/dbickhart/reference/ucsc_btau4_ref -p 4
+		------------------------------------------------------------------------------
+		MosaikAligner 1.1.0017                                              2010-10-24
+		Michael Stromberg & Wan-Ping Lee  Marth Lab, Boston College Biology Department
+		------------------------------------------------------------------------------
+		
+		- Using the following alignment algorithm: all positions
+		- Using the following alignment mode: aligning reads to all possible locations
+		- Using a maximum mismatch threshold of 4
+		- Using a hash size of 14
+		- Using 4 processors
+		- Using an alignment candidate threshold of 20bp.
+		- Setting hash position threshold to 100
+		- Using a jump database for hashing. Storing keys & positions in memory.
+		
+		Alignment statistics (mates):
+		===================================
+		# filtered out:  40201045 ( 84.8 %)
+		# unique:         6269309 ( 13.2 %)
+		# non-unique:      832242 (  1.8 %)
+		-----------------------------------
+		total:           47391460
+		total aligned:    7101551 ( 15.0 %)
+		
+		Alignment statistics (reads):
+		============================================
+		# unaligned:              18230666 ( 76.9 %)
+		# orphaned:                3828577 ( 16.2 %)
+		# both mates unique:       1400029 (  5.9 %)
+		# one mate non-unique:       76990 (  0.3 %)
+		# both mates non-unique:    159468 (  0.7 %)
+		--------------------------------------------
+		total reads:              23695730
+		total reads aligned:       5465064 ( 23.1 %)
+		
+		MosaikAligner CPU time: 153021.500 s, wall time: 38405.468 s
+		
+	$ /mnt/gliu1_usb/dbickhart/mosaik-aligner/bin/MosaikText -in mosaik_btan01p_test_align.dat -bam mosaik_btan01p_test_align.bam
+	$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view mosaik_btan01p_test_align.bam | sam_stats.pl
+		********************************
+		Total mappings:         27724764
+		Total pairs:            14710069
+		Map score average:      37.9365414616334
+		Map score stdev:        17.057239290832
+		Pair length average:    0
+		Pair length median:     0
+		Pair length stdev:      0
+		Unique read names:      3756897
+		Read map max:           1412
+		Read map min:           1
+		Average map times:      3.91548370902902
+		********************************
+
+# Retesting BWA
+	pwd: /mnt/data110/dbickhart/reference/
+	$ /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/bwa index -p bwa_ucsc -a bwtsw ucsc_bosTau4.fa.masked
+	
+	pwd: /mnt/data8/dbickhart/mrfast_test/
+	$ /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/bwa aln -t 4 -R 4 /mnt/data110/dbickhart/reference/bwa_ucsc /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq > bwa_btan01p.3.1.15.sai
+	$ /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/bwa aln -t 4 -R 4 /mnt/data110/dbickhart/reference/bwa_ucsc /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq > bwa_btan01p.3.2.15.sai
+	$ /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/bwa sampe /mnt/data110/dbickhart/reference/bwa_ucsc bwa_btan01p.3.1.15.sai bwa_btan01p.3.2.15.sai /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq > bwa_btan01p_alignment.sam
+		[infer_isize] (25, 50, 75) percentile: (260, 277, 304)
+		[infer_isize] low and high boundaries: 172 and 392 for estimating avg and std
+		[infer_isize] inferred external isize from 15358 pairs: 284.602 +/- 33.354
+		[infer_isize] skewness: 0.574; kurtosis: 0.257; ap_prior: 1.64e-05
+		[infer_isize] inferred maximum insert size: 516 (6.95 sigma)
+
+	# Testing out sampe with an increased discordancy reporting threshold
+	$ /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/bwa sampe -N 100 /mnt/data110/dbickhart/reference/bwa_ucsc bwa_btan01p.3.1.15.sai bwa_btan01p.3.2.15.sai /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.1.15.fq /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/BTAN01P.FC42N19.3.2.15.fq > bwa_btan01p_alignment_disc.sam
+		[infer_isize] (25, 50, 75) percentile: (259, 277, 304)
+		[infer_isize] low and high boundaries: 169 and 394 for estimating avg and std
+		[infer_isize] inferred external isize from 7135 pairs: 284.461 +/- 33.488
+		[infer_isize] skewness: 0.594; kurtosis: 0.321; ap_prior: 1.91e-05
+		[infer_isize] inferred maximum insert size: 517 (6.94 sigma)
+		
+	$ cat bwa_btan01p_alignment.sam | sam_stats.pl
+		********************************
+		Total mappings:         10933954
+		Total pairs:            5466977
+		Map score average:      28.992628558708
+		Map score stdev:        22.0634605842999
+		Pair length average:    47053.8393715576
+		Pair length median:     0
+		Pair length stdev:      1649216.07350945
+		Unique read names:      5466977
+		Read map max:           1
+		Read map min:           1
+		Average map times:      1
+		********************************
+		
+	
+
+
+# I have created a sam stats script in my bin folder that quickly processes sam files to generate several statistics on reads and mapping
+# It takes STDIN input, so it can be used seamlessly with samtools view
+	pwd: /mnt/data8/dbickhart/mrfast_test
+	$ cat btan01_soap_paired_maps.sam | sam_stats.pl
+		********************************
+		Total mappings:         3256642
+		Total pairs:            1628321
+		Map score average:      17.3175313712714
+		Map score stdev:        14.8198869206381
+		Pair length average:    150648.44821015
+		Pair length median:     19246
+		Pair length stdev:      2841702.43962906
+		Unique read names:      1019675
+		Read map max:           249
+		Read map min:           1
+		Average map times:      1.59690195405399
+		********************************
+	$ cat btan01_soap_unpaired.sam | sam_stats.pl
+		********************************
+		Total mappings:         10372052
+		Total pairs:            5720938
+		Map score average:      10.1331838675703
+		Map score stdev:        14.1885200333516
+		Pair length average:    621709.536395605
+		Pair length median:     0			<- because so many reads did not map at all
+		Pair length stdev:      5859006.84956999
+		Unique read names:      2159271
+		Read map max:           1025
+		Read map min:           1
+		Average map times:      2.64947660576185
+		********************************
+		
+	# I double checked the sam files, and it looks like they are reporting huge read lengths! It must be due to the "ALL" behavior that I used.
+	# It does not make sense that several of the "unpaired" reads had read length values
+	# Perhaps if I used soap 2 without the ALL behavior, it would report proper reads? 
+	

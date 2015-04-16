@@ -1,0 +1,103 @@
+09/10/2012
+# This is a series of my notes on how to validate Bob's angus CNV calls.
+# I want to validate the DOC using qPCR (old hat method) but the VH will need regular PCR and aCGH validation
+
+# I will break this into two sections for the DOC and VH designs
+
+#################################
+#				#
+#	VH confirmation		#
+#				#
+#################################
+# I am going to pick out the deletion events that match certain criteria
+
+# Doing work on server 3 because I think this will take up alot of ram
+Server3: /mnt/data8/dbickhart/final_angus_data
+$ perl resolve_and_merge_vh_events.pl refGeneNum_umd3_coords.bed 'final_vh_merge_AN*' 'AN*normalized.CN' umd3_repeatmasker_out.merged.bed
+
+#################################
+#				#
+#	DOC Validation		#
+#				#
+#################################
+# I am going to create some general statistics for the DOC analysis from the previous GR paper and the current run with NGS data
+# First I am going to liftover the old GR data and then run it through my venn program with the new HFD3360 data
+pwd: /home/dbickhart/share/bob_missou_data/angus_finished
+$ /media/sf_SharedFolders/cow4_doc/liftover/liftOver ../../cow4_doc/hd_an_trace_art/named_beds/DTTRACE_cnv_cn.bed /media/sf_SharedFolders/cow4_doc/liftover/bosTau4ToBosTauMd3.over.chain derek_gr_dominette_liftover.bed derek_gr_dominette_liftover.unmapped
+$ wc -l derek_gr_dominette_liftover.bed derek_gr_dominette_liftover.unmapped
+	  363 derek_gr_dominette_liftover.bed
+	  610 derek_gr_dominette_liftover.unmapped
+	  973 total
+$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tGRDTTRACE";' < derek_gr_dominette_liftover.bed > venn/GRDTTRACE_doc_liftover.bed
+$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tDTNGS";' < final_doc_merge_HFD3360.bed > venn/DTNGS_doc_data.bed
+
+$ cd venn
+$ create_GD_venn_diagram.pl dt_comparison_umd3_venn.png DTNGS_doc_data.bed GRDTTRACE_doc_liftover.bed
+	File 1 is DTNGS_doc_data.bed
+	File 2 is GRDTTRACE_doc_liftover.bed
+	DTNGS	927	0	39580988	0
+	DTNGS;GRDTTRACE	234	234	6716407	6716407
+	GRDTTRACE	0	162	0	5690887
+	
+# Hmm... not the best overlap even with the reduced number of lifted over DTTRACE events
+$ cat GRDTTRACE_doc_liftover.bed | bed_length_sum.pl 
+	Interval Numbers:	363
+	Total Length:		12495556
+	Length Average:		34423.0192837466
+	Length Median:		17037
+	Length Stdev:		39953.9406554999
+
+$ cat DTNGS_doc_data.bed | bed_length_sum.pl 
+	Interval Numbers:	1156
+	Total Length:		46321223
+	Length Average:		40070.2621107266
+	Length Median:		14437
+	Length Stdev:		71293.5251883482
+	
+_____________________
+Panther analysis
+_____________________
+	
+# Now let's see if there are any gene intersections that I can paste into Panther to find enrichment
+pwd: /home/dbickhart/share/bob_missou_data/angus_finished
+$ cat final_doc_merge_* | mergeBed -i stdin > total_angus_cnvr_ANHFD_merged.bed
+$ intersectBed -a ../umd3_folder/refGeneName_umd3_coords.bed -b total_angus_cnvr_ANHFD_merged.bed -wa | cut -f4 | uniq > cnvr_simple_gene_list.txt
+
+# I uploaded the list to the pantherdb geneexpression analysis page and used the bos taurus reference
+# I searched the panther pathway analysis and found that 1/2 of the gene symbols could not be mapped. 
+# Going to try the ensembl transcript ids instead
+$ intersectBed -a ../umd3_folder/ensGene_umd3_coords.bed -b total_angus_cnvr_ANHFD_merged.bed -wa | cut -f4 | uniq > cnvr_ensembl_list.txt
+
+# Nothing is really leaping out from the analysis. Let's try the analysis without DT
+$ cat final_doc_merge_AN* | mergeBed -i stdin > total_angus_cnvr_AN_merged.bed
+$ intersectBed -a ../umd3_folder/ensGene_umd3_coords.bed -b total_angus_cnvr_AN_merged.bed -wa | cut -f4 | uniq > cnvr_AN_ensembl_list.txt
+
+# that reduced the list by about 100 genes. Now to check them in Panther
+# Actually, it made it worse! Reduced the p value significance by alot!
+# I'm just going to stick with the DT-included dataset.
+
+# Wait, one last thing: Let's remove the previous publication data and then try it again.
+$ cat final_doc_merge_* | intersectBed -a stdin -b already_identified_cnvs_other_pubs.bed -v | mergeBed -i stdin > total_angus_cnvr_ANHFD_notinotherpubs_merged.bed
+$ intersectBed -a ../umd3_folder/ensGene_umd3_coords.bed -b total_angus_cnvr_ANHFD_notinotherpubs_merged.bed -wa | cut -f4 | uniq > cnvr_Pubs_ensembl_list.txt
+
+# that did it: Metabolic and primary metabolic go pathways were at significant thresholds
+# Now to take the interesting gene pathways and extract cnv intervals from them for primer design
+$ perl -lane '@s = split(/,/, $F[1]); foreach $a (@s){print "$a";}' < cytoskeleton_cellular.txt | uniq > ensembl_transcripts_forlookup.txt
+$ perl -lane '@s = split(/,/, $F[1]); foreach $a (@s){print "$a";}' < metabolic_pathway.txt | uniq >> ensembl_transcripts_forlookup.txt
+$ perl -lane '@s = split(/,/, $F[1]); foreach $a (@s){print "$a";}' < primary_metabolic_pathway.txt | uniq >> ensembl_transcripts_forlookup.txt
+
+$ uniq ensembl_transcripts_forlookup.txt > ensembl_transcripts_forlookup_uniq.txt
+pwd: /home/dbickhart/share/bob_missou_data/angus_finished
+$ perl -e 'chomp @ARGV; open(IN, "< $ARGV[0]"); while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[3]})){print $_ . "\n";}} close IN;' ensembl_transcripts_forlookup_uniq.txt ../../../umd3_folder/ensGene_umd3_coords.bed > ensembl_transcript_coords.bed
+$ cat *.doc.name.type.bed | intersectBed -a panther/threeSetsData/ensembl_transcript_coords.bed -b stdin -wa -wb > metabolic_cell_structure_genes_angus_doc_cnvs.tab
+
+# this is a better format for the data:
+$ cat *.doc.name.type.bed | mergeBed -i stdin -nms | intersectBed -a panther/threeSetsData/ensembl_transcript_coords.bed -b stdin -wa -wb > metabolic_cell_structure_genes_angus_doc_cnvs.tab
+
+# Sorted the ensemble ids by number of animals (ascending order) in excel then printed 77ish out to a tab delimited file
+pwd: /home/dbickhart/share/bob_missou_data/angus_finished
+$ mkdir qpcrprimers
+$ mkdir qpcrprimers/panther
+$ cd qpcrprimers/panther
+
+$ perl -lane 'system("primer_3_exonerate_wrapper.pl -c $F[4] -s $F[5] -e $F[6] -a 150-200 -o $F[3]_$F[4]_$F[5]_$F[6].primers"); ' < ../../panther_doc_primer_picks_qpcr_short_list.txt

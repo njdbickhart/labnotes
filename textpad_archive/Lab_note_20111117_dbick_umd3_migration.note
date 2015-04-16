@@ -1,0 +1,241 @@
+11/17/2011
+# The UMD3 genome was uploaded as a browseable track on the UCSC genome browser
+# This removes a critical point that we could have argued against the peer review in our GR manuscript
+# In anticipation of peer review criticism, I am going to align the DTTRACE reads to the UMD3.1 reference assembly that I have previously prepared (see Lab_note_20110401_dbick_weekend_catchup.txt)
+
+# I am fairly certain that this assembly is well masked (I did it myself) so hopefully the alignment goes well.
+# If not, I can filter the bed files manually.
+
+# Transferred my fork letter wrapper to server 3 and set it to only use 3 processors
+	# Creating umd3 fai file
+	Server3: /mnt/data110/dbickhart/reference
+	$ ~/bin/samtools faidx umd3_full_cryptic_gap_a.fa
+	
+	# Running on older files
+	Server3: /mnt/data8/dbickhart/trace_reads/
+	$ mrsfast_fork_letter_wrapper.pl 'ls *.gz' umd3_bams /mnt/data110/dbickhart/reference/umd3_full_cryptic_gap_a.fa
+	# Now on the newer fastqs
+	$ mrsfast_fork_letter_wrapper.pl 'ls original_trace/*.fq.gz' umd3_bams /mnt/data110/dbickhart/reference/umd3_full_cryptic_gap_a.fa
+	
+	# Converting bams into a bed file
+	Server3: /mnt/data8/dbickhart/trace_reads/umd3_bams
+	$ for i in *.bam; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> umd3_dttrace_hits.bed; echo $i; done		*/
+	
+# Now to do the umd3 windows
+	pwd /mnt/data110/dbickhart/umd3_run/holstein_hd
+	$ wc holstein_comb_file1_c.bed holstein_comb_file1.bed
+	  1799554   7198216  49495378 holstein_comb_file1_c.bed
+	  2146449   8585796  59022392 holstein_comb_file1.bed
+	# Looks like I have already developed a pipeline for umd3 and a wrapper script that generates the control windows as well
+	$ perl alkan_pipeline_no_controls.pl --File1 holstein_comb_file1.bed --File2 holstein_comb_file2.bed --File3 holstein_comb_file3.bed
+		File1 median: 406.867062  File3 median: 88.944939
+		Filter1: 813.734124 - 203.43353100000000000000   Filter2: 177.889878 - 44.47246950000000000000
+		$ wc holstein_comb_file1.bed.final.deletions.tab holstein_comb_file1.bed.final.wssd holstein_comb_file1.bed.final.X.deletions.tab holstein_comb_file1.bed.X.final.wssd
+		  944  2832 22100 holstein_comb_file1.bed.final.deletions.tab
+		  858  2574 19862 holstein_comb_file1.bed.final.wssd
+		    0     0     0 holstein_comb_file1.bed.final.X.deletions.tab
+		  189   567  4447 holstein_comb_file1.bed.X.final.wssd
+		 1991  5973 46409 total
+	# Now I'm trying it with a higher cutoff on the control windows to see if that helps
+	$ perl alkan_pipeline_no_controls.pl --File1 holstein_comb_file1.bed --File2 holstein_comb_file2.bed --File3 holstein_comb_file3.bed
+		Creating control files
+		File1 average: 406.867062  File3 average: 88.944939
+		File1 stdev:   562.072383     File1 stdev:   290.265750
+		Filter1: -2403.494853 - 3217.228977   Filter2: -1362.383811 - 1540.273689
+		Avg:  402.972953  std:  92.602421  AutoCut:  773.382637  AutoCut2:  680.780216  Del:  125.165690
+		SexA:  84.356528  std:  316.610642  AutoCut:  1350.799096  AutoCut2:  1034.188454  Del:  -865.475398
+		
+		$ wc holstein_comb_file1.bed.final.deletions.tab holstein_comb_file1.bed.final.wssd holstein_comb_file1.bed.final.X.deletions.tab holstein_comb_file1.bed.X.final.wssd
+		   89   267  2065 holstein_comb_file1.bed.final.deletions.tab
+		  590  1770 13585 holstein_comb_file1.bed.final.wssd
+		    0     0     0 holstein_comb_file1.bed.final.X.deletions.tab
+		   96   288  2248 holstein_comb_file1.bed.X.final.wssd
+		  775  2325 17898 total   <- quite a big difference!
+		  
+	# Lets work on the DTTRACE data instead
+		Server3: /mnt/data8/dbickhart/trace_reads/umd3_bams/
+		$ combine_bed_hits_lowmem.pl umd3_dttrace_hits.bed umd3_dttrace_windows /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file1.bed /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file2.bed /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file3.bed
+		$ cd umd3_dttrace_windows
+		$ alkan_pipeline_no_controls.pl --File1 umd3_dttrace_hits_umd3_template_file1.bed --File2 umd3_dttrace_hits_umd3_template_file2.bed --File3 umd3_dttrace_hits_umd3_template_file3.bed
+			Creating control files
+			File1 average: 539.140976  File3 average: 111.156966
+			File1 stdev:   1311.686083     File1 stdev:   534.084541
+			Filter1: -6019.289439 - 7097.571391   Filter2: -2559.265739 - 2781.579671
+			
+			Avg:  482.081290  std:  319.379146  AutoCut:  1759.597874  AutoCut2:  1440.218728  Del:  -476.056148  <- not good
+			SexA:  283.295208  std:  904.368729  AutoCut:  3900.770124  AutoCut2:  2996.401395  Del:  -2429.810979
+			
+			$ wc umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd umd3_dttrace_hits_umd3_template_file1.bed.final.wssd umd3_dttrace_hits_umd3_template_file1.bed.final.deletions.tab umd3_dttrace_hits_umd3_template_file1.bed.final.X.deletions.tab
+			  104   312  2462 umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd
+			 1137  3411 26341 umd3_dttrace_hits_umd3_template_file1.bed.final.wssd
+			    0     0     0 umd3_dttrace_hits_umd3_template_file1.bed.final.deletions.tab
+			    0     0     0 umd3_dttrace_hits_umd3_template_file1.bed.final.X.deletions.tab
+			 1241  3723 28803 total
+			 
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < umd3_dttrace_hits_umd3_template_file1.bed.final.wssd
+				31589498   <- George would be happy with this, but let me see if I can modify the pipeline to make things better
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd
+				9231568
+		# Going to add an "if" statement to ensure that the minimum cutoff is always at least "1" in order to weed out "zero" control regions
+		# Also, grepped out the X chromosome in the initial averages
+		$ alkan_pipeline_no_controls.pl --File1 umd3_dttrace_hits_umd3_template_file1.bed --File2 umd3_dttrace_hits_umd3_template_file2.bed --File3 umd3_dttrace_hits_umd3_template_file3.bed
+			File1 average: 509.073892  File3 average: 107.150936
+			File1 stdev:   1274.729310     File3 stdev:   538.052842
+			Filter1: 127.26847300000000000000 - 6882.720442   Filter2: 26.78773400000000000000 - 2797.415146
+			
+			Avg:  482.196309  std:  317.060868  AutoCut:  1750.439781  AutoCut2:  1433.378913  Del:  -468.986295
+			SexA:  279.224722  std:  889.737868  AutoCut:  3838.176194  AutoCut2:  2948.438326  Del:  -2389.988882
+			
+		# Trying it with different cutoffs for the control files
+		$ alkan_pipeline_no_controls.pl --File1 umd3_dttrace_hits_umd3_template_file1.bed --File2 umd3_dttrace_hits_umd3_template_file2.bed --File3 umd3_dttrace_hits_umd3_template_file3.bed
+			File1 average: 509.073892  File3 average: 107.150936
+			File1 stdev:   1274.729310     File3 stdev:   538.052842
+			Filter1: 127.26847300000000000000 - 4333.261822   Filter2: 26.78773400000000000000 - 1721.309462
+			
+			$ wc umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd umd3_dttrace_hits_umd3_template_file1.bed.final.wssd umd3_dttrace_hits_umd3_template_file1.bed.final.X.deletions.tab umd3_dttrace_hits_umd3_template_file1.bed.final.deletions.tab
+			  179   537  4225 umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd
+			 1423  4269 32959 umd3_dttrace_hits_umd3_template_file1.bed.final.wssd
+			    0     0     0 umd3_dttrace_hits_umd3_template_file1.bed.final.X.deletions.tab
+			    0     0     0 umd3_dttrace_hits_umd3_template_file1.bed.final.deletions.tab
+			 1602  4806 37184 total
+			 
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < umd3_dttrace_hits_umd3_template_file1.bed.final.wssd
+				38775000
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd
+				13464483
+				
+	# Troubleshooting:
+	# I want to see if there are any regions in the genome that are particularly difficult and are likely due to cryptic repeats
+		Server3: /mnt/data8/dbickhart/trace_reads/umd3_bams/umd3_dttrace_windows
+		$ perl -lane 'if($F[3] > 20000 || $F[3] == 0){print $_;}' < umd3_dttrace_hits_umd3_template_file1.bed > problem_regions.bed
+		# concatenating the sequence regions to get a better estimate of what is wrong
+		$ perl -e '@oldline = ("chr99", 21321, 1232, 333); while(<>){chomp; @s = split(/\t/); if ($s[0] eq $oldline[0] && $s[1] <= $oldline[2] && $s[2] >= $oldline[1]){$avg = ($oldline[3] + $s[3]) / 2; @oldline = ($s[0], $oldline[1], $s[2], $avg); next;}elsif($oldline[0] eq "chr99"){@oldline = @s;}else{print join("\t", @oldline) . "\n"; @oldline = @s;}}' < problem_regions.bed |  wc
+		     84     336    2637
+		$ perl -lane 'if ($F[3] == 0){next;}else{print $_;}' < condensed_problem_regions.bed > condensed_problem_regions_gain.bed
+		# So, lets convert this into a 1k, nonoverlapping set of windows and then align sequence to them.
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); for($i = $s[1]; $i < $s[2] + 1000; $i += 1000){$e = $i + 1000; print "$s[0]\t$i\t$e\n";}}' < condensed_problem_regions_gain.bed > 1kb_res_problem_regions_gain.bed
+		$ wc 1kb_res_problem_regions_gain.bed
+		 1077  3231 23910 1kb_res_problem_regions_gain.bed
+		# Now, to make it less confusing, lets get rid of the already repeatmasked regions
+			Server3: /mnt/data110/dbickhart/reference/umd3_chrs
+			$ split_fasta.pl umd3_full_cryptic_gap_a.fa
+			$ rm umd3_full_cryptic_gap_a.fa
+			$ for i in *.fa; do echo $i; ~/bin/get_repeatmask_bed $i; done
+			$ cat *.repeats > umd3_actual_masked_regions.bed
+			$ rm *.fa
+		Server3: /mnt/data8/dbickhart/trace_reads/umd3_bams/umd3_dttrace_windows
+		$ subtractBed -a 1kb_res_problem_regions_gain.bed -b /mnt/data110/dbickhart/reference/umd3_chrs/umd3_actual_masked_regions.bed | wc
+		   1516    4548   33505
+		$ subtractBed -a 1kb_res_problem_regions_gain.bed -b /mnt/data110/dbickhart/reference/umd3_chrs/umd3_actual_masked_regions.bed > 1kb_res_problem_regions_gain_filtered.bed
+		
+		$ cd ..
+		$ mkdir problems
+		$ combine_bed_hits_lowmem.pl umd3_dttrace_hits.bed problems umd3_dttrace_windows/1kb_res_problem_regions_gain_filtered.bed
+			# These regions need to be masked:
+				chr1    91346135        91346266        1833
+				chr1    91346400        91346816        106357
+				chr10   70558683        70559192        84898
+				chr12	29516413	29519971	181021
+				chr14	75137	75175
+				chr14	75506	75562
+				chr14	248195	248613
+				chr14	468896	468958
+				chr14	504081	504400
+				chr14	508211	508363
+				chr14	515835	515865
+				chr14	603027	603077
+				chr14	610592	610747
+				
+			# This is getting too tedious, I am going to extract the repeatmasked regions from the UCSC website and use them to extract the locations that I need to mask from the umd3 fasta
+			# I concatenated the ucsc repeatmasker out file and the trf output and merged the files
+			# Now to intersect with the problem regions
+			$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' < umd3_dttrace_hits_1kb_res_problem_regions_gain_filtered.bed > umd3_1kb_res_bare_gain_filtered.bed
+			$ intersectBed -a umd3_1kb_res_bare_gain_filtered.bed -b umd3_merge_repeats_out.bed | wc
+			    288     864    6454
+			$ intersectBed -a umd3_1kb_res_bare_gain_filtered.bed -b umd3_merge_repeats_out.bed > non_masked_umd3_regions.bed
+			# Ok, that saved me some time.
+			# Now to filter them from the dttrace hits file (should be similar to repeatmasking the full genome and realigning) then rerun the pipeline
+			
+			$ cd ..
+			$ intersectBed -a umd3_dttrace_hits.bed -b problems/non_masked_umd3_regions.bed -v > umd3_dttrace_hits_rem.bed
+		# Now to remake the DTTRACE windows and rerun the pipeline
+		$ mkdir umd3_dttrace_win_rem
+		$ wc -l umd3_dttrace_hits.bed umd3_dttrace_hits_rem.bed
+		 135024833 umd3_dttrace_hits.bed
+		 133952912 umd3_dttrace_hits_rem.bed
+		 268977745 total
+		$ combine_bed_hits_lowmem.pl umd3_dttrace_hits_rem.bed umd3_dttrace_win_rem /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file1.bed /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file2.bed /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file3.bed
+		$ cd umd3_dttrace_win_rem/
+		$ alkan_pipeline_no_controls.pl --File1 umd3_dttrace_hits_rem_umd3_template_file1.bed --File2 umd3_dttrace_hits_rem_umd3_template_file2.bed --File3 umd3_dttrace_hits_rem_umd3_template_file3.bed
+			Creating control files
+			File1 average: 502.435849  File3 average: 106.205421
+			File1 stdev:   577.805060     File3 stdev:   355.087500
+			Filter1: 125.60896225000000000000 - 2235.851029   Filter2: 26.55135525000000000000 - 1171.467921
+			
+			Recalculating averages
+			Avg:  463.299812  std:  193.717269  AutoCut:  1238.168888  AutoCut2:  1044.451619  Del:  -117.851995 <- better but not the best
+			SexA:  98.315505  std:  262.230584  AutoCut:  1147.237841  AutoCut2:  885.007257  Del:  -688.376247
+			
+			$ wc umd3_dttrace_hits_rem_umd3_template_file1.bed.final.deletions.tab umd3_dttrace_hits_rem_umd3_template_file1.bed.final.wssd umd3_dttrace_hits_rem_umd3_template_file1.bed.final.X.deletions.tab umd3_dttrace_hits_rem_umd3_template_file1.bed.X.final.wssd
+			    0     0     0 umd3_dttrace_hits_rem_umd3_template_file1.bed.final.deletions.tab
+			 2178  6534 50545 umd3_dttrace_hits_rem_umd3_template_file1.bed.final.wssd
+			    0     0     0 umd3_dttrace_hits_rem_umd3_template_file1.bed.final.X.deletions.tab
+			  379  1137  8889 umd3_dttrace_hits_rem_umd3_template_file1.bed.X.final.wssd
+			 2557  7671 59434 total
+			 
+			$ perl -lane 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < umd3_dttrace_hits_rem_umd3_template_file1.bed.final.wssd
+				58120531   <- not good
+			$ perl -lane 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < umd3_dttrace_hits_rem_umd3_template_file1.bed.X.final.wssd
+				23215601
+				
+		# I am wondering if I should remake the UMD3 fasta and try realignment?
+		# Hopefully that shouldn't take too long.
+		# Wait, maybe the high number of megabases is simply due to a lack of artifact masking?
+		# Lets test this on the cow4 assembly without artifact masking
+			$ run_alkan_pipeline.pl --File1 full_trace_file1.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File1_c full_trace_file1_c.bed --File3_c full_trace_file3_c.bed
+				Avg:  339.918660  std:  92.153850  AutoCut:  708.534060  AutoCut2:  616.380210  Del:  63.457110
+				SexA:  42.366126  std:  142.582166  AutoCut:  470.112624  AutoCut2:  327.530458  Del:  -242.798206
+				
+			$ perl -lane 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < full_trace_file1.bed.final.wssd
+				50546533	<- this makes me feel better about UMD3
+			$ mv full_trace_file1.bed.final.wssd dttrace_noartmask_rerun_umd3_comp.bed
+			
+		# I want to see how the simulation stacks up on the current windows
+			Server3: mnt/gliu1_usb/dbickhart/alkan_files/umd3/combined_sim
+			$ gunzip combined_umd3_sim.bed.gz
+			
+	# A quick test on BTAN09
+		Server3: /mnt/data110/dbickhart/umd3_run/high_den_ang/an0626
+		$ for i in *.bam; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> btan09_umd3_hits.bed; echo $i; done
+		$ wc -l btan09_umd3_hits.bed
+			119,968,782 btan09_umd3_hits.bed
+			~ 4x coverage... oops! I forgot that I did not "chunk" the reads! 
+			@ 84bp reads: ~ 8.4x coverage
+		$ for i in *.bam; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 84; print "$F[2]\t$F[3]\t$e";' >> btan09_umd3_hits.bed; echo $i; done
+		$ mkdir btan09_windows
+		$ combine_bed_hits_lowmem.pl btan09_umd3_hits.bed btan09_windows /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file1.bed /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file2.bed /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file3.bed
+		$ alkan_pipeline_no_controls.pl --File1 btan09_umd3_hits_umd3_template_file1.bed --File2 btan09_umd3_hits_umd3_template_file2.bed --File3 btan09_umd3_hits_umd3_template_file3.bed
+		$ wc btan09_umd3_hits_umd3_template_file1.bed.final.wssd btan09_umd3_hits_umd3_template_file1.bed.X.final.wssd btan09_umd3_hits_umd3_template_file1.bed.final.X.deletions.tab btan09_umd3_hits_umd3_template_file1.bed.final.deletions.tab
+			  467  1401 10758 btan09_umd3_hits_umd3_template_file1.bed.final.wssd
+			  115   345  2715 btan09_umd3_hits_umd3_template_file1.bed.X.final.wssd
+			    0     0     0 btan09_umd3_hits_umd3_template_file1.bed.final.X.deletions.tab
+			  684  2052 15991 btan09_umd3_hits_umd3_template_file1.bed.final.deletions.tab
+			 1266  3798 29464 total
+			 
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < btan09_umd3_hits_umd3_template_file1.bed.final.wssd
+			16,540,736
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < btan09_umd3_hits_umd3_template_file1.bed.X.final.wssd
+			10,213,437
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < btan09_umd3_hits_umd3_template_file1.bed.final.deletions.tab
+			13,294,903
+		$ more btan09_umd3_hits_umd3_template_file1.bed_gccorr.log
+			Avg:  471.735740  std:  91.952836  AutoCut:  839.547084  AutoCut2:  747.594248  Del:  195.877232
+			SexA:  51.393864  std:  178.580140  AutoCut:  765.714424  AutoCut2:  587.134284  Del:  -484.346556
+			
+	# Test on BTAN02
+		Sever3: /mnt/data110/dbickhart/umd3_run/high_den_ang/an0828
+		$ for i in *.bam; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 84; print "$F[2]\t$F[3]\t$e";' >> btan02_umd3_hits.bed; echo $i; done
+		$ mkdir btan02_windows
+		$ combine_bed_hits_lowmem.pl btan02_umd3_hits.bed btan02_windows /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file1.bed /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file2.bed /mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file3.bed
+		$ alkan_pipeline_no_controls.pl --File1 btan02_umd3_hits_umd3_template_file1.bed --File2 btan02_umd3_hits_umd3_template_file2.bed --File3 btan02_umd3_hits_umd3_template_file3.bed
+		

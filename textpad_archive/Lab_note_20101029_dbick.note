@@ -1,0 +1,411 @@
+2010_10_29 - 2010_11_04
+# My goal today is to estimate the size and location of the different read sets that I can work with.
+
+# Database size will be crucial for estimating the time required for novoalign processing and overal pipeline time
+
+# In addition, database location will be essential information to pipe samples into the various tools that I have.
+
+# Starting with the breeds that were listed in the project map:
+	(<>) Nelore (indicus)
+		- 50 paired end read files (25 pairs)
+		- Need to double check to see if these are mate pairs or paired end
+		- 3 single end files
+		- /mnt/data110/sequence_vault/Nelore
+		
+	(<>) Holstein (taurus)
+		- 30 paired end read files (15 pairs)
+		- Again, not sure if these are mate pairs or paired end
+		- Also, these are the single-line format text files I encountered with blackstar
+		- ~ 8 million reads per file
+		- no single end reads (as far as I can tell)
+		- Two folders:
+			/mnt/data110/sequence_vault/Holstein_COT/090515_HWI-EAS174_0021
+			/mnt/data110/sequence_vault/Holstein_COT/090504_HWI-EAS174_0019
+	
+	(<>) Illumina vault folder
+		- about 205 sequencing files
+		- names:
+			- BINE* : I am guessing that this is Bos indicus Nelore (38 files)
+			- BIGI*	: Bos indicus Gir? (9 files) (one single)
+			- BIBR* : Bos indicus Brahman? (30 files)
+			- BTAN* : Bos taurus Angus? (34 files)
+			- BTHO* : Bos Taurus Holstein? (28 files)
+			- BTJE* : Bos Taurus Jersey? (20 files)
+			- BTLM* : Bos Taurus Limousine? (34 files)
+			- BTRO* : Bos Taurus Romagnola? (12 files) (more in the PE_named subfolder: 12 more files)
+		
+		- ~ 8 to 9 million reads per file
+		- The illumina folder takes up ~ 400 gigs of space
+		- Half of the files are gzipped
+		- /mnt/data110/sequence_vault/IlluminaHD/Illumina
+
+# Timelines for the processing of the above datasets
+
+	(<>) Total estimated reads so far:
+		- Total files (pairs) : 246 total (123 pairs) (not including Fleckvieh or Blackstar! That is an additional 56 pairs between the two of them)
+		- Total number of reads from pairs : ~ 1,107,000,000 pairs (assuming average of 9 million reads per file)
+		- Assuming a concordancy rate of 42% (from that sample 12 million pair file from Fleckvieh): 642,060,000 pairs that will likely be discordant
+		- At a rate of 1376 reads per cpu minute (from Fleckvieh dataset, again), that makes: 466613 cpu minutes required for the dataset (just with novoalign discordancy alignment)
+		- Our server could handle it all (assuming unbroken access) at a rate of : 466613 / 8 -> 58326 minutes / 60 -> 972 hours / 24 -> 40 days
+		
+		- An Amazon High-Memory Quadruple Extra large instance (68.4 gigs, 26 compute units, 1690 gigs storage, 64 bit) could handle it in:
+			- 466613 / 26 -> 17946 minutes / 60 -> 299 hours / 24 -> 12 days
+			- cost (just for processing (not data transfer)) would be $589.00 (add more hours for data transfer, program installation and run tests)
+			
+		- If we could get a run on the Mississippi state EMPIRE computer (2048 dual core processors, 8gigs ram per node, 32 nodes per rack, Sun Microsystems SunFire X2200 M2)
+			- 466613 / 4096 -> 113 minutes (ideal conditions; massively parrallel) (assuming no bottlenecks, but this is unlikely) <- probably not realistic, next line is more realistic
+			- With only dual cores per node, I can assume that only one paired end file could be run on each processor, but that all sequencing files could be run at once.
+			- This places the processing time for all sequence files (if run simultaneously) at 2-5 days through the pipeline
+			- Might not be feasible if the SNP project will be transferred there
+			- Also, I am unsure about their job queue system, general usage or uptime
+		
+	(<>) Estimates for single end reads (DoC):
+		- Total files (singletons) : 247 (not including Fleckvieh or Blackstar! They would contribute an additional 129 files between the two of them, but Fleckvieh is already finished)
+		- Total number of reads : ~ 2,223,000,000 reads (assuming an average of 9 million reads per file)
+		- Assuming a processing rate of approximately 72,000,000 reads per thread per day (based on Fleckvieh whole dataset trial with the pipeline script)[VERY rough estimate!]
+		- Our server could handle the whole dataset at a rate of : 2,223,000,000 / 72,000,000 -> 30 days / 8 processors -> 3.9 days
+		- Again, this is a VERY rough estimate; I would predict 6 days to a week and a half to be a more accurate timeline for just the Illumina data and Holstein
+		
+		
+__________________________________________
+Setting up a run for mrsFAST CNV-seq
+__________________________________________
+# Indexing the cow4 genome (without repeats, and masked):
+	$ ./mrsfast --index /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4_noUn.masked
+
+# mrsFAST 
+	# Updated my create_hits_cnvseq.pl file to run reads in mrsFast
+	$ perl create_hits_cnvseq.pl --in blackstar_files.txt --out_dir /mnt/gliu1_usb/dbickhart/blackstar/mrsfast --mrsFast --thread 4
+	
+	# mrsfast does not generate sam header files, so I must use samtools to insert them in myself
+	# used the samtools faidx command to index the reference genome
+	# Inserted this code into the samtoolsviewsort subroutine:
+		system("/mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view -bt /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4_noUn.masked.fai $full_sam_path > $full_bam_path")
+		
+	# Now I am going to start the UMD3.1 analysis (just finished the Cow4 analysis
+	# I believe that my UMD3.1 masked file still has chrUNAll. I will have to remove it before the analysis
+	
+	# It does; removing the ChrUNAll contigs with this one-liner:
+		$ perl -e '$a = 1; while(<>){if($_ =~ /^>718.*/){$a = 0;}elsif($a == 1){ print $_;}}' < UMD3_masked.fa > UMD3_masked_noUn.fa
+		
+	# Creating the index:
+		$ ../dbickhart/mrsfast-2.3.0.2/mrsfast --index UMD3_masked_noUn.fa
+		# Added this path to the --search option of mrsfast within the create_hits_cnvseq.pl script
+		/mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_masked_noUn.fa
+	
+	$ perl create_hits_cnvseq.pl --in blackstar_files.txt --out_dir /mnt/gliu1_usb/dbickhart/blackstar/mrsfast/umd3 --mrsFast --thread 4
+
+	# That was taking WAY too long
+		# Here is the issue: my UMD3_masked_noUn.fa was soft-masked
+		# Mrsfast does not avoid lowercase letters, and was matching EVERY repeat read to EVERY repeat location! 
+		# Just matching reads to chromosome10 was generating a 2-3 gig file!
+		# Hard masking using this one-liner:
+		$ perl -n -e '$_ =~ s/[acgt]/N/g; print $_;' < UMD3_masked_noUn.fa > UMD3_hmasked_noUn.fa
+
+		# Viewed the output, and it didn't seem right... Checked how many uppercase nucleotides were in the file
+		$ perl -e '$count = 0; while(<>){if($_ =~ m/[ACGT]/){$count++;}}print $count;' < UMD3_masked.fa
+			31889694
+			
+		# Now checked my masked version of the cow4 genome
+		$ perl -e '$count = 0; while(<>){if($_ =~ m/[ACGT]/){$count++;}}print $count;' < ../blackstar/NGS/cow4_ucsc/bosTau4_noUn.masked
+			30148826
+			
+		# Actually... it's very similar! Going to try to use a hard masked copy of UMD3.1	
+		$ ../dbickhart/mrsfast-2.3.0.2/mrsfast --index UMD3_hmasked_noUn.fa
+		# Changed the create_hits_cnvseq.pl file to point to the hard masked fasta
+		
+		$ perl create_hits_cnvseq.pl --in blackstar_files.txt --out_dir /mnt/gliu1_usb/dbickhart/blackstar/mrsfast/umd3 --mrsFast --thread 4
+		
+# Goals:
+	# Create the two mrsfast .hits files for CNV-seq using two different reference assemblies: Cow4 and UMD3.1 with the blackstar fastq files as a query
+	# Then, run the same analysis using BWA on the Cow4 genome
+	# Use liftover on the UMD3.1 genome to convert the coordinates
+		# Downloaded and is in my "Downloads" folder on my linux virtual box
+		# Convert the hits file to a temporary "bed" file (just use a perl script to add a third column with the coordinates of the second column +36 bp)
+		# Run liftOver using the downloaded "bosTauMd3ToBosTau4.over.chain.gz" file (also in "Downloads")
+		# Remove the second coordinate line
+	# Use a perl script to change the UMD3.1 chromosome names to lowercase 'c's' 
+	# Multiple comparisons:
+		# Size of hits file broken down by chromosome (before liftover for UMD3.1)
+		# Volcano plot of log2 copy number vs log10 p value (using R limma package)
+		# CNV calls comparisons
+		
+# CNV-seq processing:
+	# While I have a repeat.bed file to screen the cow4 genome, I lack a repeat.bed file based on the UMD3 coordinates. 
+	# I will create one using liftover on my cow4_repeats_c.bed file using the bosTau4ToBosTauMD3.over.chain.gz file
+	# NOTE: liftover causes a floating point exception on server 3 (perhaps because it is a 32-bit program?
+	# liftOver also caused a segmentation fault on my linux virtualbox
+	# I believe that liftOver is inadequate for shifting repeat locations because it likely focuses on exons
+	# I found a repository for masked UMD3 sequence that I copied to my folder instead
+		$ cp /mnt/data10/lmatukum/UMD3_Genome/Chr*.out ./
+	
+	# I removed ChrUn then cat'ed all of the chromosome out files
+	# I then ran my extract_SSRs.pl script
+		$ perl extract_SSRs.pl ../liftover/UMD3_repeats.out 
+		Output: UMD3_repeats.bed
+		
+	# The bed file was copied to my /mnt/gliu1_usb/dbickhart directory on server 3	
+
+	(<>) Cow4 run using mrsFast on the blackstar dataset
+		$ perl cnv-seq.pl --test /mnt/gliu1_usb/dbickhart/blackstar/mrsfast/cow4/merged.hits --ref cow4_sim_norepeats.hits --genome-size 2500000000
+		`	genome size used for calculation is 2500000000
+			/mnt/gliu1_usb/dbickhart/blackstar/mrsfast/cow4/merged.hits: 198598205 reads
+			cow4_sim_norepeats.hits: 8951236 reads
+			The minimum window size for detecting log2>= 0.6 should be 26634.1902404892
+			The minimum window size for detecting log2<=-0.6 should be 12547.4968469885
+			window size to use is 26634.1902404892 x 1.5 = 39951
+			window size to be used: 39951
+			
+		$ R
+			> library(cnv)
+			> data <- read.delim("cow4_blackstar_mrsfast.cnv")
+			> cnv.print(data)
+				cnv	chromosome	start	end	size	log2	p.value
+				CNVR_1	chr	Inf	-Inf	-Inf		
+				CNVR_0	chrchr7	chrchr23	chrchr20	chrchr26	chrchr22	chrchr14	chrchr19	
+				chrchr8	chrchr1	chrchr29	chrchr11	chrchr6	chrchr17	chrchr24chrchr21	
+				chrchr16	chrchr25	chrchr18	chrchr3	chrchr12	chrchr15chrchrX	chrchr4	
+				chrchr2	chrchr9	chrchr28	chrchr27	chrchr13	chrchr10	chrchr5	9989	
+				161116427	161106439	NA	NA
+				Warning messages:
+				1: In min(sub$start) : no non-missing arguments to min; returning Inf
+				2: In min(sub$position) : no non-missing arguments to min; returning Inf
+				3: In max(sub$end) : no non-missing arguments to max; returning -Inf
+				4: In max(sub$position) : no non-missing arguments to max; returning -Inf
+
+		# Alright, I think that I know what I have to do: subtract the repeat maps from the hits file using the cow4_repeats_c.bed file (just like I did on 10/25/2010)
+			$ perl -lane '$a = $F[1] + 36; print"$F[0]\t$F[1]\t$a"' < merged.hits > cow4_blackstar_mrsfast.bed
+			$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_blackstar_mrsfast.bed -b ../../../cow4_repeats_c.bed -wa > cow4_blackstar_overlap.bed
+			$ ../../../BEDTools-Version-2.10.0/bin/subtractBed -a cow4_blackstar_mrsfast.bed -b ../../../cow4_repeats_c.bed > cow4_blackstar_norepeats.bed
+			$ perl -lane 'print "$F[0]\t$F[1]"' < cow4_blackstar_norepeats.bed > cow4_blackstar_norepeats.hits
+			
+			# The subtracted file was about the same size, so repeat extraction appears to not be the issue here
+			
+		# I noticed that the hits file from the Cow4 run is about 2 gigs in size! Maybe I might have to split the file for cnv analysis.
+		# Actually... that shouldn't matter, since my Fleckvieh database was at least twice the size (possibly five times the size)
+		
+		# Trying it again but with global normalization
+		$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/merged.hits --ref cow4_sim_norepeats.hits --genome-size 2500000000 --global-normalization
+			genome size used for calculation is 2500000000
+			../blackstar/mrsfast/cow4/merged.hits: 198598205 reads
+			cow4_sim_norepeats.hits: 8951236 reads
+			The minimum window size for detecting log2>= 0.6 should be 26634.1902404892
+			The minimum window size for detecting log2<=-0.6 should be 12547.4968469885
+			window size to use is 26634.1902404892 x 1.5 = 39951
+			window size to be used: 39951
+
+		# I just tried it again with the cow4_blackstar_norepeats.hits file that I generated above, and got results. Going to save those, but I think I found a more accurate way.
+		
+		# Going to try to use the "-v" option of intersectBed (does not report the alignment if it overlaps the -b option specified bed file
+			$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_blackstar_mrsfast.bed -b ../../../cow4_repeats_c.bed -v > cow4_blackstar_norepeats.bed
+			$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_simulation.bed -b ../cow4_repeats_c.bed -v > cow4_sim_v_norep.bed
+			
+			$ perl -lane 'print "$F[0]\t$F[1]"' < cow4_blackstar_norepeats.bed > cow4_blackstar_norep.hits
+			$ perl -lane 'print "$F[0]\t$F[1]"' < cow4_sim_v_norep.bed > cow4_sim_v_norep.hits
+			
+			$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_sim_v_norep.hits --genome-size 2500000000 --global-normalization
+				genome size used for calculation is 2500000000
+				../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits: 196512598 reads
+				cow4_sim_v_norep.hits: 40174135 reads
+				The minimum window size for detecting log2>= 0.6 should be 6338.11800286339
+				The minimum window size for detecting log2<=-0.6 should be 3723.24628168709
+				window size to use is 6338.11800286339 x 1.5 = 9507
+				window size to be used: 9507
+				
+				# Greatly reduce the window size, and to an excellent resolution as well!
+				
+			# undeclared array problem again, which means that the chromosome count is likely different between the files
+			$ perl -n -e '@f=split(/\t/,$_);if($a eq $f[0]){next;}else{print "$f[0]\n"; $a = $f[0];}' < cow4_sim_v_norep.hits
+				# Yep, chrUnAll is present in cow4_sim_v_norep.hits
+				$ grep 'chrUnAll' ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits
+				# not present in the cow4_blackstar_norep.hits file
+				$ perl -n -e '@f=split(/\t/, $_);if($f[0] eq "chrUnAll"){next;}else{print $_;}' < cow4_sim_v_norep.hits > cow4_sim_v_noun.hits	
+				
+			$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_sim_v_noun.hits --genome-size 2500000000 --global-normalization
+				../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits: 196512598 reads
+				cow4_sim_v_noun.hits: 32945752 reads
+				The minimum window size for detecting log2>= 0.6 should be 7615.08561123939
+				The minimum window size for detecting log2<=-0.6 should be 4279.0787170784
+				window size to use is 7615.08561123939 x 1.5 = 11423
+				window size to be used: 11423	
+				read 196512598 test reads, out of 196512598 lines
+				read 32945752 ref reads, out of 32945752 lines
+				# did not produce results
+				
+				# I think I know why: everything has a low pvalue! There are no "cnv's" in my test sample because of the distribution of hits after their normalization!
+				# I need to redo the simulation hits with mrsfast if I am going to get any real results, sadly.
+				
+				# Generating simulation reads
+				$ perl generate_simulation_reads.pl /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4.fa.masked
+				
+				$ sleep 8h; ../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4_noUn.masked --seq cow4_simulation.fq -o cow4_mrsfast_simulation.sam
+				
+				# window size was greatly impacted by the size of the reference mapped hits
+				# In the future, I might want to consider generating larger simulated datasets for mapping in order to increase the resolution of the analysis
+				# Only do this for the final, publication-ready diagrams
+				
+				
+				
+* Troubleshooting
+	# Since some more issues popped up, I am going to dedicate a separate section to them
+	# Firstly, the chromosome notation within the UMD3 assembly is not recognized by samtools, so it converts the chromosome names into "*"
+	# This is a HUGE problem, but I can probably fix it by doing a perl one-liner
+		# Instead I created a threaded script: convert_Chr_chr.pl to deal with the issue
+		# It processes the files, converts them to bams and then removes the old sam files
+		# I lost six sam files because of a failed trial run (samtools view only reads bam files)
+		# I can run the remaining bam files from that failed run through samtools view and change their chromosome names (output to sam, then run through samtools again);
+		$ perl -e 'open(IN, "/mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view 081211_1_1_1.bam |"); while(<IN>){$_ =~ s/Chr/chr/g; print $_;}' > 081211_1_u.sam
+		# That didn't work because the bam files were where the chromosome names were removed! 
+		
+		$ perl -e 'open(IN, "< usamlist.txt"); while(<IN>){chomp $_; $a = substr($_, 0, (length($_)-4)); system("/mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools sort $_ $a\_sort");} close IN; system("/mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools merge *_u_sort.bam > merged.bam");'
+		
+	# Secondly, the blackstar dataset's poor quality strikes again: homopolymeric reads occupy the majority of the mapping file
+	
+	# Testing hypothesis on why CNV-seq refuses to call CNV's in the cow4 dataset I just finished:
+		# First of all, my hypothesis is that the reads generated from the mrsfast run are incompatible with the "best hit" matches found from my BWA run on the simulated reads
+		# I discovered that the log2 ratio of reads in the cow4_black_notworking.cnv file were either largely negative or largely positive (very very very few log2 ratios approaching 0)
+		# I believe that the calculation takes into account ALL of the reads of the dataset, so in order to reduce the number of reads, I am going to crop out the read areas that had greater than 200 hits in the test dataset
+		$ perl -lane 'if($F[3] > 2000){next;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]";}' < cow4_black_notworking.count > cow4_black_trial.count
+
+		# This may skew the read numbers towards the other (simulated) dataset, and might not work.
+		# My true means of testing this hypothesis would be to run the simulated reads through mrsfast and then generate a hits file from THAT alignment (which I am doing in the background)
+		# Here goes:
+			$ R
+			> library(cnv)
+			> data <- cnv.cal("cow4_black_trial.count", annotate=TRUE)
+			> cnv.print(data)
+				cnv     chromosome      start   end     size    log2    p.value
+				CNVR_1  chr     Inf     -Inf    -Inf
+				CNVR_0  chrchr7 chrchr23        chrchr20        chrchr26        chrchr22        chrchr14        chrchr19
+				chrchr8 chrchr1 chrchr29        chrchr11        chrchr6 chrchr17        chrchr24        chrchr21
+				chrchr16        chrchr25        chrchr18        chrchr3 chrchr12        chrchr15        chrchrX chrchr4
+				chrchr2 chrchr9 chrchr28        chrchr27        chrchr13        chrchr10        chrchr5 2857
+				161109815       161106959       NA      NA
+				Warning messages:
+				1: In min(sub$start) : no non-missing arguments to min; returning Inf
+				2: In min(sub$position) : no non-missing arguments to min; returning Inf
+				3: In max(sub$end) : no non-missing arguments to max; returning -Inf
+				4: In max(sub$position) : no non-missing arguments to max; returning -Inf
+			# Nope, but it was worth a try
+			# The flaw might have occurred in the initial cnv-seq.pl script, where the window size was determined. 
+	
+	# Converting simulation sam file into a hits file:
+		$ ../samtools-0.1.8/samtools sort cow4_mrsfast_sim.bam cow4_mrsfast_sim_sort
+		$ ../samtools-0.1.8/samtools view cow4_mrsfast_sim_sort.bam | perl -lane 'if($F[2] =~ /\*/){next;}else{print "$F[2]\t$F[3]"}' > cow4_mrsfast_sim.hits
+		$ perl -n -e '@f=split(/\t/, $_);if($f[0] eq "chrUnAll"){next;}else{print $_;}' < cow4_mrsfast_sim.hits > cow4_mrsfast_sim_noun.hits
+		$ perl -lane '$a = $F[1] + 36; print"$F[0]\t$F[1]\t$a"' < cow4_mrsfast_sim_noun.hits > cow4_mrsfast_sim_noun.bed
+		$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_mrsfast_sim_noun.bed -b ../cow4_repeats_c.bed -v > cow4_mrsfast_sim_norep.bed
+		$ perl -lane 'print "$F[0]\t$F[1]"' < cow4_mrsfast_sim_norep.bed > cow4_mrsfast_sim_norep.hits
+
+		# Now, trying cnv-seq again!
+		$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000
+			../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits: 196512598 reads
+			cow4_mrsfast_sim_norep.hits: 111855275 reads
+			The minimum window size for detecting log2>= 0.6 should be 2608.30907711757
+			The minimum window size for detecting log2<=-0.6 should be 2099.75265103965
+			window size to use is 2608.30907711757 x 1.5 = 3912
+			window size to be used: 3912
+			read 196512598 test reads, out of 196512598 lines
+			
+			# It worked! So I was right! Basically, the alignment program makes all of the difference!
+			# It predicted 53 thousand cnvs's though... so I need to increase the size of the window or change normalization
+			
+		$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000 --global-normalization --bigger-window 3
+			# This setting predicted 33 thousand cnv's
+			# I need to increase the window size further
+			
+		$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000 --global-normalization --bigger-window 10
+			# Nothing; did not detect any CNV's	
+		
+		$  perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000 --global-normalization --bigger-window 6
+			#16777 cnv's
+		
+		$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000 --global-normalization --bigger-window 7
+			# window size to be used: 18258
+			# 14 thousand Cnv's
+			
+		$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000 --global-normalization --bigger-window 9
+			# window size: 23475
+			# No CNV calls
+		
+		$ perl cnv-seq.pl --test ../blackstar/mrsfast/cow4/cow4_blackstar_norep.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000 --global-normalization --bigger-window 8
+			# 12000 cnv calls
+			
+(<>) Testing out the limma package in R (for volcano plots)
+	$ R
+	> library(limma)
+	> sd <- 0.3*sqrt(4/rchisq(100,df=4))   # generating standard deviation 
+	> y <- matrix(rnorm(100*6,sd=sd),100,6) # creating the matrix
+	> rownames(y) <- paste("Gene",1:100)  # Adds "Gene" to all of the rows
+	> y[1:2,4:6] <- y[1:2,4:6] + 2
+	> design <- cbind(Grp1=1,Grp2vs1=c(0,0,0,1,1,1))
+	> options(digit=3)
+	> fit <- lmFit(y,design)
+	> fit <- eBayes(fit)
+	> fit
+		An object of class "MArrayLM"
+		...
+		
+	> as.data.frame(fit[1:10,2])
+			coefficients df.residual     sigma stdev.unscaled      ID    s2.post
+		Gene 1   2.6581856740           4 0.6889563      0.8164966  Gene 1 0.25455782
+		Gene 2   2.0089910053           4 0.5154848      0.8164966  Gene 2 0.16705250
+		Gene 3   0.1562446231           4 0.3224644      0.8164966  Gene 3 0.09931303
+		Gene 4   0.0418802131           4 0.2161509      0.8164966  Gene 4 0.07533090
+		Gene 5   0.1970692993           4 0.3307352      0.8164966  Gene 5 0.10157566
+		Gene 6  -0.0628691049           4 0.2752593      0.8164966  Gene 6 0.08749596
+		Gene 7   0.0006586772           4 0.3129703      0.8164966  Gene 7 0.09678638
+		Gene 8  -0.1070215447           4 0.1895359      0.8164966  Gene 8 0.07080883
+		Gene 9  -0.1198498524           4 0.3130273      0.8164966  Gene 9 0.09680133
+		Gene 10  0.4100477346           4 0.4681130      0.8164966 Gene 10 0.14753795
+		                   t      p.value      lods            F    F.p.value
+		Gene 1   6.452644294 0.0000902127  1.787250 4.163662e+01 0.0000902127
+		Gene 2   6.020008904 0.0001552637  1.234527 3.624051e+01 0.0001552637
+		Gene 3   0.607222147 0.5578624866 -6.596228 3.687187e-01 0.5578624866
+		Gene 4   0.186882198 0.8556628762 -6.774531 3.492496e-02 0.8556628762
+		Gene 5   0.757303179 0.4671402753 -6.489818 5.735081e-01 0.4671402753
+		Gene 6  -0.260308830 0.8001512078 -6.756715 6.776069e-02 0.8001512078
+		Gene 7   0.002593051 0.9979844057 -6.793546 6.723915e-06 0.9979844057
+		Gene 8  -0.492575890 0.6334382299 -6.662856 2.426310e-01 0.6334382299
+		Gene 9  -0.471783210 0.6476743921 -6.673532 2.225794e-01 0.6476743921
+		Gene 10  1.307459268 0.2216540564 -5.936551 1.709450e+00 0.2216540564
+
+	> topTable(fit,coef=2) # way to summarize data
+			ID      logFC         t      P.Value   adj.P.Val         B
+		1     Gene 1  2.6581857  6.452644 0.0000902127 0.007763185  1.787250
+		2     Gene 2  2.0089910  6.020009 0.0001552637 0.007763185  1.234527
+		12   Gene 12 -0.6399409 -2.674998 0.0241828733 0.471017611 -3.892170
+		62   Gene 62 -0.9970236 -2.636898 0.0257841726 0.471017611 -3.955104
+		100 Gene 100 -0.7225512 -2.451570 0.0352173932 0.471017611 -4.259131
+		56   Gene 56 -0.5246145 -2.427214 0.0366884785 0.471017611 -4.298767
+		90   Gene 90 -0.5167647 -2.381546 0.0396120824 0.471017611 -4.372845
+		61   Gene 61  0.5346796  2.306793 0.0448992413 0.471017611 -4.493354
+		28   Gene 28  0.5237710  2.289233 0.0462381219 0.471017611 -4.521514
+		75   Gene 75  0.4828257  2.278167 0.0471017611 0.471017611 -4.539229
+	
+	> qqt(fit$t[,2],df=fit$df.residual+fit$df.prior) # way to summarize data (with the abline drawn on this plot)
+	> abline(0,1)
+	> volcanoplot(fit,coef=2,highlight=4)  # highlight highlights the number of points most divergent from the center of the volcano
+
+
+# Preparing test and ref hits for CNV-seq #				
+###############################################
+#                                             #
+#		Procedure		      #
+#                                             #
+###############################################
+
+# Create bed file out of hits file
+$ perl -lane '$a = $F[1] + 36; print"$F[0]\t$F[1]\t$a"' < merged.hits > cow4_blackstar_mrsfast.bed
+
+# Remove intervals from the bed file that intersect with intervals from a repeat.bed file (cow4_repeats_c.bed in this case)
+$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_blackstar_mrsfast.bed -b ../../../cow4_repeats_c.bed -v > cow4_blackstar_norepeats.bed
+
+# Remove the third lane of the bed file (returning it to "hits" file format)
+$ perl -lane 'print "$F[0]\t$F[1]"' < cow4_blackstar_norepeats.bed > cow4_blackstar_norep.hits
+
+# Check chromosome count to ensure that the chromosome names and numbers are the same in the test and ref hits files.
+$ perl -n -e '@f=split(/\t/,$_);if($a eq $f[0]){next;}else{print "$f[0]\n"; $a = $f[0];}' < cow4_sim_v_norep.hits
+
+# Remove extraneous chromsomes from the hits files if necessary:
+$ perl -n -e '@f=split(/\t/, $_);if($f[0] eq "chrUnAll"){next;}else{print $_;}' < cow4_sim_v_norep.hits > cow4_sim_v_noun.hits

@@ -1,0 +1,10 @@
+09/05/2012
+# These are my notes on running penncnv for Tad using the jersey animals that Matt and Heather gave me
+
+# I obtained the raw data from Heather and downloaded it to my hard drive. Location is here:
+	pwd: /home/dbickhart/share/tad_jersey/Jersey_081623012
+	
+# I next loaded it into genome studio by clicking the ".bsc" file
+# finally, I clicked the Analysis->Cluster option in the genomestudio file menu, since Heather and Matt had not clustered the snps for genotypes
+
+# Ah, I found out the problem: I need the idat files to call the genotypes.

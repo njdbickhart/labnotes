@@ -1,0 +1,80 @@
+10/03/2012
+# This is my set of notes on my run of the Baylor Y chromosome assembly for Bob's angus individuals
+# I am interested in trying to call CNVs on this chromosome, but it might be difficult given the smaller size and lower conservation of sequence of the Y chromosome
+
+# I downloaded the Y chromosome assembly from NCBI using this URL:
+ftp://ftp.ncbi.nih.gov/genomes/Bos_taurus/Assembled_chromosomes/seq/bt_alt_Btau_4.6.1_chrY.fa.gz
+
+# Now to check out the statistics of the assembly, identify the gaps and repeatmask
+# Gaps first
+pwd: /home/dbickhart/share/bob_missou_data/umd3_folder
+$ ../../backup/get_repeatmask_bed bt_alt_Btau_4.6.1_chrY.fa
+$ cat bt_alt_Btau_4.6.1_chrY.fa.repeats | perl -lane '$t = $F[2] - $F[1]; print "$_\t$t";'
+	gi|355477162|ref|NC_016145.1|	1	2500000	2499999
+	gi|355477162|ref|NC_016145.1|	3667527	3717526	49999
+	gi|355477162|ref|NC_016145.1|	4484538	4984537	499999
+	gi|355477162|ref|NC_016145.1|	5409086	5509085	99999
+	gi|355477162|ref|NC_016145.1|	5736778	5836777	99999
+	gi|355477162|ref|NC_016145.1|	6099779	6199778	99999
+	gi|355477162|ref|NC_016145.1|	6329957	6429956	99999
+	gi|355477162|ref|NC_016145.1|	8418662	8918661	499999
+	gi|355477162|ref|NC_016145.1|	13664639	13714638	49999
+	gi|355477162|ref|NC_016145.1|	18609040	18709039	99999
+	gi|355477162|ref|NC_016145.1|	25938028	25938127	99
+	gi|355477162|ref|NC_016145.1|	31011832	31311831	299999
+	gi|355477162|ref|NC_016145.1|	31517277	31567276	49999
+	gi|355477162|ref|NC_016145.1|	32691204	32696203	4999
+	gi|355477162|ref|NC_016145.1|	37465850	37485849	19999
+	gi|355477162|ref|NC_016145.1|	42514761	42614760	99999
+	gi|355477162|ref|NC_016145.1|	43260840	43265839	4999
+	
+# Pretty sad shape, but we'll see if we can work with it.
+# Let's run Alkan's window maker program to see if windows can be constructed in this region without any other masking
+$ ../../backup/alkan/server3_backup/winmaker bt_alt_Btau_4.6.1_chrY.fa
+$ wc -l bt_alt_Btau_4.6.1_chrY.fa.*
+  38720 bt_alt_Btau_4.6.1_chrY.fa.copynumber
+  43296 bt_alt_Btau_4.6.1_chrY.fa.coverage
+     17 bt_alt_Btau_4.6.1_chrY.fa.repeats
+  43300 bt_alt_Btau_4.6.1_chrY.fa.wssd
+ 125333 total
+ 
+# A respectable number for now. Let's repeatmask and then see how much that changes.
+$ ../../RepeatMasker/RepeatMasker -species cow -pa 4 -s bt_alt_Btau_4.6.1_chrY.fa
+$ wc -l bt_alt_Btau_4.6.1_chrY.fa.out
+	71903 bt_alt_Btau_4.6.1_chrY.fa.out
+	
+# OK, now to mask it
+# First, I changed the chromosome name to "chrY" in the main fasta
+$ perl -e '$h = <>; $h = <>; $h =<>; while(<>){$_ =~ s/^\s+//; @s = split(/\s+/); print "chrY\t$s[5]\t$s[6]\n";}' < bt_alt_Btau_4.6.1_chrY.fa.out > bt_alt_Btau_4.6.1_chrY_rmask_out.bed
+
+# Now to mask the gaps with X's and then to finally mask the reference
+$ perl -ne 'if($_ =~ /^>/){print $_;}else{ $_ =~ s/N/X/g; print $_;}' < bt_alt_Btau_4.6.1_chrY.fa > bt_alt_Btau_4.6.1_chrY_gapmask.fa
+$ ../../BEDTools-Version-2.10.1/bin/maskFastaFromBed -fi bt_alt_Btau_4.6.1_chrY_gapmask.fa -bed bt_alt_Btau_4.6.1_chrY_rmask_out.bed -fo bt_alt_Btau_4.6.1_chrY_grmask.fa
+
+# Now to remove tandem repeats 
+$ ../../RepeatMasker/trf bt_alt_Btau_4.6.1_chrY_grmask.fa 2 7 7 80 10 50 500 -d
+$ perl -lane 'if($F[0] =~ /\d+/){print "chrY\t$F[0]\t$F[1]";}' < bt_alt_Btau_4.6.1_chrY_grmask.fa.2.7.7.80.10.50.500.dat > trf_findings_chrY_bt_4.6.1.bed
+
+# Now for the final product:
+$ ../../BEDTools-Version-2.10.1/bin/maskFastaFromBed -fi bt_alt_Btau_4.6.1_chrY_grmask.fa -bed trf_findings_chrY_bt_4.6.1.bed -fo bt_alt_Btau_4.6.1_chrY_grtmask.fa
+$ wc -l bt_alt_Btau_4.6.1_chrY_grtmask.fa*
+  618576 bt_alt_Btau_4.6.1_chrY_grtmask.fa
+   15236 bt_alt_Btau_4.6.1_chrY_grtmask.fa.copynumber
+   38507 bt_alt_Btau_4.6.1_chrY_grtmask.fa.coverage
+   38678 bt_alt_Btau_4.6.1_chrY_grtmask.fa.wssd
+  710997 total
+  
+# Far fewer... lets see if this will fly on Lewis. I will test it on one animal in the pipeline
+
+
+# Preparing the file for Lewis:
+Lewis: /ibfs7/asg2/bickhartd/reference
+$ bsub -J mrsfast ../bin/mrsfast --index bt_alt_Btau_4.6.1_chrY_grtmask.fa
+$ bsub -J samtools ../bin/samtools faidx bt_alt_Btau_4.6.1_chrY_grtmask.fa
+
+
+_______________________________
+Actual run of the data
+_______________________________
+Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+$ bsub -J chrYtest -oo chrYtest.OUT /ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s AN0544_full_run_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_Y -m /ibfs7/asg0/bickhartd/commands -r /ibfs7/asg2/bickhartd/reference/bt_alt_Btau_4.6.1_chrY_grtmask.fa -a /ibfs7/asg2/bickhartd/reference/bt_alt_Btau_4.6.1_chrY_grtmask.fa -g /ibfs7/asg2/bickhartd/reference/chrY_bt4.6.1.gaps.bed

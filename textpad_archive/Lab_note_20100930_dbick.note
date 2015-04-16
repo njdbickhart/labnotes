@@ -1,0 +1,102 @@
+2010_09_30
+__________________________________________
+Turkey CR1 repeat consensus building
+__________________________________________
+
+# My goal is to take the data that I generated from the Turkey CR1 runs and generate consensus sequences for each CR1 subtype.
+
+# I downloaded MEGA, but it is a windows-based software that requires specific file extensions to run. 
+
+# I'm going to have to use the tools that I already know (Unix-based) in order to make the sequence comparisons
+
+
+2010_10_01
+__________________________________________
+Making Hydra work
+__________________________________________
+
+# The median actual deviation value is something that I did not calculate before, but might be the lynchpin as to why hydra is not outputing data.
+
+# I am going to design a method to extract the mapping locations of each mate pair read and then calculate this value using a separate perl script
+	../../samtools-0.1.8/samtools view 081211_1_unmapcomp_sort.bam | perl  -lane 'print "$F[3]\t$F[7]"' >081211_1.matepos
+	- That extracted the fields from the bam file related to the mapping positions of the mate pairs.
+	
+	# Created a perl script: calculateMAD.pl to generate the MAD from the .matepos file
+	
+	# Unfortunately there's a bug and it is calculating the median value to be zero
+	# One possibility is that the ton of 0\t0 columns at the end of the position file might influence the median. 
+	# I removed those columns using this command line script
+	find 081211_1.matepos | xargs perl -p -i.bak -e 's/0\t0\n//g'
+
+	# Alright, the author of the median subroutine failed to mention that you have to pass the reference to the function in order to calculate the median
+	
+	perl calculateMAD.pl 081211_1.matepos
+	200.5 is the first median value
+	The M.A.D. of this dataset is: 12.5
+
+
+	#So this means that my hydra -mld should be 125 and the -mno should be 450
+	
+	#Still getting bad results; I think I've found another part of the hydra protocol that I might be messing up.
+	
+# PairDiscordants.py
+	#There was a suggestion that the output of bamtobed should be sorted by read name for pairDiscordants.py; I'm going to try to do that using the samtools sort -n option prior to loading into bamtobed
+	
+	samtools sort -n 081211_1_unmapcomp.bam 081211_1_readname_sort
+	
+	../../BEDTools-Version-2.10.0/bin/bamToBed -i 081211_1_readname_sort.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra -z 400 -y 200 > 081211_1_readname.bedpe
+	
+	# created a MUCH larger bedpe file! Good news!
+		-rw-rw-r--+ 1 dbickhart mapping 15279073 2010-10-01 10:49 081211_1_readname.bedpe		<- This should be the same as
+		-rw-rw-r--+ 1 dbickhart mapping    24785 2010-09-24 17:47 081211_1_unmapcomp_sort.bedpe		<- This
+		-rw-rw-r--+ 1 dbickhart mapping    44380 2010-09-24 20:42 081211_2_unmapcomp_sort.bedpe
+		-rw-rw-r--+ 1 dbickhart mapping    45481 2010-09-24 23:39 081211_3_unmapcomp_sort.bedpe
+		-rw-rw-r--+ 1 dbickhart mapping    54161 2010-09-25 04:13 081211_5_unmapcomp_sort.bedpe
+	
+	# Still is not generating the proper break files
+		../../Hydra-Version-0.5.3/bin/hydra -in 081211_1_readname.bedpe -out 081211_1.breaks -ms 1
+
+	# Going to try to debug using gdb
+	gdb --args ../../Hydra-Version-0.5.3/bin/hydra -in 081211_1_readname.bedpe -out 081211_1.breaks -ms 1
+		(gdb) run
+		Starting program: /mnt/gliu1_usb/dbickhart/Hydra-Version-0.5.3/bin/hydra -in 081211_1_readname.bedpe -out 081211_1.breaks -ms 1
+		(no debugging symbols found)
+		warning: no loadable sections found in added symbol-file system-supplied DSO at 0x7fff849fd000
+		(no debugging symbols found)
+		(no debugging symbols found)
+		(no debugging symbols found)
+		(no debugging symbols found)
+		(no debugging symbols found)
+	
+	
+__________________________________________
+Larger datasets
+__________________________________________
+# I now have access to a 7x coverage of the Holstein genome from the Genome biology paper
+	/mnt/data100/mespar1/external/fleckvieh/    <- path to sequencing data
+	http://genomebiology.com/2009/10/8/R82      <- genome biology paper
+	
+# I am going to take my pipeline script and revamp it so that I can start processing all of this data. I think I might just incorporate Mosaik into the process. Going to test it first...
+	# Testing 081211 lane 1 samples.
+		perl convert_seq_fastq.pl 081211_HWI-EAS174_s_1_1_sequence.txt
+		perl convert_seq_fastq.pl 081211_HWI-EAS174_s_1_2_sequence.txt
+	
+__________________________________________
+RepeatMasking the UMD3 genome... again!
+__________________________________________
+# Ran the following command line program today at 3:32pm:
+
+	 ./RepeatMasker -lib /mnt/data6/gliu/dbickhart/RepeatMasker/Libraries/bovine_custom_repeat_lib.fasta -s -pa 7 /mnt/data6/gliu/dbickhart/bovine/UMD3_masked.fa
+	 
+# It is running on server 2... but... I'm not sure if I trust it!
+
+# I am going to try to run repeatmasker locally on my Ubuntu system
+
+	./RepeatMasker/RepeatMasker -lib ./RepeatMasker/Libraries/bovine_custom_repeat_lib.fasta  -s -pa 6 ./Bos_taurus_UMD_3.1/UMD3_cat.fa
+	
+2010_10_4
+
+# I stopped the local run of repeatmasker on Ubuntu and I ran it on server 2 instead. I found out today that the run ended prematurely because of an error.
+
+# Started it again: 
+	./RepeatMasker -species cow -q -pa 7 /mnt/data6/gliu/dbickhart/bovine/UMD3_masked.fa

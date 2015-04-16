@@ -1,0 +1,25 @@
+08/27/2014
+# These are my notes for finding SNPs within SNPEff annotated VCF files for Geneseek
+
+pwd: /home/dbickhart/share/programs_source/Perl/vcf_utils
+# After running the script that creates the tunnel to Blade14 in my home directory
+$ scp -P 8888 filterVCFandConvertSNPtoFasta.pl dbickhart@localhost:/home/dbickhart/bin/
+
+Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/samtools_snps/
+perl ~/bin/filterVCFandConvertSNPtoFasta.pl -v 72_animals_combined.samtools.filtered.vcf.stdout -i ../../reference/umd3_kary_nmask_hgap.fa -o 72_animals_highimpact_vars.fa -f 'HIGH'
+
+Blade14: /mnt/iscsi/vnx_gliu_7/john_animals/samtools_snp_calls/
+perl ~/bin/filterVCFandConvertSNPtoFasta.pl -v combined_16_animals.annotated.vcf -i ../../reference/umd3_kary_nmask_hgap.fa -o john_animals_highimpact_vars.fa -f 'HIGH' -n 141
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %v; while($h = <IN>){$s = <IN>; ($c,$p) = $h =~ />ARS-USDA-AGIL-(.+)-(\d+)-\d+/; $v{$c}->{$p} = $s;} close IN; open(IN, "< $ARGV[1]"); while($h = <IN>){$s = <IN>; ($c,$p) = $h =~ />ARS-USDA-AGIL-(.+)-(\d+)-\d+/; if(exists($v{$c}->{$p})){print "$c\t$p\t" . $v{$c}->{$p} . "\t$s\n";}} close IN;' ../../100_base_run/samtools_snps/72_animals_highimpact_vars.fa john_animals_highimpact_vars.fa
+# I had an error with the previous one-liner, so I converted it to a short, one-off script
+perl vcf_fasta_tester.pl ../../100_base_run/samtools_snps/72_animals_highimpact_vars.fa john_animals_highimpact_vars.fa
+
+perl vcf_fasta_tester.pl ../../100_base_run/samtools_snps/72_animals_highimpact_vars.fa john_animals_highimpact_vars.fa | perl -lane 'print "$F[0]\t$F[1]";' | perl -e '%site; while(<STDIN>){ chomp; @s = split(/\t/); $site{$s[0]}->{$s[1]} = 1;} chomp(@ARGV); open(IN, "< $ARGV[0]"); while($h = <IN>){$s = <IN>; ($c,$p) = $h =~ />ARS-USDA-AGIL-(.+)-(\d+)-\d+/; if(exists($site{$c}->{$p})){next;}else{print "$h$s";}}' john_animals_highimpact_vars.fa
+perl vcf_fasta_tester.pl ../../100_base_run/samtools_snps/72_animals_highimpact_vars.fa john_animals_highimpact_vars.fa | perl -lane 'print "$F[0]\t$F[1]";' | perl -e '%site; while(<STDIN>){ chomp; @s = split(/\t/); $site{$s[0]}->{$s[1]} = 1;} chomp(@ARGV); open(IN, "< $ARGV[0]"); while($h = <IN>){$s = <IN>; ($c,$p) = $h =~ />ARS-USDA-AGIL-(.+)-(\d+)-\d+/; if(exists($site{$c}->{$p})){next;}else{print "$h$s";}}' john_animals_highimpact_vars.fa > john_animals_highimpact_vars.filtered.fa
+
+pwd: /home/dbickhart/share/side_projects/snp_creation/geneseek_batch_2014_08
+$ scp -P 8888 dbickhart@localhost:/mnt/iscsi/vnx_gliu_7/100_base_run/samtools_snps/72_animals_highimpact_vars.fa ./
+$ scp -P 8888 dbickhart@localhost:/mnt/iscsi/vnx_gliu_7/john_animals/samtools_snp_calls/john_animals_highimpact_vars.filtered.fa ./
+$ cat 72_animals_highimpact_vars.fa john_animals_highimpact_vars.filtered.fa > high_impact_snp_100bp_flanking.fa
+
+# Now to get John Hammond's data processed

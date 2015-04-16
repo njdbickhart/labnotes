@@ -1,0 +1,17 @@
+08/03/2011
+# So, I need to design primers for Randy's experiment. 
+# The good news is that primer blast already has settings that should help me out with the design and Randy didn't give me too many primers to check
+# I should seriously redesign my pipeline to do the refseq blast, but that will take time and will likely require me to revisit it later
+
+# Here are the settings that I am changing from the default:
+	PCR product size	150 - 250
+	primer melting temps	58	60	62
+	Exon Junction span	primer must span an exon-exon junction
+	Exon Junction match 	7 	4
+	Intron inclusion	checked
+	Organism 		Bos taurus
+	GC clamp		2
+	
+# In the data entry field I put the refseq accession for each primer.
+# Primer sequences were chosen and placed into an excel spreadsheet
+# I had to remove the Exon Junction span setting since it was preventing me from choosing any primers

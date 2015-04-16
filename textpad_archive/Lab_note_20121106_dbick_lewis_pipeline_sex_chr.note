@@ -1,0 +1,20 @@
+11/06/2012
+# This file contains my notes on implementing the DOC calculations on the X and Y chromosome on the Lewis pipeline
+# I think that I will have to realign the sequences, but this time I will extract the PAR coordinates from the X and Y chromosome and then do the calculations separately
+
+# What I could do is set up a separate reference file with the chromosomes and run that as a separate part of the pipeline to save time.
+
+
+# Let's first create the proper placeholder scripts. This may be a good excuse for me to start making a config file for the pipeline in general
+
+
+__________________________
+X and Y chr fasta
+__________________________
+# I need to separate the PAR from the two sex chromosomes. I will then run the pipeline on the remaining contigs of the chromosomes.
+
+# To keep the order of the PAR and chromosomes distinct (ie. keep the same coordinates) I will try to 
+
+__________________________
+Config file design
+__________________________

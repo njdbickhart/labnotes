@@ -1,0 +1,129 @@
+12/16/2011
+# This note file contains my commands for generating rebuttal figures and tables for the GR manuscript
+
+
+________________________
+SNP calling
+________________________
+
+# One of the reviewers was concerned with the divergence of the nelore sequence compared with the other cattle. 
+# This is a valid concern, and we can address this by taking an estimate of the SNPs and indels in the genome and compare them with the other cattle
+# I suspect they will be higher.
+
+# To save time, I will use samtools to do this.
+# First, lets merge the bam files of the angus samples
+	Server 3: /mnt/data8/dbickhart/ang_rerun/btan02
+	$ ~/bin/samtools merge btan02_merged_sorted_cow4.bam *.bam
+	$ ~/bin/samtools sort btan02_merged_sorted_cow4.bam btan02_merged_sort_sort_cow4
+	$ ~/bin/samtools mpileup -uf /mnt/data110/dbickhart/reference/cow4_36_noun_rmask_a.fa btan02_merged_sort_sort_cow4.bam | bcftools view -bvcg - > btan02_raw.bcf
+	$ bcftools view btan02_raw.bcf | /home/dbickhart/samtools-0.1.18/bcftools/vcfutils.pl varFilter -D100 > btan02_filt.vcf
+	$ wc btan02_filt.vcf
+	  447022  4470131 52307422 btan02_filt.vcf
+	
+	Server 3: /mnt/data8/dbickhart/ang_rerun/btan09
+	$ ~/bin/samtools merge btan09_merged_sorted_cow4.bam *.bam
+	$ ~/bin/samtools sort btan09_merged_sorted_cow4.bam btan09_merged_sort_sort_cow4.bam
+	$ ~/bin/samtools mpileup -uf /mnt/data110/dbickhart/reference/cow4_36_noun_rmask_a.fa btan09_merged_sort_sort_cow4.bam.bam | bcftools view -bvcg - > btan09_raw.bcf
+	$ bcftools view btan09_raw.bcf | /home/dbickhart/samtools-0.1.18/bcftools/vcfutils.pl varFilter -D100 > btan09_filt.vcf
+	$ wc btan09_filt.vcf
+	  398398  3983891 46916878 btan09_filt.vcf
+	
+	Server 3: /mnt/data8/dbickhart/ang_rerun/btan10
+	$ ~/bin/samtools merge btan10_merged_sorted_cow4.bam *.bam
+	$ ~/bin/samtools sort btan10_merged_sorted_cow4.bam btan10_merged_sort_sort_cow4
+	$ ~/bin/samtools mpileup -uf /mnt/data110/dbickhart/reference/cow4_36_noun_rmask_a.fa btan10_merged_sort_sort_cow4.bam | bcftools view -bvcg - > btan10_raw.bcf
+	$ bcftools view btan10_raw.bcf | /home/dbickhart/samtools-0.1.18/bcftools/vcfutils.pl varFilter -D100 > btan10_filt.vcf
+	$ wc btan10_filt.vcf
+	  349148  3491391 40575166 btan10_filt.vcf
+	  
+	Server 3: /mnt/gliu1_usb/dbickhart/breed_doc/blackstar/mrsfast/cow4
+	$ ~/bin/samtools sort merged.bam blackstar_merged_sort
+	$ ~/bin/samtools mpileup -uf /mnt/data110/dbickhart/reference/cow4_36_noun_rmask_a.fa blackstar_merged_sort.bam | bcftools view -bvcg - > blackstar_raw.bcf
+	$ bcftools view blackstar_raw.bcf | /home/dbickhart/samtools-0.1.18/bcftools/vcfutils.pl varFilter -D100 > blackstar_filt.vcf
+	$ wc blackstar_filt.vcf
+	  113775  1137661 12697374 blackstar_filt.vcf
+	
+# Now, lets try to call snps on the nelore files
+	# Merging nelore bams first
+	Server 3: /mnt/gliu1_usb/dbickhart/nelore_30x/fastqs
+	$ ~/bin/samtools merge /mnt/data8/dbickhart/nelore_hd_wssd/nelore_combined_sorted_cow4.bam ./pebam/pebam_combined_sort.bam ./sebam/sebam_combined_sort.bam
+	
+	Server 3: /mnt/data8/dbickhart/nelore_hd_wssd
+	$ ~/bin/samtools mpileup -uf /mnt/data110/dbickhart/reference/cow4_36_noun_rmask_a.fa nelore_combined_sorted_cow4.bam | bcftools view -bvcg - > nelore_raw.bcf
+	$ bcftools view nelore_raw.bcf | /home/dbickhart/samtools-0.1.18/bcftools/vcfutils.pl varFilter -D100 > nelore_filt.vcf
+		$ wc nelore_filt.vcf
+		   897124   8971151 102732522 nelore_filt.vcf
+		   
+__________________________
+CNV binning
+__________________________
+# I need to make a simple graph showing the number of CNVs within certain size bins
+# First, to estimate how large they are:
+	Server 3: /mnt/data8/dbickhart/doc_files
+	$ for i in *all_chr_both_named.bed; do echo $i; perl -lane 'print $F[2] - $F[1];' < $i | statStd.pl; done | more
+		bine12_all_chr_both_named.bed
+		total   867
+		Minimum 10018
+		Maximum 495946
+		Average 40709.499423
+		Median  24109
+		Standard Deviation      45985.530456
+		Mode(Highest Distributed Value) 11000
+		
+		btan02_all_chr_both_named.bed
+		total   797
+		Minimum 10046
+		Maximum 510939
+		Average 50577.340025
+		Median  26189
+		Standard Deviation      62674.547185
+		Mode(Highest Distributed Value) 16084
+		
+		btan09_all_chr_both_named.bed
+		total   806
+		Minimum 10018
+		Maximum 510939
+		Average 50330.297767
+		Median  27171
+		Standard Deviation      61103.568792
+		Mode(Highest Distributed Value) 16084
+		
+		btan10_all_chr_both_named.bed
+		total   805
+		Minimum 10093
+		Maximum 510939
+		Average 50314.417391
+		Median  27742
+		Standard Deviation      59305.346309
+		Mode(Highest Distributed Value) 12000
+		
+		btho11_all_chr_both_named.bed
+		total   754
+		Minimum 10066
+		Maximum 510939
+		Average 50065.362069
+		Median  26569.5
+		Standard Deviation      60073.461596
+		Mode(Highest Distributed Value) 14047
+		
+		dttrace_all_chr_both_named.bed
+		total   668
+		Minimum 10066
+		Maximum 510939
+		Average 54547.829341
+		Median  28743
+		Standard Deviation      64204.965542
+		Mode(Highest Distributed Value) 12334
+	
+	pwd: /home/dbickhart/share/cow4_doc/hd_an_trace_art/named_beds
+	# I added extra tabs to the text below to make things easier to see in the textpad doc
+	$ perl ../../../backup/bin_cnvs_by_size.pl 'ls *all_chr_both_named.bed | grep -v buffalo'
+		< 15kb	15kb - 50kb	50kb - 100kb	100kb - 150kb	150kb - 200kb	> 200kb
+	bine12	185	473		141		37		16		15
+	btan02	148	428		113		55		25		28
+	btan09	143	435		124		53		23		28
+	btan10	136	435		130		55		24		25
+	btho11	127	416		111		53		23		24
+	dttrace	94	355		121		47		26		25
+	$ perl ../../../backup/bin_cnvs_by_size.pl 'ls *all_chr_both_named.bed | grep -v buffalo' > cnv_size_distribution.tab
+	# Manually changed names to fit manuscript nomenclature

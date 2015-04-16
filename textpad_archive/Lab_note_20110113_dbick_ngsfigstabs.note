@@ -1,0 +1,106 @@
+2011_01_13
+# I just wanted to keep a separate note file to organize my figure and table generation notes
+
+# Tables:
+	* Table 1: Dataset stats 
+	* Table 2: Numbers of CNV's per breed (PEM vs DoC and overlap)
+	* Table 3: Listing of CNV's that are common to all breeds (PEM vs DoC)
+	* Table 4: Comparisons of CNV's to other publications
+	* Table 5: Nearby proteins and transcription factors
+	* Table 6: 
+	
+	*Supp Table: DAVID analysis of enriched genes
+	*Supp Table: Full CNV listing
+	
+	
+# Figures:
+	* Figure 1: Circos plot of ALL CNV's (two tracks underneath chromosomes: PEM and DoC)
+	* Figure 2: Circos plot of CNV's per breed <- iffy, maybe supplemental?
+	* Figure 3: Circos plot of one chromosome with links representing CNV's
+	* Figure 4: qPCR graph
+	* Figure 5: pile-up plot of one CNV
+	
+	*Supp Figure: Distribution of PEM lengths
+	
+(<>) What I have so far (and improvements that I need to make):
+
+
+(<>) New figures:
+	% Supplementary figure: Distribution of PEM lengths:
+		# This is a pain, since mrsfast doesn't output SAM reads when --discordant-vh is used
+		# I have some sam files from my initial investigation of read lengths, so I can use them.
+		# List of what I have:
+			# BIBR01P.FC42HMD.6.14.sam
+			# BTHO01P.FC42FPG.1.15.sam
+			# BINE01P.FC42H7G.3.15.sam
+			# BTRO05P.FC42T7D.4.15.sam 
+		# I used a short script: create_plot_insert_size.pl to generate a table: ins_size_table.txt (in my sharedfolder on my computer)
+			
+		# OK, big problem though! The sam files produced from mrsfast prevent ANY reads that are of a length of less than 100 and more than 600 from being mapped! 
+		# This is not a good representation of all mappings and it is skewed because I used multiple animals/breeds (likely different preps)
+		# So, I should probably use BWA on one of the larger files and then make the table
+		$ ../bwa-0.5.8a/bwa index -a bwtsw cow4_36_noun_final.fa
+		$ for i in *.fq; do ../../../bwa-0.5.8a/bwa aln ../../../alkan_files/cow4_36_noun_final.fa $i > $i.sai; done
+		$ ../../../bwa-0.5.8a/bwa sampe ../../../alkan_files/cow4_36_noun_final.fa BTAN01P.FC42N19.3.1.15.fq.sai BTAN01P.FC42N19.3.2.15.fq.sai BTAN01P.FC42N19.3.1.15.fq BTAN01P.FC42N19.3.2.15.fq > BTAN_bwa_pe.sam
+		$ perl create_plot_insert_size.pl
+		
+		# Great! I have a decent distribution of PEM insert lengths!
+		
+	% Initial Circos figure
+		# Going to plot a copynumber track for Angus
+		# First, I'm going to get some stats for the .CN file for Angus
+		$ perl /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/check_avg_chr_copy.pl angus_nochrun_hits_file3.bed.CN
+			chrname number  average median
+			chr1    52163   2.06456371495812        1.95471
+			chr10   38166   2.10258434189726        1.98878
+			chr11   40349   2.07003842570654        1.97358
+			chr12   30104   2.03258876353307        1.94094
+			chr13   31893   2.09119786447182        1.98395
+			chr14   28580   2.10383556210882        1.95284
+			chr15   27826   2.15434076228706        1.997655
+			chr16   27373   2.60898308375041        1.97927
+			chr17   25736   2.14662146184604        1.91263
+			chr18   24965   2.17134001911076        2.00194
+			chr19   26477   2.10603306619744        1.97563
+			chr2    48105   2.02467910990812        1.95471
+			chr20   25759   2.05740144624169        1.9645
+			chr21   24038   2.47566289252557        1.96073
+			chr22   24200   2.10626014627357        2.02261
+			chr23   20930   2.05134323682322        1.933265
+			chr24   24496   2.10158330786658        1.97264
+			chr25   16544   2.21451635878263        1.954505
+			chr26   19204   2.20602456275775        1.97858
+			chr27   18068   2.2597801421098 1.96158
+			chr28   16272   2.14335772297505        2.034415
+			chr29   17929   2.10784573207094        1.95697
+			chr3    42449   2.18981900106952        1.99782
+			chr4    44168   2.21906402419717        1.97345
+			chr5    42198   2.06498727249419        1.95244
+			chr6    37968   2.2799628305244 1.94329
+			chr7    39205   2.19436962394922        1.98723
+			chr8    38807   2.18290060432137        2.00019
+			chr9    36835   2.0529577325454 1.94261
+			chrX    25442   1.46157548947587        1.18091
+		
+		# Now to reformat the Angus file for circos data track format...
+		$ perl -ne '@a = split(/\t/); chomp $a[3]; ($n) = $a[0] =~ /chr(.*)/; print "bt$n $a[1] $a[2] $a[3]\n";' < angus_nochrun_hits_file3.bed.CN > angus_circos.CN
+		# Now to determine the minimum and maximum copy number...
+		$ perl -e '$g = 0; $l = 1000; while(<>){@a = split(/\t/); chomp $a[3]; if($a[3] > $g){$g = $a[3];}elsif($a[3] < $l){$l = $a[3];}} print "lowest: $l\ngreatest: $g\n";' < angus_nochrun_hits_file3.bed.CN
+			lowest: 0
+			greatest: 13034.8
+			# Oh boy...
+			
+			# To account for the zeroes, I took a look at a random location:
+				-chrX    80005181        80007178
+				$ perl -ne '@a = split(/\t/); chomp $a[1]; if($a[0] eq 'chrX' && $a[1] < 80007178 && $a[1] > 80005181) {print $_;}' < merged.hits | wc
+					23      46     322
+				# OK, so let's check file3
+				$ perl -ne '@a = split(/\t/); chomp $a[2]; if($a[0] eq 'chrX' && $a[2] == 80007178 && $a[1] == 80005181) {print $_;}' < angus_nochrun_hits_file3.bed
+					chrX    80005181        80007178        23
+				# Exactly what we'd expect.
+				# Maybe GC normalization did this?
+				$ perl -ne '@a = split(/\t/); chomp $a[2]; if($a[0] eq 'chrX' && $a[2] == 80007178 && $a[1] == 80005181) {print $_;}' < angus_nochrun_hits_file3.bed.gc.depth.normalized
+					chrX    80005181        80007178        0.549549        0
+				# Yup, so it's a high GC area with low coverage. 
+				# The fraction of "zero" that carried over was too small to register on the file.
+				# Plus, this fits in with the "loss" of coverage in this region of the genome: the average coverage in the CN file should have been 81-ish.

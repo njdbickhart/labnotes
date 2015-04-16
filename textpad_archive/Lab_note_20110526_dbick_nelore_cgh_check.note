@@ -1,0 +1,198 @@
+05/26/2011
+# George wants me to compare the high density nelore NGS data against the custom array predictions
+
+# Unfortunately, much of the 28377 order was not processed using NimbleScan yet. I need to do that really quickly.
+
+#################################################
+#						#
+#	Process using NimbleScan		#
+#						#
+#################################################
+
+# Here's how you run the custom array samples through NimbleScan:
+	pwd: /home/gliu/NimbleScan2_5 <- using gliu username
+	$ ./NimbleScan
+	
+	# Resize window slightly. Make sure window is in upper left hand corner of first monitor
+	# Analysis -> CGH -> SegMNT
+	# Select files to run (batches of 5 pairs seem to work best)
+	# Select NDF file for experiment
+	# Select experimental report file
+	# Include following line in average windows field: 2x,3x,5x,20x
+	# Unselect the GFF box
+	# Select the pos file
+	
+	# Set output directory
+	# run.
+	
+#################################################
+
+# the 12X Nelore information:
+	NGS name	Barcode		Array code
+	BINE12		SOM05445	68089902
+	
+# After this run completes, I need to filter and process the aCGH information for this run.
+
+
+#################################################
+#						#
+#	Filter and call CNVR acgh		#
+#						#
+#################################################
+
+# This is how to filter and process aCGH calls made by NimbleScan2_5 for high density arrays
+	# I need to organize the raw-files folder
+		$ mkdir in_house_pdfs
+		$ mv *.pdf ../in_house_pdfs/
+		$ mkdir in_hous_segtables
+		$ mv *.txt ../in_house_segtables/
+		
+		$ mkdir working_folder   <- to contain copies that I will work on
+		# Yali told me that the filter script cannot recognize the unavg designation, so i must change that into "500bp" in order for the filename to work
+		$ cp *segtable* ../working_folder/
+		
+		# Yali informed me that I need to convert the segtable format since the segtables are different (higher density) than the ones used in the older program
+		$ file_rename.pl ./ 's/_unavg_segtable_segMNT/_500bp_segMNT_segtable/'
+		$ file_rename.pl ./ 's/segtable_segMNT/segMNT_segtable/'
+		$ file_rename.pl ./ 's/txt/txt1/'
+		
+		$ Formathdacgh.pl -i working_folder  <- converts file lines into the older version so that the filtering step can work
+		$ for i in *.txt; do perl -pi -e 's/ARRAY_ID/CY5_SAMPLE_NAME/' $i; done
+		$ mkdir ../raw_format
+		$ mv *.txt1 ../raw_format/
+		
+	
+	
+	# Now to filter the calls using George's script: FilterCghData01d.pl
+
+		$ FilterCghData01d.pl
+			usage: FilterCghData01.pl -i [input directory including segtable files] -r [ratio shift threshold] -p [numbe of raw datapoints threshold] -o [output file]
+		
+		$ mkdir ../filter_0.5_3
+		$ FilterCghData01c.pl -i . -r 0.5 -p 3 -o ../filter_0.5_3/0.5_3_fil
+				
+		$ mkdir filter_0.5_5/
+		$ FilterCghData01c.pl -i . -r 0.5 -p 5 -o ../filter_0.5_5/0.5_5_fil	
+	
+	# Now to merge the CNVs into CNVR
+		$ for i in 0.5_3*; do arrayCGH_segMNT_merge03b.pl -i $i; done
+		$ for i in 0.5_5*; do arrayCGH_segMNT_merge03b.pl -i $i; done
+		
+#################################################
+
+# After finishing this, I will take the bed file and run it through the compare_named_bed_vary_coverage.pl script
+# I will use the NGS data as the reference and then swap the two.
+
+_______________________________________
+Finalizing the dataset
+_______________________________________
+
+# George is happy with the custom array, but we need to finalize the NGS dataset. 
+
+# I believe that either my window size is too large or I need more stringent criteria
+# Going to test this out on the mapped Nelore 30x data
+	1. map nelore 30x data to the 5k, 10k and 20k window files
+	2. filter the cnvs (duplications and deletions), removing calls less than 20kb
+	3. Give the data to Yali so she can compare it
+	
+# Location of the nelore 30x data:
+	pwd: /mnt/gliu1_usb/dbickhart/nelore_30x/doc/total_nelore_doc.bed
+	
+# Locations of the window files:
+	- 5kb windows
+	/mnt/gliu1_usb/dbickhart/alkan_files/template_file1_rmask.bed
+	...
+	/mnt/gliu1_usb/dbickhart/alkan_files/sim_sub_file1_control_rmask.bed
+	...
+	
+	- 10kb windows
+	/mnt/gliu1_usb/dbickhart/alkan_files/more_windows/template_10k_file1.bed
+	...
+	/mnt/gliu1_usb/dbickhart/alkan_files/more_windows/template_10k_file1_control.bed
+
+	- 20kb windows
+	/mnt/gliu1_usb/dbickhart/alkan_files/more_windows/template_20k_file1.bed
+	...
+	/mnt/gliu1_usb/dbickhart/alkan_files/more_windows/template_20k_file1_control.bed
+	
+# All that I need to do is run the modified version of the combine_bed_hits.pl script on the nelore data and I'm in business
+	$ cp /mnt/data8/dbickhart/high_ang_bam/an0626/combine_bed_hits.pl ./
+	# Now I just need to change the bed file locations in the script each time, and I'll get the windows I need
+	# First doing the 10k windows...
+		$ perl combine_bed_hits.pl total_nelore_doc.bed alt_windows
+	# Now for the 20k windows...
+		$ perl combine_bed_hits.pl total_nelore_doc.bed alt_windows
+		
+		
+	# Now to edit the alternate window alkan pipeline to crop cnvrs that are less than 20kb
+	# I can do some manual editing of the 5kb window nelore files to save some time. 
+	
+	# Running it: perl auto_diff_alkan_pipeline.pl --win 10k --file1 nelore_10k_doc_file1.bed --file1_c nelore_10k_doc_file1_c.bed --file2 nelore_10k_doc_file2.bed --file3 nelore_10k_doc_file3.bed --file3_c nelore_10k_doc_file3_c.bed
+		$ perl auto_diff_alkan_pipeline.pl --win 20k --file1 total_nelore_doc_file1.bed --file1_c total_nelore_doc_file1_c.bed --file2 total_nelore_doc_file2.bed --file3 total_nelore_doc_file3.bed --file3_c total_nelore_doc_file3_c.bed
+	# Wait... I think that I used the wrong file to generate the windows. I forgot to remove the repeat intervals before running it.
+		$ perl combine_bed_hits.pl total_nelore_doc_rem.bed crop_alt_windows
+	
+	
+# George wants to see the the HD nelore and dt simulation results before and after the 10kb filter applied in Alkan's pipeline. I have rewritten the 5k doc pipeline script (cattle_separate_pipeline.sh) to do this
+	# Nelore without the 10k filter:
+	$ perl run_alkan_pipeline.pl --File1 total_nelore_doc_r_file1.bed --File2 total_nelore_doc_r_file2.bed --File3 total_nelore_doc_r_file3.bed --File1_c total_nelore_doc_r_file1_c.bed --File3_c total_nelore_doc_r_file3_c.bed
+	# Changed the filter setting then reran the above command
+	
+	# I still have the bed files from the Dt simulation in the alkan/wssd-package/artifact folder. 
+	# I need to make a blank artifact file to ensure that I'm not removing the artifacts
+	$ touch blank.txt
+	$ perl run_alkan_pipeline.pl --File1 rmask_sim_file1.bed --File1_c rmask_sim_file1_c.bed --File2 rmask_sim_file2.bed --File3 rmask_sim_file3.bed --File3_c rmask_sim_file3_c.bed
+	# Now, running the same command again without the filter
+	
+	# Hmm... might not be fair to process only one without artifact masking... let's put the artifacts back on just for the dt simulation.
+	$ perl run_alkan_pipeline.pl --File1 rmask_sim_file1.bed --File1_c rmask_sim_file1_c.bed --File2 rmask_sim_file2.bed --File3 rmask_sim_file3.bed --File3_c rmask_sim_file3_c.bed
+	
+	# Now to run my comparison script on them, using the WSSD intervals that George gave me.
+		# Original file was WSSD_DOC.tab
+		$ perl -lane 'if($F[0] =~ /chrUn/){next;}else{print $_;}' < WSSD_DOC.tab > WSSD_nochrun.bed
+		
+		# Now to name all of the bed files:
+		$ perl -ne 'chomp; print "$_\tdt_artmask_after\n";' < dt_simulation_artmask_after_filter_gain.bed > dt_artmask_after_named.bed
+		$ perl -ne 'chomp; print "$_\tdt_artmask_before\n";' < dt_simulation_artmask_before_filter_gain.bed > dt_artmask_before_named.bed
+		$ perl -ne 'chomp; print "$_\tdt_noart_before\n";' < dt_simulation_noart_before_filter_gain.bed > dt_noart_before_named.bed
+		$ perl -ne 'chomp; print "$_\tdt_noart_after\n";' < dt_simulation_noart_after_filter_gain.bed > dt_noart_after_named.bed
+		$ perl -ne 'chomp; print "$_\tnelore_after\n";' < nelore_after_filter_gain.bed > nelore_after_named.bed
+		$ perl -ne 'chomp; print "$_\tnelore_before\n";' < nelore_before_filter_gain.bed > nelore_before_named.bed
+		$ perl -ne 'chomp; print "$_\twssd\n";' < WSSD_nochrun.bed > wssd_nochrun_named.bed
+		
+		# Now, running the comparison:
+		$ perl compare_named_bed_vary_coverage.pl wssd_nochrun_named.bed nelore_before_named.bed nelore_after_named.bed dt_noart_before_named.bed dt_noart_after_named.bed dt_artmask_before_named.bed dt_artmask_after_named.bed wssd_nelore_dt_comp.tab
+		
+		# Hmm... still alot of novel artifacts that were not masked. I am going to try the merger of WSSD and WGAC that I did before. 
+		$ perl -lane 'if($F[0] eq "chrom" || $F[0] =~ /chrUn/){next;}else{print "$F[0]\t$F[1]\t$F[2]\tWGAC";}' < WGAC.tab > wgac_named.bed
+		$ cat wgac_named.bed wssd_nochrun_named.bed | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin | perl -e 'while(<STDIN>){chomp; print "$_\twssd_wgac\n";}' > wgac_wssd_merge_named.bed
+		
+		$ perl compare_named_bed_vary_coverage.pl wgac_wssd_merge_named.bed nelore_before_named.bed nelore_after_named.bed dt_noart_before_named.bed dt_noart_after_named.bed dt_artmask_before_named.bed dt_artmask_after_named.bed wgac_wssd_nelore_dt_comp.tab
+		
+	# I found out one of the reasons for the discrepancy: the gc windows I was using were for the blackstar hiseq run. I had to redo the nelore run, and now I am going to rerun the simulation
+		$ perl run_alkan_pipeline.pl --File1 rmask_sim_file1.bed --File1_c rmask_sim_file1_c.bed --File2 rmask_sim_file2.bed --File3 rmask_sim_file3.bed --File3_c rmask_sim_file3_c.bed
+		...
+		
+		
+# Now, George is interested in checking out to see if we can do a super array. 
+	# I have taken the custom array positions file that Yali sent me and I am going to intersect them with the probe positions list. 
+	# I am wary about this: I think that I need to calculate the GC percentages of the areas surrounding the intervals and then map the reads to them, otherwise the GC bias will influence the ratios. 
+	# I know where the control probe regions are, perhaps I can determine gc values from them and then lowess smooth the rest of the values. 
+	
+	pwd: /mnt/data8/dbickhart/custom_array_design
+	# Identifying the control probes:
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a custom_array_windows.bed -b control_recrop_50kb_crop.bed -wa > custom_array_control_windows.bed
+	
+	# Making the GC probe windows: 
+		$ perl -lane '$e = $F[3] + $F[5]; print "$F[2]\t$F[3]\t$e\t$F[6]";' < 110331_Btau4_GL_CGH.pos > custom_array_controls_gc.bed
+	
+	# Making the control gc windows:
+		$ perl -e 'chomp $ARGV[0]; open(IN, "< $ARGa = split(/\t/);push(@b, [@a]);} chomp $ARGV[1]; open(I2, "< $ARGV[1]"); while(<I2>){chomp; @s = split(/\t/); foreach $g (@b){if($s[0] eq $g->[0] && $s[1] == $g->[1]){print "$s[0]\t$s[1]\t$s[2]\t$s[3]\n"; next;}}}' custom_array_control_windows.bed custom_array_windows_gc.bed > custom_array_gc_control_windows.bed
+		
+		
+	# Now to take Alkan's pipeline and create a mini-vignette to loewess smooth the output. 
+	# Created it and uploaded it to my alkan folder. The name: just_gcnorm.sh. ($1 regular windows, $2 gc version of those windows, $3 control windows, $4 gc version of the control windows.
+	# Going to test out my mini-pipeline.
+		
+	
+	

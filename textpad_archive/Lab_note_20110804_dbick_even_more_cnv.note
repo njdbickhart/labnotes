@@ -1,0 +1,731 @@
+08/04/2011
+# This is a note file to contain more commands and data from my Manuscript hustle.
+
+
+________________________________
+Parasight files
+________________________________
+
+# I need to make a figure similar to Alkan's figure in his nature genetics paper
+# I am going to make a plot based on the sliding windows using the read depth counts per window
+# First I need to test it to see how flexible the graph function is
+	pwd: /mnt/data8/dbickhart/major_tables/parasight
+	$ perl -lane 'if($F[0] eq "chr9" && ($F[1] > 10000 && $F[2] < 500000)){print "$F[0]\t$F[1]\t$F[3]";}' <  /mnt/data8/dbickhart/blackstar_gaii_wssd/blackstar_rem_hits_r_file1.bed > blackstar_chr9_test.graph
+	$ perl -e 'print "seqname\tposition\tvalue\n"; while(<>){print $_;}' < blackstar_chr9_test.graph > temp
+	$ mv temp blackstar_chr9_test.graph
+	$ ./parasight751.pl -showseq chr9,450000: -align intra.xw.al_01 -template globalview10k.pst -graph1 blackstar_chr9_test.graph -option '-alignment_wrap=>100,-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>180000000,-graph_scale_height=>200,-pair_intra_on=>0,-seq_label_offset_h=>-35, -seq_line_spacing_btwn=>55, -printer_page_length=>20i,-seq_tick_b_length=>2,-seq_tick_b_width=>1'
+	
+	# This worked, but I had to limit the size of the chromosome just to get a picture of it
+	# The graphing feature is very crude and not capable of plotting what I want. 
+	# I am returning to R
+	
+# OK, I think that I've figured out how to generate the plots! Here is the way:
+	> library("GenomeGraphs")
+	> biomart <- useMart("ensembl", dataset = "btaurus_gene_ensembl")
+	# Next, I need to make a list of locations in order to generate the plot
+		- "+ strand" information
+		- "genome axis" information
+		- "- strand" information
+		- and subsequent data rows
+	# Before I make the location list, I need to generate an array of colors using modifications of the following code:
+	> for(i in 1:length(seqDataEx$nislow[,"evalue"])){if(seqDataEx$nislow[i,"evalue"] > -2) leecol[i] <- "grey" else leecol[i] <- "green"}
+	# Finally, I can change the type of the plot using setPars
+	
+	# I should try to make the red/grey threshold that Alkan mentioned before
+	
+# Test drive of blackstar data
+	> library("GenomeGraphs")
+	> biomart <- useMart("ensembl", dataset = "btaurus_gene_ensembl")
+	> setwd("/home/derek/share/cow4_doc/r_plots/")
+	> btho11 <- read.delim("blackstar_rem.r.tab", header=TRUE, sep ="\t")
+	> minBase <- 81615606
+	> maxBase <- 81819909
+	# Next command gets the subset of the data (important, since the data is alot of windows!)
+	> btho11_1 <- subset(btho11, location > minBase -1 & location < maxBase +1 & chr == 1, select = c(chr, location, counts))
+	# Next command initializes the color variable
+	> btho11col <- c("green", "grey")
+	# Now to generate the colors to be used
+	> for(i in 1:length(btho11_1[,"counts"])){if(btho11_1[i,"counts"] > 410){ if(btho11_1[i,"counts"] > 468){ btho11col[i] <- "red"}else{btho11col[i] <- "grey"}}else{btho11col[i] <- "green"}}
+	> blist <- list("-" = makeGeneRegion(chromosome = "1", start = minBase, end = maxBase, strand = "-", biomart = biomart, dp = DisplayPars(plotId = TRUE, idRotation = 0, cex = .5)), makeGenomeAxis(dp = DisplayPars(byValue = 1e3, size = 1)), "+" = makeGeneRegion(chromosome = "1", start = minBase, end = maxBase, strand = "+", biomart = biomart, dp = DisplayPars(plotId = TRUE, idRotation = 0, cex = .5)), "BTHO11" = makeBaseTrack(base = btho11_1[,"location"], value = btho11_1[,"counts"], dp = DisplayPars(lwd = 2, color = btho11col)))
+	> setPar(blist$BTHO11@dp, "type", "h")
+	> gdPlot(blist, minBase = minBase, maxBase = maxBase)
+	
+	# It works!! Now to add on more elements to the blist
+	> ang02 <- read.delim("btan02_hits.r.tab", header=TRUE, sep = "\t")
+	> btan02 <- subset(ang02, location > minBase -1 & location < maxBase +1 & chr == 1, select = c(chr, location, counts))
+	> btan02col <- c("grey", "green")
+	> for(i in 1:length(btan02[,"counts"])){if(btan02[i,"counts"] > 2312){ if(btan02[i,"counts"] > 2640){btan02col[i] <- "red"}else{btan02col[i] <- "grey"}}else{btan02col[i] <- "green"}}
+	> blist$BTAN02 <- makeBaseTrack(base = btan02[,"location"], value = btan02[,"counts"], dp = DisplayPars(lwd = 2, color = btan02col))
+	> setPar(blist$BTAN02@dp, "type", "h")
+	
+	> ang09 <- read.delim("btan09_hits.r.tab", header=TRUE, sep = "\t")
+	> btan09 <- subset(ang09, location > minBase -1 & location < maxBase +1 & chr == 1, select = c(chr, location, counts))
+	> btan09col <- c("grey", "green")
+	> for(i in 1:length(btan09[,"counts"])){if(btan09[i,"counts"] > 2306){ if(btan09[i,"counts"] > 2646){btan09col[i] <- "red"}else{btan09col[i] <- "grey"}}else{btan09col[i] <- "green"}}
+	> blist$BTAN09 <- makeBaseTrack(base = btan09[,"location"], value = btan09[,"counts"], dp = DisplayPars(lwd = 2, color = btan09col))
+	> setPar(blist$BTAN09@dp, "type", "h")
+	
+	> ang10 <- read.delim("btan10_hits.r.tab", header=TRUE, sep = "\t")
+	> btan10 <- subset(ang10, location > minBase -1 & location < maxBase +1 & chr == 1, select = c(chr, location, counts))
+	> btan10col <- c("grey", "green")
+	> for(i in 1:length(btan10[,"counts"])){if(btan10[i,"counts"] > 1871){ if(btan10[i,"counts"] > 2155){btan10col[i] <- "red"}else{btan10col[i] <- "grey"}}else{btan10col[i] <- "green"}}
+	> blist$BTAN10 <- makeBaseTrack(base = btan10[,"location"], value = btan10[,"counts"], dp = DisplayPars(lwd = 2, color = btan10col))
+	> setPar(blist$BTAN10@dp, "type", "h")
+	
+	> nelore <- read.delim("total_nelore.r.tab", header=TRUE, sep = "\t")
+	> bine12 <- subset(nelore, location > minBase -1 & location < maxBase +1 & chr == 1, select = c(chr, location, counts))
+	> bine12col <- c("grey", "green")
+	> for(i in 1:length(bine12[,"counts"])){if(bine12[i,"counts"] > 1892){ if(bine12[i,"counts"] > 2177){bine12col[i] <- "red"}else{bine12col[i] <- "grey"}}else{bine12col[i] <- "green"}}
+	> blist$BINE12 <- makeBaseTrack(base = bine12[,"location"], value = bine12[,"counts"], dp = DisplayPars(lwd = 2, color = bine12col))
+	> setPar(blist$BINE12@dp, "type", "h")
+	
+	# Works great! But I need to set a ylimit to make the plots more convincing
+	> setPar(blist$BINE12@dp, "ylim", c(0,3500))
+	> setPar(blist$BTAN10@dp, "ylim", c(0,3500))
+	
+	# Finally, time to print it out
+	> pdf(file = "chr1_81_cnvr.pdf")
+	> gdPlot(blist, minBase = minBase, maxBase = maxBase)
+	
+# I am going to copy all of this into an R script so that I can run it from the shell each time
+	# So, in order to run this script, I have to use source("create_alkan_plot.R")
+	# First I need to load GenomeGraphs and set my working directory to the location of the script
+	# Then, I need to define the following variables
+		- minBase
+		- maxBase
+		- c 		<- chromosome number (no "chr")
+		
+	# Testing it out on FABP2
+	> library("GenomeGraphs")
+	> setwd("/home/derek/share/cow4_doc/r_plots/")
+	> c <- 6
+	> minBase <- 6765076
+	> maxBase <- 6872905
+	> source("create_alkan_plot.R")
+	> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+	
+	# Looks ok, but I need to change something in the datafiles: there are huge whitespace gaps that correspond to repeats
+	# I am going to make a perl script to smooth them out.
+	# Made the script; now I have to run it on Server 3
+		pwd: /mnt/data8/dbickhart/doc_files/older
+		$ perl rplot_cnv_smooth.pl -i blackstar_rem_hits_r_file1.bed.normalized.bed -o blackstar_rem.r.tab
+		$ perl rplot_cnv_smooth.pl -i btan02_hits_template_file1_rmask.bed.normalized.bed -o btan02_hits.r.tab
+		$ perl rplot_cnv_smooth.pl -i btan09_hits_template_file1_rmask.bed.normalized.bed -o btan09_hits.r.tab
+		$ perl rplot_cnv_smooth.pl -i btan10_hits_template_file1_rmask.bed.normalized.bed -o btan10_hits.r.tab
+		$ perl rplot_cnv_smooth.pl -i total_nelore_doc_r_file1.bed.normalized.bed -o total_nelore.r.tab
+		$ perl rplot_cnv_smooth.pl -i full_trace_file1.bed.normalized.bed -o dttrace_smooth.r.tab
+		
+# George wants the six genes from his aCGH GR paper investigated
+	# Trying out one of the big ones: ULBP17
+		> minBase <- 90251002
+		> maxBase <- 90582846
+		> c <- 9
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		# Now I need to change the ylim
+		# Made some huge adjustments to ylim using commands like this:
+		> setPar(blist$BTAN02@dp, "ylim", c(0, 9000))
+		# Now it's time to print
+
+	# Now for ABCC4
+		> minBase <- 68748611
+		> maxBase <- 68960145
+		> c <- 12
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		> pdf(file = "ABCC4_middle_plot.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		
+	# Now for BSP30A  chr13:63,374,895-63,422,356
+		> minBase <- 63374895
+		> maxBase <- 63422356
+		> c <- 13
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		# Too small, I need to increase the scale to chr13:63,327,433-63,469,818
+		> minBase <- 63327433
+		> maxBase <- 63469818
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		# Need to adjust the scale by alot!
+		> pdf(file = "BSP30A_middle_plot.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		
+	# Now for ENSBTAG00000033952 chr14:13,064,546-13,141,212
+		> minBase <- 13064546
+		> maxBase <- 13141212
+		> c <- 14
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		# Too small, increasing to chr14:12,987,879-13,217,879
+		> minBase <- 12987879
+		> maxBase <- 13217879
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		> pdf(file="chr14_middle_plot.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		
+	# Now the ZNF chr18:57,510,464-57,876,401
+		> minBase <- 57510464
+		> maxBase <- 57876401
+		> c <- 18
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		# The number of ensemble genes made the figure confusing, so I made an overlay
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1, overlay = makeRectangleOverlay(start = 57672537, end = 57797910, region = c(1, 9), dp = DisplayPars(alpha = 0.2)))
+		> pdf(file="ZNF_rectangle_plot.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1, overlay = makeRectangleOverlay(start = 57672537, end = 57797910, region = c(1, 9), dp = DisplayPars(alpha = 0.2)))
+		
+	# Now for the Olfactory Receptor genes chr5:63,288,176-63,538,175
+		> minBase <- 63288176
+		> maxBase <- 63538175
+		> c <- 5
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		# Hmmm... George's CNVR region is alot different than the gene location  chr5 63,165,587 63,562,388
+		> minBase <- 63165587
+		> maxBase <- 63562388
+		> pdf(file="OR_cnvr_plot.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		
+# Now, I need to add the custom array log ratios to the plots
+	# I downloaded the files from the S drive (S:/gliu/Derek/customratio/)
+	pwd: /media/sf_share/cow4_doc/r_plots
+	$ perl -e 'print "chrom\tlocation\tcount\n";' > btan02_carray_ratiocorrected.r.tab; perl -lane 'if($F[0] =~ /PROBE/){next;} ($chrom) = $F[1] =~ /chr(.*)/; print "$chrom\t$F[3]\t$F[7]";' < Angus1_T_ratio.txt >> btan02_carray_ratiocorrected.r.tab
+	# I will have to ask Yali about this; I am unsure which angus she gave me!
+	$ perl -e 'print "chrom\tlocation\tcount\n";' > btan09_carray_ratiocorrected.r.tab; perl -lane 'if($F[0] =~ /PROBE/){next;} ($chrom) = $F[1] =~ /chr(.*)/; print "$chrom\t$F[3]\t$F[7]";' < Angus2_T_ratio.txt >> btan09_carray_ratiocorrected.r.tab
+	$ perl -e 'print "chrom\tlocation\tcount\n";' > btho11_carray_ratiocorrected.r.tab; perl -lane 'if($F[0] =~ /PROBE/){next;} ($chrom) = $F[1] =~ /chr(.*)/; print "$chrom\t$F[3]\t$F[7]";' < Holstein_T_ratio.txt >> btho11_carray_ratiocorrected.r.tab
+	$ perl -e 'print "chrom\tlocation\tcount\n";' > bine12_carray_ratiocorrected.r.tab; perl -lane 'if($F[0] =~ /PROBE/){next;} ($chrom) = $F[1] =~ /chr(.*)/; print "$chrom\t$F[3]\t$F[7]";' < Nelore_T_ratio.txt >> bine12_carray_ratiocorrected.r.tab
+	
+	# I changed the R script to plot the array data as well
+	# ULBP7
+		> minBase <- 90251002
+		> maxBase <- 90582846
+		> c <- 9
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		# I just need to change the nelore size
+		> pdf(file="ULBP17_with_array.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		
+	# Now for ABCC4
+		> minBase <- 68748611
+		> maxBase <- 68960145
+		> c <- 12
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		> > pdf(file="ABCC4_with_array.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		
+	# Now for BSP30A  chr13:63,374,895-63,422,356
+		> minBase <- 63327433
+		> maxBase <- 63469818
+		> c <- 13
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 1)
+		> pdf(file="BSP30A_with_array.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		
+	# Now for ENSBTAG00000033952 chr14:13,064,546-13,141,212
+		> minBase <- 12987879
+		> maxBase <- 13217879
+		> c <- 14
+		> source("create_alkan_plot.R")
+		> pdf(file="chr14_with_array.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+	
+	# Now the ZNF chr18:57,510,464-57,876,401
+		> minBase <- 57510464
+		> maxBase <- 57876401
+		> c <- 18
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5, overlay = makeRectangleOverlay(start = 57672537, end = 57797910, region = c(1, 9), dp = DisplayPars(alpha = 0.2)))	
+		> pdf(file="ZNF_with_array.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5, overlay = makeRectangleOverlay(start = 57672537, end = 57797910, region = c(1, 9), dp = DisplayPars(alpha = 0.2)))
+
+	# Now for the Olfactory Receptor genes chr5:63,288,176-63,538,175
+		> minBase <- 63165587
+		> maxBase <- 63562388
+		> c <- 5
+		> source("create_alkan_plot.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+
+
+# George wants the gaps in the ngs plots. Going to add them back
+	$ for i in *file1*.bed.normalized.bed; do prefix=`echo $i | cut -d '_' -f1,2`; echo $prefix; perl -e 'print "chr\tlocation\tstrand\tcounts\n"; while(<>){chomp; @s = split(/\t/); $v = int($s[3]); ($c) = $s[0] =~ m/chr(.+)/; print "$c\t$s[1]\t0\t$v\n";}' < $i > $prefix.gap.r.tab; done
+	# ULBP7
+		> minBase <- 90251002
+		> maxBase <- 90582846
+		> c <- 9
+		> source("create_alkan_plot_gap.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		# I just need to change the nelore size
+		> pdf(file="ULBP7_gaps_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.50)
+	
+	# Now for BSP30A  chr13:63,374,895-63,422,356
+		> minBase <- 63327433
+		> maxBase <- 63469818
+		> c <- 13
+		> source("create_alkan_plot_gap.R")
+		# Cropping off the big gap
+		> minBase <- 63360000
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		> pdf(file="BSP30A_gaps_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		
+	# Now for ENSBTAG00000033952 chr14:13,064,546-13,141,212
+		> minBase <- 12987879
+		> maxBase <- 13217879
+		> c <- 14
+		> source("create_alkan_plot_gap.R")
+		> pdf(file="chr14_gaps_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+	
+	
+	# Yali just gave me the full array  positions, going to try plotting them as well
+		$ perl -e 'print "chrom\tlocation\tcount\n";' > btan02_farray_ratiocorrected.r.tab; perl -lane 'if($F[0] =~ /PROBE/){next;} ($chrom) = $F[1] =~ /chr(.*)/; print "$chrom\t$F[2]\t$F[6]";' < ANG1_ratio.txt >> btan02_farray_ratiocorrected.r.tab
+		$ perl -e 'print "chrom\tlocation\tcount\n";' > btan09_farray_ratiocorrected.r.tab; perl -lane 'if($F[0] =~ /PROBE/){next;} ($chrom) = $F[1] =~ /chr(.*)/; print "$chrom\t$F[2]\t$F[6]";' < ANG2_ratio.txt >> btan09_farray_ratiocorrected.r.tab
+		$ perl -e 'print "chrom\tlocation\tcount\n";' > btho11_farray_ratiocorrected.r.tab; perl -lane 'if($F[0] =~ /PROBE/){next;} ($chrom) = $F[1] =~ /chr(.*)/; print "$chrom\t$F[2]\t$F[6]";' < HOL_ratio.txt >> btho11_farray_ratiocorrected.r.tab
+		$ perl -e 'print "chrom\tlocation\tcount\n";' > bine12_farray_ratiocorrected.r.tab; perl -lane 'if($F[0] =~ /PROBE/){next;} ($chrom) = $F[1] =~ /chr(.*)/; print "$chrom\t$F[2]\t$F[6]";' < NEL_ratio.txt >> bine12_farray_ratiocorrected.r.tab
+		
+		# I redid the above steps for George's genes to make the pdfs.
+		
+# Now to work on my genes
+	# FABP2 	chr6:6,657,241-6,980,740
+		> minBase <- 6657241
+		> maxBase <- 6980740
+		> c <- 6
+		> source("create_alkan_plot_gap.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		# Changing the maxBase value
+		> maxBase <- 6930000
+		> pdf(file="FABP2_gap_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		
+	# AOX1		chr2:93,310,318-93,550,304
+		> minBase <- 93310318
+		> maxBase <- 93550304
+		> c <- 2
+		> source("create_alkan_plot_gap.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		# Changing the minBase
+		> minBase <- 93350000
+		> pdf(file="AOX1_gap_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		
+	# APOL3		chr5:80,179,819-80,456,885
+		> minBase <- 80179819
+		> maxBase <- 80456885
+		> c <- 5
+		> source("create_alkan_plot_gap.R")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		> pdf(file = "APOL3_gap_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		
+	# FSHR		chr11:32,479,715-32,771,272
+		> minBase <- 32479715
+		> maxBase <- 32771272
+		> c <- 11
+		> source("create_alkan_plot_gap.R")
+		# Changed the minbase and maxbase values to see if I couldn't find the CNV in DT
+		> minBase <- 32379715
+		> maxBase <- 32671272
+		# Nada, printing anyway
+		> pdf(file ="FSHR_gap_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		# I found out why this was showing nothing: my DT thresholds were way too high, trying again
+		# Using the shifted coordinates (second set) to get a better view of the region
+		> pdf(file ="FSHR_gap_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+		
+		
+	# CNN1		chr7:14,280,565-14,398,029
+		> minBase <- 14280565
+		> maxBase <- 14398029
+		> c <- 7
+		> source("create_alkan_plot_gap.R")
+		> pdf(file="CNN1_gap_warray.pdf")
+		> gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5)
+
+
+# George's fish plots
+	# George wants me to test all of the fish gene/cnv intersections. I think I can do this in an automated fashion so that we can check the plots later
+	# I created a bed file with the chromosome coords and gene names (fishgene_gliu_intersection_process.txt) and I will create a perl wrapper script to process it all.
+		pwd: /home/derek/share/cow4_doc/r_plots
+		$ mkdir fish_test
+		$ perl run_bed_through_rplot_pipeline.pl fishgene_gliu_intersection_process.txt
+	# Worked great, but the "no gene" entries were all merged. Need to distinguish them before I reprocess them
+		$ perl -lane 'if ($F[3] =~ /no/){print $_;}' < fishgene_gliu_intersection_process.txt > fishnogene_intersection_process.txt
+		# Changed the gene name to: chr()_no_gene  (where () is the chromosome number).
+		$ perl run_bed_through_rplot_pipeline.pl fishnogene_intersection_process.txt
+		
+# Top 30 genes
+	$ mkdir top_30
+	$ perl run_bed_through_rplot_pipeline.pl gene_list_cn_hd_animals_top30.txt
+	
+# The 173 bacs that intersected with genes:
+	$ 173_bacs
+	$ perl run_bed_through_rplot_pipeline.pl fishgene173_intersection.txt
+	
+
+# George wants me to do a more natural smoothing of the plots, while taking into effect the full length of the 5kb windows
+	# My plan is to sample every 1kb across the chromosome and then average the read depth of the windows and divide it by the average
+	# This should give me a good copy number estimate for the windows.
+	# I created a script to do this: rplot_cnv_smooth_cn.pl
+		pwd: /mnt/data8/dbickhart/doc_files/older
+		$ more ../../blackstar_gaii_wssd/blackstar_rem_hits_r_file1.bed_gccorr.log
+			Avg:  237.386771  std:  57.765553  AutoCut:  468.448983  AutoCut2:  410.683430  Del:  64.090112
+			SexA:  4.030845  std:  76.169522  AutoCut:  232.539411  AutoCut2:  156.369889  Del:  -148.308199
+		$ perl rplot_cnv_smooth_cn.pl -i blackstar_rem_hits_r_file1.bed.normalized.bed -o btho11_smooth_cn.r.tab -a 237
+		
+		$ more ../../ang_rerun/doc_beds/btan02/btan02_hits_template_file1_rmask.bed_gccorr.log
+			Avg:  1328.190264  std:  328.086358  AutoCut:  2640.535696  AutoCut2:  2312.449338  Del:  343.931190
+			SexA:  34.987778  std:  557.270400  AutoCut:  1706.798978  AutoCut2:  1149.528578  Del:  -1079.553022
+		$ perl rplot_cnv_smooth_cn.pl -i btan02_hits_template_file1_rmask.bed.normalized.bed -o btan02_smooth_cn.r.tab -a 1328
+		
+		$ more ../../ang_rerun/doc_beds/btan09/btan09_hits_template_file1_rmask.bed_gccorr.log
+			Avg:  1285.889576  std:  340.245872  AutoCut:  2646.873064  AutoCut2:  2306.627192  Del:  265.151960
+			SexA:  36.027776  std:  578.991335  AutoCut:  1773.001781  AutoCut2:  1194.010446  Del:  -1121.954894
+		$ perl rplot_cnv_smooth_cn.pl -i btan09_hits_template_file1_rmask.bed.normalized.bed -o btan09_smooth_cn.r.tab -a 1286
+		
+		$ more ../../ang_rerun/doc_beds/btan10/btan10_hits_template_file1_rmask.bed_gccorr.log                       
+			Avg:  1019.707697  std:  283.891292  AutoCut:  2155.272865  AutoCut2:  1871.381573  Del:  168.033821
+			SexA:  30.369550  std:  496.735159  AutoCut:  1520.575027  AutoCut2:  1023.839868  Del:  -963.100768
+		$ perl rplot_cnv_smooth_cn.pl -i btan10_hits_template_file1_rmask.bed.normalized.bed -o btan10_smooth_cn.r.tab -a 1020
+		
+		$ more ../../nelore_hd_wssd/total_nelore_doc_r_file1.bed_gccorr.log
+			Avg:  1034.651040  std:  285.797225  AutoCut:  2177.839940  AutoCut2:  1892.042715  Del:  177.259365
+			SexA:  9.073283  std:  161.324504  AutoCut:  493.046795  AutoCut2:  331.722291  Del:  -313.575725
+		$ perl rplot_cnv_smooth_cn.pl -i total_nelore_doc_r_file1.bed.normalized.bed -o bine12_smooth_cn.r.tab -a 1034
+		
+		$ more ../../trace_reads/trace_bams/trace_windows/full_trace_file1.bed_gccorr.log
+			Avg:  340.256314  std:  95.074536  AutoCut:  720.554458  AutoCut2:  625.479922  Del:  55.032706
+			SexA:  42.216403  std:  142.510472  AutoCut:  469.747819  AutoCut2:  327.237347  Del:  -242.804541
+		$ perl rplot_cnv_smooth_cn.pl -i full_trace_file1.bed.normalized.bed -o trace_smooth_cn.r.tab -a 340
+		
+	# I also changed several of the settings
+	
+# George would rather that I include the 1kb non-overlapping CN estimates than to draw them new. 
+	# Just modified the rplot_cnv_smooth_cn.pl script slightly to generate the new estimates
+		pwd: /mnt/data8/dbickhart/major_tables
+		$ perl rplot_cnv_smooth_1kcn.pl -i bine12_normalized.CN -o bine12_smooth_cn.r.tab
+		$ perl rplot_cnv_smooth_1kcn.pl -i btan02_normalized.CN -o btan02_smooth_cn.r.tab
+		$ perl rplot_cnv_smooth_1kcn.pl -i btan09_normalized.CN -o btan09_smooth_cn.r.tab
+		$ perl rplot_cnv_smooth_1kcn.pl -i btan10_normalized.CN -o btan10_smooth_cn.r.tab
+		$ perl rplot_cnv_smooth_1kcn.pl -i btho11_normalized.CN -o btho11_smooth_cn.r.tab
+		$ perl rplot_cnv_smooth_1kcn.pl -i dttrace_normalized.CN -o trace_smooth_cn.r.tab
+		
+	# Now, I need to generate digital acgh plots on the linear diagrams
+	
+	# George has settled on the following schema:
+		1. 5kb overlapping start position CN
+		2. 1kb nonoverlapping dacgh cn start position
+		3. array data
+		
+	# Now I need to run the 173 bac files
+		$ perl run_bed_through_rplot_pipeline.pl fishgene173_intersection.txt; perl run_bed_through_rplot_pipeline.pl fishnogene_intersection_process.txt
+		
+	# George wants the plots without the digital acgh
+		$ perl run_bed_through_rplot_pipeline.pl fishgene_restart.txt
+		
+# George now would like the raw coordinates and values from each of the array plots. 
+# I have created a script to generate the raw files from each track (along with the colors) in a bed format.
+# The script is designed to process a named bed file and will generate several beds for each animal
+	pwd: /home/derek/share/cow4_doc/hd_an_trace_art/raw_files
+	# First run will be on a bed file with just the ULBP7 coordinates
+	# chr9	90251002	90582846	ULBP7
+	$ perl generate_raw_files_from_bed.pl -b ulbp7_test_run.bed -o ulbp7_raw
+	# It takes about 3-4 minutes to finish one gene location (not too bad)
+
+	# Now I'm going to extract the raw files from several other genes
+	# I modified the script to create an output folder for each gene name
+	$ perl generate_raw_files_from_bed.pl -b priority_genes_run.bed
+	
+# Now I need to extend the intervals and modify the script to calculate George's numbers for him (the width and offset)
+	$ perl -lane '$s = $F[1] - 200000; if ($s < 0){ $s = 0;} $e = $F[2] + 200000; print "$F[0]\t$s\t$e\t$F[3]";' < priority_genes_run.bed > priority_genes_extended.bed
+	$ perl generate_raw_files_from_bed.pl -b priority_genes_extended.bed
+
+# Modified the generate_raw_files_from_bed.pl script to print the arrays in reverse format (positive up, negative down) and to exclude the 5kb copy number tracks
+# I will have to put all of the data into mysql in order to access it faster; perhaps I will try this out when George wants the raw files from all of the bacs?
+	$ perl generate_raw_files_from_bed.pl -b priority_genes_extended.bed
+	
+	# While that is running, I created a script that processes bed files of a particular format into mysql tables
+	# Bed file format must be: chr, start, end, value, animal  # The last two values are optional
+	# Going to try to load all of the values into different tables to speed up the indexing
+	pwd: /home/derek/share/cow4_doc/hd_an_trace_art/raw_files
+	$ mkdir mysql_tabs
+	$ for i in *CN; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; chomp $f; chomp $p; open(IN, "< $f"); while(<IN>){chomp $_; print "$_\t$p\n";}' $i $prefix >> ./mysql_tabs/1kb_cn_files.bed;  done
+	$ for i in *carray_bed.tab; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = uc($ARGV[1]); chomp $f; chomp $p; open(IN, "< $f"); while(<IN>){chomp $_; if ($_ =~ /location/){next;} @s = split(/\t/); $c = "chr$s[0]"; $e = $s[1] + 50; print "$_\t$p\n";}' $i $prefix >> ./mysql_tabs/carray_files.bed;  done
+	$ for i in *farray_bed.tab; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = uc($ARGV[1]); chomp $f; chomp $p; open(IN, "< $f"); while(<IN>){chomp $_; if ($_ =~ /location/){next;} @s = split(/\t/); $c = "chr$s[0]"; $e = $s[1] + 50; print "$_\t$p\n";}' $i $prefix >> ./mysql_tabs/farray_files.bed;  done
+	# Trying a different strategy.
+	$ for i in *carray_bed.tab; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = uc($ARGV[1]); chomp $f; chomp $p; open(IN, "< $f"); while(<IN>){chomp $_; if ($_ =~ /location/){next;} @s = split(/\t/); $c = "chr$s[0]"; $e = $s[1] + 50; print "$_\t$p\n";}' $i $prefix >> ./mysql_tabs/$prefix.carray_files.bed;  done
+	$ for i in *farray_bed.tab; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = uc($ARGV[1]); chomp $f; chomp $p; open(IN, "< $f"); while(<IN>){chomp $_; if ($_ =~ /location/){next;} @s = split(/\t/); $c = "chr$s[0]"; $e = $s[1] + 50; print "$_\t$p\n";}' $i $prefix >> ./mysql_tabs/$prefix.farray_files.bed;  done
+	$ for i in *RD*normalized.bed; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = uc($ARGV[1]); chomp $f; chomp $p; open(IN, "< $f"); while(<IN>){chomp $_; if ($_ =~ /location/){next;} @s = split(/\t/); $c = "chr$s[0]"; $e = $s[1] + 50; print "$_\t$p\n";}' $i $prefix >> ./mysql_tabs/$prefix.rd_files.bed;  done
+	$ for i in *dacgh_bed.tab; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = uc($ARGV[1]); chomp $f; chomp $p; open(IN, "< $f"); while(<IN>){chomp $_; if ($_ =~ /location/){next;} @s = split(/\t/); $c = "chr$s[0]"; $e = $s[1] + 50; print "$_\t$p\n";}' $i $prefix >> ./mysql_tabs/$prefix.dacgh_files.bed;  done
+	
+	
+	# Now to place the files into mysql
+	$ perl load_table_into_mysql_db.pl -i mysql_tabs/1kb_cn_files.bed -t 1kb_cn_files -h 1
+	# The loading is taking too long... maybe I should load each file separately to decrease the load strain for each set?
+	
+	> create table custom_array ( chr VARCHAR(5) NOT NULL, start INT unsigned NOT NULL, end INT unsigned NOT NULL, value FLOAT, animal VARCHAR(15));
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/bine12.carray_files.bed'into table custom_array fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan02.carray_files.bed'into table custom_array fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan09.carray_files.bed'into table custom_array fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btho11.carray_files.bed'into table custom_array fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	# Much faster
+	
+	> create table full_array ( chr VARCHAR(5) NOT NULL, start INT unsigned NOT NULL, end INT unsigned NOT NULL, value FLOAT, animal VARCHAR(15));
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/bine12.farray_files.bed'into table full_array fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan02.farray_files.bed'into table full_array fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan09.farray_files.bed'into table full_array fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btho11.farray_files.bed'into table full_array fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	
+	> create table read_depth ( chr VARCHAR(5) NOT NULL, start INT unsigned NOT NULL, end INT unsigned NOT NULL, value FLOAT, animal VARCHAR(15));
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/bine12.rd_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan02.rd_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan09.rd_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan10.rd_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btho11.rd_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/dttrace.rd_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	
+	> create table dacgh_data ( chr VARCHAR(5) NOT NULL, start INT unsigned NOT NULL, end INT unsigned NOT NULL, value FLOAT, animal VARCHAR(15));
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/bine12.dacgh_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan02.dacgh_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan09.dacgh_files.bed'into table read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	> load data local infile '/home/derek/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btho11.dacgh_files.bed'into table dacgh_data fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	
+	# Now, I should have tables to correspond to each dataset that I want to show
+		> show tables;
+		+--------------------------------+
+		| Tables_in_upload_script_tables |
+		+--------------------------------+
+		| 1kb_cn_files                   |
+		| custom_array                   |
+		| dacgh_data                     |
+		| full_array                     |
+		| read_depth                     |
+		+--------------------------------+
+		5 rows in set (0.00 sec)
+
+_______________________________
+Heatmaps
+_______________________________
+
+# I have decided that R is likely the best way to represent my heatmaps and has the best hierarchical clustering options
+	# In order to use R, I have to run my CN script, then open R and load the table inside
+		pwd: /home/derek/share/cn_files/HD_animals/
+		# I'm going to scalp some low-hanging fruit and use the GBP6 example that I used before.
+		> library(gplots)
+		> x <- read.delim("GBP6.tab", header = TRUE, sep = "\t", quote = "\"'", dec = ".", row.names = 1)
+		> y <- as.matrix(x)
+		> hv <- heatmap.2(y, col = greenred(256), Colv=NA, scale = "none", key=TRUE, symkey=FALSE, density.info="none", trace="none")
+		
+		# Turns out that I've already done all of my genes, but all of the values are normalized to zero! I need to change this.
+		# Changed. Now I will test it out with my genes and then George's
+		$ perl extract_cn_for_heatmap.pl -c chr2 -s 93376314 -e 93484307 -o AOX1_not_norm
+		> setwd("/home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals/")
+		> x <- read.delim("AOX1_not_norm.tab", header = TRUE, sep ="\t", quote = "\"'", dec = ".", row.names = 1)
+		> y <- as.matrix(x)
+		> hv <- heatmap.2(y, col = greenred(256), Colv=NA, scale = "none", key=TRUE, symkey=FALSE, density.info="none", trace="none")
+		# learned about colorspace color generation, using that to generate a heatmap results in non-standard but good hues
+		> library("colorspace")
+		> hv <- heatmap.2(y, col = diverge_hcl(16), Colv=NA, scale = "none", key=TRUE, symkey=FALSE, density.info="none", trace="none")
+		# Not perfect, but pretty good.
+		> pdf(file ="AOX1_rplot_heatmap_colorspace.pdf")
+		> hv <- heatmap.2(y, col = diverge_hcl(16), Colv=NA, scale = "none", key=TRUE, symkey=FALSE, density.info="none", trace="none")
+		
+		# Now for APol3
+		$ perl extract_cn_for_heatmap.pl -c chr5 -s 80256012 -e 80380691 -o APOL3_not_norm
+		> x <- read.delim("APOL3_not_norm.tab", header = TRUE, sep ="\t", quote = "\"'", dec = ".", row.names = 1)
+		> y <- as.matrix(x)
+		> hv <- heatmap.2(y, col = diverge_hcl(16, h = c(260, 0)), Colv=NA, scale = "none", key=TRUE, symkey=FALSE, density.info="none", trace="none")
+		# Well, the value colors are completely different...  going to save it anyways
+		> pdf(file="APOL3_rplot_heatmap_colorspace.pdf")
+		> hv <- heatmap.2(y, col = diverge_hcl(16, h = c(260, 0)), Colv=NA, scale = "none", key=TRUE, symkey=FALSE, density.info="none", trace="none")
+		
+	# I found an R script that might be coopted to make a heatmap with non-variable colors displayed. I saved it as (share/cow4_doc/hd_an_trace_art/cn_intervals/myplot_r_heatmap_function.R);	
+		# It looks like the heatmap function (R core function) uses the hclustfun() function to generate the hierarchical clustering. If I can incorporate the lines of code from the heatmap function, I can institute a custom color scale.
+		
+		> setwd("/home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals/")
+		> x <- read.delim("AOX1_not_norm.tab", header = TRUE, sep ="\t", quote = "\"'", dec = ".", row.names = 1)
+		> hcr <- hclust(dist(x))
+		> ddr <- as.dendrogram(hcr)
+	
+	# I made a script to generate colors for the heatmap that are constant based on the copy number
+	# OK, its a junk work-around, but it currently works!	
+	# It is located here: /home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals/heatmap_template_creation.R
+
+# Now to print out some heatmaps to show George
+	> setwd("/home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals/")
+	> library("gplots")
+	> x <- read.delim("AOX1_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation.R")
+	> pdf("AOX1_heatmap_cn_colors.pdf")
+	> source("heatmap_template_creation.R")
+	
+	> x <- read.delim("APOL3_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation.R")
+	> pdf("APOL3_heatmap_cn_colors.pdf")
+	> source("heatmap_template_creation.R")
+	
+# Now I need to change the generation of the table data in order to make the width of each "box" of the heatmap correspond to actual chromosome coordinates
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr2 -s 93376314 -e 93484307 -o AOX1_constant_int_not_norm
+	> setwd("/home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals/")
+	> library("gplots")
+	> x <- read.delim("AOX1_constant_int_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation.R")
+	# So it works, but I was unable to include the gene plot with the heatmap (must be the plot type that precludes it)
+
+
+# I was not happy with the color distribution for the values, so I decided to play around with the color scheme and values
+# The results of this are in my R script: heatmap_template_creation_low_span.R
+	> source("heatmap_template_creation_low_span.R")
+	> dev.copy2pdf(file = "AOX1_new_colors.pdf", useDingbats = FALSE)
+	
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr6 -s 6657241 -e 6980740 -o FABP2_constant_int_not_norm
+	> x <- read.delim("FABP2_constant_int_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	# doesn't look that great; going to move the image over a bit
+	
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr6 -s 6740000 -e 6980740 -o FABP2_constant_int_not_norm
+	# Looks better but now I have to move the max value back a bit
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr6 -s 6740000 -e 6900000 -o FABP2_constant_int_not_norm
+	# One last time...
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr6 -s 6740000 -e 6870000 -o FABP2_constant_int_not_norm
+	
+	# No matter what I try, DTTRACE will not align with the angus at the top. Oh well, it is quite clear that the angus and DT have a HUGE stretch of duplicated regions
+	> dev.copy2pdf(file = "FABP2_new_colors.pdf", useDingbats = FALSE)
+	
+	# Now I need to do ULBP7 and BSP30A
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr13 -s 63360000 -e 63469818 -o BSP30A_constant_int_not_norm
+	> x <- read.delim("BSP30A_constant_int_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	> dev.copy2pdf(file = "BSP30A_new_colors.pdf", useDingbats = FALSE)
+	
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr9 -s 90251002 -e 90582846 -o ULBP7_constant_int_not_norm
+	> x <- read.delim("ULBP7_constant_int_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	# A bit too big! Reducing the size.
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr9 -s 90251002 -e 90402846 -o ULBP7_constant_int_not_norm
+	# Really messy, but this segment of the chromosome isn't going to be single copy by any means
+	> dev.copy2pdf(file = "ULBP7_new_colors.pdf", useDingbats = FALSE)
+	
+	# Creating work for Reuben and Sasho
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr6 -s 6740000 -e 6980740 -o FABP2_constant_int_not_norm
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr5 -s 79979819 -e 80356885 -o APOL3_constant_int_not_norm
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr11 -s 32179715 -e 32871272 -o FSHR_constant_int_not_norm
+	
+	> setwd("/home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals/")
+	> library(gplots)
+	> x <- read.delim("FABP2_constant_int_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	> dev.copy2pdf(file = "FABP2_new_colors.pdf", useDingbats = FALSE)
+	
+	> x <- read.delim("APOL3_constant_int_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	> dev.copy2pdf(file = "APOL3_new_colors.pdf", useDingbats = FALSE)
+	
+	> x <- read.delim("FSHR_constant_int_not_norm.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <- as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	> dev.copy2pdf(file = "FSHR_new_colors.pdf", useDingbats = FALSE)
+	
+	
+	# I need to fix BSP30A by cropping out the non-variable regions to give better clustering results
+	# This will require some tweaking of the settings
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr13 -s 63377993 -e 63408659 -o bsp30_63377993_63408659
+	> library(gplots)
+	> x <- read.delim("bsp30_63377993_63408659.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <-as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	# too small
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr13 -s 63338126 -e 63430126 -o bsp30_63338126_63430126
+	# Still not grouping the way that I'd want, but it is at least centered now. Going to print it first then return to it later
+	> dev.copy2pdf(file = "bsp30a_centered_heatmap_new_colors.pdf", useDingbats = FALSE)
+	
+	# Testing a heatmap of CATHL4
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr22 -s 52745014 -e 52882413 -o cathl4_52745014_52882413
+	> x <- read.delim("cathl4_52745014_52882413.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <-as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr5 -s 80000000 -e 80322105 -o apol3_80000000_80322105
+	> x <- read.delim("apol3_80000000_80322105.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <-as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	# Lets try shifting to the right a bit
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr5 -s 79979819 -e 80222105 -o apol3_79979819_80222105
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr5 -s 79969819 -e 80252105 -o apol3_79969819_80252105
+	$ perl extract_cn_for_heatmap_constant_int.pl -c chr5 -s 80158821 -e 80417344 -o apol3_80158821_80417344
+	> x <- read.delim("apol3_80158821_80417344.tab", header = TRUE, sep = "\t", row.names = 1)
+	> y <-as.matrix(x)
+	> y <- round(y)
+	> source("heatmap_template_creation_low_span.R")
+	> dev.copy2pdf(file = "apol3_centered_heatmap_new_colors.pdf", useDingbats = FALSE)
+	
+	
+	
+_______________________________
+Finishing ChrUn
+_______________________________
+
+# I am confident with my masking of the chrUn contigs. They suck as mapping locations, but the information will be useful for the supplemental
+# I am just going to finish up the data and send it to George.
+	# Converting to chrUnAll
+	$ /mnt/data110/dbickhart/reference/sep_un/chrun_to_unall.pl dttrace_chrun_reads_chrun_file1_template.bed.final.wssd > dttrace_chrunall_final.wssd
+	$ /mnt/data110/dbickhart/reference/sep_un/chrun_to_unall.pl btho11_chrun_hits_chrun_file1_template.bed.final.wssd > btho11_chrunall_final.wssd
+	
+	$ run_chrun_pipeline.pl --File1 btan02_chrun_hits_chrun_file1_template.bed --File1_c btan02_chrun_hits_chrun_file1_controls_template.bed --File2 btan02_chrun_hits_chrun_file2_template.bed --File3 btan02_chrun_hits_chrun_file3_template.bed --File3_c btan02_chrun_hits_chrun_file3_controls_template.bed
+	$ /mnt/data110/dbickhart/reference/sep_un/chrun_to_unall.pl btan02_chrun_hits_chrun_file1_template.bed.final.wssd > btan02_chrunall_final.wssd
+	
+	$ run_chrun_pipeline.pl --File1 btan09_chrun_hits_chrun_file1_template.bed --File1_c btan09_chrun_hits_chrun_file1_controls_template.bed --File2 btan09_chrun_hits_chrun_file2_template.bed --File3 btan09_chrun_hits_chrun_file3_template.bed --File3_c btan09_chrun_hits_chrun_file3_controls_template.bed
+	$ /mnt/data110/dbickhart/reference/sep_un/chrun_to_unall.pl btan09_chrun_hits_chrun_file1_template.bed.final.wssd > btan09_chrunall_final.wssd
+	
+	$  run_chrun_pipeline.pl --File1 btan10_chrun_hits_chrun_file1_template.bed --File1_c btan10_chrun_hits_chrun_file1_controls_template.bed --File2 btan10_chrun_hits_chrun_file2_template.bed --File3 btan10_chrun_hits_chrun_file3_template.bed --File3_c btan10_chrun_hits_chrun_file3_controls_template.bed
+
+# Note: about 13.9% of the reads were single end reads out of the 5.602 billion reads analyzed. 
+
+# Checking the percentage of chrUn predicted to be CN variable
+	pwd: /mnt/data8/dbickhart/chrun/
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < btho11_chrun_hits_chrun_file1_template.bed.final.wssd
+		32208029
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < dttrace_chrun_reads_chrun_file1_template.bed.final.wssd
+		28295847
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < btan02_chrun_hits_chrun_file1_template.bed.final.wssd
+		30537293
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < btan09_chrun_hits_chrun_file1_template.bed.final.wssd
+		30984926
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < btan10_chrun_hits_chrun_file1_template.bed.final.wssd
+		31392156
+	
+	$ cat ./*/windows/*.final.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin | wc
+	    944    2832   22452
+	$ cat ./*/windows/*.final.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin | perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+		36657428
+	
+	pwd: /mnt/data110/dbickhart/reference/
+	$ calculate_base_composition_fasta.pl cow4_mask_unall_a.fa
+		total autosomal:        98881845        total repetitive:       303303131       perc auto:       24.5861608216812
+		
+	# So about 37.1% (36657428 / 98881845) of chrUnall is predicted to be CN variable.

@@ -1,0 +1,250 @@
+02/21/2013
+# These are my notes on how to select better snp effects for identifying important genes involved in productive traits
+# My goal is to take John's trait snp effects and try to rank them, take the intersecting gene lists, and then run them through David/Panther to try to find functional relevance
+
+# Notes on data files:
+	# Most of John's data is in this directory:
+	3850: /work10/bfgl/1212
+	# Use the HO, JE and BS folders
+	
+	# The following files will be useful:
+	$ head HO/pers/allele.effects
+		#Use these three:	Milk pers		Fat pers	   Protein pers
+	         0   1   3            -0.29311395            -0.24586115            -0.23871744            -0.29311395            -0.24586115            -0.23871744
+	         1   1   3            -0.00012458            -0.00035362            -0.00048651            -0.00012489            -0.00035388            -0.00048670
+	         2   1   3            -0.00159066            -0.00126233            -0.00072645            -0.00159081            -0.00126237            -0.00072649
+         	 3   1   3            -0.00009405            -0.00041414             0.00010128            -0.00009404            -0.00041431
+         	 
+        $ head HO/pers/densemap2.lst
+		Largest genetic SDs in current population                                                        14:16 Friday, December 14, 2012   1
+		
+		trt=1 trait=Milk_pers
+		
+		name                    chrome  marker   location   estimate  simplfreq  basefreq  curfreq  miss_in  miss_all   freqdif     genSD
+		
+		ARS-BFGL-NGS-4939         14     26131    1801116   0.027022    0.754      0.739    0.751    0.1954   0.0010   -0.011859  0.016525
+		ARS-BFGL-NGS-57820        14     26128    1651311   0.024183    0.735      0.705    0.730    0.2046   0.0010   -0.025445  0.015180
+		
+		# Contains a list of SNPs that John has already characterized and ranked
+		# Would be good parity for my own filtering and sorting program
+		
+	$ head HO/chromosome.data
+		Name                                    Chr Within Overall  Location n_chip 50K 50kV2     3K     HD AffyHD     LD    GGP
+		Hapmap43437-BTA-101873                    1     1      1      135098  7      1      1      0      1      1      1      1
+		ARS-BFGL-NGS-16466                        1     2      2      267940  7      2      2      0      2      2      2      2
+		Hapmap34944-BES1_Contig627_1906           1     3      3      393248  7      3      3      0      3      3      3      3
+		
+		# Use this file to associate Snp number (first column of the allele.effects file; ignore the "0" snp in the allele.effects file, btw) with chromosome location and rs number
+		
+# Operating procedure
+	# Going to estimate the magnitude of each effect and rank each SNP by that magnitude. 
+	# So, absolute value of the appropriate column in the allele.effects file
+	# Separate magnitudes into three groups: (1) positive only, (2) negative only, (3) combined
+	# Compare magnitudes of each SNP across species and test for significant associations 
+	
+	# Create gene lists for five pools (1) positive only, (2) negative only, (3) combined, (4) similar in two species, (5) similar in all species
+	
+	# Run the gene lists through panther and DAVID
+	
+	# Identify enriched pathways and then use pathvisio to find the pathway and highlight the critical players. 
+	
+# Going to separate the data out of John's folder first so that I can access it and manipulate it easier
+	3850: /work10/bfgl/1212
+	$ mkdir /POD1_1/users/bickhart/john_pers_data
+	$ perl -e '$h = <>; while(<>){$_ =~ s/\r//g; chomp; @s = split(/\s+/); print "$s[1]\t$s[4]\t$s[5]\t$s[6]\n";}' < HO/pers/allele.effects > /POD1_1/users/bickhart/john_pers_data/HO_allele_effects_mpers_fpers_ppers.tab
+	$ perl -e '$h = <>; while(<>){$_ =~ s/\r//g; chomp; @s = split(/\s+/); print "$s[1]\t$s[4]\t$s[5]\t$s[6]\n";}' < JE/pers/allele.effects > /POD1_1/users/bickhart/john_pers_data/JE_allele_effects_mpers_fpers_ppers.tab
+	$ perl -e '$h = <>; while(<>){$_ =~ s/\r//g; chomp; @s = split(/\s+/); print "$s[1]\t$s[4]\t$s[5]\t$s[6]\n";}' < BS/pers/allele.effects > /POD1_1/users/bickhart/john_pers_data/BS_allele_effects_mpers_fpers_ppers.tab
+	
+	# Now for the snp coords
+	$ perl -e '$h =<>; while(<>){$_ =~ s/\r//g; chomp; @s = split(/\s+/); $e = $s[4] + 1; $n; if($s[1] eq "30"){$n = "Y";}elsif($s[1] eq "31"){$n = "X"}else{$n = $s[1]} print "chr$n\t$s[4]\t$e\t$s[0]\t$s[3]\n";}' < HO/chromosome.data > /POD1_1/users/bickhart/john_pers_data/HO_chr_snp_locs.bed
+	$ perl -e '$h =<>; while(<>){$_ =~ s/\r//g; chomp; @s = split(/\s+/); $e = $s[4] + 1; $n; if($s[1] eq "30"){$n = "Y";}elsif($s[1] eq "31"){$n = "X"}else{$n = $s[1]} print "chr$n\t$s[4]\t$e\t$s[0]\t$s[3]\n";}' < JE/chromosome.data > /POD1_1/users/bickhart/john_pers_data/JE_chr_snp_locs.bed
+	$ perl -e '$h =<>; while(<>){$_ =~ s/\r//g; chomp; @s = split(/\s+/); $e = $s[4] + 1; $n; if($s[1] eq "30"){$n = "Y";}elsif($s[1] eq "31"){$n = "X"}else{$n = $s[1]} print "chr$n\t$s[4]\t$e\t$s[0]\t$s[3]\n";}' < BS/chromosome.data > /POD1_1/users/bickhart/john_pers_data/BS_chr_snp_locs.bed
+	
+	pwd: /home/dbickhart/share/side_projects/john_persistency
+	$ perl ~/bin/persistency_data_annotation.pl HO_allele_effects_mpers_fpers_ppers.tab HO_chr_snp_locs.bed ../../umd3_data/genedb/essential_genedb_list.txt holstein_allele_effects
+	
+	# I goofed on the perl script, trying to make it too fancy. Instead I will try using a new java annotation program and taking things in a stepwise fashion
+	pwd: /home/dbickhart/share/side_projects/john_persistency
+	$ mkdir HO_beds
+	$ perl convert_persistency_to_bed_name_value.pl HO_chr_snp_locs.bed HO_allele_effects_mpers_fpers_ppers.tab HO_beds/HO_snp_value
+	$ mkdir BS_beds
+	$ perl convert_persistency_to_bed_name_value.pl BS_chr_snp_locs.bed BS_allele_effects_mpers_fpers_ppers.tab BS_beds/BS_snp_value
+	$ mkdir JE_beds
+	
+	$ wc -l *_beds/*
+	   4519 BS_beds/BS_snp_value.fat.0.10a
+	   4519 BS_beds/BS_snp_value.fat.0.10m
+	   4518 BS_beds/BS_snp_value.fat.0.10p
+	   4519 BS_beds/BS_snp_value.milk.0.10a
+	   4519 BS_beds/BS_snp_value.milk.0.10m
+	   4518 BS_beds/BS_snp_value.milk.0.10p
+	   4519 BS_beds/BS_snp_value.prot.0.10a
+	   4519 BS_beds/BS_snp_value.prot.0.10m
+	   4518 BS_beds/BS_snp_value.prot.0.10p
+	   4518 HO_beds/HO_snp_value.fat.0.10a
+	   4519 HO_beds/HO_snp_value.fat.0.10m
+	   4518 HO_beds/HO_snp_value.fat.0.10p
+	   4518 HO_beds/HO_snp_value.milk.0.10a
+	   4519 HO_beds/HO_snp_value.milk.0.10m
+	   4518 HO_beds/HO_snp_value.milk.0.10p
+	   4518 HO_beds/HO_snp_value.prot.0.10a
+	   4519 HO_beds/HO_snp_value.prot.0.10m
+	   4518 HO_beds/HO_snp_value.prot.0.10p
+	   4518 JE_beds/JE_snp_value.fat.0.10a
+	   4519 JE_beds/JE_snp_value.fat.0.10m
+	   4518 JE_beds/JE_snp_value.fat.0.10p
+	   4518 JE_beds/JE_snp_value.milk.0.10a
+	   4519 JE_beds/JE_snp_value.milk.0.10m
+	   4518 JE_beds/JE_snp_value.milk.0.10p
+	   4518 JE_beds/JE_snp_value.prot.0.10a
+	   4519 JE_beds/JE_snp_value.prot.0.10m
+	   4518 JE_beds/JE_snp_value.prot.0.10p
+	 121998 total
+	 
+	# Now, let's use my java annotation program to systematically annotate each of the snps from several different dbs
+	~/jdk1.7.0_10/bin/java -jar /home/dbickhart/share/netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d /home/dbickhart/share/umd3_data/genedb/essential_genedb_list.txt -i BS_chr_snp_locs.bed -o test_run.tab
+	
+	$ perl process_pers_effects.pl
+	# that worked well! Now I have a list of simple genes for each segment. Time to start sorting them for future work
+	pwd: /home/dbickhart/share/side_projects/john_persistency/HO_beds
+	$ for i in *.anno.tab; 
+	do 
+		ftype=`echo $i | cut -d'.' -f2`; 
+		fcut=`echo $i | cut -d'.' -f4`; 
+		outdir="$ftype$fcut"; 
+		echo $outdir; 
+		mkdir $outdir; 
+		perl -e 'while(<>){chomp; @s = split(/\t/); if($s[9]){@f = split(/;/, $s[9]); foreach $v (@f){print $v . "\n";}}}' < $i > $outdir/$i.ensemble; 
+		perl -e 'while(<>){chomp; @s = split(/\t/); if($s[12]){@f = split(/;/, $s[12]); foreach $v (@f){print $v . "\n";}}}' < $i > $outdir/$i.genesymb; 
+	done
+	
+	# Did the same for JE_beds and BS_beds
+	
+	
+	# OK, now I have alot of files and little idea on what to do with them to make this less painful! I think that I'll start with the absolute value entries and just work with the gene symbols for now
+	# I think that the 10% cutoff is too much. Going to reduce it to 5% instead
+	
+	pwd: /home/dbickhart/share/side_projects/john_persistency
+	$ perl convert_persistency_to_bed_name_value.pl HO_chr_snp_locs.bed HO_allele_effects_mpers_fpers_ppers.tab HO_beds/HO_smaller_vals 0.05
+	$ perl convert_persistency_to_bed_name_value.pl JE_chr_snp_locs.bed JE_allele_effects_mpers_fpers_ppers.tab JE_beds/JE_smaller_vals 0.05
+	$ perl convert_persistency_to_bed_name_value.pl BS_chr_snp_locs.bed BS_allele_effects_mpers_fpers_ppers.tab BS_beds/BS_smaller_vals 0.05
+	
+	$ perl process_pers_effects.pl
+	
+	# OK, still there are 160+ genes in each list. Going even lower, down to 1%
+	
+	# I have thought about this more and I think that I need a different strategy for identifying genes.
+	
+# Improving field of detection
+	# So, the thought had occurred to me that a flat snp-gene association would not be a good idea since the data was based on the 50k array
+	# I need to incorporate the distance between each snp on the panel into the detection. I will add 25kb to each side of the snp (average distance between snps was 49kb on the chip)
+	
+	# I adjusted the convert_persistency_to_bed_name_value.pl script to do this adjustment and I also remove the absolute value output file (I think that it will make my analysis more convoluted than meaningful)
+		pwd /home/dbickhart/share/side_projects/john_persistency
+		$ mkdir extended_snp_association/HO_beds
+		$ mkdir extended_snp_association/JE_beds
+		$ mkdir extended_snp_association/BS_beds
+	
+		# I will start off with 0.1% (Gives me 48 snps out of 48,000) and see how many genes that impacts
+		$ perl convert_persistency_to_bed_name_value.pl HO_chr_snp_locs.bed HO_allele_effects_mpers_fpers_ppers.tab extended_snp_association/HO_beds/HO_smaller_vals 0.001
+		$ wc -l extended_snp_association/HO_beds/HO_smaller_vals.*
+		   46 extended_snp_association/HO_beds/HO_smaller_vals.fat.0.001m
+		   45 extended_snp_association/HO_beds/HO_smaller_vals.fat.0.001p
+		   46 extended_snp_association/HO_beds/HO_smaller_vals.milk.0.001m
+		   45 extended_snp_association/HO_beds/HO_smaller_vals.milk.0.001p
+		   46 extended_snp_association/HO_beds/HO_smaller_vals.prot.0.001m
+		   45 extended_snp_association/HO_beds/HO_smaller_vals.prot.0.001p
+
+		# So about 45 genes each. Let's double that for a more useful number (~ 96 snps)
+		$ perl convert_persistency_to_bed_name_value.pl HO_chr_snp_locs.bed HO_allele_effects_mpers_fpers_ppers.tab extended_snp_association/HO_beds/HO_smaller_vals 0.002
+		$ wc -l extended_snp_association/HO_beds/HO_smaller_vals.*
+		   91 extended_snp_association/HO_beds/HO_smaller_vals.fat.0.002m
+		
+		# that's about right. Let's do this with the other datasets and then run it all through DAVID
+		$ perl convert_persistency_to_bed_name_value.pl JE_chr_snp_locs.bed JE_allele_effects_mpers_fpers_ppers.tab extended_snp_association/JE_beds/JE_smaller_vals 0.002
+		$ perl convert_persistency_to_bed_name_value.pl BS_chr_snp_locs.bed BS_allele_effects_mpers_fpers_ppers.tab extended_snp_association/BS_beds/BS_smaller_vals 0.002
+		
+		# changed this script to work on the different directory 
+		$ perl process_pers_effects.pl
+		$ for x in extended_snp_association/*_beds; 
+		do 
+			cd $x; 
+			for i in *.anno.tab;  
+			do  
+				ftype=`echo $i | cut -d'.' -f2`;  
+				fcut=`echo $i | cut -d'.' -f4`;  
+				outdir="$ftype$fcut";  
+				echo $outdir;  
+				mkdir $outdir;  
+				perl -e 'while(<>){chomp; @s = split(/\t/); if($s[9]){@f = split(/;/, $s[9]); foreach $v (@f){print $v . "\n";}}}' < $i > $outdir/$i.ensemble;  
+				perl -e 'while(<>){chomp; @s = split(/\t/); if($s[12]){@f = split(/;/, $s[12]); foreach $v (@f){print $v . "\n";}}}' < $i > $outdir/$i.genesymb;  
+			done; 
+			cd ../../; 
+		done
+		
+		$ wc -l extended_snp_association/*_beds/*002*/*.genesymb
+		  20 extended_snp_association/BS_beds/fat002m/BS_smaller_vals.fat.0.002m.anno.tab.genesymb
+		  18 extended_snp_association/BS_beds/fat002p/BS_smaller_vals.fat.0.002p.anno.tab.genesymb
+		  19 extended_snp_association/BS_beds/milk002m/BS_smaller_vals.milk.0.002m.anno.tab.genesymb
+		  16 extended_snp_association/BS_beds/milk002p/BS_smaller_vals.milk.0.002p.anno.tab.genesymb
+		  29 extended_snp_association/BS_beds/prot002m/BS_smaller_vals.prot.0.002m.anno.tab.genesymb
+		  26 extended_snp_association/BS_beds/prot002p/BS_smaller_vals.prot.0.002p.anno.tab.genesymb
+		  53 extended_snp_association/HO_beds/fat002m/HO_smaller_vals.fat.0.002m.anno.tab.genesymb
+		  31 extended_snp_association/HO_beds/fat002p/HO_smaller_vals.fat.0.002p.anno.tab.genesymb
+		  38 extended_snp_association/HO_beds/milk002m/HO_smaller_vals.milk.0.002m.anno.tab.genesymb
+		  41 extended_snp_association/HO_beds/milk002p/HO_smaller_vals.milk.0.002p.anno.tab.genesymb
+		  34 extended_snp_association/HO_beds/prot002m/HO_smaller_vals.prot.0.002m.anno.tab.genesymb
+		  21 extended_snp_association/HO_beds/prot002p/HO_smaller_vals.prot.0.002p.anno.tab.genesymb
+		  41 extended_snp_association/JE_beds/fat002m/JE_smaller_vals.fat.0.002m.anno.tab.genesymb
+		  34 extended_snp_association/JE_beds/fat002p/JE_smaller_vals.fat.0.002p.anno.tab.genesymb
+		  23 extended_snp_association/JE_beds/milk002m/JE_smaller_vals.milk.0.002m.anno.tab.genesymb
+		  52 extended_snp_association/JE_beds/milk002p/JE_smaller_vals.milk.0.002p.anno.tab.genesymb
+		  22 extended_snp_association/JE_beds/prot002m/JE_smaller_vals.prot.0.002m.anno.tab.genesymb
+		  34 extended_snp_association/JE_beds/prot002p/JE_smaller_vals.prot.0.002p.anno.tab.genesymb
+
+		# OK, lets see how many unique entries there are in this list
+		$ perl -e '%h; @f = `ls extended_snp_association/*_beds/*002*/*.genesymb`; chomp(@f); foreach $n (@f){open(IN, "< $n"); while(<IN>){chomp; $h{$_} = 1;} close IN;} foreach $k (sort {$a cmp $b} keys(%h)){print "$k\n";}' | wc -l
+			307 unique genes
+		# Alright, so let's try doing this only on the "p" values
+		$ perl -e '%h; @f = `ls extended_snp_association/*_beds/*002*/*p.anno.tab.genesymb`; chomp(@f); foreach $n (@f){open(IN, "< $n"); while(<IN>){chomp; $h{$_} = 1;} close IN;} foreach $k (sort {$a cmp $b} keys(%h)){print "$k\n";}' | wc -l
+			165 unique genes
+		# More manageable. Let's get the information from these using the genecard service
+		$ perl -e '%h; @f = `ls extended_snp_association/*_beds/*002*/*p.anno.tab.genesymb`; chomp(@f); foreach $n (@f){open(IN, "< $n"); while(<IN>){chomp; $h{$_} = 1;} close IN;} foreach $k (sort {$a cmp $b} keys(%h)){print "$k\n";}' > extended_snp_association_002_persistency_plus_unique.txt
+		# Since the genealacart service restricts me to 100 genes per day, I am going to remove genes that I already know about
+		# I could not remove enough genes so I decided to do a batch of genes per day. I have identified members from the first 100 genes in the plus batch
+		
+# Alternative to my current approach
+	# The GSEA java program developed by the Broad institute allows the entry of gene lists with rankings:
+	http://www.broadinstitute.org/cancer/software/gsea/wiki/index.php/Data_formats
+	
+	# I can associate the snps with particular genes and then affix either the absolute values of the snp effects or segregate them into separate pools
+	# I think that this may be the way to go since it is more robust than my simple percentile cutoff values.
+	# Negative values are tolerated in this file (as are floating point values) so I should be ok with using the raw snp effects
+	
+	# I am modifying the convert_persistency_to_bed_name_value.pl script to print out all values
+		$ mkdir all_snp_association
+		$ perl convert_persistency_to_bed_name_value.pl HO_chr_snp_locs.bed HO_allele_effects_mpers_fpers_ppers.tab all_snp_association/HO_smaller_vals 1
+		$ perl convert_persistency_to_bed_name_value.pl JE_chr_snp_locs.bed JE_allele_effects_mpers_fpers_ppers.tab all_snp_association/JE_smaller_vals 1
+		$ perl convert_persistency_to_bed_name_value.pl BS_chr_snp_locs.bed BS_allele_effects_mpers_fpers_ppers.tab all_snp_association/BS_smaller_vals 1
+	
+	# Now to do the annotation and then I will be close to done
+		$ perl process_pers_effects.pl
+		
+		pwd: /home/dbickhart/share/side_projects/john_persistency/all_snp_association		
+		$ for i in *.anno.tab; do perl -lane 'if($F[12]){@s = split(/;/, $F[12]); foreach $v (@s){print "$v\t$F[4]";}}' < $i > rank_files/$i.rnk; done
+		
+	# I was able to load them all into GSEA
+	# Selected Tools->GseaPreranked
+	# Selected the Go term database file from the Broad website (c.5)
+	# Selected "false" in the "Collapse dataset to gene symbols" bar
+	# Set the name of the analysis and selected a suitable outfolder
+	
+	# The results are good, but I am questioning my methodology. So the SNP effects are based on alleles rather than gene expression values (where directionality of signal is important)
+	# So, regardlesss of the magnitude of the effect, it is likely that the gene associated with the SNP is important
+	# In order to improve my detection I am going to try rerunning GSEA with absolute ranked values of my genes rather than the unmodified snp effect values
+		pwd: /home/dbickhart/share/side_projects/john_persistency/all_snp_association
+		$ cd rank_files/; for i in *.rnk; do perl -lane '$v = abs($F[1]); print "$F[0]\t$v";' < $i > ../abs_rank_files/$i; done; cd ../
+	
+	# It actually is giving the same results. Interesting.
+	# Oops! I found out why: I was using the wrong file namespace
+	

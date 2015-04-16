@@ -1,0 +1,295 @@
+09/21/2011
+# George would like to compare our NGS CNV results with those determined by Golden Helix's algorithms
+# In order to load my CNV data, I need to convert the named bed files into VCF files using the standards supplied by the 1000 genomes project
+# The VCF file format was, first and foremost, designed to represent small SNPS and indels, but there is a work-around to representing CNVs in the file
+# It is still a pain!
+
+# Here is the VCF file format:
+	##fileformat=VCFv4.0
+	##fileDate=20090805
+	##source=myImputationProgramV3.1
+	##reference=1000GenomesPilot-NCBI36
+	##phasing=partial
+	##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Data">
+	##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+	##INFO=<ID=AF,Number=.,Type=Float,Description="Allele Frequency">
+	##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele">
+	##INFO=<ID=DB,Number=0,Type=Flag,Description="dbSNP membership, build 129">
+	##INFO=<ID=H2,Number=0,Type=Flag,Description="HapMap2 membership">
+	##FILTER=<ID=q10,Description="Quality below 10">
+	##FILTER=<ID=s50,Description="Less than 50% of samples have data">
+	##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+	##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+	##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+	##FORMAT=<ID=HQ,Number=2,Type=Integer,Description="Haplotype Quality">
+	#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	NA00001
+	1	2827693	.	CCGTGGATGCGGGGACCCGCATCCCCTCTCCCTTCACAGCTGAGTGACCCACATCCCCTCTCCCCTCGCA	C	.	PASS	SVTYPE=DEL;END=2827680;BKPTID=Pindel_LCS_D1099159;HOMLEN=1;HOMSEQ=C;SVLEN=-66	GT:GQ	1/1:13.9
+	2	321682	.	T	<DEL>	6	PASS	IMPRECISE;SVTYPE=DEL;END=321887;SVLEN=-105;CIPOS=-56,20;CIEND=-10,62	GT:GQ	0/1:12
+	2	14477084	.	C	<DEL:ME:ALU>	12	PASS	IMPRECISE;SVTYPE=DEL;END=14477381;SVLEN=-297;MEINFO=AluYa5,5,307,+;CIPOS=-22,18;CIEND=-12,32	GT:GQ	0/1:12
+	3	9425916	.	C	<INS:ME:L1>	23	PASS	IMPRECISE;SVTYPE=INS;END=9425916;SVLEN=6027;CIPOS=-16,22;MIINFO=L1HS,1,6025,-	GT:GQ	1/1:15
+	3	12665100	.	A	<DUP>	14	PASS	IMPRECISE;SVTYPE=DUP;END=12686200;SVLEN=21100;CIPOS=-500,500;CIEND=-500,500	GT:GQ:CN:CNQ	./.:0:3:16.2
+	4	18665128	.	T	<DUP:TANDEM>	11	PASS	IMPRECISE;SVTYPE=DUP;END=18665204;SVLEN=76;CIPOS=-10,10;CIEND=-10,10	GT:GQ:CN:CNQ	./.:0:5:8.3
+
+
+# I have created a perl script to turn a named bed file (using the <an name>_<sv type>_<source> format tag) into a VCF file: convert_cnv_beds_into_vcf.pl
+	pwd: /home/derek/share/cow4_doc/hd_an_trace_art/named_beds
+	$ for i in *all_chr_both_named.bed; do prefix=`echo $i | cut -d'_' -f1`; echo $prefix; perl convert_cnv_beds_into_vcf.pl $i $prefix; done
+	
+	# Now, I want to test them to see if VCFTools (installed on my Ubuntu virtualbox) recognizes the files (a clear sign that I did things correctly).
+	$ gzip *.vcf
+	# I ran into too many problems with running VCFTools, so I will ignore it for now.
+	# My files look ok, so hopefully Golden Helix can load them!
+	
+	
+# I tried to load the VCF files into Golden helix, but it turns out that they require the genotype of different samples (usually at the end of the "format" tag
+# I do not know how to really put that in, and it seems more suited for SNP and INDEL based classifications than for CNVS
+
+# Now I tried to copy the full genome array data into Golden Helix, but it does not recognize ChrU!
+# Copying the files with some differences
+	
+	$ mkdir /mnt/data8/dbickhart/full_genome_acgh_raw
+	$ for i in *2_segMNT.txt; do perl -e '$h = <>; print $h; while(<>){ @s = split(/\t/); if ($s[8] eq "chrU"){next;} else{ print $_;}}' < $i > /mnt/data8/dbickhart/full_genome_acgh_raw/$i; echo $i; done
+	
+	# I then loaded the ratio, spatial and corrected logR values into Golden Helix.
+	# A spreadsheet came up for each value set
+	# On the spreadsheet menu bar, it allows for CNV analysis. 
+	# Going on the Manual's suggestion, I started a CNAM optimal segmenting analysis
+		# Top values were left at the default and I started with a Univariate analysis
+		# I used 5 CPU threads and hardware acceleration
+		# Started at 9:23 AM for 40 samples
+		# I had to cancel hardware acceleration because of the strain on the video card.
+		# I also had to transpose the data to get the program to run the analysis
+		
+	# I printed out the different HD SNP sets in csv format. Now I just need to convert and filter the segment calls in order to get bed files of the intervals
+	
+# Now to convert the csv files
+	# First, I will try to filter out events that have fewer than 5 probes
+	pwd: /home/derek/share/snp_data_for genome_studio/
+	$ perl convert_golden_helix_csv_snp_to_bed.pl ang_her_hol_segs.csv ang_her_hol_segs.bed
+	$ perl convert_golden_helix_csv_snp_to_bed.pl three_ang_segs.csv three_ang_segs.bed
+	$ perl convert_golden_helix_csv_snp_to_bed.pl nelore_snp_segs.csv nelore_ind.segs.bed
+	$ wc *.bed
+	  16   64  480 ang_her_hol_segs.bed
+	   9   36  257 nelore_ind.segs.bed
+	  27  108  798 three_ang_segs.bed
+	  52  208 1535 total
+	# So, about 9 cnvs each at those filtering settings
+	
+	# Now, to filter out events that have fewer than 3 probes
+	$ for i in *.csv; do prefix=`echo $i | cut -d'.' -f1`; echo $prefix; perl convert_golden_helix_csv_snp_to_bed.pl $i $prefix.3.bed; done
+	$ wc *.3.bed
+	  31  124  908 ang_her_hol_segs.3.bed
+	  31  124  877 nelore_snp_segs.3.bed
+	  55  220 1612 three_ang_segs.3.bed
+	 117  468 3397 total
+	# less stringency added about twice the amount. Not bad. I think that I will compare my CNV calls to these two. 
+	
+	# First, I need to get all of the cnv calls from the nelore animals, so I need to remove the animal filter from my script
+	$ perl convert_golden_helix_csv_snp_to_bed.pl nelore_snp_segs.csv nelore_snp_all_pre.bed
+	$ perl -lane 'if($F[3] =~ /HOL/){ print STDERR $F[3];} else {print $_;}' < nelore_snp_all_pre.bed
+	$ wc nelore_snp_all_filt.bed
+	 1072
+	# Quite a bit, but there are hundreds of animals here
+	
+	# Now to cat and organize the files
+	$ cat ang_her_hol_segs.bed nelore_ind.segs.bed three_ang_segs.bed > six_animal_snp_uni_5_filt.bed
+	$ cat ang_her_hol_segs.3.bed nelore_snp_segs.3.bed three_ang_segs.3.bed > six_animal_snp_uni_3_filt.bed
+	# The nelore file is fine as it is. 
+	
+	# Now for the comparisons:
+	$ cat ../cow4_doc/hd_an_trace_art/named_beds/*all_chr_both_named.bed | mergeBed -i stdin > ngs_all_cnvr.bed
+	$ cat ngs_all_cnvr.bed | bed_length_sum.pl
+		Interval Numbers:	1265
+		Total Length:		55590961
+		Length Average:		43945.423715415
+		Length Median:		23589
+		Length Stdev:		54435.0998812106
+	$ cat six_animal_snp_uni_5_filt.bed | bed_length_sum.pl
+		Interval Numbers:	52
+		Total Length:		8875628
+		Length Average:		170685.153846154
+		Length Median:		88895
+		Length Stdev:		285025.305868578
+	$ cat six_animal_snp_uni_3_filt.bed | bed_length_sum.pl
+		Interval Numbers:	117
+		Total Length:		9607988
+		Length Average:		82119.5555555556
+		Length Median:		21352
+		Length Stdev:		206038.314285053
+	
+	
+	$ subtractBed -a ngs_all_cnvr.bed -b six_animal_snp_uni_5_filt.bed | bed_length_sum.pl 
+		Interval Numbers:	1264
+		Total Length:		55483379
+		Length Average:		43895.0783227848
+		Length Median:		18920.5
+		Length Stdev:		54163.1131160047	
+	$ subtractBed -b ngs_all_cnvr.bed -a six_animal_snp_uni_5_filt.bed | bed_length_sum.pl 
+		Interval Numbers:	53
+		Total Length:		8768046
+		Length Average:		165434.830188679
+		Length Median:		88895
+		Length Stdev:		282847.147410228
+	$ subtractBed -b ngs_all_cnvr.bed -a six_animal_snp_uni_3_filt.bed | bed_length_sum.pl 
+		Interval Numbers:	117
+		Total Length:		9481894
+		Length Average:		81041.8290598291
+		Length Median:		21352
+		Length Stdev:		205446.671778077
+		
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tngs";' < ngs_all_cnvr.bed > strip_ngs_all_cnvr.bed
+	$ cat strip_ngs_all_cnvr.bed six_animal_snp_uni_3_filt.bed | mergeBed -i stdin | bed_length_sum.pl
+		Interval Numbers:	1345
+		Total Length:		62270870
+		Length Average:		46298.0446096654
+		Length Median:		11040
+		Length Stdev:		76304.9705063355
+	$ cat strip_ngs_all_cnvr.bed six_animal_snp_uni_5_filt.bed | mergeBed -i stdin | bed_length_sum.pl
+		Interval Numbers:	1296
+		Total Length:		61735406
+		Length Average:		47635.3441358025
+		Length Median:		11124.5
+		Length Stdev:		77387.2521291704
+		
+	# Not much overlap at all here! But this makes sense, since only deletions were detected with any frequency here
+# Lets check the genes that were overlapped by CNVs in my study to see if they have any SNP predicted CNVs within them
+	$ intersectBed -a ../backup/refseq_names.bed -b strip_ngs_all_cnvr.bed | wc
+	    447
+	$ intersectBed -a ../backup/refseq_names.bed -b strip_ngs_all_cnvr.bed > cnv_intersected_genes.bed
+	$ intersectBed -a cnv_intersected_genes.bed -b six_animal_snp_uni_3_filt.bed | wc
+	      0
+	$ intersectBed -a cnv_intersected_genes.bed -b six_animal_snp_uni_5_filt.bed | wc
+	      0
+	$ intersectBed -a cnv_intersected_genes.bed -b nelore_snp_all_filt.bed | wc
+	      8
+	$ intersectBed -a cnv_intersected_genes.bed -b nelore_snp_all_filt.bed
+		chr5	58024309	58031389	SLC16A7
+		chr7	44298162	44298278	ZCCHC10
+		chr23	26213688	26227040	BOLA-DQB
+		chr23	26213688	26227040	BOLA-DQB
+		chr23	26213688	26227040	BOLA-DQB
+		chr23	26243032	26250050	BOLA-DQA5
+		chr23	26243032	26250050	BOLA-DQA5
+		chr23	26243032	26250050	BOLA-DQA5
+	# The BOLA-DQA5 and BOLA-DQB were both confirmed in BINE. It seems to be a common loss in nelore
+	# These are part of the DQ complex found on antigen presenting cells. DQA5 represents the serotype of the alpha monomer of the complex.
+	# It is likely that the Nelore animals are missing the "5" serotype of the BOLA-DQ family of MHCII receptors. 
+	
+	$ intersectBed -b cnv_intersected_genes.bed -a nelore_snp_all_filt.bed
+		chr5	58024309	58031389	WG0099891-DNAB03_NEL000013
+		chr7	44298162	44298278	WG0099891-DNAC04_NEL000022
+		chr23	26243032	26250050	WG0099891-DNAB04_NEL000021
+		chr23	26213688	26227040	WG0099891-DNAB04_NEL000021
+		chr23	26243032	26250050	WG0099891-DNAE03_NEL000016
+		chr23	26213688	26227040	WG0099891-DNAE03_NEL000016
+		chr23	26243032	26250050	WG0099891-DNAG02_NEL000010
+		chr23	26213688	26227040	WG0099891-DNAG02_NEL000010
+	# Interestingly, NEL000035 (BINE) is not here.
+	
+	$ intersectBed -a hdsnpcnv.bed -b six_animal_snp_uni_3_filt.bed 
+		chr12	70453577	70458250	BTAN2
+		chr10	23203395	23222741	DTTRACE
+		chr15	80394671	80401134	DTTRACE
+		chr10	23554196	23572708	BTAN1
+		chr3	54522367	54524572	BTAN3
+			
+	# That was the overlap of the six animals from both types of SNP analysis (Penncnv and Golden helix)
+	
+	# Trying something new with SVS
+	# Doing Wave correction for all chromosomes
+	# I also set it so that a minimum of 3 probes were required per segment
+	# I then used a covariate filter (upper threshold: 0.15 and lower threshold: -0.15)
+		- 944 losses
+		- 66 gains
+	
+	pwd: /home/derek/share/snp_data_for genome_studio
+	$ perl convert_golden_helix_csv_snp_to_bed.pl gwavecorr_sixanimal.csv gwave_corr_filt_3_sixanimals.bed
+	$ intersectBed -a gwave_corr_filt_3_sixanimals.bed -b hdsnpcnv.bed
+		chr3	54505946	54524572	BTAN2
+		chr3	54522367	54524572	BINE
+		chr7	42938099	42949667	BTAN2
+		chr10	23203395	23222741	BTAN2
+		chr10	23002678	23027524	DTTRACE
+		chr10	23076294	23139393	DTTRACE
+		chr10	22643072	22878309	DTTRACE
+		chr10	22720552	22779817	BINE
+		chr10	23554196	23572708	BTHO
+		chr10	23697942	23717509	BTHO
+		chr10	23772531	23811145	BTHO
+		chr10	23765885	23788232	BTHO
+		chr10	24424665	24497888	BTHO
+		chr10	24782667	24834288	BTHO
+		chr10	23673649	23902099	BTHO
+		chr10	23579470	23583794	BTHO
+		chr10	24239427	24479772	BTHO
+		chr10	24114865	24163282	BTHO
+		chr10	24114865	24223904	BTHO
+		chr12	70453577	70458250	BTAN1
+		chr15	45110586	45112624	DTTRACE
+		chr15	80394671	80401134	BINE
+		chr29	43573066	43581274	DTTRACE
+		chr29	43580240	43581274	DTTRACE
+
+	# This time, it is 24 overlaps out of 204 for the gwave corrected SVS and 297 for PENNCNV, still pretty bad
+	
+	$ cat gwave_corr_filt_3_sixanimals.bed | mergeBed -i stdin | bed_length_sum.pl
+		Interval Numbers:	140
+		Total Length:		161655319
+		Length Average:		1154680.85
+		Length Median:		11269
+		Length Stdev:		7958441.93808263
+	$ cat gwave_corr_filt_3_sixanimals.bed | mergeBed -i stdin | intersectBed -a stdin -b strip_ngs_all_cnvr.bed | bed_length_sum.pl
+		Interval Numbers:	170
+		Total Length:		9372115
+		Length Average:		55130.0882352941
+		Length Median:		30373.5
+		Length Stdev:		58177.074724837
+	$ cat gwave_corr_filt_3_sixanimals.bed | mergeBed -i stdin | intersectBed -a stdin -b strip_ngs_all_cnvr.bed -v | bed_length_sum.pl
+		Interval Numbers:	120
+		Total Length:		10509838
+		Length Average:		87581.9833333333
+		Length Median:		11269
+		Length Stdev:		268351.689079182
+		
+	
+	$ cat hdsnpcnv.bed | mergeBed -i stdin | bed_length_sum.pl	
+		Interval Numbers:	208
+		Total Length:		9034171
+		Length Average:		43433.5144230769
+		Length Median:		37905.5
+		Length Stdev:		74639.9697072798
+	$ cat hdsnpcnv.bed | mergeBed -i stdin | intersectBed -a stdin -b strip_ngs_all_cnvr.bed | bed_length_sum.pl
+		Interval Numbers:	84
+		Total Length:		3444431
+		Length Average:		41005.130952381
+		Length Median:		25629
+		Length Stdev:		40372.6426897802
+	$ cat hdsnpcnv.bed | mergeBed -i stdin | intersectBed -a stdin -b strip_ngs_all_cnvr.bed -v | bed_length_sum.pl
+		Interval Numbers:	147
+		Total Length:		4349312
+		Length Average:		29587.156462585
+		Length Median:		45940
+		Length Stdev:		56981.1932086274
+	
+# Using my Venn pipeline
+	$ perl -lane 'open(OUT, ">> $F[3]\_golden_3filt.bed"); print OUT "$F[0]\t$F[1]\t$F[2]\t$F[3]"; close OUT;' < six_animal_snp_uni_3_filt.bed 
+	
+	$ perl ../backup/create_GD_venn_diagram.pl btho_3_way_comp.png BTHO_golden_3filt.bed hdsnp_BTHO_snp.bed ngs_btho11.bed
+	
+# Chrun analysis
+	# Checking the number of CNVr and the gene overlap
+	pwd: /mnt/data8/dbickhart/
+	$ cat ./chrun/*/window*/*.final.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > ./major_tables/chrun_cnvr_all_six.bed
+	$ cd ./major_tables/
+	$ wc chrun_cnvr_all_six.bed
+	  944  2832 22452 chrun_cnvr_all_six.bed
+	# Now I need to convert these coordinates back to the unknown chromosome contigs
+	$ cp /mnt/data110/dbickhart/reference/sep_un/cow4_unall_indicies.txt ./
+	$ perl convert_chrun_coords.pl chrun_cnvr_all_six.bed 1 cow4_unall_indicies.txt
+	$ perl -lane 'print "$_\tcnvr_chrun";' < coords.out > contig_cnvr_chrun.bed
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a refseq_names_chrun.bed -b contig_cnvr_chrun.bed | wc
+	     46
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a refseq_names_chrun.bed -b contig_cnvr_chrun.bed > intersected_chrun_contig_refseq.bed
+	
+
+	$ perl create_GD_venn_diagram.pl another_test.png btan02_all_chr_both_named.bed btan09_all_chr_both_named.bed btan10_all_chr_both_named.bed btho11_all_chr_both_named.bed bine12_all_chr_both_named.bed

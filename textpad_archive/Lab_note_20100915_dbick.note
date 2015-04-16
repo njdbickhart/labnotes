@@ -1,0 +1,69 @@
+2010_09_15
+#Installed repeatmasker on my Ubuntu install and finally got access to the server drives
+	#server 3
+		/mnt/gliu1_usb
+		/mnt/data110/gliu
+	#server 2
+		/mnt/data6/gliu
+
+#Goals for today:
+	1. Start running repeatmasker on Turkey chromosomes using the concatenated library on server 2 using my custom script
+	
+	2. Start indexing UMD3 cattle genome assembly for MrFast on server 3
+	
+	3. Start aligning Blackstar NGS data using MrFast (time per chromosome is critical to estimating length of time for whole project)
+	
+________________________________________________________
+RepeatMasker
+________________________________________________________
+
+#Configured RepeatMasker for the cross_match executable located in: 
+	 /mnt/data7/dbeast/usr/local/pkg/phrap.old/
+	 
+#Will test out the program on turkey chromosome 26 prior to setting up and running the automation script, turkey_repeat_automation.pl
+	RepeatMasker -s -no_is -dir /mnt/data6/gliu/dbickhart/RepeatMasker/turkey -lib /mnt/data6/gliu/dbickhart/Libraries/combined_465 /mnt/data6/gliu/turkey2.01/fasta/Chr26.fa
+	started: 10:57 am
+	ended: 11:20 am
+	#So for a 6 mb file, it took about 25ish minutes. For the 198 mb chromosome 1, I'd expect about 13 hours of runtime. 
+	#For the whole dataset, I'd expect ~ 70 hours (uninterrupted). 
+	
+#Note: my turkey_repeat_automation.pl script doesn't display the proper time; I'll have to revise that in the script and get the proper time function
+
+#Ran turkey_repeat_automation.pl today in order to mask all of the turkey chromosomes sequentially. 
+
+________________________________________________________
+Blackstar
+________________________________________________________
+
+#Installed MrFast on /mnt/gliu1_usb/mrfast-2.0.0.3
+
+#Now I need to index the reference fastas for the genome and then align the reads!
+
+#Files for Blackstar NGS reads are in the folder:
+	/mnt/gliu1_usb/blackstar/NGS/ 
+	(this is on server 3)
+	
+#I used fireftp (firefox addon) to download the UMD3.1 assembly from:
+	ftp://ftp.cbcb.umd.edu/pub/data/assembly/Bos_taurus/
+	
+#Began indexing chromosomes
+	 ./mrfast --index /mnt/gliu1_usb/B_tau_UMD_3.1/Chr1.fa
+	 
+	 #I am unsure if the program accepts wildcards, so I'm doing this by hand
+	 
+	 #The index feature is rather fast: 256 seconds for chromosome one.
+	 
+	 #I decided to do all the chromosomes at once (makes things easier for now)
+	 	- Kept current chromosome indexes as is
+	 	- Removed Y contigs for now
+	 	- cat Chr*.fa > b_tau_umd.fa
+	 	
+	 ./mrfast --index /mnt/gliu1_usb/B_tau_UMD_3.1/b_tau_umd.fa
+	 
+	 
+#Assignment: George wants me to compare his UMD genome fastas with the UMD3.1 assembly that I downloaded
+	- I will use Mummer on my Linux virtual box in order to compare chromosome alignments
+	
+	- Automation for all of the chromosomes would be ideal so I will try to create a perl script to cycle through all of them tomorrow
+	
+	

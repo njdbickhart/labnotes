@@ -1,0 +1,65 @@
+02/14/2011
+# I am going to remake the gene interval list and use that to intersect with the paired end deletions and with the breed specific data
+
+# Here are my notes from the previous time that I intersected the file
+	(<>) Table: Nearby proteins / transcription factors
+	# I downloaded the cow4 refgene list from UCSC and named it cow4_refgene.txt
+	# Now, I'm going to convert it into a bed file and then intersect it with my CNV intervals
+	# Turned it into a bed file using a short script I developed (convert_refgene_to_bed.pl); Output is in /mnt/gliu1_usb/dbickhart/breed_doc/docfigures/comparison_beds/cow4_refgene.bed
+		# Now to use closestBed on all of the files and get the results.
+		# Since closestBed will report the closest genes without regard for HOW close they are, I developed a short script (calculate_gene_distance.pl) to tack on the gene distance at the end of the refgene files
+		$ for i in *.refgene.bed; do perl calculate_gene_distance.pl $i; done
+		# Now I'm going to crop out the entries with distances greater than 10kb
+		$ for i in *.refgene.bed; do perl -ne '@a = split(/\t/); chomp $a[7]; if($a[7] < 10000){print $_;}' < $i > temp; mv temp $i; done
+	
+	# There were a fair amount of close genes, but this is to be expected since I masked out all the repeats
+	$ wc *.refgene.bed
+	  	191  1528 11773 angus_nochrun_hits_file1.refgene.bed
+	  	158  1264  9743 brahman_se_file1.refgene.bed
+	  	235  1880 14568 gir_se_file1.refgene.bed
+	  	155  1240  9524 holstein_nochrun_hits_file1.refgene.bed
+	  	137  1096  8415 jersey_se_file1.refgene.bed
+	  	156  1248  9606 limousin_se_file1.refgene.bed
+	  	163  1304 10020 nelore_se_file1.refgene.bed
+	  	197  1576 12129 romagnola_se_file1.refgene.bed
+	 	1392 11136 85778 total
+	
+	# Another thing: there were some duplicated CNV's since they overlaped with one or more gene locii.
+	
+# George wanted me to include all of the gene lists, though. Here are some of the other lists that I should include:
+	# GLEAN list (contains ESTs and predictions) <- where to find this one?
+	# Ensemble list								wget --timestamping 'ftp://hgdownload.cse.ucsc.edu/goldenPath/bosTau4/database/ensGene.txt.gz' -O ensGene.txt.gz
+	# Go term list
+	
+# Setting up a master file
+	$ perl -lane 'print "$F[2]\t$F[4]\t$F[5]\t$F[1]";' < ensGene.txt > ensGene.bed
+	# This should print out: chr, start, end, ensembleID
+	# Note: I used the transcription start and end coordinates, not the CDS boundaries here.
+	
+	# This should combine the intervals and merge the names (if they overlap)
+	$ cat ensGene.bed cow4_refgene.bed | ../../../BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > cow4_ens_refgene.bed
+	# I'm not sure if this is a good way to do this... maybe I should just cat the files and use that?
+	$ cat ensGene.bed cow4_refgene.bed > cat_ens_refgene.bed
+	
+	# I am going to test them both out just to be sure
+	
+	# Copied merged_pem_deletions.bed from my sharedfolder to /mnt/gliu1_usb/dbickhart/breed_doc/docfigures/gene_comp_beds/
+	
+	# closestBed has a feature that reports how close a gene is; very handy!
+	$ ../../../BEDTools-Version-2.10.0/bin/closestBed -a merged_combined_pem_deletions.bed -b cat_ens_refgene.bed -d > pem_del_cat_file_gene.bed
+	
+# Creating bed files for George
+	# George wants to see how the paired end calls line up on UCSC
+	# I wrote a script to create bed files for each breed (based on the individual animal beds) using the longer format and optional entry columns
+	# Going to run that and test the output in UCSC (create_vh_bed_exon.pl)
+	$ perl create_vh_bed_exon.pl ind_an_deletion.list
+	
+	# Now I am going to transfer the files over (each is given an animal name with a *_ucsc.bed suffix) and test them in the browser
+	# got this error:
+		Error File 'BIBR_ucsc.bed' - Error line 1 of custom track: BED blocks must span chromStart to chromEnd. BED chromStarts[0] must be 0 (==1) so that (chromStart + chromStarts[0]) equals chromStart.
+		# Going to make the initial block start a "0"
+	# OK, that worked!
+	# Uploaded them to the S: drive
+	# folder location was:
+		S:/gliu/Derek/pem_tables/ucsc_beds
+	

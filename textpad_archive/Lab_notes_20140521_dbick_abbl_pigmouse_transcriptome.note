@@ -1,0 +1,345 @@
+05/21/2014
+# This note file contains my commands and thoughts for the combined pig/mouse transcriptome project from the Blomberg lab
+
+_______________________
+Data quality
+_______________________
+
+# First things first, let's assess how the fastq files look to see if we need to do any trimming
+	Blade14: /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX
+	# Running fastqc on each file
+	$ for i in /mnt/cifs/bickhart-qnap/LeAnnBlomberg/*/*/*/*.fastq.gz; do ~/FastQC/fastqc $i; done
+	
+	# The Fastqc run completed. Now to summarize the data with my parser script:
+	Blade14: /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX
+	$ perl ~/bin/fastqc_data_parser_dirscan.pl Project_L.Blomberg.Bhanu mouse_data
+	$ perl ~/bin/fastqc_data_parser_dirscan.pl Project_L.Blomberg.Kuba pig_data
+	
+	# Alot of the quality statistics failed, but this is to be expected; the mRNA transcripts are going to be highly biased
+	# The only thing that I'm worried about are Illumina adaptors in the files
+	$ for i in ./*/*/*/fastqc_data.txt; do grep 'adaptor' $i; done
+	# This returned nothing, so there are no adaptor sequences in the data.
+_______________________
+Reference genome prep
+_______________________
+
+# I need to grab the latest version of the mouse and pig assemblies from UCSC
+	Blade14: /mnt/iscsi/vnx_gliu_7/reference
+	# Mouse
+	$ wget http://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/chromFaMasked.tar.gz
+	$ tar -xvf chromFaMasked.tar.gz
+	$ for i in {1..19} X Y; do cat chr${i}.fa.masked; done > mm10_softmasked.fa
+	$ bowtie2-build mm10_softmasked.fa ./mm10
+	$ samtools faidx mm10_softmasked.fa
+	
+	# Cleanup
+	$ rm *.masked
+	$ rm chromFaMasked.tar.gz
+	
+	# Pig
+	$ wget http://hgdownload.soe.ucsc.edu/goldenPath/susScr3/bigZips/susScr3.fa.masked.gz
+	$ gunzip susScr3.fa.masked.gz
+	$ bowtie2-build susScr3.fa.masked ./susScr3
+	
+_______________________
+Tophat and cufflinks
+	Setup
+_______________________
+
+# I need to install Tophat and cufflinks and setup my environment for running the samples
+	Blade14: ~/
+	$ wget http://downloads.sourceforge.net/project/bowtie-bio/bowtie2/2.2.2/bowtie2-2.2.2-linux-x86_64.zip
+	$ wget http://cufflinks.cbcb.umd.edu/downloads/cufflinks-2.2.1.Linux_x86_64.tar.gz
+	$ wget http://tophat.cbcb.umd.edu/downloads/tophat-2.0.11.Linux_x86_64.tar.gz
+	
+	$ cp bowtie2-2.2.2/bowtie2* ~/bin/
+	$ ln -s ~/tophat-2.0.11.Linux_x86_64/tophat2 ~/bin
+	
+
+______________________
+Running the data
+______________________
+
+# OK, I should be all set to run the data
+# Working in a directory on the SAN
+	Blade14: /mnt/iscsi/vnx_gliu_7/abbl_transcriptome
+	
+	# Let's test the script I wrote just to see if the log file doesn't have any anomalies
+	$ perl ~/bin/run_steve_fastqsplit_tophat.pl -b /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX/Project_L.Blomberg.Bhanu -o bhanu_mouse -r /mnt/iscsi/vnx_gliu_7/reference/mm10 -t 10 -l bhanu_mouse_run.log -d 1
+	# OK, the dry run seems to be printing everything out correctly. Let's try it with 20 threads and without the test flag set.
+	
+	$ perl ~/bin/run_steve_fastqsplit_tophat.pl -b /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX/Project_L.Blomberg.Bhanu -o bhanu_mouse -r /mnt/iscsi/vnx_gliu_7/reference/mm10 -t 20 -l bhanu_mouse_run.log
+		[2014-05-21 14:31:32] Reconstituting reference FASTA file from Bowtie index
+		  Executing: /home/dbickhart/bin/bowtie2-inspect /mnt/iscsi/vnx_gliu_7/reference/mm10 > bhanu_mouse/Male-1//tmp/mm10.fa
+		        [FAILED]
+		Error: bowtie-inspect returned an error
+		bowtie-inspect: reference.cpp:471: int BitPairReference::getStretch(uint32_t*, size_t, size_t, size_t, SStringExpandable<unsigned int, 1024, 2>&) const: Assertion `0' failed. //
+	
+	# Not a good start, Looks like I have to rename the base reference fasta file myself
+	$ cd ../reference
+	$ mv mm10_softmasked.fa mm10.fa
+	$ mv mm10_softmasked.fa.fai mm10.fa.fai
+
+	# Let's try that again
+	$ perl ~/bin/run_steve_fastqsplit_tophat.pl -b /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX/Project_L.Blomberg.Bhanu -o bhanu_mouse -r /mnt/iscsi/vnx_gliu_7/reference/mm10 -t 20 -l bhanu_mouse_run.log
+	
+	
+	# OK, it has been a while in the running, let's check the statistics:
+	Blade14: /mnt/iscsi/vnx_gliu_7/abbl_transcriptome
+	$ head bhanu_mouse/*/align_summary.txt | perl -e 'my ($last, $input, $mapped); print "Sample\tInputReads\tMappedReads\tPercMapped\n"; while(<>){chomp; if(!defined($last) && $_ =~ /^==>/){$last = $_; $last =~ s/[=><]//g; $last =~ s/\s//g;}elsif($_ =~ /.*Input.*:\s*(\d+)/){$input += $1;}elsif($_ =~ /.*Mapped.*:\s*(\d+) \(.+/){$mapped += $1;}elsif($_ =~ /.+\% overall/){my $perc = sprintf("%0.2f", (($mapped / $input) * 100)); print "$last\t$input\t$mapped\t$perc%\n"; undef($last); $input = 0; $mapped = 0;}}'
+		Sample  				InputReads      MappedReads     PercMapped
+		bhanu_mouse/A1/align_summary.txt        66357982        37838818        57.02%
+		bhanu_mouse/A2/align_summary.txt        61620930        34583390        56.12%
+		bhanu_mouse/A3/align_summary.txt        67587702        36612888        54.17%
+		bhanu_mouse/D1/align_summary.txt        57114944        31139710        54.52%
+		bhanu_mouse/D2/align_summary.txt        71765392        39535492        55.09%
+		bhanu_mouse/D3/align_summary.txt        63521808        36720108        57.81%
+		bhanu_mouse/EP1/align_summary.txt       73458744        45302480        61.67%
+		bhanu_mouse/EP2/align_summary.txt       61029960        26846451        43.99%
+		bhanu_mouse/EP3/align_summary.txt       42520274        26127323        61.45%
+		bhanu_mouse/Female-1/align_summary.txt  60307124        3641992 6.04%
+		bhanu_mouse/Female-2/align_summary.txt  59681594        1443271 2.42%
+		bhanu_mouse/Female-3/align_summary.txt  69553908        5732675 8.24%
+		bhanu_mouse/Male-1/align_summary.txt    58736034        2151156 3.66%
+		bhanu_mouse/Male-2/align_summary.txt    59395772        2989256 5.03%
+		bhanu_mouse/Male-3/align_summary.txt    58863946        2097547 3.56%
+		bhanu_mouse/PC1/align_summary.txt       79077350        45737782        57.84%
+		bhanu_mouse/PC2/align_summary.txt       54797782        33059511        60.33%
+		bhanu_mouse/PC3/align_summary.txt       46594796        26167769        56.16%
+		bhanu_mouse/S1/align_summary.txt        95715292        3919724 4.10%
+		bhanu_mouse/S2/align_summary.txt        91128488        9906660 10.87%
+		bhanu_mouse/S3/align_summary.txt        75504732        2919046 3.87%
+		bhanu_mouse/XE1/align_summary.txt       66663594        33069400        49.61%
+		bhanu_mouse/XE2/align_summary.txt       59892004        38377407        64.08%
+		bhanu_mouse/XE3/align_summary.txt       47129188        29221688        62.00%
+
+		
+	# The mapping percentages are low for the female and male samples
+	# I am going to take some of the unmapped reads and blast them to see what I get
+	# Blast reports suggest that the reads come from the human/mouse 45S rRNA transcript, so I suspect that those samples had a high proportion of reads aligning to rRNA
+	
+	
+	
+	# Now let's work on the Pig data
+	Blade14: /mnt/iscsi/vnx_gliu_7/abbl_transcriptome
+	$ perl ~/bin/run_steve_fastqsplit_tophat.pl -b /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX/Project_L.Blomberg.Kuba -o kuba_pig -r /mnt/iscsi/vnx_gliu_7/reference/susScr3 -t 20 -l kuba_pig_run.log
+	
+	# I had to abort the run due to server difficulties! I need to restart from where I left off
+		$ ls /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX/Project_L.Blomberg.Kuba/ | wc -l
+			25
+		$ ls kuba_pig | wc -l
+			24
+	# OK, so the program ran through and generated folders, but it did not complete the run
+	# Here are the samples that did not complete: B3, A1, C5, D5
+	# I am doing a test run to make sure that my script's logic works:
+	$ perl ~/bin/run_steve_fastqsplit_tophat.pl -b /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX/Project_L.Blomberg.Kuba -o kuba_pig -r /mnt/iscsi/vnx_gliu_7/reference/susScr3 -t 20 -l test_kuba_pig_run.log -s Sample_A3,Sample_A5,Sample_A7,Sample_B1,Sample_B5,Sample_B7,Sample_C1,Sample_C3,Sample_C7,Sample_D1,Sample_D3,Sample_D7,Sample_F1,Sample_F3,Sample_F5,Sample_F7,Sample_H1,Sample_H3,Sample_H5,Sample_H7 -d 1
+	
+	# OK, looks legit! Time to remove the -d flag and to test it out.
+	$ perl ~/bin/run_steve_fastqsplit_tophat.pl -b /mnt/cifs/bickhart-qnap/LeAnnBlomberg/140424_SN644_0203_BC2UFGACXX/Project_L.Blomberg.Kuba -o kuba_pig -r /mnt/iscsi/vnx_gliu_7/reference/susScr3 -t 20 -l kuba_pig_run_restart.log -s Sample_A3,Sample_A5,Sample_A7,Sample_B1,Sample_B5,Sample_B7,Sample_C1,Sample_C3,Sample_C7,Sample_D1,Sample_D3,Sample_D7,Sample_F1,Sample_F3,Sample_F5,Sample_F7,Sample_H1,Sample_H3,Sample_H5,Sample_H7
+	
+# Differential Transcription identification and summary statistics
+	# This stage will involve me completing the pipeline with cufflinks, cuffmerge and cuffdiff to identify differentially expressed transcripts in each dataset
+	# I have created a pipeline script that should automate the process if given an appropriate directory
+	# Let's prepare for the pipeline by transferring over the binaries to my bin directory:
+	
+	Blade14: /home/dbickhart
+	$ cp cufflinks-2.2.1.Linux_x86_64/cuffcompare ./bin/
+	$ cp cufflinks-2.2.1.Linux_x86_64/cuffdiff ./bin/
+	$ cp cufflinks-2.2.1.Linux_x86_64/cuffmerge ./bin/
+	
+	# Also, I need to download a gtf file from Ensembl for the umd3 assembly
+	Blade14: /mnt/iscsi/vnx_gliu_7/reference
+	$ wget ftp://ftp.ensembl.org/pub/release-75/gtf/mus_musculus/Mus_musculus.GRCm38.75.gtf.gz
+	$ wget ftp://ftp.ensembl.org/pub/release-75/gtf/sus_scrofa/Sus_scrofa.Sscrofa10.2.75.gtf.gz
+	$ gunzip *.gz
+	
+	# OK, I should be all set. Time to run my script on each dataset
+	# Bhanu first
+	Blade14: /mnt/iscsi/vnx_gliu_7/abbl_transcriptome/bhanu_mouse
+	$ perl ~/bin/run_cufflinks_pipeline_on_samples.pl -i A1,A2,A3,D1,D2,D3,EP1,EP2,EP3,Female-1,Female-2,Female-3,Male-1,Male-2,PC1,PC2,PC3,S1,S2,S3,XE1,XE2,XE3 -o cufflinks -r ../../reference/mm10.fa -g ../../reference/Mus_musculus.GRCm38.75.gtf -c cuffcompare -d mouse_summarystats -t 10
+		...
+		[Mon Jun 30 18:04:55 2014] Beginning transcriptome assembly merge
+		-------------------------------------------
+		
+		[Mon Jun 30 18:04:55 2014] Preparing output location ./merged_asm/
+		[Mon Jun 30 18:06:01 2014] Converting GTF files to SAM
+		        [FAILED]
+		Error: gtf_to_sam not found on this system.  Did you forget to include it in your PATH?
+		You are using Cufflinks v2.2.1, which is the most recent release.
+		Error: cannot open reference GTF file merged.gtf for reading
+	
+	# Damn, I forgot to put some critical cufflinks programs on my path. Let's take care of that now
+	$ cp ~/cufflinks-2.2.1.Linux_x86_64/gtf_to_sam ~/bin
+	$ cp ~/cufflinks-2.2.1.Linux_x86_64/cuffnorm ~/bin
+	$ cp ~/cufflinks-2.2.1.Linux_x86_64/gffread ~/bin
+	$ cp ~/cufflinks-2.2.1.Linux_x86_64/cuffquant ~/bin
+	
+	# Now I'll manually do the cuffmerge and cuffdiff commands
+	$ cuffmerge -g ../../reference/Mus_musculus.GRCm38.75.gtf -p 10 cufflinks_files.txt
+		
+	# Now to do cuffdiff
+	# I need to input all of the bam sequences, so this is the fast way to format the command line command so that all of the bams are on the same line:
+	$ for i in ./*/accepted_hits.bam; do echo -n "$i "; done; echo
+		./A1/accepted_hits.bam ./A2/accepted_hits.bam ./A3/accepted_hits.bam ./D1/accepted_hits.bam ./D2/accepted_hits.bam ./D3/accepted_hits.bam ./EP1/accepted_hits.bam ./EP2/accepted_hits.bam ./EP3/accepted_hits.bam ./Female-1/accepted_hits.bam ./Female-2/accepted_hits.bam ./Female-3/accepted_hits.bam ./Male-1/accepted_hits.bam ./Male-2/accepted_hits.bam ./Male-3/accepted_hits.bam ./PC1/accepted_hits.bam ./PC2/accepted_hits.bam ./PC3/accepted_hits.bam ./S1/accepted_hits.bam ./S2/accepted_hits.bam ./S3/accepted_hits.bam ./XE1/accepted_hits.bam ./XE2/accepted_hits.bam ./XE3/accepted_hits.bam
+
+	$ cuffdiff -p 20 merged_asm/merged.gtf ./A1/accepted_hits.bam ./A2/accepted_hits.bam ./A3/accepted_hits.bam ./D1/accepted_hits.bam ./D2/accepted_hits.bam ./D3/accepted_hits.bam ./EP1/accepted_hits.bam ./EP2/accepted_hits.bam ./EP3/accepted_hits.bam ./Female-1/accepted_hits.bam ./Female-2/accepted_hits.bam ./Female-3/accepted_hits.bam ./Male-1/accepted_hits.bam ./Male-2/accepted_hits.bam ./Male-3/accepted_hits.bam ./PC1/accepted_hits.bam ./PC2/accepted_hits.bam ./PC3/accepted_hits.bam ./S1/accepted_hits.bam ./S2/accepted_hits.bam ./S3/accepted_hits.bam ./XE1/accepted_hits.bam ./XE2/accepted_hits.bam ./XE3/accepted_hits.bam
+	
+	# This is taking quite a while! I will just run the samples per each experiment to ensure that I am not eating up too many resources
+	
+	 ~/jdk1.8.0_05/bin/java -jar ~/bin/ConvertCufflinksToExcel.jar diff -i data_epvspcvsxe/gene_exp.diff -o data_epvspcvsxe/ep_vs_pc_vs_xe_genediff.xlsx -k data_epvspcvsxe/keys.txt -n -g ../../reference/
+	
+	# OK, let's try this using just the samples in each experimental group to see if it speeds up the analysis any further
+		$ mkdir data_malefemale
+		$ cd data_malefemale
+	
+		$ cuffdiff -p 10 ../merged_asm/merged.gtf ../Female-1/accepted_hits.bam ../Female-2/accepted_hits.bam ../Female-3/accepted_hits.bam ../Male-1/accepted_hits.bam ../Male-2/accepted_hits.bam ../Male-3/accepted_hits.bam
+			...
+			[10:33:16] Calculating preliminary abundance estimates
+			[10:33:16] Testing for differential expression and regulation in locus.
+			> Processed 66088 loci.                        [*************************] 100%
+			Performed 311559 isoform-level transcription difference tests
+			Performed 277018 tss-level transcription difference tests
+			Performed 223739 gene-level transcription difference tests
+			Performed 0 CDS-level transcription difference tests
+			Performed 0 splicing tests
+			Performed 0 promoter preference tests
+			Performing 0 relative CDS output tests
+			Writing isoform-level FPKM tracking
+			Writing TSS group-level FPKM tracking
+			Writing gene-level FPKM tracking
+			Writing CDS-level FPKM tracking
+			Writing isoform-level count tracking
+			Writing TSS group-level count tracking
+			Writing gene-level count tracking
+			Writing CDS-level count tracking
+			Writing isoform-level read group tracking
+			Writing TSS group-level read group tracking
+			Writing gene-level read group tracking
+			Writing CDS-level read group tracking
+			Writing read group info
+			Writing run info
+		
+		# Now lets do the other experiments
+		$ mkdir data_epvspcvsxe
+		$ cd data_epvspcvsxe
+		$ cuffdiff -p 5 ../merged_asm/merged.gtf ../EP1/accepted_hits.bam ../EP2/accepted_hits.bam ../EP3/accepted_hits.bam ../PC1/accepted_hits.bam ../PC2/accepted_hits.bam ../PC3/accepted_hits.bam ../XE1/accepted_hits.bam ../XE2/accepted_hits.bam ../XE3/accepted_hits.bam 
+		
+		$ mkdir data_avsdvss
+		$ cd data_avsdvss
+		$ cuffdiff -p 5 ../merged_asm/merged.gtf ../A1/accepted_hits.bam ../A2/accepted_hits.bam ../A3/accepted_hits.bam ../D1/accepted_hits.bam ../D2/accepted_hits.bam ../D3/accepted_hits.bam ../S1/accepted_hits.bam ../S2/accepted_hits.bam ../S3/accepted_hits.bam
+		
+		
+	# OK, now its time for the pig samples
+	Blade14: /mnt/iscsi/vnx_gliu_7/abbl_transcriptome/kuba_pig
+	$ perl ~/bin/run_cufflinks_pipeline_on_samples.pl -i A1,A3,A5,A7,B1,B3,B5,B7,C1,C3,C5,C7,D1,D3,D5,D7,F1,F3,F5,F7,H1,H3,H5,H7 -o cufflinks -r ../../reference/susScr3.fa -g ../../reference/Sus_scrofa.Sscrofa10.2.75.gtf -c cuffcompare -d pig_summarystats -t 10
+	$ perl -lane 'if($F[2] =~ /^chr/){print "$F[2]\t$F[4]\t$F[7]\t$F[12]";}' < susscr3.refGene.txt | perl ~/bin/sortBedFileSTDIN.pl > susscr3_refgeneName.bed
+	
+	# Now for the cuffdiff section
+	Blade14: /mnt/iscsi/vnx_gliu_7/abbl_transcriptome/kuba_pig
+	$ cuffmerge -g ../../reference/Sus_scrofa.Sscrofa10.2.75.gtf -p 20 cufflinks_files.txt
+	
+	$ mkdir data_pn21_liver
+	$ cd data_pn21_liver/
+	$ cuffdiff -p 5 ../merged_asm/merged.gtf ../B1/accepted_hits.bam ../B3/accepted_hits.bam ../B5/accepted_hits.bam ../B7/accepted_hits.bam ../D1/accepted_hits.bam ../D3/accepted_hits.bam ../D5/accepted_hits.bam ../D7/accepted_hits.bam
+	$ ~/jdk1.8.0_05/bin/java -jar ~/bin/ConvertCufflinksToExcel.jar diff -i gene_exp.diff -o pn21_liver_comparison.xlsx -k read_groups.tab -n -g ../../../reference/susscr3_refgeneName.bed
+	
+	$ mkdir data_pn21_intestine
+	$ cd data_pn21_intestine/
+	$ cuffdiff -p 10 ../merged_asm/merged.gtf ../A1/accepted_hits.bam ../A3/accepted_hits.bam ../A5/accepted_hits.bam ../A7/accepted_hits.bam ../C1/accepted_hits.bam ../C3/accepted_hits.bam ../C5/accepted_hits.bam ../C7/accepted_hits.bam
+	$ ~/jdk1.8.0_05/bin/java -jar ~/bin/ConvertCufflinksToExcel.jar diff -i gene_exp.diff -o pn21_intestine_comparison.xlsx -k read_groups.tab -n -g ../../../reference/susscr3_refgeneName.bed
+	
+	$ mkdir data_pnd110_intestine
+	$ cd data_pnd110_intestine/
+	$ cuffdiff -p 10 ../merged_asm/merged.gtf ../F1/accepted_hits.bam ../F3/accepted_hits.bam ../F5/accepted_hits.bam ../F7/accepted_hits.bam ../H1/accepted_hits.bam ../H3/accepted_hits.bam ../H5/accepted_hits.bam ../H7/accepted_hits.bam
+	$ ~/jdk1.8.0_05/bin/java -jar ~/bin/ConvertCufflinksToExcel.jar diff -i gene_exp.diff -o pnd110_intestine_comparison.xlsx -k read_groups.tab -n -g ../../../reference/susscr3_refgeneName.bed
+	
+_____________________________
+CummeRBund
+_____________________________
+# I am going to use this R package to quickly generate some figures on-demand
+# First, the Installation:
+$ R
+# any ">" indicates that I typed the command in the R interpreter, which is the shell that you enter into whenever you use R
+> source("http://bioconductor.org/biocLite.R")
+> biocLite("cummeRbund")
+
+# Mass, mgcv and Matrix needed to be updated
+> install.packages("MASS")
+> install.packages("mgcv")
+> install.packages("Matrix")
+
+
+#################################
+#				#
+#	Data Analysis		#
+#				#
+#################################
+
+# Now to load the data. cummeRbund assumes all of the files are in the current working directory
+$ R
+> library(cummeRbund)
+> setwd("/mnt/iscsi/vnx_gliu_7/abbl_transcriptome/bhanu_mouse/data_avsdvss/")
+
+# This command generates databases and reads in all the necessary objects into the "cuff" variable
+> cuff <- readCufflinks(genome = "mm10", gtfFile="../../../reference/Mus_musculus.GRCm38.75.gtf")
+
+# this command will create an object that contains a dispersion plot
+> disp <- dispersionPlot(genes(cuff))
+> pdf("avsdvss_dispersion.pdf")
+> disp
+> dev.off()
+
+# these commands create a density plot
+> dens <- csDensity(genes(cuff))
+> pdf("avsdvss_genedensity.pdf")
+> dens
+> dev.off()
+
+# These commands produce a boxplot
+> b <- csBoxplot(genes(cuff))
+> pdf("avsdvss_geneboxplot.pdf")
+> b
+> dev.off()
+
+# These commands produce a scatterplot matrix
+> s <- csScatterMatrix(genes(cuff))
+> pdf("avsdvss_scattermatrix.pdf")
+> s
+> dev.off()
+
+# And these commands produce a sample dendrogram
+> dend <- csDendro(genes(cuff))
+> pdf("avsdvss_sampledendrogram.pdf")
+> dend
+> dev.off()
+
+# How to get genes across a sampleset:
+	# First pull the location names from the excel spreadsheet and create a vector with the names:
+	> sampleids <- c("XLOC_037800", "XLOC_038012")
+	> myGenes <- getGenes(cuff, sampleids)
+	
+	# Now you can create several plots with these genes
+	# First, a heatmap:
+	> h <-csHeatmap(myGenes, cluster = 'both')
+	> pdf("avsdvss_heatmap_serpinb.pdf")
+	> h
+	> dev.off()
+	
+	# Next, a barplot (this shows the same information as in the heatmap, but in a different perspective)
+	> b <- expressionBarplot(myGenes)
+	> pdf("avsdvss_barplot_serpinb.pdf")
+	> b
+	> dev.off()
+	
+	# Also volcano plots
+	> v <- csVolcano(myGenes, "q1", "q9")
+	> pdf("avsdvss_DvsS_volcano_serpinb.pdf")
+	> v
+	> dev.off()
+	
+	# Finally, a sample comparison dendrogram
+	> den <- csDendro(myGenes)
+	> pdf("avsdvss_dendro_serpinb.pdf")
+	> den
+	> dev.off()
+	

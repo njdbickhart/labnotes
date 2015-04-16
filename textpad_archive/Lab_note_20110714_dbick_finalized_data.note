@@ -1,0 +1,804 @@
+07/14/2011
+# This is my note file on the finalization of the cow4 assembly cnv data
+# Here is an email from George asking me to work on several projects today
+	Hi Derek,
+	
+	I will work from home today. Please feel free to email/or call me (C 301-256-4089 H 410-313-8835) if you need anything. I think:
+	
+	1.	Finalizing the wssd on autosomes;
+	2.	How about wssd on chrUn and chrX? Like my GR paper, we need them for the general statistics. After that, we focus on the ones on autosomes. If you leave them out, your results will look incomplete;
+	3.	How about wssd on umd3? Since you have item 2, I’d say leave it out unless reviewers ask for them. For the initial submission, we do not need it.
+	
+	Once you have wssd results on autosomes, we can talk more about the outlines and how Yali and Reuben can help.
+	
+	George
+
+# I think that these are the first priorities; after this, I can focus on figure generation and then we can draft a manuscript
+# First, I am going to start a time consuming step: I am going to run six instances of the high density angus on my chrUnall stitch files
+# Done, They should complete relatively quickly (tonight/tommorrow)
+
+# Now, George wants me to use the trace_dt artifacts (run the aligned data throught the pipeline without artifact masking and then filter out the WSSD_WGAC and use the remainder as an artifact file)
+	$ run_alkan_pipeline.pl --File1 full_trace_file1.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File1_c full_trace_file1_c.bed --File3_c full_trace_file3_c.bed
+	# Issue: chrX is not outputting any data.
+	# I think that I know why: the GC files do not have the X chromosome in the .tab makeup.
+	# The bed files that I used to create the .tab files DO have the X chromosome. 
+	# Now I just need to convert the bed files into the tab files again
+		$ awk '{print $1"-"$2"-"$3"\t"$4}' rmask_gc_file1.bed | sort -k 1,1 > rmask_gc_file1.bed.tab
+		$ awk '{print $1"-"$2"-"$3"\t"$4}' rmask_gc_file2.bed | sort -k 1,1 > rmask_gc_file2.bed.tab
+		$ awk '{print $1"-"$2"-"$3"\t"$4}' rmask_gc_file3.bed | sort -k 1,1 > rmask_gc_file3.bed.tab
+		
+	# Trying it again, and hoping that this does not mess up the "join" commands.
+	# It worked!
+	
+	$ wc full_trace_file1.bed.final.wssd
+	   1149  3447 26516 full_trace_file1.bed.final.wssd
+	$ grep -v chrX full_trace_file1.bed.final.wssd | wc
+	    864    2592   20029
+	# No deletions (good!)  
+	# This looks good. Now to remove the WSSD and WGAC regions (both autosomes and X chromosome) and call this the artifact file
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a full_trace_file1.bed.final.wssd -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v > dt_trace_artifact_w_chrX.bed
+	$ wc dt_trace_artifact_w_chrX.bed
+	    404 1212 9297 dt_trace_artifact_w_chrX.bed
+	$ grep -v chrX dt_trace_artifact_w_chrX.bed | wc
+	    258     774    5975
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a full_trace_file1.bed.final.wssd -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+		9212009    
+	$ grep -v chrX dt_trace_artifact_w_chrX.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+		5236849
+		
+	# So, adding chrX increased the artifact file length by about 4 megabases. This is acceptable, considering that chrX is the weakest chr in the btau4 assembly (most regions in chrUn compared to UMD3)
+	
+# Now to generate the final datasets (afterwards I will separate out the chrX calls into a separate file to make it easier for Yali and myself)
+	$ run_alkan_pipeline.pl --File1 total_nelore_doc_r_file1.bed --File2 total_nelore_doc_r_file2.bed --File3 total_nelore_doc_r_file3.bed --File1_c total_nelore_doc_r_file1_c.bed --File3_c total_nelore_doc_r_file3_c.bed
+	$ run_alkan_pipeline.pl --File1 blackstar_rem_hits_r_file1.bed --File1_c blackstar_rem_hits_r_file1_c.bed --File2 blackstar_rem_hits_r_file2.bed --File3 blackstar_rem_hits_r_file3.bed --File3_c blackstar_rem_hits_r_file3_c.bed
+	
+	# I need to generate window files with the new angus remappings
+	$ combine_bed_hits_lowmem.pl btan10_hits.bed . /mnt/gliu1_usb/dbickhart/alkan_files/template_file1_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/template_file2_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/template_file3_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file1_control_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file3_control_rmask.bed
+	$ run_alkan_pipeline.pl --File1 btan10_hits_template_file1_rmask.bed --File2 btan10_hits_template_file2_rmask.bed --File3 btan10_hits_template_file3_rmask.bed --File1_c btan10_hits_final_sub_file1_control_rmask.bed --File3_c btan10_hits_final_sub_file3_control_rmask.bed
+	
+	$ combine_bed_hits_lowmem.pl btan09_hits.bed btan09 /mnt/gliu1_usb/dbickhart/alkan_files/template_file1_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/template_file2_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/template_file3_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file1_control_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file3_control_rmask.bed
+	$ run_alkan_pipeline.pl --File1 btan09_hits_template_file1_rmask.bed --File2 btan09_hits_template_file2_rmask.bed --File3 btan09_hits_template_file3_rmask.bed --File1_c btan09_hits_final_sub_file1_control_rmask.bed --File3_c btan09_hits_final_sub_file3_control_rmask.bed
+	
+	$ combine_bed_hits_lowmem.pl btan02_hits.bed . /mnt/gliu1_usb/dbickhart/alkan_files/template_file1_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/template_file2_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/template_file3_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file1_control_rmask.bed /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file3_control_rmask.bed
+	$ run_alkan_pipeline.pl --File1 btan02_hits_template_file1_rmask.bed --File2 btan02_hits_template_file2_rmask.bed --File3 btan02_hits_template_file3_rmask.bed --File1_c btan02_hits_final_sub_file1_control_rmask.bed --File3_c btan02_hits_final_sub_file3_control_rmask.bed
+	
+# George wants the chrUn data as well
+# The only animal that I have to align to my chrUn reference is Blackstar
+	$ ls /mnt/gliu1_usb/blackstar/NGS/*.fq.gz > gaii_blackstar.list
+	$ ls /mnt/gliu1_usb/dbickhart/breed_doc/blackstar/newblackstar_fq/*.fq.gz >> gaii_blackstar.list
+	$ split -l 10 gaii_blackstar.list gaii_blackstar_list
+	# Now, I can use five processors to finish up blackstar fast
+	
+	# I completely forgot: I need to run dt_trace on chrUn! 
+	
+	# Now I need to extract bed files from the hd angus individuals and blackstar
+	$ for i in *.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> btan02_chrun_hits.bed; done
+	$ for i in *.bam; do echo $i; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> btan09_chrun_hits.bed; done
+	$ for i in *.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$t = $F[3] + 36; print "$F[2]\t$F[3]\t$t";' >> btho11_chrun_hits.bed; done
+	$ for i in *.bam; do echo $i; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> btan10_chrun_hits.bed; done
+	
+	# Now, I generated the windows for my chrUN stitch following the same guidelines as for the autosomes
+	# The location of the windows is: /mnt/data110/dbickhart/reference/sep_un/
+	# Now I need to generate control windows for the file1 and file3 windows
+	# In order to do this, I have created a script that converts a bed file of coordinates (cow4 contig numbers) into my chrun coordinates (chrUn stitch contigs)
+	$ perl convert_chrun_coords.pl /mnt/gliu1_usb/dbickhart/alkan_files/george_wssd_wgac/WSSD_WGAC_cat.bed
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a chrun_file1_template.bed -b coords.out -v > chrun_file1_controls_template.bed
+		$ wc *template*
+			  152328   456984  3611233 chrun_file1_controls_template.bed
+			  183176   549528  4344222 chrun_file1_template.bed
+			  245722   737166  5831303 chrun_file2_template.bed
+			   70978   212934  1682963 chrun_file3_controls_template.bed
+			   93658   280974  2222106 chrun_file3_template.bed
+		# Looks like the script worked!
+		
+	# Now, I just need to do the bed intersections and I'll have the chrun window hits files that I need
+	# In order to automate this (and not have to copy and paste the info each time) I created a wrapper shell script that combines the chrun windows automatically
+		$ chrun_window_creation.sh btho11_chrun_hits.bed
+		$ chrun_window_creation.sh btan10_chrun_hits.bed
+		$ chrun_window_creation.sh btan09_chrun_hits.bed
+		$ chrun_window_creation.sh btan02_chrun_hits.bed
+		$ chrun_window_creation.sh combined_nelore_hd_chrun.bed
+		
+	# I will need to do the dt_trace using the chrun reference sequence. This should not be too big of a hassle, but might require alot of processor cores
+		$ ls /mnt/data8/dbickhart/trace_reads/*.fq > dt_trace_master.list
+		$ split -l 4 dt_trace_master.list dt_trace
+		
+		$ perl mrsfast_cow4_unall_se_nocomp_letter_wrapper.pl dt_traceaa a dt_trace
+		...
+		
+	# Now I need to generate the files needed for the pipeline and then I can start processing cnvs out!
+		$ perl GC_control_intervals.pl --genome stuff --name chrun --path separate_chrs
+		$ perl GC_intervals.pl --genome stuff --name chrun --path separate_chrs
+		# Now I just need to make up a separate pipeline script and this stuff will be processed
+		$ touch /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/cattle_chrun_pipeline.sh
+		$ for i in chrun_gc_file*.bed; do awk '{print $1"-"$2"-"$3"\t"$4}' $i | sort -k 1,1 > $i.tab; done
+		
+		# I forgot to make the gaps file for the chromosomes. 
+		# I will ignore artifact generation for chrUnAll. It would take too much time and not be worth it. to generate
+		# I need to make the following scripts to finish this
+			1. A script to process my interval coordinates to make a gaps file
+				# Done
+				$ perl chrun_create_gaps_file.pl > chrun_stitch_gaps.bed
+			2. A script to convert the chrUn chromosomes into chrUnAll
+			
+		
+		
+____________________________________
+Finalized dataset stats
+____________________________________
+
+# I need to recalculate the mapped read stats for each of the datasets
+# Since I have the unmapped read counts (they should not have changed, apart from the recent angus "split" that I did) this should not take too long to determine
+
+____________________________________
+Generate UCSC plots
+____________________________________
+# Going to try this out to see if I can't generate custom histograms for UCSC
+	pwd: /mnt/data8/dbickhart/blackstar_gaii_wssd
+	$ perl -e 'print "chrom\tchromStart\tchromEnd\tdataValue\n";' > blackstar_depthcoverage.bed
+	$ perl -lane '$v = int($F[3]); print "$F[0]\t$F[1]\t$F[2]\t-$v";' < blackstar_rem_hits_r_file1.bed.normalized.bed >> blackstar_depthcoverage.bed
+	
+	# The first line prevented it from being recognized by UCSC
+	$ perl -pi -e '$_ = "" if ($. == 1);' blackstar_depthcoverage.bed
+	# Trying again...
+
+	# OK, if I designated the file to be a bedGraph file, it worked, and I have saved a template text file to separate tracks for each animal
+	# Here's how the file format will look like:
+		1. UCSC bedgraph settings line
+		2. bedgraph info
+		3. UCSC bed settings line
+		4. cnv intervals
+		
+	# I will create separate files for each animal, and make an artifact file (in blue) to see if any peaks correspond to the artifact regions.
+		$ perl -e 'print "track type=bedGraph name=\"BTAN02 doc\" visibility=full color=0,250,0 altColor=250,0,0 priority=20\n";' > btan02_depthcoverage.bed
+		$ perl -lane '$v = int($F[3]); print "$F[0]\t$F[1]\t$F[2]\t$v";' < btan02_hits_template_file1_rmask.bed.normalized.bed >> btan02_depthcoverage.bed
+		$ perl -e 'print "track type = BED name = \"BTAN02 CNVS\" color = 250,0,0\n";' >> btan02_depthcoverage.bed
+		$ cat btan02_autosome_cnvs_gain.bed btan02_autosome_cnvs_loss.bed | perl -lane 'print $_;' >> btan02_depthcoverage.bed
+		
+		$ perl -e 'print "track type=bedGraph name=\"BTAN09 doc\" visibility=full color=0,250,0 altColor=250,0,0 priority=20\n";' > btan09_depthcoverage.bed
+		$ perl -lane '$v = int($F[3]); print "$F[0]\t$F[1]\t$F[2]\t$v";' < btan09_hits_template_file1_rmask.bed.normalized.bed >> btan09_depthcoverage.bed
+		$ perl -e 'print "track type=bed name=\"BTAN09 CNVS\" color=250,0,0\n";' >> btan09_depthcoverage.bed
+		$ cat btan09_autosome_cnvs_gain.bed btan09_autosome_cnvs_loss.bed | perl -lane 'print $_;' >> btan09_depthcoverage.bed
+		
+		$ perl -e 'print "track type=bedGraph name=\"BTAN10 doc\" visibility=full color=0,250,0 altColor=250,0,0 priority=20\n";' > btan10_depthcoverage.bed
+		$ perl -lane '$v = int($F[3]); print "$F[0]\t$F[1]\t$F[2]\t$v";' < btan10_hits_template_file1_rmask.bed.normalized.bed >> btan10_depthcoverage.bed
+		$ perl -e 'print "track type=bed name=\"BTAN10 CNVS\" color=250,0,0\n";' >> btan10_depthcoverage.bed
+		$ cat btan10_autosome_cnvs_gain.bed btan10_autosome_cnvs_loss.bed | perl -lane 'print $_;' >> btan10_depthcoverage.bed
+		
+		$ perl -e 'print "track type=bedGraph name=\"BINE12 doc\" visibility=full color=0,250,0 altColor=250,0,0 priority=20\n";' > bine12_depthcoverage.bed
+		$ perl -lane '$v = int($F[3]); print "$F[0]\t$F[1]\t$F[2]\t$v";' < total_nelore_doc_r_file1.bed.normalized.bed >> bine12_depthcoverage.bed
+		$ perl -e 'print "track type=bed name=\"BINE12 CNVS\" color=250,0,0\n";' >> bine12_depthcoverage.bed
+		$ cat bine12_autosome_cnvs_gain.bed bine12_autosome_cnvs_loss.bed | perl -lane 'print $_;' >> btan10_depthcoverage.bed
+		
+		
+	# I uploaded these files to the S drive as well (S:/gliu/Derek/HD_animal_cnv/ucsc_browser_beds
+
+# UCSC plots might not be the answer. Instead, I can try to find a work-around using R
+	
+	
+	# So I think that I found out how the data should be imported
+		> colnames(seqDataEx$snyder)
+		[1] "chr"      "location" "strand"   "counts"
+		
+		# I just need to reformat my data and I can create these plots too.
+		pwd: /mnt/data8/dbickhart/doc_files/
+		$ for i in *file1*.bed.normalized.bed; do prefix=`echo $i | cut -d '_' -f1,2`; echo $prefix; perl -e 'print "chr\tlocation\tstrand\tcounts\n"; while(<>){chomp; @s = split(/\t/); $v = int($s[3]); ($c) = $s[0] =~ m/chr(.+)/; print "$c\t$s[1]\t0\t$v\n";}' < $i > $prefix.r.tab; done
+		
+	# Here are the libraries I need to plot the data
+		> library(GenomeGraphs)
+		> library(biomaRt) 		# biomart allows me to download the ensemble data from biomart, which can allow me to plot genes on the graph
+		
+		> useMart("ensembl", dataset = "btaurus_gene_ensembl")	# b_tau4.0 ensembl gene listings
+		
+	# Here is my test coordinate (from gene_list_cn_hd_animals.xls)
+		ENSBTAG00000032265	chr1	81715606	81719909	4303	2456	57.07645828	gain	2.374345	2.151435	2.0185225	1.975005	2.075045	1.58561	BTAN02;BTAN09;BTAN10;BTHO11;DTTRACE
+		# start and end coordinates will be 100kb plus and minus from these coords
+		# start = 81615606
+		# end = 81819909
+	
+	# Let's try a test plot, eventually I will try to plot all the animals within each region using this R script
+		> blackstar <- read.delim("blackstar_rem.r.tab", header=TRUE, sep = "\t")
+		> biomart <- useMart("ensembl", dataset = "btaurus_gene_ensembl")
+		
+		> blist = list("-" = makeGeneRegion(chromosome = "1", start = 81615606, end = 81819909, strand = "-", biomart = biomart, dp = DisplayPars(plotId = TRUE, idRotation = 0, cex = .5)), 
+		+ makeGenomeAxis(dp = DisplayPars(byValue = 1e3, size = 2)), 
+		+ "+" = makeGeneRegion(chromosome = "1", start = 81615606, end = 81819909, strand = "+", 
+		+ biomart = biomart, dp = DisplayPars(plotId = TRUE, idRotation = 0, cex = .5)), 
+		+ "BTHO11" = makeBaseTrack(base = blackstar[,"location"], value = blackstar[,"counts"], dp = DisplayPars(lwd = .3, color = "darkblue", ylim = c(0,900))))
+		> gdPlot(blist, minBase = 81615606, maxBase = 81819909)
+		
+		# This makes a plot of read counts per 5kb windows in blackstar
+		# now to incorporate the other animals here
+		
+		> ang02 <- read.delim("btan02_hits.r.tab", header=TRUE, sep = "\t")
+		> ang09 <- read.delim("btan09_hits.r.tab", header=TRUE, sep = "\t")
+		> ang10 <- read.delim("btan10_hits.r.tab", header=TRUE, sep = "\t")
+		> nelore <- read.delim("total_nelore.r.tab", header=TRUE, sep = "\t")
+		
+		> blist = list("-" = makeGeneRegion(chromosome = "1", start = 81615606, end = 81819909, strand = "-", biomart = biomart, dp = DisplayPars(plotId = TRUE, idRotation = 0, cex = .5)), makeGenomeAxis(dp = DisplayPars(byValue = 1e3, size = 2)), "+" = makeGeneRegion(chromosome = "1", start = 81615606, end = 81819909, strand = "+", biomart = biomart, dp = DisplayPars(plotId = TRUE, idRotation = 0, cex = .5)), "BTHO11" = makeBaseTrack(base = blackstar[,"location"], value = blackstar[,"counts"], dp = DisplayPars(lwd = .3, color = "darkblue", ylim = c(0,900))), "BTAN02" = makeBaseTrack(base = ang02[,"location"], value = ang02[,"counts"], dp = DisplayPars(lwd = .3, color = "darkgreen", ylim = c(0,2000))), "BTAN09" = makeBaseTrack(base = ang09[,"location"], value = ang09[,"counts"], dp = DisplayPars(lwd = .3, color = "darkred", ylim = c(0,2000))), "BTAN10"  = makeBaseTrack(base = ang10[,"location"], value = ang10[,"counts"], dp = DisplayPars(lwd = .3, color = "orange", ylim = c(0,2000))), "BINE12" = makeBaseTrack(base = nelore[,"location"], value = nelore[,"counts"], dp = DisplayPars(lwd = .3, color = "yellow", ylim = c(0,3000))))
+		> gdPlot(blist, minBase = 81615606, maxBase = 81819909)
+		# Looks good. Now I'm going to draw overlays for each CNV in the area
+		
+		> lover <- list(makeRectangleOverlay(start = 81718453, end = 81737541, region = c(4,8), dp = DisplayPars(alpha = .2)), makeRectangleOverlay(start = 82171150, end = 82201897, region = c(4,8), dp = DisplayPars(alpha = .2)))
+		> gdPlot(blist, minBase = 81615606, maxBase = 81819909, overlay = lover)
+		
+		# I think that the "region" coordinates include the gene track as 3 regions
+		# Now to crop the area of the display
+		> gdPlot(blist, minBase = 81675606, maxBase = 81780000, overlay = lover)
+		# Looks pretty good still. Now I need to figure out if I can highlight certain datapoints with different colors
+		
+		# Now to plot it to a pdf
+		> pdf(file = "chr1_81_cnvr.pdf")
+		> gdPlot(blist, minBase = 81675606, maxBase = 81780000, overlay = lover)
+	
+	#It won't be easy to plot certain points with colors in this fashion. Maybe I should try ggplot2?
+		# Getting a subset of a larger dataset:
+			bstar <- subset(blackstar, location > 81675606, select = c(chr, location, counts))
+			btemp <- subset(bstar, location < 81780000, select = c(chr, location, counts))
+			bfinal <- subset(btemp, chr == 1, select = c(chr, location, counts))
+	
+	
+____________________________________
+Circos diagram of all CNVs
+____________________________________
+
+# Now, I need to generate a central figure that will display the positions of all the CNVs in the cattle genome
+# I think that I will create the following circos image to do this:
+	# Circular plot with inner rings depicting CNV locations per animal
+	# My karyotype image will have the refseq genes highlighted in chromosome specific colors
+		$ cp /mnt/gliu1_usb/yaho/cnvgene/cow4_refseq.txt ./refseq.txt
+		$ perl -lane 'if ($F[2] =~ /chrUn/ || $F[2] =~ /chrom/){next;} print "$F[2]\t$F[4]\t$F[5]";' < refseq.txt | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin | perl -lane '($cn) = $F[0] =~ /chr(.+)/; print "band bt$cn $F[0] $F[0] $F[1] $F[2] $F[0]";' > cow4_refseq_bands.txt
+		
+	# The flat refseq intervals are too numerous to use (the program takes hours to draw just the karyotype!)
+	# I need to reduce them to manageable levels or use a different means to highlight variations on the karyotype
+	# Perhaps I could try two different things:
+		1. merged and extended refseq gene intervals
+		2. large window averages of copy number from dt_trace in a color coded fashion (Sudemant's colors)
+		
+	# I like the second option, but let's try the first one
+		pwd: /home/derek/share/backup/circos-0.52/gr_manuscript_work
+		$ perl -lane 'print "$F[3]\t$F[4]\t$F[5]";' < cow4_refseq_bands.txt > cow4_refseq.bed
+		$ /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i cow4_refseq.bed -d 10000 | wc
+		   6905   20715  162909 <- a 10kb merger is a start, but I need to reduce the number of bands down to 1000 or fewer
+		$ /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i cow4_refseq.bed -d 100000 | wc
+		   3409   10227   80264 
+		$ /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i cow4_refseq.bed -d 500000 | wc
+		   1134    3402   26581 <- ok, that's the range I need, but it might not be too informative at this point! Going to try it anyways
+		
+		$ perl -lane '($cn) = $F[0] =~ /chr(.+)/; print "band bt$cn $F[0] $F[0] $F[1] $F[2] $F[0]";' < cow4_refseq_500k_merge.bed > cow4_refseq_500k_bands.txt
+		# Added these bands to the karyotype text file.
+	
+	# Silly stuff prevented me from generating the image in a rapid order
+		# If I use the "u" units, make sure that I have the "chromosomes_units" equal to 100000
+		# Also, make sure that config files do not have redundant <ideogram></ideogram> headers or else circos will ignore them.
+		
+	# Now it's time to make a circular diagram out of my cnvs
+		pwd: /home/derek/share/cow4_doc/hd_an_trace_art/
+		$ for i in *length_type.bed; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -lane '($b) = $F[0] =~ m/chr(.+)/; $val; if($F[4] eq "gain"){ $val = 1;}elsif($F[4] eq "loss"){ $val = -1;} print "bt$b $F[1] $F[2] $val";' < $i > $prefix.circos.dat; done
+		
+		
+	
+____________________________________
+qPCR section
+____________________________________
+
+# I need to give Reuben the remaining probe list to run through the pipeline
+# He needs probes for CNVRs 34 to 55
+# I cut and pasted them from excel into a file: 
+	# final_priority_list.txt
+	pwd: ubuntu share/cow4_doc/hd_animals/
+	$ perl check_priority_bed.pl acgh_hd_probes.bed final_priority_list.txt > cnvrs_34_55_probes.list
+	
+	
+___________________________________
+Copy number tables
+___________________________________
+
+# I need to make some tables based on the average copy number within each animal. 
+# Here is how I am going to approach this:
+	1. Create a table that gives the average copy number across merged cnvrs for each animal (regardless if the animal has the cnvr)
+		- cnvr #	chr	start	end	# animals	cat;animals	dt CN	btan02 CN	btan09 CN	blackstar CN	btan10 CN	bine12 CN	overlapping CNVRs (list of exact cnvr coordinates per animal)
+		   1		chr1	0	10	3		btan02;btan09	2	10		11		2		3		2		btan02(chr:start-end)	btan09(chr:start-end)
+		
+	2. Create a table that gives the copy number of each gene in each animal (use glean, refseq and ensemble gene lists)
+		- gene ID	chr	start	end	%gene_involved	dt CN	btan02 CN	btan09 CN	blackstar CN	btan10 CN	bine12 CN	cat;animalsw/cnvshere		
+		  NM0832938	chr1	0	10	50%		3	2		3		3		4		2		btan10;btho11
+		  
+# Here are my commands and notes per table file:
+	1. cnvr table
+		# Preparing the files
+			$ ls /home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals/B*CN > cn_file_list.txt
+			$ for i in b*both.bed; do perl -e '$f = $ARGV[0]; chomp $f; open (IN, "< $f"); @p = split(/\_/, $f); $p[0] =~ tr/[a-z]/[A-Z]/; while(<IN>){chomp; print "$_\t$p[0]\n";}' $i > simple_named_beds/$i; done
+			$ ls /home/derek/share/cow4_doc/hd_an_trace_art/simple_named_beds/b*bed > cnv_file_list.txt
+			
+		# Test running the script
+			$ perl create_copynumber_cnvr_table.pl -i cnv_file_list.txt -c cn_file_list.txt
+			# It works! 
+			# Data doesn't look too bad either; the odd CN values that do not correspond to CNV's in one animal might be single windows that have high CN values that were "averaged" but not chosen as a CNV
+			
+	2. gene intersection list
+		# preparing the files
+			# I need to get the gene lists organized in this fashion: chr, start, end, accession/number
+			pwd: /mnt/data8/dbickhart/cn_test
+			$ perl -ne '$_ =~ s/\r//g; chomp $_; @s = split(/\t/); if ($s[0] =~ /chrUn/){next;} @g = split(/\s/, $s[8]); print "$s[0]\t$s[3]\t$s[4]\t$g[1]\n";' < /mnt/gliu1_usb/yaho/cnvgene/cow4_glean.txt | sort -k 1,1 > glean_list.bed
+			$ perl -lane 'if ($F[0] =~ /bin/ || $F[2] =~ /chrUn/){next;} print "$F[2]\t$F[4]\t$F[5]\t$F[1]";' < /mnt/data8/dbickhart/circos/refseq.txt > refseq_number.bed
+			$ perl -lane 'if ($F[0] =~ /bin/ || $F[2] =~ /chrUn/){next;} print "$F[2]\t$F[4]\t$F[5]\t$F[12]";' < /mnt/data8/dbickhart/circos/refseq.txt > refseq_names.bed
+			$ perl -lane 'if($F[0] =~ /bin/ || $F[1] =~ /chrUn/){next;} print "$F[1]\t$F[2]\t$F[3]\t$F[5]";' < /mnt/gliu1_usb/yaho/cnvgene/ensGene > ensgene_geneid.bed
+			# That should be good enough to start for right now, but I know that George will want the refseq human data
+			
+			$ ls ensgene_geneid.bed glean_list.bed refseq_names.bed refseq_number.bed > gene_databases.list
+			# The cn_file_list.txt should still serve as the CN file list
+		
+		# Test running the script
+			$ perl create_copynumber_gene_intersect_table.pl -i gene_databases.list -c cn_file_list.txt -v cnv_file_list.txt
+			# Great! It worked, but I need to fiddle around with some settings.
+			# Changing a few things and then rerunning...
+			
+	3. Individual cnv list
+		# George wants me to prepare copy number files for each cnv interval per animal with copy number values estimated from the 1kb and 5kb values
+		# I think I can estimate copy number from the normalized 5kb overlapping windows to generate the 5kb values he wants (I will keep the 1kb non-overlapping regions the same)
+			$ cut -f4 blackstar_rem_hits_r_file1.bed.normalized.bed | statStd.pl
+				Average 268.979960
+			$ perl -lane '$c = $F[3] / 268.979960 * 2; print "$F[0]\t$F[1]\t$F[2]\t$c";' < blackstar_rem_hits_r_file1.bed.normalized.bed > btho11_5kb_cn.bed
+			
+			$ cut -f4 btan02_hits_template_file1_rmask.bed.normalized.bed | statStd.pl
+				Average 1418.406641
+			$ perl -lane '$c = $F[3] / 1418.406641 * 2; print "$F[0]\t$F[1]\t$F[2]\t$c";' < btan02_hits_template_file1_rmask.bed.normalized.bed > btan02_5kb_cn.bed
+			
+			$ cut -f4 btan09_hits_template_file1_rmask.bed.normalized.bed | statStd.pl
+				Average 1379.735461
+			$ perl -lane '$c = $F[3] / 1379.735461 * 2; print "$F[0]\t$F[1]\t$F[2]\t$c";' < btan09_hits_template_file1_rmask.bed.normalized.bed > btan09_5kb_cn.bed
+			
+			$ cut -f4 btan10_hits_template_file1_rmask.bed.normalized.bed | statStd.pl
+				Average 1090.755722
+			$ perl -lane '$c = $F[3] / 1090.755722 * 2; print "$F[0]\t$F[1]\t$F[2]\t$c";' < btan10_hits_template_file1_rmask.bed.normalized.bed > btan10_5kb_cn.bed
+			
+			$ cut -f4 total_nelore_doc_r_file1.bed.normalized.bed | statStd.pl
+				Average 1135.351584
+			$ perl -lane '$c = $F[3] / 1135.351584 * 2; print "$F[0]\t$F[1]\t$F[2]\t$c";' < total_nelore_doc_r_file1.bed.normalized.bed > bine12_5kb_cn.bed
+			
+			# On my virtualbox:
+			$ ls /home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals/*5kb_cn.bed > cn_5kb_file.list
+			
+		# Now, I just need to calculate averages for the 1kb and 5kb files separately.
+		# Not too hard.
+		
+		# I wrote a script to create separate excel files for each one
+		$ perl create_copynumber_indiv_cnv_table.pl -i cnv_file_list.txt -c cn_file_list.txt -v cn_5kb_file.list
+		
+	# George wants dt_trace cn estimates included in the files
+		$ cut -f4 full_trace_file1.bed.normalized.bed | statStd.pl
+			Average 393.472191
+		$ perl -lane '$c = $F[3] / 393.472191 * 2; print "$F[0]\t$F[1]\t$F[2]\t$c";' < full_trace_file1.bed.normalized.bed > dttrace_5kb_cn.bed
+		
+		$ cp full_trace_file3.bed.gc.depth.normalized.CN dttrace_1kb_cn.bed
+		$ perl -lane 'print "$_\tdttrace_gain_ngs";' < dttrace_autosome_cnvs_gain.bed > dttrace_final_cnvs.bed
+		
+		# Now I just need to add those files to the list text files I use to run the scripts, rerun the scripts and update the results.
+		$ perl create_copynumber_cnvr_table.pl -i cnv_file_list.txt -c cn_file_list.txt
+		$ perl create_copynumber_gene_intersect_table.pl -i gene_databases.list -c cn_file_list.txt -v cnv_file_list.txt
+		# Also doing this on the 5kb cn windows
+		$ perl create_copynumber_gene_intersect_table.pl -i gene_databases.list -c cn_5kb_file.list -v cnv_file_list.txt
+		# Ran out of memory. Running on /mnt/data8/dbickhart/major_tables/ on server 3.
+		
+		
+_________________________________
+Heatmaps
+_________________________________
+
+# I'm going to try to make heatmap images using my older CN heatmap script
+# Files will be located here: /home/derek/share/cn_files/HD_animals/
+	# Let's test out this refseq gene first
+		SUHW2	chr17	74306717	74315183	8466	8466	100	gain	22.9457	31.7323	34.5448	35.6069	22.2497	2.62702	BINE12;BTAN02;BTAN09;BTAN10;BTHO11;DTTRACE
+	# Coords will be chr17 74206717	74415183
+	$ perl extract_cn_for_heatmap.pl -c chr17 -s 74206717 -e 74415183 -o SUHW2
+	
+	# It worked!
+	# The results indicate that dt is far divergent from the other animals at this locii though. Let's try another heatmap locus
+		MGC134093	chr6	5824537	5833157	8620	8620	100	gain	48.2154	199.562	176.9115	103.78305	242.02225	214.95375	BINE12;BTAN02;BTAN09;BTAN10;BTHO11;DTTRACE
+	# Coords will be chr6	5724537	5933157
+	$ perl extract_cn_for_heatmap.pl -c chr6 -s 5724537 -e 5933157 -o MGC134093
+	
+	# Another test
+		GBP6	chr3	57786680	57797202	10522	10522	100	both	1.230838333	4.687138333	3.789136667	4.058856667	3.184686667	4.675793333	BINE12;BTAN02;BTAN09;BTAN10;BTHO11;DTTRACE
+	$ perl extract_cn_for_heatmap.pl -c chr3 -s 57586680 -e 57997202 -o GBP6
+	
+# I'm kinda limited by the color of the heatmap in cluster 3. I'm going to try to use R this time
+	> setwd("/home/derek/share/cn_files/HD_animals/")
+	> read.delim("GBP6.tab", header = TRUE, sep = "\t", quote = "\"'", dec = ".", row.names = 1)
+	> x <- read.delim("GBP6.tab", header = TRUE, sep = "\t", quote = "\"'", dec = ".", row.names = 1)
+	> y <- as.matrix(x)
+	> hv <- heatmap(y, col = heat.colors(256), Colv=NA)
+	
+	# Looks ok, but I want to try to get Sudmant's colors in there
+		
+		10	red	221,55,55	DD3737
+		9	dred	205,51,69	CD3345
+		8	orange	255,136,0	FF8800
+		7	yellow	255,255,0	FFFF00
+		6	lgreen	128,255,164	80FFA4
+		5	lblue	64,137,255	4089FF
+		4	blue	54,116,217	3674D9
+		3	dblue	38,82,153	265299
+		2	black	0,0,0		000000
+		1	grey	200,200,200	C8C8C8
+		0	lgrey	210,210,210	D7D7D7
+		
+	> cval <- c("#FFD7D7D7", "#FFC8C8C8", "#FF000000", "#FF265299", "#FF3674D9", "#FF4089FF", "#FF80FFA4", "#FFFFFF00", "#FFFF8800", "#FFCD3345", "#FFDD3737")
+	> hv <- heatmap(y, col = cval, Colv=NA)
+	# Not what I was looking for. I will have to try it again tomorrow.
+	
+	# GenomeGraphs (gene segment depictions
+	# ggplot2 (better heatmap (heatmap.2)
+	# Actual copy numbers in table (for the better heatmap)
+	
+	> hv <- heatmap.2(y, col = greenred(256), Colv=NA, scale = "none", key=TRUE, symkey=FALSE, density.info="none", trace="none")
+	
+__________________________________
+ChrX and Unknown
+__________________________________
+
+# I wanted to keep my work on chrX and unknown organized so I am transferring it all here from now on
+	
+# ChrX copy number conversion
+	$ for i in *.normalized.bed; do prefix=`echo $i | cut -d'.' -f1`; echo $prefix; average=`perl -lane 'if($F[0] eq "chrX"){print $F[3];}' < $i | statStd.pl | grep Average | awk '{print $2}'`; echo $average; awk '{print $1"\t"$2"\t"$3"\t"$4/var*2}' var=$average $i | grep chrX > $i.normchrX.bed; done
+	$ for i in *.bed.normchrX.bed; do prefix=`echo $i | cut -d'.' -f1`; mv $i $prefix.normchrX.bed; done
+	# File 3 still has the GC information. I need to redo these files.
+	$ for i in *file3*.normalized.bed; do prefix=`echo $i | cut -d'.' -f1`; echo $prefix; average=`perl -lane 'if($F[0] eq "chrX"){print $F[4];}' < $i | statStd.pl | grep Average | awk '{print $2}'`; echo $average; awk '{print $1"\t"$2"\t"$3"\t"$4/var*2}' var=$average $i | grep chrX > $prefix.normchrX.bed; done
+	# Turns out that I might not have needed to do this, since I already have the X chromosome in the .CN files.
+	
+# Preparing chrX cnvs for table conversion
+	$ for i in *chrX_cnvs*; do prefix=`echo $i | cut -d'_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; chomp $f; $p = $ARGV[1]; chomp $p; open(I, "< $f"); while(<I>){chomp; print "$_\t$p\_gain_ngs\n";} close I;' $i $prefix > temp; mv temp $i; done
+	$ ls /home/derek/share/cow4_doc/hd_an_trace_art/simple_named_beds/*chrX_cnvs* > chrX_cnvs_list.txt
+	
+	pwd: /mnt/data8/dbickhart/major_tables/
+	$ perl create_copynumber_indiv_cnv_table.pl -i chrX_cnvs_list.txt -c hd_an_1k_cn.list -v hd_an_5k_cn.list -o chrX
+	
+	# Now to do the cnvr merger.
+	$ ls /home/derek/share/cow4_doc/hd_an_trace_art/simple_named_beds/*all* > cnv_list_auto_chrx.txt
+	$ perl create_copynumber_cnvr_table.pl -i cnvs_chr_all_list.txt -c hd_an_5k_cn.list
+	
+# Running the pipeline on chrUn then converting it to unall
+	# So, I've created a pipeline script (cattle_chrun_pipeline.sh), now it's time to run the pipeline on it!
+	# I had to change the pad C program to account for the different chromosomes, but it works
+	$ run_chrun_pipeline.pl --File1 combined_nelore_hd_chrun_chrun_file1_template.bed --File2 combined_nelore_hd_chrun_chrun_file2_template.bed --File3 combined_nelore_hd_chrun_chrun_file3_template.bed --File3_c combined_nelore_hd_chrun_chrun_file3_controls_template.bed --File1_c combined_nelore_hd_chrun_chrun_file1_controls_template.bed
+	
+	# My problems now are with the control files; I need to crop some intervals off of the controls.
+		$ perl -lane 'print $F[3];' < combined_nelore_hd_chrun_chrun_file1_controls_template.bed | statStd.pl
+			total   152328
+			Minimum 0
+			Maximum 21265160
+			Average 32458.547437
+			Median  2442
+			Standard Deviation      471656.385051
+			Mode(Highest Distributed Value) 1165
+			
+		# Oh boy..
+		# Removing 3x the average
+		$ perl -lane 'if($F[3] > 90000){print $_;}' < combined_nelore_hd_chrun_chrun_file1_controls_template.bed > remove_intervals.bed
+		
+		$ cut -f4 combined_nelore_hd_chrun_chrun_file3_controls_template.bed | statStd.pl
+			total   70978
+			Minimum 0
+			Maximum 5213499
+			Average 10250.807771
+			Median  423
+			Standard Deviation      142230.548871
+			Mode(Highest Distributed Value) 122
+			
+		# removing three times the average again
+		$ perl -lane 'if ($F[3] > 30000){print $_;}' < combined_nelore_hd_chrun_chrun_file3_controls_template.bed > /mnt/data110/dbickhart/reference/sep_un/remove_file3_intervals.bed
+		
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a chrun_file1_controls_template.bed -b remove_intervals.bed -v > temp
+		$ mv temp chrun_file1_controls_template.bed
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a chrun_file3_controls_template.bed -b remove_file3_intervals.bed -v > temp
+		$ mv temp chrun_file3_controls_template.bed
+		
+		$ perl GC_control_intervals.pl --genome stuff --name chrun --path separate_chrs
+		
+	# Now to remap the reads onto the windows and try again
+		$ chrun_window_creation.sh combined_nelore_hd_chrun.bed
+		# This should be faster:
+		$ chrun_window_creation.sh btho11_chrun_hits.bed
+		
+# George noticed a problem with chrX. I need to double check the data
+	# I think I found the problem: the X chromosome does not have sufficient data to do a decent GC correction
+	$ perl -lane 'if($F[0] eq "chrX"){ print $F[3];}' < total_nelore_doc_r_file1.bed.normalized.bed | statStd.pl
+		total   54327
+		Minimum 0
+		Maximum 23584.6729618257
+		Average 725.450445
+		Median  535.371471
+		Standard Deviation      898.875272
+		Mode(Highest Distributed Value) 0
+	# This is as opposed to the values prior to GC normalization
+	$ perl -lane 'if($F[0] eq "chrX"){ print $F[3];}' < total_nelore_doc_r_file1.bed | statStd.pl
+		total   54327
+		Minimum 51
+		Maximum 23840
+		Average 738.609218
+		Median  508
+		Standard Deviation      990.948594
+		Mode(Highest Distributed Value) 336
+		
+	# I am going to change the cattle_separate_pipline.sh script to use the autosome gc table to normalize the X chromosome.
+	# It worked very well. 
+	# The number of X chromosome entries for nelore dropped from 266 to 137. 
+	# I think that this was the case for dttrace as well: my normalization did not take into account the fact that dttrace is sanger-based.
+		$ run_alkan_pipeline.pl --File1 full_trace_file1.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File1_c full_trace_file1_c.bed --File3_c full_trace_file3_c.bed
+		$ perl -lane 'if ($F[0] eq "chrX"){print $_;}' < full_trace_file1.bed.final.wssd > temp_chrx_gain.bed
+		$ wc temp_chrx_gain.bed dttrace_chrX_cnvs_gain.bed
+		  171   513  3897 temp_chrx_gain.bed
+		  285   855  6487 dttrace_chrX_cnvs_gain.bed
+		  456  1368 10384 total
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a temp_chrx_gain.bed -b dttrace_chrX_cnvs_gain.bed | wc
+		    132     396    3006  <- so just about the same
+		$ mv temp_chrx_gain.bed dttrace_chrX_cnvs_gain.bed
+		    
+	# Now I just need to redo the rest of the animals and I should be set
+	# I should double check the angus to make sure that they are not unduely changed by this normalization
+		$ run_alkan_pipeline.pl --File1 blackstar_rem_hits_r_file1.bed --File2 blackstar_rem_hits_r_file2.bed --File3 blackstar_rem_hits_r_file3.bed --File1_c blackstar_rem_hits_r_file1_c.bed --File3_c blackstar_rem_hits_r_file3_c.bed
+		$ run_alkan_pipeline.pl --File1 btan02_hits_template_file1_rmask.bed --File2 btan02_hits_template_file2_rmask.bed --File3 btan02_hits_template_file3_rmask.bed --File1_c btan02_hits_final_sub_file1_control_rmask.bed --File3_c btan02_hits_final_sub_file3_control_rmask.bed
+		$ run_alkan_pipeline.pl --File1 btan09_hits_template_file1_rmask.bed --File2 btan09_hits_template_file2_rmask.bed --File3 btan09_hits_template_file3_rmask.bed --File1_c btan09_hits_final_sub_file1_control_rmask.bed --File3_c btan09_hits_final_sub_file3_control_rmask.bed
+		$ run_alkan_pipeline.pl --File1 btan10_hits_template_file1_rmask.bed --File2 btan10_hits_template_file2_rmask.bed --File3 btan10_hits_template_file3_rmask.bed --File1_c btan10_hits_final_sub_file1_control_rmask.bed --File3_c btan10_hits_final_sub_file3_control_rmask.bed
+		
+		
+	# Now to remake the files and send them to Yali
+	pwd: /mnt/data8/dbickhart/major_tables/
+		$ for i in *chrX_cnvs_gain.bed; do prefix=`echo $i | cut -d'_' -f1`; echo $prefix; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $p =~ tr/[a-z]/[A-Z]/; open (IN, "< $f"); while(<IN>){ chomp; @s = split(/\t/); @t = split(/\_/, $s[3]); print "$_\t$p\_$t[1]_ngs\n";} close IN;' $i $prefix > $prefix.temp; mv $prefix.temp $i; done
+		$ for i in bine12 btan02 btan09 btan10 btho11 dttrace; do output=`echo $i"_all_chr.bed"`; echo $output; cat $i*_autosome_cnvs_both.bed $i*_chrX_cnvs_gain.bed > $output; done
+		$ cat dttrace_final_cnvs.bed dttrace_chrX_cnvs_gain.bed > dttrace_all_chr.bed
+		
+		$ ls *normalized.CN > better_1k_cn.list
+		$ ls *all_chr.bed > hd_an_cnvs.list
+		$ perl create_copynumber_cnvr_table.pl -i hd_an_cnvs.list -c better_1k_cn.list
+		$ perl create_copynumber_indiv_cnv_table.pl -i hd_an_cnvs.list -c better_1k_cn.list -v hd_an_5k_cn.list
+		
+# George wants me to treat the Dominette X chromosome as if it was a diploid chromosome (which it is). 
+# This gives me a chance to test out parasight as well
+	pwd: /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/female
+	$ run_female_pipeline.pl --File1 full_trace_file1.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File1_c full_trace_file1_c.bed --File3_c full_trace_file3_c.bed
+	
+	# OK, so I've completed it and the autosome CNVs changed a little bit (864 (old) vs 823 (new) all the newer ones overlapped with the old)
+	
+	# I also reran the pipeline and masked the dttrace artifacts, creating two files (dttrace_noart_filter.final.wssd & dttrace_artmask_filter.final.wssd)
+		$ wc ../full_trace_file1.bed.final.wssd
+		  777  2331 17951 ../full_trace_file1.bed.final.wssd			<- artifact masked, X separate
+		$ more full_trace_file1.bed_gccorr.log					<- artifact masked X as autosome
+			Avg:  340.256314  std:  95.074536  AutoCut:  720.554458  AutoCut2:  625.479922  Del:  55.032706
+			SexA:  42.216403  std:  142.510472  AutoCut:  469.747819  AutoCut2:  327.237347  Del:  -242.804541
+		$ more ../full_trace_file1.bed_gccorr.log				<- artifact masked, X separate
+			Avg:  339.918660  std:  92.153850  AutoCut:  708.534060  AutoCut2:  616.380210  Del:  63.457110
+			SexA:  42.366126  std:  142.582166  AutoCut:  470.112624  AutoCut2:  327.530458  Del:  -242.798206
+		$ wc full_trace_file1.bed.final.deletions.tab
+		      0 0 0 full_trace_file1.bed.final.deletions.tab
+		$ grep chrX full_trace_file1.bed.final.wssd | wc
+		     87     261    1987							<- artifact masked X as autosome
+		$ grep chrX ../full_trace_file1.bed.final.wssd | wc
+		    171     513    3897							<- artifact masked, X separate
+		$ grep -v chrX full_trace_file1.bed.final.wssd | wc
+		    581    1743   13467							<- artifact masked X as autosome
+		$ grep -v chrX ../full_trace_file1.bed.final.wssd | wc
+		    606    1818   14054							<- artifact masked, X separate
+		    
+	# Downloaded to my virtual box shared folder: /home/derek/share/cow4_doc/hd_an_trace_art/ddtrace/
+	# Going to try to create cnv individual cn files and then convert them to Yali's parasight format
+		$ ls dttrace_file3.bed.CN > dttrace_1kb_cn.list
+		$ ls dttrace_artmask_filter.final.wssd > dttrace_art_cnv.list
+		$ ls blank.txt > dttrace_5kb_cn.list
+		
+		$ perl create_copynumber_indiv_cnv_table.pl -i dttrace_art_cnv.list -c dttrace_1kb_cn.list -v dttrace_5kb_cn.list
+		
+		# Opened the xls file and saved the chr, start, end, cn in a tab delimited format
+	# I want to quickly convert this file into yali's parasight format, so I will use a one-liner for now. 
+	# Later I will try to create a script to automatically generate the files and then a wrapper for parasight
+		$ perl -e 'print "seqName\tbegin\tend\tcolor\toffset\twidth\ttype\n"; while(<>){chomp; @s = split(/\t/); $c = int($s[3] + 0.5); if($c >= 10){ $col = "red";}elsif($c >= 5 && $c < 10){$col = "orange";}elsif($c == 4){$col = "blue";}elsif($c == 3){$col = "purple";}elsif($c == 1){$col = "green";}elsif($c == 0){$col = "black";}else{$col = "green";} print "$s[0]\t$s[1]\t$s[2]\t$col\t14\t4\t\n";}' < DTTRACE_cnv_copynumber.csv > dttrace_cnv.extra
+		
+		# Now I need to redo the cnvrs for the parasight figure
+		$ perl -lane 'print "$_\tdttrace_gain_ngs";' < dttrace_artmask_filter.final.wssd > dttrace_artmask_named.bed
+		$ cat dttrace_artmask_named.bed ../simple_named_beds/b*all_chr.bed | /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > new_cnvr_named.bed
+		
+		$ perl -lane '@an = split(/\;/, $F[3]); $old = "stuff"; foreach $a (@an){@type = split(/\_/, $a); if($old eq "stuff"){$old = $type[1];}elsif($old ne $type[1]){$old = "both";}} print "$F[0]\t$F[1]\t$F[2]\tbrown\t8\t4\t$old";' < new_cnvr_named.bed > 1127_cnvr_d.extra
+		
+		
+	# I logged on as george on server 2 to use parasight. My working directory is here:
+		pwd: /mnt/data10/gliu/cow4/cow4segdup/parasight_cnv/cattle_cnv_fig1/forderek
+		
+		
+	# Comparing the files
+		$ compare_named_bed_vary_coverage.pl dttrace_named_xauto.bed dttrace_named_xsep.bed xauto_xsep_compare
+		
+	# Now to remake the parasight image and send it to George
+		# I created a script that should automatically generate parasight files with colors
+		# I just need to recreate the tables and I'll be in business
+		
+		pwd: /mnt/data8/dbickhart/major_tables
+		$ perl create_copynumber_indiv_cnv_table.pl -i cnv_list.txt -c cn_1k_list.txt -v cn_5k_list.txt
+
+		$ perl create_parasight_format_file.pl -i DTTRACE_cnv_cn.bed -o dttrace_cnv.extra -w 4 -f 14
+		$ perl create_parasight_format_file.pl -i BTHO11_cnv_cn.bed -o btho11_cnv.extra -w 4 -f 26
+		$ perl create_parasight_format_file.pl -i BTAN10_cnv_cn.bed -o btan10_cnv.extra -w 4 -f 44
+		$ perl create_parasight_format_file.pl -i BTAN09_cnv_cn.bed -o btan09_cnv.extra -w 4 -f 38
+		$ perl create_parasight_format_file.pl -i BTAN02_cnv_cn.bed -o btan02_cnv.extra -w 4 -f 32
+		$ perl create_parasight_format_file.pl -i BINE12_cnv_cn.bed -o bine12_cnv.extra -w 4 -f 20
+		
+		$ cat *_cnv_cn.bed | /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i stdin > updated_cnvr_merge.bed
+		$ perl create_parasight_format_file.pl -i updated_cnvr_merge.bed -o update_cnvr.extra -c brown -w 4 -f 8
+		
+# Hold it
+	# My file formats are all confused. It's time to reorganize them and make sure that I'm using the right ones
+	# This is all on /mnt/data8 on server 3
+		$ cat btho11_autosome_cnvs_gain.bed btho11_chrX_cnvs_gain.bed | perl -lane 'print "$_\tbtho11_gain_ngs";' > btho11_all_chr_gain_named.bed
+		$ perl -lane 'print "$_\tbtho11_loss_ngs";' < btho11_autosome_cnvs_loss.bed > btho11_all_chr_loss_named.bed
+		$ cat *named.bed > btho11_all_chr_both_named.bed
+		$ cp btho11_all_chr_both_named.bed ../doc_files/
+		
+		$ for i in btan02 btan09 btan10; do auto_g=`echo $i"_autosome_cnvs_gain.bed"`; auto_l=`echo $i"_autosome_cnvs_loss.bed"`; chrx=`echo $i"_chrX_cnvs_gain.bed"`; cat ./*/$auto_g ./*/$chrx | perl -e '$n = $ARGV[0]; while(<STDIN>){chomp; print "$_\t$n\_gain_ngs\n";}' $i > $i.all_chr_gain_named.bed; cat ./*/$auto_l | perl -e '$n = $ARGV[0]; while(<STDIN>){chomp; print "$_\t$n\_loss_ngs\n";}' $i > $i.all_chr_loss_named.bed; cat $i.all_chr_gain_named.bed $i.all_chr_loss_named.bed > $i.all_chr_both_named.bed; done
+		
+		$ cat bine12_autosome_cnvs_gain.bed bine12_chrX_cnvs_gain.bed | perl -lane 'print "$_\tbine12_gain_ngs";' > bine12_all_chr_gain_named.bed
+		$ perl -lane 'print "$_\tbine12_loss_ngs";' < bine12_autosome_cnvs_loss.bed > bine12_all_chr_loss_named.bed
+		$ cat *named.bed > bine12_all_chr_both_named.bed
+		
+		$ cat full_trace_file1.bed.final.wssd | perl -lane 'print "$_\tdttrace_gain_ngs";' > dttrace_all_chr_gain_named.bed
+		$ cat full_trace_file1.bed.final.deletions.tab | perl -lane 'print "$_\tdttrace_loss_ngs";' > dttrace_all_chr_loss_named.bed
+		$ cat *named.bed > dttrace_all_chr_both_named.bed
+		
+	# Now to get the cn files
+		$ ls ../doc_files/*named.bed > cnv_list.txt
+		$ perl create_copynumber_indiv_cnv_table.pl -i cnv_list.txt -c cn_1k_list.txt -v cn_5k_list.txt
+		
+	# Redoing parasight
+		$ perl create_parasight_format_file.pl -i BINE12_cnv_cn.bed -o bine12_cnv.extra -w 4 -f 20
+		$ perl create_parasight_format_file.pl -i DTTRACE_cnv_cn.bed -o dttrace_cnv.extra -w 4 -f 14
+		$ perl create_parasight_format_file.pl -i BTAN02_cnv_cn.bed -o btan02_cnv.extra -w 4 -f 32
+		$ perl create_parasight_format_file.pl -i BTAN09_cnv_cn.bed -o btan09_cnv.extra -w 4 -f 38
+		$ perl create_parasight_format_file.pl -i BTAN10_cnv_cn.bed -o btan10_cnv.extra -w 4 -f 44
+		$ perl create_parasight_format_file.pl -i BTHO11_cnv_cn.bed -o btho11_cnv.extra -w 4 -f 26
+		
+		$ cat *_cnv_cn.bed | /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i stdin > updated_cnvr_merge.bed
+		$ perl create_parasight_format_file.pl -i updated_cnvr_merge.bed -o update_cnvr.extra -c brown -w 4 -f 8
+		
+		$ ./command
+		
+# Unknown issues
+	# Trying to tighten my control files still. Working with the Blackstar data
+	$ perl -lane 'if($F[3] > 3632){print $_;}' < btho11_chrun_hits_chrun_file1_controls_template.bed > blackstar_removal_1.bed
+	$ perl -lane 'if($F[3] > 1200){print $_;}' < btho11_chrun_hits_chrun_file3_controls_template.bed > blackstar_removal_3.bed
+	
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a chrun_file1_controls_template.bed -b blackstar_removal_1.bed -v > temp
+	$ mv temp chrun_file1_controls_template.bed
+	
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a chrun_file3_controls_template.bed -b blackstar_removal_3.bed -v > temp
+	$ mv temp chrun_file3_controls_template.bed
+	
+	$ perl GC_control_intervals.pl --genome stuff --name chrun --path separate_chrs
+	
+	$ chrun_window_creation.sh btho11_chrun_hits.bed
+	# OK, so the average and standard deviation are better, but not by much
+	# I think I can run with this, but I need to generate an artifact file using dttrace
+		pwd: /mnt/data8/dbickhart/chrun/dt_trace
+		$ for i in *.bam; do echo $i; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> dttrace_chrun_reads.bed; done
+		$ chrun_window_creation.sh dttrace_chrun_reads.bed
+		$ run_chrun_pipeline.pl --File1 dttrace_chrun_reads_chrun_file1_template.bed --File2 dttrace_chrun_reads_chrun_file2_template.bed --File3 dttrace_chrun_reads_chrun_file3_template.bed --File1_c dttrace_chrun_reads_chrun_file1_controls_template.bed --File3_c dttrace_chrun_reads_chrun_file3_controls_template.bed
+		
+		# Now I need to convert the WSSD coords into chrUnAll coords
+		# The WSSD/WGAC coords file is located here: /mnt/gliu1_usb/dbickhart/alkan_files/george_wssd_wgac/WSSD_WGAC_cat.bed
+		$ perl convert_chrun_coords.pl WSSD_WGAC_cat_chrun_only.bed 0
+		$ mv coords.out WSSD_WGAC_chrunchrom_coords.bed
+		
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/data110/dbickhart/reference/sep_un/WSSD_WGAC_chrunchrom_coords.bed -b dttrace_chrun_reads_chrun_file1_template.bed.final.wssd -v | wc
+		   8091   24273  192759				<- remainder of original WSSD_WGAC after removing dttrace chrun
+		$ wc /mnt/data110/dbickhart/reference/sep_un/WSSD_WGAC_chrunchrom_coords.bed
+		  8333  24999 198500 /mnt/data110/dbickhart/reference/sep_un/WSSD_WGAC_chrunchrom_coords.bed  	<- original number of intervals for original WSSD_WGAC
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -b /mnt/data110/dbickhart/reference/sep_un/WSSD_WGAC_chrunchrom_coords.bed -a dttrace_chrun_reads_chrun_file1_template.bed.final.wssd -v | wc
+		    401    1203    9539				<- remainder of dttrace chrun after removing original WSSD_WGAC
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -b /mnt/data110/dbickhart/reference/sep_un/WSSD_WGAC_chrunchrom_coords.bed -a dttrace_chrun_reads_chrun_file1_template.bed.final.wssd | wc
+		    247     741    5858				<- intersection of both dttrace chrun and original WSSD_WGAC
+		
+		# Wait, my conversion script had an error and was not converting all coordinates. Also, I believe that the WSSD alone should be used
+		
+		# I also think that the chrun discoveries will be a joke. Not worth our time, but I will try anyways
+		# The intersection with the previous WSSD was junk, so I need to reconvert the coordinates and redo the control windows
+			$ perl convert_chrun_coords.pl WSSD_WGAC_cat_chrun_only.bed
+			$ mv coords.out WSSD_WGAC_chrunchrom_coords.bed
+			
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a chrun_gc_file1_control.bed -b WSSD_WGAC_chrunchrom_coords.bed |wc
+				79329  317316 2444066
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a chrun_file1_controls_template.bed -b WSSD_WGAC_chrunchrom_coords.bed -v > temp
+			$ wc temp chrun_gc_file1_control.bed chrun_gc_file1.bed
+			   82091   328364  2516191 temp
+			  128874   515496  3955692 chrun_gc_file1_control.bed
+			  183176   732704  5992217 chrun_gc_file1.bed
+			  394141  1576564 12464100 total
+			
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a chrun_file3_controls_template.bed -b WSSD_WGAC_chrunchrom_coords.bed -v > temp
+			
+			# OK, let's try this, I'm going to mv the older file1 control to a temporary file and redo the blackstar chrun to see how the results pan out
+			$ mv chrun_file1_controls_template.bed chrun_file1_controls_template.bed.bak
+			$ mv chrun_file3_controls_template.bed chrun_file3_controls_template.bed.bak
+			
+			$ perl GC_control_intervals.pl --genome stuff --name chrun --path separate_chrs
+			
+			$ chrun_window_creation.sh btho11_chrun_hits.bed
+			$ run_chrun_pipeline.pl --File1 btho11_chrun_hits_chrun_file1_template.bed --File2 btho11_chrun_hits_chrun_file2_template.bed --File3 btho11_chrun_hits_chrun_file3_template.bed --File1_c btho11_chrun_hits_chrun_file1_controls_template.bed --File3_c btho11_chrun_hits_chrun_file3_controls_template.bed
+			# It's a mess, but I think there is no way around it. Just going to continue with the other files
+			
+		# Running the other files through the pipeline
+			$ chrun_window_creation.sh dttrace_chrun_reads.bed
+			$ run_chrun_pipeline.pl --File1 dttrace_chrun_reads_chrun_file1_template.bed --File2 dttrace_chrun_reads_chrun_file2_template.bed --File3 dttrace_chrun_reads_chrun_file3_template.bed --File1_c dttrace_chrun_reads_chrun_file1_controls_template.bed --File3_c dttrace_chrun_reads_chrun_file3_controls_template.bed
+			
+			
+# Calculating a fast and dirty two-way comparision using BED tools
+	$ perl -lane 'if($F[2] - $F[1] < 10000){next;}else{print $_;}' < /mnt/data110/dbickhart/reference/sep_un/WSSD_chrun_chrom.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -b dttrace_chrun_reads_chrun_file1_template.bed.final.wssd -a stdin -c | perl -e '$c = 0; $o = 0; $co = 0; while(<STDIN>){chomp; @s = split(/\t/); $c++; $o += $s[3]; if($s[3] > 0){$co++;}} print "$c\t$o\t$co\n";'
+		1063    414     407  <- # of intervals, # of overlap column, #of columns that had an overlap greater than zero
+		
+	$ perl -lane 'if($F[2] - $F[1] < 10000){next;}else{print $_;}' < /mnt/data110/dbickhart/reference/sep_un/WSSD_chrun_chrom.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a dttrace_chrun_reads_chrun_file1_template.bed.final.wssd -b stdin -c | perl -e '$c = 0; $o = 0; $co = 0; while(<STDIN>){chomp; @s = split(/\t/); $c++; $o += $s[3]; if($s[3] > 0){$co++;}} print "$c\t$o\t$co\n";'
+		750     414     244
+		
+	# Unique mine = 750 - 244 = 506
+	# Unique gingers = 1063 - 407 = 656
+	# Total number of intervals = 750 + 1063 = 1815
+	# Shared intervals = 1815 - 506 - 656 = 651
+	
+	# Now to calculate basepairs
+	$ perl -lane 'if($F[2] - $F[1] < 10000){next;}else{print $_;}' < /mnt/data110/dbickhart/reference/sep_un/WSSD_chrun_chrom.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/subtractBed -a dttrace_chrun_reads_chrun_file1_template.bed.final.wssd -b stdin | perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $l += $s[2] - $s[1];} print "$l\n";'
+		17632480 <- my unique basepairs	= 32%
+	$ perl -lane 'if($F[2] - $F[1] < 10000){next;}else{print $_;}' < /mnt/data110/dbickhart/reference/sep_un/WSSD_chrun_chrom.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/subtractBed -b dttrace_chrun_reads_chrun_file1_template.bed.final.wssd -a stdin | perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $l += $s[2] - $s[1];} print "$l\n";'
+		18950435 <- Ginger's unique basepairs  = 34%
+	$ cat /mnt/data110/dbickhart/reference/sep_un/WSSD_chrun_chrom.bed dttrace_chrun_reads_chrun_file1_template.bed.final.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin |perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $l += $s[2] - $s[1];} print "$l\n";'             
+		55203348 <- Total basepairs
+	# Shared basepairs = mine - gingers = 18620433 = 34%
+	
+	$ cat /mnt/data110/dbickhart/reference/sep_un/WSSD_chrun_chrom.bed |perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $l += $s[2] - $s[1];} print "$l\n";'
+		39022053	<- Ginger's bases
+	$ cat dttrace_chrun_reads_chrun_file1_template.bed.final.wssd |perl -e 'while(<STDIN>){chomp; @s = split(/\t/); $l += $s[2] - $s[1];} print "$l\n";'
+		28295847 	<- My bases
+	
+# George wants me to use his chrUnAll, but I think there are errors, Getting the repeat bed locations from it
+	# I wrote a c program to get all of the repeat intervals in a file
+	# Works pretty well if I don't mind saying so myself!
+	$ get_repeatmask_bed chrUnAll_hard_mask.fa.2.7.7.80.10.50.500.mask
+	$ perl -lane '$s = $F[1] - 36; if($s < 0){$s = 0;} $e = $F[2] + 36; print "$F[0]\t$F[1]\t$F[2]";' < chrUnAll_hard_mask.fa.2.7.7.80.10.50.500.mask.repeats > chrun_repeat_indicies
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi chrUnAll_hard_mask.fa.2.7.7.80.10.50.500.mask -bed chrun_repeat_indicies -fo chrUnAll_george.fa
+	
+	# OK, now to test it on an actual sequencing file
+	# Still producing a 20gig sam file
+	# Here are the stats
+		# My masked file
+		total ACGT:        98881845        total repetitive:       303303131       perc auto:       24.5861608216812
+		# George's remasked, trf file (36bp extension)
+		total ACGT:        99711766        total repetitive:       302513102       perc auto:       24.7900549997819
+		
+	$ perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' < test_angus_mask.sam > test_angus_mask.bed
+	$ chrun_window_creation.sh test_angus_mask.bed
+	
+________________________________
+GC distribution
+________________________________
+# Now I'm going to quickly calculate the GC distribution of reads before and after normalization for each animal
+# I created a script to do this quickly; it is located in my bin directory
+	$ calculate_alkan_windows_gc_distribution.pl -w blackstar_rem_hits_r_file3.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file3.bed > blackstar_gc_before_norm.tab &
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[4]";' < blackstar_rem_hits_r_file3.bed.normalized.bed > blackstar_rem_hits_r_file3.norm.bed
+	$ calculate_alkan_windows_gc_distribution.pl -w blackstar_rem_hits_r_file3.norm.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file3.bed > blackstar_gc_after_norm.tab
+	
+	# Hmm... the graphs did not turn out like I planned... 
+	# Maybe I should use the 5kb windows?
+	$ calculate_alkan_windows_gc_distribution.pl -w blackstar_rem_hits_r_file1.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > blackstar_gc_before_norm.tab
+	$ calculate_alkan_windows_gc_distribution.pl -w blackstar_rem_hits_r_file1.bed.normalized.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > blackstar_gc_after_norm.tab
+	# Wait... I know what it is. I am not averaging the read values!
+	
+	# Now to do it for the other animals
+		$ calculate_alkan_windows_gc_distribution.pl -w total_nelore_doc_r_file1.bed.normalized.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > nelore_gc_after_norm.tab
+		$ calculate_alkan_windows_gc_distribution.pl -w total_nelore_doc_r_file1.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > nelore_gc_before_norm.tab
+		
+		$ calculate_alkan_windows_gc_distribution.pl -w full_trace_file1.bed.normalized.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > dttrace_gc_after_norm.tab
+		$ calculate_alkan_windows_gc_distribution.pl -w full_trace_file1.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > dttrace_gc_before_norm.tab
+		
+		$ calculate_alkan_windows_gc_distribution.pl -w btan02_hits_template_file1_rmask.bed.normalized.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > btan02_gc_after_norm.tab
+		$ calculate_alkan_windows_gc_distribution.pl -w btan02_hits_template_file1_rmask.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > btan02_gc_before_norm.tab
+		
+		$ calculate_alkan_windows_gc_distribution.pl -w btan09_hits_template_file1_rmask.bed.normalized.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > btan09_gc_after_norm.tab
+		$ calculate_alkan_windows_gc_distribution.pl -w btan09_hits_template_file1_rmask.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > btan09_gc_before_norm.tab
+		
+		$ calculate_alkan_windows_gc_distribution.pl -w btan10_hits_template_file1_rmask.bed.normalized.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > btan10_gc_after_norm.tab
+		$ calculate_alkan_windows_gc_distribution.pl -w btan10_hits_template_file1_rmask.bed -g /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed > btan10_gc_before_norm.tab

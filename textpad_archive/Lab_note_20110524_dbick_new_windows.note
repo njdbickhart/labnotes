@@ -1,0 +1,186 @@
+05/24/2011
+# So I think that the window size might be influencing my DoC results. In short: the windows are too small and I am getting too many false positives
+
+# Here is my strategy: Increase the size of the windows proportionally to my coverage density per genome
+	# Alkan had three window formats that he uses to call CNVS:
+		- Long overlapping true base windows
+		- short overlapping true base windows
+		- short non-overlapping true base windows
+		
+	# Here's how I think I should proceed:
+		-1   10kb, slide by 2kb and 20kb, slide by 4kb
+		-2   2kb, slide by 2kb and 4kb, slide by 4kb
+		-3   5kb nonoverlapping and 10kb nonoverlapping
+		
+	# I will rewrite the windowmaker.c program to generate these windows, then I will rewrite the shell script in order to use them (I need to change the top variables and also the wssdpicker input)
+	# OK, so I think that I successfully rewrote the programs to generate the windows according to those conditions. 
+	# here are the windowmaker source files:
+		winmaker_10k.c
+		winmaker_20k.c
+		
+		$ gcc -o winmaker_10k winmaker_10k.c
+		$ gcc -o winmaker_20k winmaker_20k.c
+		
+	# so, these files work on the individually separated chromosomes to generate the window files. I need to split the reference genome then cat the files together
+	# I also fixed the output files from this window (it lists the file numbers instead of "coverage," etc).
+	
+	# I have a separate chr folder that contains the repeatmasked and "X'ed" cow4 genome fastas (/mnt/gliu1_usb/dbickhart/alkan/separate_chrs
+		$ for i in *.fa; do ./winmaker_10k $i; done
+		
+		$ cat *.file1 > template_10k_file1.bed
+		...
+		$  rm *.file*
+		$ wc template_10k_file1.bed
+		  691433
+		  
+		$ for i in *.fa; do echo " "; ./winmaker_20k $i; done
+		
+		# Same steps
+		# copied the template files over to /mnt/gliu1_usb/dbickhart/alkan/more_windows
+		
+	# I think that I should use different control windows than before. Perhaps the aCGH control segments?
+	# How about I just subtract the detected cnvs from the controls? 
+		$ cp ind_ins_4_nmerged.bed /mnt/gliu1_usb/dbickhart/alkan_files/more_windows/
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a ../cow4_controls_5k.bed -b ind_ins_4_nmerged.bed -v > cow4_controls_remove_known_cnv.bed
+		$ wc cow4_controls_remove_known_cnv.bed
+		  17037  51111 399283 cow4_controls_remove_known_cnv.bed
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < cow4_controls_remove_known_cnv.bed
+			1804282865
+		# hmm... that's still quite a bit of sequence... let's just extend out the known CNV's by 5kb and then remove them from the controls. 
+			$ perl -lane '$s = $F[1] - 5000; $e = $F[2] + 5000; if ($s < 0){$s = 0;} print "$F[0]\t$s\t$e";' < ind_ins_4_nmerged.bed > ind_5k_extend_merged_cnvs.bed
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a ../cow4_controls_5k.bed -b ind_5k_extend_merged_cnvs.bed -v > cow4_controls_remove_known_cnv.bed
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < cow4_controls_remove_known_cnv.bed
+				1780874306
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < ../cow4_controls_5k.bed
+				2393777822
+			# A reduction, but not a substantial one. I'll just go with it for now.
+			
+	# Now to intersect the control regions with the templates
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a template_10k_file1.bed -b cow4_controls_remove_known_cnv.bed -wa | uniq > template_10k_file1_control.bed
+			$ wc template_10k_file1*
+			  691433  2074299 16248342 template_10k_file1.bed
+			  494456  1483368 11614423 template_10k_file1_control.bed  <- so, that removed about 200,000 windows, not a bad percentage!
+			 1185889  3557667 27862765 total
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a template_10k_file2.bed -b cow4_controls_remove_known_cnv.bed -wa | uniq > template_10k_file2_control.bed
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a template_10k_file3.bed -b cow4_controls_remove_known_cnv.bed -wa | uniq > template_10k_file3_control.bed
+		
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a template_20k_file1.bed -b cow4_controls_remove_known_cnv.bed -wa | uniq > template_20k_file1_control.bed
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a template_20k_file2.bed -b cow4_controls_remove_known_cnv.bed -wa | uniq > template_20k_file2_control.bed
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a template_20k_file3.bed -b cow4_controls_remove_known_cnv.bed -wa | uniq > template_20k_file3_control.bed
+
+		# Whoops! Forgot that I don't need a control file for the file 2 format
+		
+	# Now to generate GC control windows for each one
+		# I rewrote the GC_intervals.pl and GC_control_intervals.pl scripts in my alkan folder
+		$ perl ../GC_control_intervals.pl --path ../separate_chrs --name template_10k
+		$ perl ../GC_control_intervals.pl --path ../separate_chrs --name template_20k
+		
+		$ perl ../GC_intervals.pl --genome stuff --name template_10k --path ../separate_chrs
+		$ perl ../GC_intervals.pl --name template_20k --path ../separate_chrs
+		
+		$ for i in template_*_gc_file*.bed; do awk '{print $1"-"$2"-"$3"\t"$4}' $i | sort -k 1,1 > $i.tab; done
+		
+	# OK, so now all I have to do is rewrite the pipeline to accept the different windows, then run the pipeline on all of the bed files that I have for the individual animals.
+		# created auto_diff_alkan_pipeline.pl to automate the whole process
+		# created cattle_diff_window_pipeline.sh to accept the window variable and to pick 5 contiguous window (in wssdpicker.pl) vs 7.
+		# NOTE: the cattle_diff_window_pipeline.sh script uses the same artifact file as the cattle_separate_pipeline.sh script
+		
+	# Now to do a test run:
+		pwd: /mnt/gliu1_usb/dbickhart/breed_doc/angus/mrsfast/sep_animal_bed
+		$ perl auto_diff_alkan_pipeline.pl --in BTAN01_auto.bed --win 10k
+			Avg:  81.128201  std:  18.030012  AutoCut:  153.248249  AutoCut2:  135.218237  Del:  45.068177  <- what a difference the window size makes! A stdev of 18 is close to 1/5th the average (see CNVnator paper); this is a good sign
+			
+			$ wc BTAN01_auto_file1.bed.final.wssd
+			  389 1167 9072 BTAN01_auto_file1.bed.final.wssd
+			$ wc BTAN01_auto_file1.bed.final.deletions.tab
+			  940  2820 22201 BTAN01_auto_file1.bed.final.deletions.tab
+			  
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1]; $c++;} print $t/$c . "\n";' < BTAN01_auto_file1.bed.final.wssd
+				44672.6889460154
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1]; $c++;} print $t/$c . "\n";' < BTAN01_auto_file1.bed.final.deletions.tab
+				33843.7170212766
+		
+		$ perl auto_diff_alkan_pipeline.pl --in BTAN01_auto.bed --win 20k
+			Avg:  164.826774  std:  26.792559  AutoCut:  271.997010  AutoCut2:  245.204451  Del:  111.241656
+			
+			$ wc BTAN01_auto_file1.bed.final.wssd
+				196
+			$ wc BTAN01_auto_file1.bed.final.deletions.tab
+				440
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1]; $c++;} print $t/$c . "\n";' < BTAN01_auto_file1.bed.final.wssd
+				71793.3775510204	
+				
+		# Oops, I forgot to set the deletion threshold to 3 (the previous results were set to 2 stdev)
+		$ perl auto_diff_alkan_pipeline.pl --in BTAN01_auto.bed --win 10k ; perl auto_diff_alkan_pipeline.pl --in BTAN01_auto.bed --win 20k
+			$ wc ./BTAN01_auto_*k/*final.wssd
+				  389  1167  9072 ./BTAN01_auto_10k/BTAN01_auto_file1.bed.final.wssd
+				  196   588  4576 ./BTAN01_auto_20k/BTAN01_auto_file1.bed.final.wssd
+				  585  1755 13648 total
+			
+			$ wc ./BTAN01_auto_*k/*final.deletions.tab
+				  24   72  566 ./BTAN01_auto_10k/BTAN01_auto_file1.bed.final.deletions.tab
+				  21   63  502 ./BTAN01_auto_20k/BTAN01_auto_file1.bed.final.deletions.tab
+				  45  135 1068 total
+				  
+	# Now, let's check the overlap among these results and the previous results
+		# BTAN01_auto_4 has the previous calls for Angus 01
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a BTAN01_auto_4/BTAN01_auto_file1.bed.final.wssd -b BTAN01_auto_10k/BTAN01_auto_file1.bed.final.wssd -wa -wb > btan01_old_vs_10k_wssd.bed
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a BTAN01_auto_4/BTAN01_auto_file1.bed.final.wssd -b BTAN01_auto_20k/BTAN01_auto_file1.bed.final.wssd -wa -wb > btan01_old_vs_20k_wssd.bed
+			
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a BTAN01_auto_4/BTAN01_auto_file1.bed.final.wssd -b BTAN01_auto_20k/BTAN01_auto_file1.bed.final.wssd -v | wc
+			    185
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -b BTAN01_auto_4/BTAN01_auto_file1.bed.final.wssd -a BTAN01_auto_20k/BTAN01_auto_file1.bed.final.wssd -v | wc
+			     93
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a BTAN01_auto_4/BTAN01_auto_file1.bed.final.wssd -b BTAN01_auto_10k/BTAN01_auto_file1.bed.final.wssd -v | wc
+			     83
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -b BTAN01_auto_4/BTAN01_auto_file1.bed.final.wssd -a BTAN01_auto_10k/BTAN01_auto_file1.bed.final.wssd -v | wc
+			    189
+			    
+			$ perl -lane 'print $F[2] - $F[1] . "\n";' < BTAN01_auto_10k/BTAN01_auto_file1.bed.final.wssd | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+				total   389
+				Minimum 10106
+				Maximum 335613
+				Average 44672.688946
+				Median  29388
+				Standard Deviation      44629.930013
+				Mode(Highest Distributed Value) 19459
+			
+			$ perl -lane 'print $F[2] - $F[1] . "\n";' < BTAN01_auto_20k/BTAN01_auto_file1.bed.final.wssd | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+				total   196
+				Minimum 10157
+				Maximum 440628
+				Average 71793.377551
+				Median  58528
+				Standard Deviation      57607.334855
+				Mode(Highest Distributed Value) 40927
+				
+		# OK, so the results are fairly different from the lower window intersections. I think that I should run this on all of the animals and then start doing my comparison.
+		# wrote a shell script to automate the entire process for each individual animal: automate_indv_diff_windows.sh
+		# Going to run it:
+			$ pwd: /mnt/gliu1_usb/dbickhart/breed_doc
+			$ sh automate_indv_diff_windows.sh
+			
+		# OK, so the pipeline has finished with all of the animals, it's time to extract the gain and loss cnv files and compare them to the original windows
+			# Made a really simple shell one liner to do this:
+				$ for i in ./*/mrsfast/*animal*/*_10k/*.final.wssd; do prefix=`basename $i | cut -d'_' -f1`; echo $prefix; cat $i | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t10k";' > new_windows/$prefix.10k.wssd; done
+				$ for i in ./*/mrsfast/*animal*/*_20k/*.final.wssd; do prefix=`basename $i | cut -d'_' -f1`; echo $prefix; cat $i | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t20k";' > new_windows/$prefix.20k.wssd; done
+				$ for i in ./*/mrsfast/*animal*/*_4/*.final.wssd; do prefix=`basename $i | cut -d'_' -f1`; echo $prefix; cat $i | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t5k";' > new_windows/$prefix.5k.wssd; done
+				
+				$ for i in ./*/mrsfast/*animal*/*_4/*.deletions.tab; do prefix=`basename $i | cut -d'_' -f1`; echo $prefix; cat $i | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t5k";' > new_windows/$prefix.5k.del; done
+				$ for i in ./*/mrsfast/*animal*/*_10k/*.deletions.tab; do prefix=`basename $i | cut -d'_' -f1`; echo $prefix; cat $i | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t10k";' > new_windows/$prefix.10k.del; done
+				$ for i in ./*/mrsfast/*animal*/*_20k/*.deletions.tab; do prefix=`basename $i | cut -d'_' -f1`; echo $prefix; cat $i | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t20k";' > new_windows/$prefix.20k.del; done
+			
+				$ for i in nelore/mrsfast/sep_nelore_animals/*_5/*.final.wssd; do prefix=`basename $i | cut -d'_' -f1`; echo $prefix; cat $i | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t5k";' > new_windows/$prefix.5k.wssd; done
+				$ for i in nelore/mrsfast/sep_nelore_animals/*_5/*.deletions.tab; do prefix=`basename $i | cut -d'_' -f1`; echo $prefix; cat $i | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t5k";' > new_windows/$prefix.5k.del; done
+				# I apparently only ran nelore with the 5 stdev setting. No matter; going to use those files anyways
+				
+			# Copying all of the files to the /mnt/gliu1_usb/dbickhart/breed_doc/new_window   folder
+			# I made a loader script to process all of the files in a directory and then run them through compare_named_bed_vary_coverage.pl
+				$ perl compare_named_bed_loader.pl wssd
+				$ perl compare_named_bed_loader.pl del   <- this did not work so well, since many of my animals did not have deletion calls due to the criteria and low coverage.
+				
+				# removing empty comparisons:
+					$ ls -al *.tab | grep '238' | grep -v '1238' | awk '{print $8}' > remove.sh
+					$ perl -pi -e 's/^/rm /g' remove.sh
+					$ chmod 777 remove.sh
+					$ ./remove.sh

@@ -1,0 +1,53 @@
+04/29/2012
+# I need to take the novel CNVs from Yali's feed efficiency study in order to make some comparisons for George
+# I will then create primers for CNV locations to do confirmation for Erin's study
+
+# Location of Yali's data: S:\gliu\yali\feed\PCR
+# Location of my project folder: C:\SharedFolders\feed_efficiency_project
+# Location of Yali's original project working directory: Server2:mnt/data7/shared/gliu/yali/feed/
+
+# I believe that the coordinates are all btau4.0
+
+# So, I will create a single table that has the following fields:
+
+cnv number	chr	start	end	overallfreq	frequencyhighFeed	freqLowFeed	Novel(hdsnp)?	novel(higheff)?	novel(loweff)?	genes?	
+
+# Then I will start making PCR primers for the CNVs and give animals to test for this.
+
+# A list of files and their contents:
+	* cow_reg_and_array_id_pos.txt		A list of Erin's cow registration numbers and array positions (needed to tie CNVs to animals)
+	* erin_cow_reg_num_and_ids.txt		A list of Erin's Ids for each animal (needed to tie efficient animals to CNVs)
+	* yalis_bmc_cnvr_btau4.txt		A list of Yali's btau4 cnvr from the BMC paper (needed for the table intersection)
+	
+# I created the script and it ran quite well. The script name is overlap_cnv_cnvr_feed_efficiency_data.pl and it is located in /share/feed_efficiency_project/
+
+# Just in case I need it later, Yali's human proteins mapped on cow4 are located in the following table in MYSQL on Server 2: cow4_blastHg18KG
+
+# Now to run the primer 3 pipeline on the regions on Server 3
+	# I am going to use my fork_primer_3_exonerate.pl script to run this
+	# Input is a text file with the list of primer locations in primer_cnv_intersection_data.xls
+	Server 3: /mnt/data8/dbickhart/feed_eff_primers
+	$ fork_primer_3_exonerate.pl -i primer_list_for_fork.txt -p 5
+	
+# Now, redoing some of the checks to filter primers for Erin's data
+	$ perl check_against_hdsnp_coords_select_primers.pl 5,37,51,79,86,93,100,113,118,132,134,152,154,165,173,184,189,199,210,221,229,237,257,258,268,271,277,283,285,290,293,305,338,343,353,367,378,393,406,435,442
+	# could not find primers for six of them
+	$ perl check_against_hdsnp_coords_select_primers.pl 5,37,51,79,86,93,100,113,118,132,134,152,154,165,173,184,189,199,210,221,229,237,257,258,268,271,277,283,285,290,293,305,338,343,353,367,378,393,406,435,442,14,43,292,365,415
+	# Alot of them only had one primer location.
+	# Going to select against this and run all the locations at once.
+	
+
+# Erin and Hoyoung gave me back the results within an excel spreadsheet. I will briefly reformat their results and then try to create a script to process all of their data
+	# The original file is:   C:\SharedFolders\feed_efficiency_project\qpcr_results\qpcr_plate_design_eec.xlsx
+	# I will split them into two excel files:
+		- Datasheets containing the results
+		- Workbook with just the primer efficiencies
+	
+	# I had to reformat several entries in these workbooks, but now everything is formatted correctly
+	
+	# I also created a script to process the data and produce the ddCT calculation
+	pwd: /home/dbickhart/share/feed_efficiency_project/qpcr_results
+	$ perl sort_and_process_feed_eff_data.pl
+	
+	# plate 4 had a significant deviation in ct value for Dominette's BTF3-1 amplification. Also, a broad melt curve was noted.
+	# If I remove that plate's results, there is improvement in the final numbers. 

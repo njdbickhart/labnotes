@@ -1,0 +1,529 @@
+2010_10_14
+# Running 10,000 paired end reads from Blackstar NGS data against the Cow4 unmasked genome fasta
+# Unless otherwise noted, the 10,000 reads are derived from the first 10,000 reads of the following two files:
+	Srv3:/mnt/gliu1_usb/blackstar/NGS/081211_HWI-EAS174_s_1_1_sequence.fq 
+	Srv3:/mnt/gliu1_usb/blackstar/NGS/081211_HWI-EAS174_s_1_2_sequence.fq 
+	
+# The cow4 genome used to create the two indexes was found at:
+	Srv3:/mnt/data110/gliu/cow4.fa
+	# Note: chrUN contigs were not removed
+
+# The output directory for all files (including indexes) was:
+	Srv3:/mnt/gliu1_usb/dbickhart/blackstar/small/
+	# Note, this was also the working directory for all command line inputs
+	
+(<>) Process (unless otherwise noted, Srv3:/mnt/gliu1_usb/dbickhart/blackstar/small/ is the working directory):
+	# Indexing the cow4 genome:
+		$ ../../bwa-0.5.8a/bwa index -p /mnt/gliu1_usb/dbickhart/blackstar/small/bwa_cow4_index -a bwtsw /mnt/data110/gliu/cow4.fa
+			#Generated these files:
+			bwa_cow4_index.amb 
+			bwa_cow4_index.ann
+			bwa_cow4_index.bwt
+			bwa_cow4_index.pac
+			bwa_cow4_index.rbwt
+			bwa_cow4_index.rpac
+			bwa_cow4_index.rsa
+			
+		$ ../../novocraft/novoindex -k 14 -s 3 -m /mnt/gliu1_usb/dbickhart/blackstar/small/novo_cow4_index /mnt/data110/gliu/cow4.fa
+			# Generated this file:
+			novo_cow4_index
+
+	# Generating the 10,000 read files (Srv3:/mnt/gliu1_usb/blackstar/NGS/ is the working directory for this step only):
+		$ perl -n -e '$x+=1; if($x < 40005){print $_;}' < 081211_HWI-EAS174_s_1_1_sequence.fq > /mnt/gliu1_usb/dbickhart/blackstar/small/081211_1_1_small.fq
+		$ perl -n -e '$x+=1; if($x < 40005){print $_;}' < 081211_HWI-EAS174_s_1_2_sequence.fq > /mnt/gliu1_usb/dbickhart/blackstar/small/081211_1_2_small.fq
+		# Since each fastq entry has four lines, this command prompt perl script generates 10001 reads.
+		# Read names are also in order in both files
+		
+	# Running the first tier alignment (Srv3:/mnt/gliu1_usb/dbickhart/blackstar/small/):
+		$ ../../bwa-0.5.8a/bwa aln bwa_cow4_index 081211_1_1_small.fq > 081211_1_1_small.sai
+		$ ../../bwa-0.5.8a/bwa aln bwa_cow4_index 081211_1_2_small.fq > 081211_1_2_small.sai
+		$ ../../bwa-0.5.8a/bwa sampe bwa_cow4_index 081211_1_1_small.sai 081211_1_2_small.sai 081211_1_1_small.fq 081211_1_2_small.fq > 081211_1_small_tier1.sam
+
+		# Samtools convert to bam, sort and extract discordant reads
+		$ ../../samtools-0.1.8/samtools view -bS -o 081211_1_small_tier1.bam 081211_1_small_tier1.sam
+		$ ../../samtools-0.1.8/samtools sort -n 081211_1_small_tier1.bam 081211_1_small_tier1_sort
+		$ ../../samtools-0.1.8/samtools view -bF 0x2 081211_1_small_tier1_sort.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 081211_1_1_small_tier2.fq -fq2 081211_1_2_small_tier2.fq
+
+	# Running the second tier alignment (same working directory):
+		$ ../../novocraft/novoalign -d novo_cow4_index -f 081211_1_1_small_tier2.fq 081211_1_2_small_tier2.fq -o SAM -r R -i PE 250,50 -H > 081211_1_small_tier2.sam
+			# Mean   240, Std Dev  74.0
+			# Done.
+		
+		# Samtools convert to bam, sort and extract discordant reads
+		$ ../../samtools-0.1.8/samtools view -bS -o 081211_1_small_tier2.bam 081211_1_small_tier2.sam
+		$ ../../samtools-0.1.8/samtools sort -n 081211_1_small_tier2.bam 081211_1_small_tier2_sort
+		$ ../../samtools-0.1.8/samtools view -bF 0x2 081211_1_small_tier2_sort.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 081211_1_1_small_tier3.fq -fq2 081211_1_2_small_tier3.fq
+
+		# Sizes of fq files differ at this stage because of the -H option I used in novoalign. -H crops the last two bases of a read if they are of the lowest quality phred score ("B" in this case).
+		# Novoalign also converts the Illumina quality scores of the reads into Sanger scale quality scores
+		
+	# Running the third tier alignment and processing reads for hydra (same working directory as the tier 2 and 1 alignment steps):
+		$ ../../novocraft/novoalign -d novo_cow4_index -f 081211_1_1_small_tier3.fq 081211_1_2_small_tier3.fq -o SAM -r Exhaustive 1000 -i PE 250,50 -t 180 > 081211_1_small_tier3.sam
+		
+		# Samtools convert to bam and sort
+		$ ../../samtools-0.1.8/samtools view -bS -o 081211_1_small_tier3.bam 081211_1_small_tier3.sam
+		$ ../../samtools-0.1.8/samtools sort -n 081211_1_small_tier3.bam 081211_1_small_tier3_sort
+		
+		$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i 081211_1_small_tier3_sort.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > 081211_1_small_tier3_disc.bedpe
+		
+		$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a 081211_1_small_tier3_disc.bedpe -b com_chr5_SSR.bed -type neither | cut -f 1-14 > 081211_1_small_tier3_noR.bedpe
+		
+		$ ../../Hydra-Version-0.5.3/bin/hydra -in 081211_1_small_tier3_noR.bedpe -out 081211_1_small_tier3_breaks -mld 300 -mno 807 -is -li -ms 2
+		# Generates no results; likely because of the smaller read count and the ambiguity of the reads that are in the final bedpe files
+		
+		
+		
+(<>) "Help" options for all programs used.
+	# Samtools view
+		$ ../../samtools-0.1.8/samtools view -h
+		
+		Usage:   samtools view [options] <in.bam>|<in.sam> [region1 [...]]
+		
+		Options: -b       output BAM
+		         -h       print header for the SAM output
+		         -H       print header only (no alignments)
+		         -S       input is SAM
+		         -u       uncompressed BAM output (force -b)
+		         -x       output FLAG in HEX (samtools-C specific)
+		         -X       output FLAG in string (samtools-C specific)
+		         -t FILE  list of reference names and lengths (force -S) [null]
+		         -T FILE  reference sequence file (force -S) [null]
+		         -o FILE  output file name [stdout]
+		         -R FILE  list of read groups to be outputted [null]
+		         -f INT   required flag, 0 for unset [0]
+		         -F INT   filtering flag, 0 for unset [0]
+		         -q INT   minimum mapping quality [0]
+		         -l STR   only output reads in library STR [null]
+		         -r STR   only output reads in read group STR [null]
+		         -?       longer help
+
+	# Samtools sort
+		$ ../../samtools-0.1.8/samtools sort -?
+		sort: invalid option -- ?
+		Usage: samtools sort [-on] [-m <maxMem>] <in.bam> <out.prefix>
+		# even though it isn't listed here, -n sorts by read name instead of by chromosome name (the default)
+
+	# BWA aln
+		$ ../../bwa-0.5.8a/bwa aln
+		
+		Usage:   bwa aln [options] <prefix> <in.fq>
+		
+		Options: -n NUM    max #diff (int) or missing prob under 0.02 err rate (float) [0.04]
+		         -o INT    maximum number or fraction of gap opens [1]
+		         -e INT    maximum number of gap extensions, -1 for disabling long gaps [-1]
+		         -i INT    do not put an indel within INT bp towards the ends [5]
+		         -d INT    maximum occurrences for extending a long deletion [10]
+		         -l INT    seed length [32]
+		         -k INT    maximum differences in the seed [2]
+		         -m INT    maximum entries in the queue [2000000]
+		         -t INT    number of threads [1]
+		         -M INT    mismatch penalty [3]
+		         -O INT    gap open penalty [11]
+		         -E INT    gap extension penalty [4]
+		         -R INT    stop searching when there are >INT equally best hits [30]
+		         -q INT    quality threshold for read trimming down to 35bp [0]
+		         -c        input sequences are in the color space
+		         -L        log-scaled gap penalty for long deletions
+		         -N        non-iterative mode: search for all n-difference hits (slooow)
+		         -f FILE   file to write output to instead of stdout
+		        
+	# BWA index
+		$../../bwa-0.5.8a/bwa index
+		
+		Usage:   bwa index [-a bwtsw|div|is] [-c] <in.fasta>
+		
+		Options: -a STR    BWT construction algorithm: bwtsw or is [is]
+		         -p STR    prefix of the index [same as fasta name]
+		         -c        build color-space index
+		
+		Warning: `-a bwtsw' does not work for short genomes, while `-a is' and
+		         `-a div' do not work not for long genomes. Please choose `-a'
+		         according to the length of the genome.
+
+	# BWA sampe
+		$../../bwa-0.5.8a/bwa sampe
+		
+		Usage:   bwa sampe [options] <prefix> <in1.sai> <in2.sai> <in1.fq> <in2.fq>
+		
+		Options: -a INT   maximum insert size [500]
+		         -o INT   maximum occurrences for one end [100000]
+		         -n INT   maximum hits to output for paired reads [3]
+		         -N INT   maximum hits to output for discordant pairs [10]
+		         -c FLOAT prior of chimeric rate (lower bound) [1.0e-05]
+		         -f FILE sam file to output results to [stdout]
+		
+		         -P       preload index into memory (for base-space reads only)
+		         -s       disable Smith-Waterman for the unmapped mate
+		         -A       disable insert size estimate (force -s)
+		
+		Notes: 1. For SOLiD reads, <in1.fq> corresponds R3 reads and <in2.fq> to F3.
+		       2. For reads shorter than 30bp, applying a smaller -o is recommended to
+          		to get a sensible speed at the cost of pairing accuracy.
+          		
+          # novoindex
+          	$ ../../novocraft/novoindex
+		# novoindex (2.7) - Universal k-mer index constructor.
+		# (C) 2008 NovoCraft
+		# novoindex
+		# Creating 9 indexing threads.
+		Error: Please supply an index filename and at least one sequence file.
+		
+		
+		Usage:
+		    novoindex  -k 99 -s 9 -m indexfile sequencefiles....
+		Where:
+		    -k   99        is the k-mer length to be used for the index. Typically 14.
+		    -s   9         is the step size for the index. Typical values are from 1 to 3.
+		    -m             sets lower case masking on. Lower case sequence will not be indexed.
+		    -b             sets bisulphite indexing and alignment mode for methylation experiments.
+		    -c            sets ABI SoLid Colour space indexing mode.
+		    -n   name      sets the an internal name for the reference sequence index. This is
+		                   used in report headers and as the AS: field in SAM SQ record.
+		                   Defaults to the indexfile name.
+		    indexfile      is the filename for the indexed reference sequence generated by novoindex.
+		    sequencefiles  a list of sequence files in fasta format to be included in the index.
+		
+		Example:
+		              novoindex -k 14 -s 1 celegans.ndx elegans.dna.fa
+		
+ 		If k or s are not specified a suitable value will be chosen by novoindex.
+ 		
+ 		
+ 	# novoalign
+ 		$ ../../novocraft/novoalign
+		Error: Missing reference database name (-d option).
+		Novoalign V2.07.00
+		
+		Usage:
+		    novoalign options
+		
+		Options:
+		    -d dbname      Full pathname of indexed reference sequence from novoindex
+		
+		Options for Read processing:
+		    -f read1 read2     Filenames for the read sequences for Side 1 & 2.
+		                   If only one file is specified then single end reads are processed.
+		                   If two files are specified then the program will operate in paired end mode.
+		    -F format      Specifies a read file format. For Fastq '_sequence.txt' files from Illumina
+		                   Pipeline 1.3 please specify -F ILMFQ.
+		    -H             Hard clip trailing bases with quality <= 2
+		    -l 99          Sets the minimum information content for a read in base pairs. Default log4(Ng) + 5
+		                   where Ng is the length of the reference genome. Measure uses base qualities
+		                   to determine information content of the read in bits and divides by 2 to get
+		                   effective length in bases.
+		    -n 99          Truncate reads to the specified length before alignment. Default is 150.
+		    -p 99,99 [0.9,99]
+		                   Sets polyclonal filter thresholds.  The first pair of values (n,t) sets
+		                   the number of bases and threshold for the first 20 base pairs of each read.
+		                   If there are n or more bases with phred quality below t then the read is
+		                   flagged as polyclonal and will not be aligned. The alignment status is 'QC'.
+		                   The second pair of values applies to the entire read rather than just the first 20bp
+		                   and is entered as fraction of bases in the read below the threshold.
+		                   Setting -p -1 disables the filter. Default -p -1,10 -1,10
+		    -a [read1 adapter] [read2 adapter]
+		                   Enables adapter stripping from 3' end of reads before aligning. The second
+		                   adapter is used for the second read in paired end mode.
+		                   Default adapter sequence for single end is TCGTATGCCGTCTTCTGCTTG.
+		                   Default adapter sequences for paired end reads are:
+		                           Read1: AGATCGGAAGAGCGGTTCAGCAGGAATGCCGAG
+		                           Read2: AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGTA
+		    -h 99 [99]     Sets homopolymer and optional dinucleotide filter score. Any read that
+		                   matches a homopolymer or dinuc with score less than or equal to this
+		                   threshold will skipped (reported as QC).
+		                   Default 20 for homopolymer and 20 for dinucleotides.
+		
+		Options for alignment scoring:
+		    -t 99          Sets the maximum alignment score acceptable for the best alignment. Default Automatic.
+		                   In automatic mode the threshold is set based on read length, genome size and other
+		                   factors (see manual).
+		                   For pairs the threshold applies to the fragment and includes both ends and the length penalty.
+		    -g 99          Sets the gap opening penalty. Default 40
+		    -x 99          Sets the gap extend penalty. Default 15
+		    -u 99          Penalty for unconverted CHG or CHH cytosine in bisulfite alignment mode. Default 0
+		                   For plants 6 may be a good value.
+		    -b mode        Sets Bisulphite alignment mode. Values for mode are:
+		                        4 - Aligns in 4 possible combinations of direction and index. (Default)
+		                        2 - Aligns reads in forward direction using CT index and in reverse complement using the GA index.
+		    -N 999         Sets the number of bp of source DNA that are not represented in the reference sequences (index). This
+		                   value is used in calculation of prior probability that the read originated in sequence that we cannot
+		                   align to because it is not in the reference sequence set. By default we use the number of bases coded
+		                   as N's in the reference genome. Set to zero to disable inclusion of this in quality calculations.
+		
+		Options for reporting:
+		    -o format [readgroup]
+		                   Specifies the report format. Native, Pairwise, SAM. Default is Native.
+		                   Optionally followed by SAM @RG record.
+		                   Refer to manual for details additional options.
+		    -o Softclip    Turns on soft clipping of alignments. Default for SAM report format.
+		    -o FullNW      Turns off soft clipping of alignments. Default for Pairwise and Native report formats.
+		    -R 99          Sets score difference between best and second best alignment for calling a repeat. Default 5.
+		    -r strategy [limit]
+		                   Sets strategy for reporting repeats. 'None', 'Random', 'All', 'Exhaustive',
+		                   or a posterior probability limit. Default None.
+		                   For -rAll & -rEx you can also specify a limit on the maximum number of alignments reported per read.
+		    -Q 99          Sets lower limit on alignment quality for reporting. Default 0.
+		    -e 999         Sets a limit on number of alignments for a single read.
+		                   This limit applies to the number of alignments with score equal to that of the best
+		                   alignment. Alignment process will stop when the limit is reached.
+		                   Default 1000 in default report mode, off for other modes.
+		    -q 9           Sets number of decimal places for quality score. Default zero.
+		    -K [file]      Collects mismatch statistics for quality calibration by position in the read
+		                   and called base quality. Mismatch counts are written to the named file after
+		                   all reads are processed. When used with -k option the mismatch counts include
+		                   any read from the input quality calibration file.
+		
+		Paired End Options:
+		    -i [mode] 99 99
+		                   Sets approximate fragment length and standard deviation. Mode is 'MP' for mate
+		                   pairs and 'PE' for paired end, the mode changes the expected orientation of reads
+		                   in a proper pair.
+		                   Default -i PE 250 30
+		    -v 99          Sets the structural variation penalty for chimeric fragments. Default 70
+		    -v 99 99       Sets the structural variation penalty for chimeric fragments.
+		                    1) Penalty for SVs within one sequence
+		                    2) Penalty for SVs across different sequences.
+		    -v 99 99 99 regex
+		                   Sets the structural variation penalty for chimeric fragments. The three values are for:
+		                    1) Penalty for SVs within a group of sequences as defined by the regular expression.
+		                    2) Penalty for SVs within a single sequence
+		                    3) Penalty for SVs different sequence and group.
+		                   regex defines a regular expression applied to headers of indexed sequences. The regular
+		                   expression should define one field that is used to define sequence groups.
+		
+		Single End Options:
+		    -m [99]        Sets miRNA mode. In this mode each alignment to a read is given an additional
+		                   score based on nearby alignment to the opposite strand of the read. Optional
+		                   parameter sets maximum distance in bp between alignment and it's reverse complement, Default 100bp.
+		                   Setting miRNA mode changes the default report mode to 'All'.
+		    -s 9           Turns on read trimming and sets trimming step size. Default step size is 2bp.
+		                   Unaligned reads are trimmed until they align or fail the QC tests.
+
+	# pairToBed
+		$ ../../BEDTools-Version-2.10.0/bin/pairToBed
+		
+		Program: pairToBed (v2.10.0)
+		Author:  Aaron Quinlan (aaronquinlan@gmail.com)
+		Summary: Report overlaps between a BEDPE file and a BED/GFF/VCF file.
+		
+		Usage:   pairToBed [OPTIONS] -a <bedpe> -b <bed/gff/vcf>
+		
+		Options:
+		        -abam   The A input file is in BAM format.  Output will be BAM as well.
+		                - Requires BAM to be grouped or sorted by query.
+		
+		        -ubam   Write uncompressed BAM output. Default is to write compressed BAM.
+		
+		                is to write output in BAM when using -abam.
+		
+		        -bedpe  When using BAM input (-abam), write output as BEDPE. The default
+		                is to write output in BAM when using -abam.
+		
+		        -ed     Use BAM total edit distance (NM tag) for BEDPE score.
+		                - Default for BEDPE is to use the minimum of
+		                  of the two mapping qualities for the pair.
+		                - When -ed is used the total edit distance
+		                  from the two mates is reported as the score.
+		
+		        -f      Minimum overlap required as fraction of A (e.g. 0.05).
+		                Default is 1E-9 (effectively 1bp).
+		
+		        -s      Enforce strandedness when finding overlaps.
+		                Default is to ignore stand.
+		                Not applicable with -type inspan or -type outspan.
+		
+		        -type   Approach to reporting overlaps between BEDPE and BED.
+		
+		                either  Report overlaps if either end of A overlaps B.
+		                        - Default.
+		                neither Report A if neither end of A overlaps B.
+		                both    Report overlaps if both ends of A overlap  B.
+		                xor     Report overlaps if one and only one end of A overlaps B.
+		                notboth Report overlaps if neither end or one and only one
+		                        end of A overlap B.  That is, xor + neither.
+		
+		                ispan   Report overlaps between [end1, start2] of A and B.
+		                        - Note: If chrom1 <> chrom2, entry is ignored.
+		
+		                ospan   Report overlaps between [start1, end2] of A and B.
+		                        - Note: If chrom1 <> chrom2, entry is ignored.
+		
+		                notispan        Report A if ispan of A doesn't overlap B.
+		                                - Note: If chrom1 <> chrom2, entry is ignored.
+		
+		                notospan        Report A if ospan of A doesn't overlap B.
+                                - Note: If chrom1 <> chrom2, entry is ignored.
+                                
+	# bamToBed  
+		$../../BEDTools-Version-2.10.0/bin/bamToBed -h
+		
+		Program: bamToBed (v2.10.0)
+		Author:  Aaron Quinlan (aaronquinlan@gmail.com)
+		Summary: Converts BAM alignments to BED6 or BEDPE format.
+		
+		Usage:   bamToBed [OPTIONS] -i <bam>
+		
+		Options:
+		        -bedpe  Write BEDPE format.
+		                - Requires BAM to be grouped or sorted by query.
+		
+		        -bed12  Write "blocked" BED format (aka "BED12").
+		
+		                http://genome-test.cse.ucsc.edu/FAQ/FAQformat#format1
+		
+		        -split  Report "split" BAM alignments as separate BED entries.
+		
+		        -ed     Use BAM edit distance (NM tag) for BED score.
+		                - Default for BED is to use mapping quality.
+		                - Default for BEDPE is to use the minimum of
+		                  the two mapping qualities for the pair.
+		                - When -ed is used with -bedpe, the total edit
+		                  distance from the two mates is reported.
+		
+		        -tag    Use other NUMERIC BAM alignment tag for BED score.
+		                - Default for BED is to use mapping quality.
+		                  Disallowed with BEDPE output.
+		
+		        -color  An R,G,B string for the color used with BED12 format.
+                Default is (255,0,0).
+                
+	# pairDiscordants.py
+		$ ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py
+		Usage: pairDiscordants.py -i <file> -n <numMappings, default=100> -o <order, default="size"> -d <distance, default=1000000> -l <readLength, default=42> -x <minSpan, default=100> -y <minConcLength, default=0> -z <maxConcLenth, default=600> -m <mode, default="discordant">
+		
+		pairDiscordants version 1.0
+		Author: Ira Hall
+		Description: Pairs and filters reads in BED format to make BEDPE files suitable for paired-end mapping with Hydra.
+		Last Modified: July 20, 2010
+		
+		# INPUT:
+		# chrom; start; end; readID/readNum; editDistance; strand
+		# chr10 14800035        14800077        113100100400208/1       0       +
+		
+		# OUTPUT
+		# 1. chrom1
+		# 2. start1
+		# 3. end1
+		# 4. chrom2
+		# 5. start2
+		# 6. end2
+		# 7. read ID
+		# 8. to which end of the pair do fields 1,2,3,9,11 correspond? (1 or 2)
+		# 9. strand1 (+/-)
+		# 10. strand2
+		# 11. editDistance1
+		# 12. editDistance2
+		# 13: mappings1
+		# 14: mappings2
+		# 15: fragSize (in discordant and detail mode only)
+		# 16: combined edit distance (in discordant and detail mode only)
+		# 17: summed count of row each mapping was present in block of original file (only in detail mode)
+		# 18: tag describing whether a read-pair was classified as discordant, concordant, badSpan, repeat or orphan (only in detail mode)
+		
+		
+		Options:
+		  -h, --help            show this help message and exit
+		  -i FILE, --file=FILE  A tab delimited BED file, or standard input (-i
+		                        stdin).
+		  -n INT, --numMappings=INT
+		                        The number of mapping combinations that are reported.
+		                        Default = 1000.
+		  -o STR, --order=STR   The order to choose mappings when there are more than
+		                        specified in -n. Supports size between read1-read2
+		                        mappings (-o size) or genome order (-o genome) sorted
+		                        in default fashion (chr10 before chr2). In either case
+		                        mapping combinations with less edit distance have
+		                        priority. Default = size.
+		  -d INT, --dist=INT    The genomic distance above which a readpair mapping is
+		                        considered 'distant'. This is used in determining the
+		                        order that mappings are reported when using the 'size'
+		                        option in -o. Default = 1000000
+		  -x INT, --minSpan=INT
+		                        The minimum genomic distance that a readpair must span
+		                        in order to be reported, not counting the read lengths
+		                        (i.e., inner span, not fragment size). Default = 100.
+		  -y INT, --minConcRange=INT
+		                        minimum size to judge a readpair as 'concordant' with
+		                        respect to the reference genome. Assumes fragment
+		                        libraries not matepair libraries (+/- orientation is
+		                        concordant). Default = 0.
+		  -z INT, --maxConcRange=INT
+		                        Maximum size to judge a read as 'concordant. Default =
+		                        600.
+		  -m STR, --mode=STR    Report all mapping types (-m detail), just discordants
+		                        (-m discordant), or directly to Hydra input format (-m
+		                        hydra) without additional columns. In detail mode only
+		                        one mapping is returned for concordant reads or those
+		                        that fail the minSpan (-s1) threshold. These are
+		                        tagged in an additional column as 'concordant' or
+		                        'badSpan'. Default = 'hydra'.
+		  -a INT, --anchorThresh=INT
+		                        The number of mapping combinations allowed for
+		                        readpairs with a single uniquely-mapped read;
+		                        readpairs with more than this number of mappings on
+		                        the non-unique end will not be reported (except in
+		                        detail mode with NA's in all fields except the read
+		                        ID); Default = 1000.
+		  -r INT, --multiThresh=INT
+		                        The number of mapping combiantions allowed for
+		                        readpairs without a single uniquely-mapped read;
+		                        readpair mappings with more than this number of
+		                        mappings will not be reported (except in detail mode
+		                        with NA's in all fields except the read ID); Default =
+		                        100.
+		  -e INT, --editSlop=INT
+		                        The combined edit distance allowed, relative to best
+		                        mapping for each pair; Default = 0.
+
+	# dedupDiscordants.py
+		$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py
+		Usage: dedupDiscordants.py -i <BEDPE> -s <INT, default=1>
+		
+		
+		Options:
+		  -h, --help    show this help message and exit
+		  -i FILE       BEDPE input file
+		  -s INT        The amount of slop, in bp, allowed for duplicates to be marked
+		  -m INT        The maximum number of mapping combinations allowed before a
+		                duplicate ID has _all_ of its mappings removed
+		  --mem=STRING  The amount of memory to use for UNIX sort.  Default = 2G.  See
+		                "man sort" for valid values.
+		  -e            Dedup if __either__ end shares a start position (within slop)
+		                in common.
+
+	# hydra
+		$ ../../Hydra-Version-0.5.3/bin/hydra
+		
+		Program: hydra (v0.5.3)
+		Author:  Aaron Quinlan (aaronquinlan@gmail.com)
+		Summary: Calls SV breakpoints from discordant paired-end mappings.
+		
+		Usage:   hydra [OPTIONS] -in <mappings> -out <breakpoints> -mld <bp> -mno <bp>
+		
+		Options:
+		  -in   File of discordant mappings.
+		  -out  Stub for output files.
+		  -mld  Maximum allowable length difference b/w mappings.
+		        Typically set to 10 * m.a.d. of the DNA fragment libraries.
+		        see: http://en.wikipedia.org/wiki/Median_absolute_deviation
+		
+		  -mno  Maximum allowable non-overlap b/w mappings.
+		        Typically set to median + (20 * m.a.d.) of the DNA fragment libraries.
+		
+		  -ms   Minimum number of pairs required for variant to be called.
+		        Default: 2
+		
+		  -lnk  Maximum intrachromosomal distance allowed before a
+		        variant is considered to be between unlinked DNA segments.
+		        Default: 1000000 (i.e., 1Mb)
+		
+		  -is   Choose most likely variant (when a tie exists) based on
+		        least edit distance rather than size.
+		
+		  -li   Combine +/+ and -/- mappings when screening for inversions.
+		        This increases sensitivity in low coverage.
+		
+		  -use  Which mappings should be used for each pair?
+		        "best"  Use the mappings with the least edit distance for each pair.
+		                Default.
+		        "all"   Use all mappings for each pair.
+        		<INT>   Use the best plus those within <INT> edit distance of best.

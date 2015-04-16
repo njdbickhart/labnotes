@@ -1,0 +1,88 @@
+03/05/2013
+# These are my notes and table creation guidelines for generating my CNV sql databases on my ubuntu virtualbox
+# I will keep the password in the open here, because it is not critical information and I need to remember it more than keep it secure
+
+* Root password: 11234
+
+* User: dbickhart
+* Pass: 11234
+
+* Alias for lookup: mq
+
+# Setting up the user account:
+	$ mysql --user=root --password=11234
+	mysql> create user 'dbickhart'@'localhost' identified by '11234';
+	mysql> grant all privileges on *.* to 'dbickhart'@'localhost' with grant option;
+	# That should give me all of the root user priviledges so I can create tables and databases with impunity
+	
+	$ alias mq='mysql --user=dbickhart --password=11234'
+	# added this to my ~/.bash_aliases text file so it should be automatically set each time I log in
+	
+# Enable local infile loading
+	# Because of the initial security restriction, load data local infile commands will not work by default in Ubuntu mysql
+	# How to fix this:
+	
+	The my.cnf file you should edit is the /etc/mysql/my.cnf file. Just: $ sudo nano /etc/mysql/my.cnf	
+	Then add:	
+	[mysqld]
+	
+	local-infile
+	
+	[mysql]
+	
+	local-infile
+	
+	The headers [mysqld] and [mysql] are already given, just locate them in the file and add local-infile underneath each of them.
+	
+# Cattle cnvs database
+	mysql> create database cattle_cnvs;
+	
+	# Going to create a table to contain all of the DOC CNVs
+	mysql> create table hd_doc_cnvs_gr (
+		bin int,
+		chr varchar(60),
+		start int,
+		end int,
+		animal varchar(60),
+		cn double,
+		type enum('gain', 'loss', 'both', 'N/A')
+	);
+	
+	# Creating a table to contain hd data cnv calls from Tad
+	mysql> create table tad_master_sheet_hd_indiv (
+		bin int,
+		breed varchar(10),
+		chr varchar(60),
+		start int,
+		end int, 
+		cn int,
+		startsnp varchar(100),
+		endsnp varchar(100),
+		anname varchar(100),
+		arrayid varchar(60),
+		type enum('gain', 'loss', 'both', 'N/A')
+	);
+	
+# Loading local data files
+	# The CNV files are all located in /home/dbickhart/share/umd3_data/previous_cnvs/
+	
+	pwd: /home/dbickhart/share/umd3_data/previous_cnvs/hd_animals_ngs
+	# Creating the input file:
+	$ perl ~/bin/create_cnv_mysql_bin_table_file.pl
+	# Loading them into the table
+	$ mq
+	mysql> load data local infile "/home/dbickhart/share/umd3_data/previous_cnvs/hd_animals_ngs/ngsgrhdcnv_index_bin_sql_data.txt" into table cattle_cnvs.hd_doc_cnvs_gr fields terminated by "\t" lines terminated by "\n" (bin, chr, start, end, animal, cn, type);
+	
+	pwd: /home/dbickhart/share/umd3_data/previous_cnvs/tad_hd_dataset
+	# Created the input file on server3: /mnt/data110/dbickhart/tad_brown_swiss/
+	
+	# transferred the file to the above folder
+	# loading them into the table
+	$ mq
+	mysql> load data local infile "/home/dbickhart/share/umd3_data/previous_cnvs/tad_hd_dataset/tad_cnv_mysql_bin_full.tab" into table cattle_cnvs.tad_master_sheet_hd_indiv fields terminated by "\t" lines terminated by "\n" (bin, breed, chr, start, end, cn, startsnp, endsnp, anname, arrayid, type);
+
+# Checking CNV coords
+	# I have a program in my bin folder that takes advantage of these binned mysql tables:
+	~/bin/check_cnv_coords_sql_db.pl
+	
+	# All that I need to do is run that program with a list of UCSC coordinates in the command line and it will identify all of the CNVS within the region

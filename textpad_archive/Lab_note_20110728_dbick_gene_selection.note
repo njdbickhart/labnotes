@@ -1,0 +1,245 @@
+07/28/2011
+# I will use this note file to try to pick out genes of interest and pathways of interest. 
+# My goal will be to use ipa and panther analysis to try to id genes and then list them here
+# Priority genes should have the following characteristics:
+	- unique 
+	
+	
+__________________________________
+Gene cn overlap
+__________________________________
+
+# Created a script that generates a massive table with individual CN windows for each gene/cnv intersection
+	$ perl create_copynumber_gene_indiv_window.pl -i refseq_names.bed -c cn_file_list.txt -v cnv_file_list.txt -o named_refseq_window_cn_table
+	
+	
+__________________________________
+IPA analysis
+__________________________________
+
+# Going to run my updated create_copynumber_gene_intersect_table.pl script in order to make a new xls file for IPA upload
+	
+	$ perl create_copynumber_gene_intersect_table.pl -i gene_databases.list -c cn_file_list.txt -v cnv_file_list.txt -p REFSEQN -s 1
+	# The output file is called "ingenuity_upload.xls"
+	# I uploaded the file to the IPA analysis program and saved it under a new folder HD_an_cnv
+	# I then clicked the "run analysis" button and let the program go. 
+	# I later checked the analysis results under:
+		-gain_loss_cn_normalized
+		
+	# Nothing too interesting; the same pathways emerged in all animals
+	# I will try uploading a different style of format.
+	
+	# This time, I will try using a -1 (loss) 0 (two copy) 1 (gain) style format
+	$ perl create_copynumber_gene_intersect_table.pl -i gene_databases.list -c cn_file_list.txt -v cnv_file_list.txt -p REFSEQN -s 1
+	# The output file was renamed to "gain_loss_trinary_format.xls"
+	
+	# Uploaded to the IPA server and then filtered it into "gain" and "loss" datasets
+		# For the gain and loss datasets, I ran an analysis using the core analysis module and all three animals (human, mouse and rat) as well as genes and chemicals
+		# Still, nothing all that interesting
+		
+	
+	# My final plan is to do a unique gene list
+	# Uploaded and run.
+	
+	# Interesting genes and pathways to consider:
+		- AOX1		gain	Only found in Nelore		Inflammatory response
+		- CNN1		loss	Only found in Nelore		regulation of cytoskeleton, smooth muscle development
+		- FABP2		gain	All three angus and DT		Fatty acid binding in intestines, also cell proliferation and growth
+		- APOL3		gain	Found in all but Nelore		Influences migration of lipids through the cell
+		- FSHR		gain	Found only in DT		Receptor for folicle stimulating hormone; influences oocyte development
+	
+	
+	# George made a good point: The individual genes are nice, but the pathways are more interesting. 
+	# I should try to separate out the animal gene lists, upload them separately and then run the IPA analysis on them
+	# FABP2 seems like a very interesting Copy number variant gene that might be related to Angus and Hereford growth
+	# I am going to try to design qPCR primers for it to check it out
+		# On my virtualbox
+		pwd: /home/derek/share/cow4_doc/hd_an_trace_art/cn_intervals
+		$ perl extract_cn_for_heatmap.pl -c chr6 -s 6814947 -e 6911996 -o FABP2_test
+		
+		# Looks great, but the CNVR only intersects with the first portion of the gene.
+		# Going to look further upstream
+		$ perl extract_cn_for_heatmap.pl -c chr6 -s 6762747 -e 6921000 -o FABP2_test_upstream
+		
+		# Yup, so the upstream of the gene has higher copy number estimates, but the first exon is also included in the CNVR
+		# I think that I should design a primer pair for the upstream region, then a primer pair for the first exon.
+		# The first exon is only 50bp long... going to have to design primers for the region rather than the exon.
+		
+		$ primer_3_exonerate_wrapper.pl -c chr6 -s 6800345 -e 6815239 -a 150-250 -o chr6_6800345_6815239.primers
+		$ primer_3_exonerate_wrapper.pl -c chr6 -s 6815969 -e 6818884 -a 150-250 -o chr6_6815969_6818884.primers  <- exon region primers
+	
+	# George would like more interesting genes to look at, as well as heatmaps for the existing genes that I picked out (above)
+		# I'm going to make heatmaps for the other genes
+			$ perl extract_cn_for_heatmap.pl -c chr2 -s 93376314 -e 93484307 -o AOX1_centered
+			$ perl extract_cn_for_heatmap.pl -c chr7 -s 14323973 -e 14353176 -o CNN1_centered
+			$ perl extract_cn_for_heatmap.pl -c chr5 -s 80256012 -e 80380691 -o APOL3_centered
+			$ perl extract_cn_for_heatmap.pl -c chr11 -s 32455276 -e 32787662 -o FSHR_centered
+			
+__________________________________
+Panther analysis
+__________________________________
+
+# From Yali's note 2011_gene_yaho.txt, Yali used five different sets of genes to extract gene annotations that intersected with CNVRs
+# I think that I should use these intersections instead of my own, redo the IPA analysis (later) and do a panther analysis.
+
+# Crap, those genesets are located on server 2, so I will have to copy them into a file and bring them to my side
+	$ mysql -p -u gliu
+	$ use cow4_cnv_gene;  <- George's database with the gene annotation tables
+	$ show tables;
+		+-------------------------+
+		| Tables_in_cow4_cnv_gene |
+		+-------------------------+
+		| cow4_blastHg18KG        |
+		| cow4_ensGene            |
+		| cow4_ensGene_2          |
+		| cow4_glean              |
+		| cow4_refGene            |
+		+-------------------------+
+		5 rows in set (0.00 sec)
+		
+	$ describe cow4_blastHg18KG;
+		+-------------+----------------------+------+-----+---------+-------+
+		| Field       | Type                 | Null | Key | Default | Extra |
+		+-------------+----------------------+------+-----+---------+-------+
+		| bin         | smallint(5) unsigned |      |     | 0       |       |
+		| matches     | int(10) unsigned     |      |     | 0       |       |
+		| misMatches  | int(10) unsigned     |      |     | 0       |       |
+		| repMatches  | int(10) unsigned     |      |     | 0       |       |
+		| nCount      | int(10) unsigned     |      |     | 0       |       |
+		| qNumInsert  | int(10) unsigned     |      |     | 0       |       |
+		| qBaseInsert | int(10) unsigned     |      |     | 0       |       |
+		| tNumInsert  | int(10) unsigned     |      |     | 0       |       |
+		| tBaseInsert | int(10) unsigned     |      |     | 0       |       |
+		| strand      | char(2)              |      |     |         |       |
+		| qName       | varchar(255)         |      | MUL |         |       |
+		| qSize       | int(10) unsigned     |      |     | 0       |       |
+		| qStart      | int(10) unsigned     |      |     | 0       |       |
+		| qEnd        | int(10) unsigned     |      |     | 0       |       |
+		| tName       | varchar(255)         |      | MUL |         |       |
+		| tSize       | int(10) unsigned     |      |     | 0       |       |
+		| tStart      | int(10) unsigned     |      |     | 0       |       |
+		| tEnd        | int(10) unsigned     |      |     | 0       |       |
+		| blockCount  | int(10) unsigned     |      |     | 0       |       |
+		| blockSizes  | longblob             |      |     |         |       |
+		| qStarts     | longblob             |      |     |         |       |
+		| tStarts     | longblob             |      |     |         |       |
+		+-------------+----------------------+------+-----+---------+-------+
+		
+	$  describe cow4_refGene;
+		+--------------+------------------------------------+------+-----+---------+-------+
+		| Field        | Type                               | Null | Key | Default | Extra |
+		+--------------+------------------------------------+------+-----+---------+-------+
+		| bin          | smallint(5) unsigned               |      |     | 0       |       |
+		| name         | varchar(255)                       |      | MUL |         |       |
+		| chrom        | varchar(255)                       |      | MUL |         |       |
+		| strand       | char(1)                            |      |     |         |       |
+		| txStart      | int(10) unsigned                   |      |     | 0       |       |
+		| txEnd        | int(10) unsigned                   |      |     | 0       |       |
+		| cdsStart     | int(10) unsigned                   |      |     | 0       |       |
+		| cdsEnd       | int(10) unsigned                   |      |     | 0       |       |
+		| exonCount    | int(10) unsigned                   |      |     | 0       |       |
+		| exonStarts   | longblob                           |      |     |         |       |
+		| exonEnds     | longblob                           |      |     |         |       |
+		| score        | int(11)                            | YES  |     | NULL    |       |
+		| name2        | varchar(255)                       |      | MUL |         |       |
+		| cdsStartStat | enum('none','unk','incmpl','cmpl') |      |     | none    |       |
+		| cdsEndStat   | enum('none','unk','incmpl','cmpl') |      |     | none    |       |
+		| exonFrames   | longblob                           |      |     |         |       |
+		+--------------+------------------------------------+------+-----+---------+-------+
+		16 rows in set (0.00 sec)
+
+	$ select chrom, txStart, txEnd, name, name2 from cow4_refGene order by chrom into outfile "/mnt/data6/gliu/cow4_refGene.bed";
+		ERROR 1045 (28000): Access denied for user 'gliu'@'localhost' (using password: YES)
+	# Oh well, it was worth a try
+	# I will have to run the script on server 2 to get the gene names then run panther.
+	
+	pwd: server2:/mnt/data6/gliu/dbickhart/Panther
+	$ sh auto_panther.sh dttrace_all_chr_both_named.bed
+	$ ./auto_panther.sh bine12_all_chr.bed
+	$ ./auto_panther.sh btan02_all_chr.bed
+	$ ./auto_panther.sh btan09_all_chr.bed
+	$ ./auto_panther.sh btan10_all_chr.bed
+	$ ./auto_panther.sh btho11_all_chr.bed
+	
+	
+	# Now, I logged into George's account and went here
+	pwd: /mnt/data2/gliu/yaho/pantherScore1.02
+	$ pantherScore.pl -l /mnt/data10/gliu/pantherScore1.02/PANTHER7.0/books/ -D B -V -i /mnt/data6/gliu/dbickhart/Panther/dttrace_all_chr_both_named.bed.ensGene_2.fa -o dttrace_ensgene_2_pantherscore.txt
+	# This was not setup correctly, so it gave me errors for each blast hit
+	
+	# Instead using this directory:
+	
+	$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/dttrace_all_chr_both_named.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -o dttrace_ensGene2_pantherscore.txt
+	$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/btho11_all_chr.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o btho11_ensGene2_pantherscore.txt
+	$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/btan02_all_chr.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o btan02_ensGene2_pantherscore.txt
+	$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/btan09_all_chr.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o btan09_ensGene2_pantherscore.txt
+	$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/btan10_all_chr.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o btan10_ensGene2_pantherscore.txt
+	$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/bine12_all_chr.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o bine12_ensGene2_pantherscore.txt
+	
+	
+	# Then I logged into the Panther website
+		Tools -> Gene data expression analysis -> compare gene lists
+		# I uploaded the dttrace file and used the following data as a reference list:
+		Server 2: /mnt/data10/gliu/pantherScore1.02/panther_ref_7.0
+	
+		# I then ran the analysis on the Pathways, biological processes and molecular functions, clicked on export and saved the files here:
+		Sharedfolder: cnv_manuscript_2011/panther/
+		
+	# Now, I want to upload only the unique gene lists to panther. 
+	# In order to find these lists, I created a script that uses bedtools to quickly limit them (bed_find_unique_intervals.pl)
+		$ perl bed_find_unique_intervals.pl bine12_all_chr_both_named.bed btan02_all_chr_both_named.bed btan09_all_chr_both_named.bed btan10_all_chr_both_named.bed btho11_all_chr_both_named.bed dttrace_all_chr_both_named.bed
+		
+		# This gave me too few intervals for the angus individuals. I will take George's advice and just pick one (ie btan09)
+		$ perl bed_find_unique_intervals.pl bine12_all_chr_both_named.bed btan09_all_chr_both_named.bed btho11_all_chr_both_named.bed dttrace_all_chr_both_named.bed
+		# much better, now to upload these to server 2 and process them in the panther pipeline
+		$ for i in *unique; do prefix=`echo $i | cut -d'_' -f1`; echo $prefix; mv $i $prefix.unique.bed; done
+		
+		# running them
+		$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/dttrace.unique.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o dttrace_unique_ensGene2_pantherscore.txt
+		$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/btan09.unique.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o btan09_unique_ensGene2_pantherscore.txt
+		$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/btho11.unique.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o btho11_unique_ensGene2_pantherscore.txt
+		$ perl pantherScore.pl -i /mnt/data6/gliu/dbickhart/Panther/bine12.unique.bed.ensGene_2.fa -D B -V -l PANTHER7.0 -c 4 -o bine12_unique_ensGene2_pantherscore.txt
+		
+		# Uploading to panther and downloading the tables
+		# George also wants me to download the other two table types (GO and Panther protein class) I will do this for my previous analysis too.
+		# Done, now I just need to make a script to tie them all together.
+		# Did it: the table generation script makes pretty good concatenated tables that align data from each animal to their respective gene
+		
+		# George also wants the filtered dataset (ie. no entries for categories that have less than 5 hits and pvalues greater than 0.05)
+		# Created another script to do this (merge_panther_separate_animal_tables.pl)
+		$ perl merge_panther_separate_animal_tables.pl 'ls *_all.txt'
+		$ perl merge_panther_separate_animal_tables.pl 'ls *unique.txt'
+		
+		# Created xls files for each animal, with the different panther categories in separate worksheets
+		
+____________________________
+ChrUnAll
+____________________________
+# George's chrUnAll had repeats in it. Running TRF on it to check to see if I can find the repeats and then run Mrsfast on it again
+$ /home/dbickhart/RepeatMasker/trf321.linux.exe chrUnAll_hard_mask.fa 2 7 7 80 10 50 500 -d -m 
+	$ calculate_base_composition_fasta.pl chrUnAll_hard_mask.fa.2.7.7.80.10.50.500.mask
+		chrUnAll:       A: 29284730     C: 20687171     G: 20568779     N: 165235556    T: 29171086     X: 137277546
+		
+		Total Counts:
+		A:      29284730
+		C:      20687171
+		G:      20568779
+		T:      29171086
+		X:      137277546			{After TRF masking}
+		N:      165235556
+		total autosomal:        99711766        total repetitive:       302513102       perc auto:       24.7900549997819
+		
+	$ calculate_base_composition_fasta.pl chrUnAll_hard_mask.fa
+		chrUnAll:       A: 29560768     C: 21034497     G: 20913083     N: 163864959    T: 29467131     X: 137277506
+		
+		Total Counts:
+		A:      29560768
+		C:      21034497
+		G:      20913083
+		T:      29467131
+		X:      137277506			{Before TRF masking}
+		N:      163864959
+		total autosomal:        100975479       total repetitive:       301142465       perc auto:       25.1109109918258
+	# So, 2 megabases of N's were missed.
+		
+	My chrun chromosomes: total autosomal:        98881845	

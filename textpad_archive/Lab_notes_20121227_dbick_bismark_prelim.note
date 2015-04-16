@@ -1,0 +1,84 @@
+12/27/2012
+# These lab notes detail my preliminary usage of Bismark and Bowtie2 to align MethylC-seq data to the UMD3 genome.
+
+# I have downloaded bowtie2 on blade2 and I uploaded the umd3_kary_nmask_hgap.fa reference genome to the server as well.
+	/home/dbickhart/dbickhart/data110/dbickhart/reference/umd3_kary_nmask_hgap.fa
+	
+# Building the index
+	pwd:/home/dbickhart/dbickhart/data110/dbickhart/reference/
+	$ bowtie2-build umd3_kary_nmask_hgap.fa umd3_kary_nmask_hgap
+
+
+# Preparing umd3 files for intersection with the bismark data output
+	pwd:/home/dbickhart/share/umd3_data
+	$ perl -lane '($c) = $F[4] =~ /CpG: (\d+)/; print "$F[1]\t$F[2]\t$F[3]\t$c\n";' < cpgIslandExt.txt > umd3_cpgi_cpgcount.bed
+	$ perl -lane 'print "$F[5]\t$F[6]\t$F[7]\t$F[10]";' < rmsk.txt > repeat_simple_repbase_named.bed
+	$ perl -lane 'print "$F[1]\t$F[2]\t$F[3]\t$F[4]";' < simpleRepeat.txt >> repeat_simple_repbase_named.bed
+	
+	# Now, just to reduce the number of lines, I am going to merge the entries within the repeat_simple_repbase_named.bed file
+	$ mergeBed -i repeat_simple_repbase_named.bed -nms > umd3_repeat_simple_repbase_named_merged.bed
+	# Only reduced it by about 1.5 million lines, but still that's a fair improvement (~20%)
+	
+	# Had to make a script to create the cgi shores; ignoring the unplaced contigs
+	$ perl extract_cgi_shores_from_bed.pl
+	
+	# Had to make a script to create the promoters, introns and exons; ignoring the unplaced contigs again
+	$ perl extract_introns_exons_from_uscs_refgene.pl
+	
+	# Creating the remaining base space file
+	# Again, chrUn is a huge problem
+	$ cat umd3_cpgi_cpgcount.bed umd3_cpgishores_unmerged.bed umd3_promoter_approx_regions.bed umd3_refgene_exons_id.bed umd3_refgene_introns_id.bed umd3_repeat_simple_repbase_named_merged.bed | perl -ne 'if($_ =~ /chrUn/){next;}else{print $_;}' | mergeBed -i stdin -nms > umd3_merged_annotation_repeat_cpgi_cpgishore_exon_intron_promoter.bed
+	$ perl -lane 'print "$F[0]\t1\t$F[1]\tleft";' < umd3_kary_extend_hgap.fa.lens > umd3_chrlens_simple.bed
+	
+	# OK, I tried a simple subtract bed, but even 1bp remainders were showing up. I need to establish a cutoff for the size of theses remaining fragments
+	$ subtractBed -a umd3_chrlens_simple.bed -b umd3_merged_annotation_repeat_cpgi_cpgishore_exon_intron_promoter.bed | perl -lane 'if($F[2] - $F[1] > 500){print $_;}' | wc -l
+		624883	<- we have a winner
+	$ subtractBed -a umd3_chrlens_simple.bed -b umd3_merged_annotation_repeat_cpgi_cpgishore_exon_intron_promoter.bed | perl -lane 'if($F[2] - $F[1] > 100){print $_;}' | wc -l
+		1705342
+	$ subtractBed -a umd3_chrlens_simple.bed -b umd3_merged_annotation_repeat_cpgi_cpgishore_exon_intron_promoter.bed | perl -lane 'if($F[2] - $F[1] > 500){print $_;}' > umd3_remaining_base_space.bed
+	
+# OK, now to load it onto blade 2 and then I'll try to test it using the bismark output
+	Blade2:/home/dbickhart/dbickhart/bs_seq
+	$ associate_methylation_extractor_output_genetic_features.pl -d CpG_context_peti_bismark_alignment_UCI.txt -r umd3_files/umd3_repeat_simple_repbase_named_merged.bed -c umd3_files/umd3_cpgi_cpgcount.bed -s umd3_files/umd3_cpgishores_unmerged.bed -e umd3_files/umd3_refgene_exons_id.bed -p umd3_files/umd3_promoter_approx_regions.bed -n umd3_files/umd3_remaining_base_space.bed -i umd3_files/umd3_refgene_introns_id.bed
+	# The memory usage of my bismark class is prohibitive. I think that I'll write a java program to whittle down the output first
+	$ perl -e '$store = "nah"; while(<>){ chomp; @s = split(/\t/); if($s[2] =~ /chrUn/){next;} if($s[2] eq $store){}else{print "$s[2]\n"; $store = $s[2];}}' < CpG_context_wizard_bismark_alignment_UCI.txt
+	# this shows that the chromosomes are organized in the output, but are not lexically sorted
+		chr3
+		chr11
+		chr14
+		chr2
+		chr8
+		chr7
+		chr21
+		chr25
+		chr1
+		chr10
+		chr19
+		chr18
+		chr6
+		chr29
+		chrM
+		chr15
+		chr20
+		chr23
+		chr16
+		chr24
+		chr12
+		chr27
+		chr5
+		chr28
+		chr9
+		chr17
+		chr22
+		chr26
+		chr13
+		chrX
+		chr4
+		
+# I have been working on a script to generate intersections of CNV intervals against the umd3 genome annotation.
+# Here is a list of commands that I used to generate the datafiles
+	pwd:/home/dbickhart/share/umd3_data
+	$ perl -lane 'print "$F[2]\t$F[4]\t$F[5]\t$F[1]";' < ensGene.txt > merger_files/umd3_enstranscript_named.bed
+	$ perl -lane 'if($F[12] eq ""){next;}print "$F[2]\t$F[4]\t$F[5]\t$F[12]";' < ensGene.txt > merger_files/umd3_ensgene_named.bed
+	$ perl -lane 'print "$F[2]\t$F[4]\t$F[5]\t$F[1]";' < refGene.txt > merger_files/umd3_refgeneid_named.bed
+	$ perl -lane 'if($F[12] eq ""){next;} print "$F[2]\t$F[4]\t$F[5]\t$F[12]";' < refGene.txt > merger_files/umd3_refgenename_named.bed

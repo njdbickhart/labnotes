@@ -1,0 +1,97 @@
+02/28/2014
+# This is a series of notes on the testing of my VHSR pipeline
+
+# I am going to perform a brief simulation using Heng Li's wgsim to try to get variants aligned and ready for analysis
+# First, I created programs that make big changes to a single chr fasta to simulate tandem dups and large deletions
+	pwd: /home/dbickhart/share/side_projects/world_congress/10th/
+	# Extracting chr29
+	$ perl -e 'my $start = 0; while(<>){chomp; if($_ =~ />chr29/){print "$_\n"; $start = 1; next;}elsif($_ =~ />/){$start = 0;}elsif($start){print "$_\n";}' < ../../../../umd3_data/umd3_kary_extend_hgap.fa
+	
+	# The program was generated quickly, so I need to make my variants as multiples of 60 to work with it
+	$ perl convertBedToNearest60.pl sample_variants.bed > sample_variants_rounded.bed
+	$ perl introduceTandAndDups.pl -r umd3_chr29.fa -i sample_variants_rounded.bed -o umd3_chr29_sample_vars.fa
+	
+	# Then I gzipped the file and sent it off to Blade 14 for processing
+	
+# Now, I will test out my programs on wgsim data from the altered chromosome
+	Blade14: /mnt/iscsi/vnx_gliu_7/vhsr_sim
+	$ ./wgsim-master/wgsim -N 2500000 -1 100 -2 100 -r 0.0010 -R 0.15 umd3_chr29_sample_vars.fa sample_vars_r1.fq sample_vars_r2.fq > sample_vars_snpindel.key
+	$ perl -ne '$_ =~ s/_/-/g; print $_;' < sample_vars_r1.fq > temp
+	$ mv temp sample_vars_r1.fq
+	$ perl -ne '$_ =~ s/_/-/g; print $_;' < sample_vars_r2.fq > temp
+
+	
+	$ mrsfast --index umd3_chr29.fa
+	$ mrsfast --search umd3_chr29.fa --seq sample_vars_r1.fq -o sample_vars_r1.sam -e 4
+	$ mrsfast --search umd3_chr29.fa --seq sample_vars_r2.fq -o sample_vars_r2.sam -e 4
+	
+	# OK, now to generate the pairing information
+	$ ~/jdk1.7.0/bin/java -jar ../bin/pairMatchMrsfastSam.jar -i1 sample_vars_r1.sam -i2 sample_vars_r2.sam -f1 sample_vars_r1.fq -f2 sample_vars_r2.fq -o sample_vars.sr -m 400000 -l 300 -u 650
+	
+	$ perl -lane 'if($F[8] eq "eversion"){print $_;}' < sample_vars.sr.divet.vh | wc -l
+		26734
+	$ perl -lane 'if($F[8] eq "deletion"){print $_;}' < sample_vars.sr.divet.vh | wc -l
+		31879
+	$ perl -lane 'if($F[8] eq "inversion"){print $_;}' < sample_vars.sr.divet.vh | wc -l
+		45
+	$ perl -lane 'if($F[12]){print $_;}' < sample_vars.sr.divet.vh | wc -l
+		1892
+	
+	# Now to align the split reads:
+	$ mrsfast --search umd3_chr29.fa --seq sample_vars.sr.split.fq -e 2 -o sample_vars.sr.split.sam
+	
+	# Now to make the RD windows
+	$ mkdir doc_bams
+	$ samtools view -bS -t umd3_chr29.fa.fai sample_vars_r1.sam > doc_bams/sample_vars_r1.bam
+	$ samtools view -bS -t umd3_chr29.fa.fai sample_vars_r2.sam > doc_bams/sample_vars_r2.bam
+	$ ~/jdk1.7.0/bin/java -jar ~/bin/CondenseDOCBamsHash.jar -I doc_bams -F 'sample_vars*' -O sample_vars_rd.hits -X umd3_chr29.fa.fai
+	$ gzip sample_vars_rd.hits
+	
+	# OK, now I'm ready to run my VHSR program on all the files
+	# Just make the list file...
+	$ samtools view -bS -t umd3_chr29.fa.fai sample_vars.sr.split.sam > sample_vars.sr.split.bam
+	$ echo -e "sample_vars.sr.split.bam\tsample_vars.sr.divet.vh\tsample_vars.sr.single.txt\t500\t50" > sample_vars_vh.list
+	
+	# OK, crossing my fingers before running this
+	$ ~/jdk1.7.0/bin/java -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s sample_vars_vh.list -c chr29 -g ../reference/umd3_gaps_ftp.bed -o ./sample_vars_vh_calls
+	$ wc -l sample_vars_vh_calls.vhsr.*
+	  1373 sample_vars_vh_calls.vhsr.deletions
+	   322 sample_vars_vh_calls.vhsr.insertions
+	     0 sample_vars_vh_calls.vhsr.inversions
+	    49 sample_vars_vh_calls.vhsr.tand
+	  1744 total
+	
+	# There was an issue with my SV generation program. I made a pipeline that should process everything with little input from me
+	# Rerunning a new version of the perl program:
+	pwd: /home/dbickhart/share/side_projects/world_congress/10th_wc/scripts
+	$ perl introduceTandAndDupsLONG.pl -r umd3_chr29.fa -i sample_variants_rounded.bed -o umd3_chr29_sample_vars.fa
+		chr29	2490960	2493540	TAND	2490960	2496120
+		chr29	12148260	12174360	DEL	12150780
+		chr29	19716900	19877460	DEL	19693320
+	$ sh pipeline.sh test_vars trial umd3_chr29_sample_vars.fa
+	
+# Testing Delly
+	
+	$ ../delly_source_v0.0.9/pemgr/delly/delly -o sample_vars_delly.txt -g umd3_chr29.fa -b sample_vars_delly.sr sample_vars_bwa.sam
+	
+# Simulation pipeline
+	# I created a simulation script that automates analysis. 
+	# I ran a fifty simulation trial last night
+	Blade14: /mnt/iscsi/vnx_gliu_7/vhsr_sim
+	$ bash numerical_simulation_pipeline.sh 50 fifty_trials
+	$ cd fifty_trials
+	
+	# Now to generate the comparisons using my comparison script
+	$ for((i=1;i<=50;i++)); do work="var_"$i; echo $work; outbase="var_"$i; output="var_${i}_comp"; perl ../../bin/test_vhsr_delly_duppy_recall_accurracy.pl $work/${outbase}_vh.calls.vhsr.deletions $work/${outbase}_vh.calls.vhsr.tand $work/${outbase}_vars_delly.txt $work/${outbase}_vars_duppy.txt true_variant_locs_${i}.bed $output; done
+	
+	# Initial comparisons look good! I've noticed that my split-read calls can predict tandems; however, I did not incorporate orientation based filtering to categorize splits as tandem dup breakpoint reads! Major oversight! 
+	# Let's see if I can update my testing program to incorporate filtered datasets as well
+	# First, marking filtered variants (without removal!)
+	$ perl -e 'use Forks::Super; for(my $i = 1; $i <= 50; $i++){ $w = "var_$i"; my $cmd = "../../bin/filterAndAssociateRDProfileVHSR.pl -i $w/$w\_vh.calls.vhsr.deletions -d $w/$w\_rd.hits.gz -o $w/$w\_vh.calls.marked.deletions -s 3"; system("$cmd");}'
+	$ perl -e 'use Forks::Super; for(my $i = 1; $i <= 50; $i++){ $w = "var_$i"; my $cmd = "../../bin/filterAndAssociateRDProfileVHSR.pl -i $w/$w\_vh.calls.vhsr.tand -d $w/$w\_rd.hits.gz -o $w/$w\_vh.calls.marked.tand -s 3"; system("$cmd");}'
+	
+	# Now processing them using my script
+	$ for((i=1;i<=50;i++)); do work="var_"$i; perl ../../bin/test_vhsr_delly_duppy_recall_accurracy.pl $work/${work}_vh.calls.marked.deletions $work/${work}_vh.calls.marked.tand $work/${work}_vars_delly.txt $work/${work}_vars_duppy.txt true_variant_locs_${i}.bed ${work}_filt_comp; done
+	
+	# NOTE: my comparison script automatically marks deletions within the "TAND" regions as tandems because of the split read issue that I listed above
+	

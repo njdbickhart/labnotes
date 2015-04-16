@@ -1,0 +1,204 @@
+2010_09_28
+# My goals for this week:
+	- create script to generate random 1x reads for the UMD3 genome (for CNV-seq)
+	- finish mrfast run and compare results to the bwa/bowtie hydra run
+	- figure out what's messing up hydra
+	- create consensus files for Turkey CR1 repeats
+	- end of week: start running other data files
+	
+# Generated a script to create 1x reads from the UMD3 genome
+	- Name: generate_simulation_reads.pl
+	- Usage: generate_simulation_reads.pl <filename>
+	- Very simple program
+		- Accepts full genome file and creates reads chromosome by chromosome to reduce memory overhead
+		- Generates 36 bp reads, all with the same Phred score (taken from an actual read in the blackstar folder)
+		- Randomly creates reads enough to cover the genome once (calculated after removing the N's and whitespace)
+		
+2010_09_29
+# Problems and potential solutions
+	- MrFast is still running despite my batching approaches
+		- It is highly inefficient with memory
+		- It relies WAY too much on the hard drive transfer rate in order to process data
+		- It generates HUGE .tmp files and HUGE OEA files with the --discordant-vh option
+		- It might still be too much trouble to use effectively
+	- The variation hunter (the SV program I hope to use downstream of MrFast) documentation is absolutely atrocious
+	- Now for some solutions:
+		- Take a look at other variation detection programs and test their efficacy
+		- Attempt to run through the MrFast to variation hunter pipeline to see if it works and if it is worthwhile
+		- Finalize a plan and develop a script to start automating dataset processing
+		
+# Some SV detection programs and their information
+	- SVdetect
+		- http://svdetect.sourceforge.net/Site/Home.html
+		- Detects inversions, deletions and insertions
+		- Does not appear to calculate density differential mappings (for determining duplications)
+		- Requires a ludicris "map file" that lists all of the chromosome names and sizes
+		- The map file has prevented me from analyzing data in the program
+	- Breakdancer
+		- http://breakdancer.sourceforge.net/
+		- Detects inversions, deletions, insertions, translocations and copy number variations
+		- Having trouble installing on the server; might be an incompatibility between the c++ version and the 32-bit operating system of the server
+		- I will install on my Ubuntu virtualbox and attempt to run the program locally
+		- Nope, doesn't work that well on the Ubuntu virtualbox; I can't even install it!
+	- Breakway
+		- http://sourceforge.net/projects/breakway/
+		- Relatively new software
+		- Help screen for program:
+			 
+			 perl breakway.run.pl [files] [parameters] [options] [optional files]
+			
+			            Files:
+			                    --dtransfile            FILENAME        Dtranslocations file (req)
+			                    --bamfile               FILENAME        Sorted and indexed bam file (req)
+			                    --fai                   FILENAME        Reference genome fasta index file (req)
+			                    --filehandle            FILENAME        The file handle for your output files (req)
+			                    --bwfolder              FILENAME        The folder containing your breakway scripts, usually the same as the folder containing breakway.submit.pl (req)
+			            Parameters:
+			                    --mindist               INT             The minimum normal insert distance (req)
+			                    --maxdist               INT             The maximum normal insert distance (req)
+			                    --mincs                 INT             The minimum number of bins in a row (from dtranslocations) (req)
+			                    --maxcs                 INT             The maximum number of bins in a row (from dtranslocations) (req)
+			                    --interval              INT             The interval (from dtranslocations) (req)
+			                    --strand                STRING          Ends of each read are on the SAME or OPPOSITE strands (must be SAME or OPPOSITE; depends on platform and aligner used) (req)
+			                    --ordering              INT             5'->3' orientation of the ends (must be 12 or 21) (req)
+			            Options:
+			                    --help                                  This help page
+			                    --mean                  INT             Mean of the haploid clone coverage
+			                    --stdev                 INT             Standard deviation of clone coverage
+			                    --score                 INT             Minimum score (default=0)
+			                    --cutoff                INT             Minimum number of reads in a bin to consider (default=4)
+			            Optional Files:
+			                    --segdupsfile           FILENAME        UCSC Genome Browser segmental duplications table
+			                    --selfchainfile         FILENAME        UCSC Genome Browser self chain table
+                    			    --repmaskerfile         FILENAME        UCSC Genome Browser repeat masker table
+                    			    
+                - It requires me to index the sorted bam files that I will be using as input
+                - The dtranslocation file is generated by the program DNAA
+                - Breakway depends on DNAA (which, in turn, depends on BFAST). That is alot of program dependencies!
+                - DNAA is a pain to configure if you do not have administrator priviledges! 
+                	Had to do this on the MAKEFILE
+                		find Makefile | xargs perl -p -i.bak -e 's/samtools\//samtools-0.1.8\//g'
+                	Had to format ALOT of stuff because of the coding! Apparently the developer thought that we would all rename the Samtools folder to a default "samtools"
+                - I might not be able to use this program: DNAA is just FAR too hard to configure without administrator priviledges!	
+                
+        - CNV-seq
+        	- http://tiger.dbs.nus.edu.sg/cnv-seq/
+        	- This might be my best option
+        	- Only read depth dependent which might be a problem with the dataset!
+        - Hydra-sv
+        	- http://code.google.com/p/hydra-sv/
+        	- Also another good option
+        	- Sadly, it does not work on the bedpe files that I've generated thus far. 
+        	- I might have to change my workflow (from previous note files) to incoporate a more sensitive alignment tool like Mosaik
+        	
+        	
+____________________________________________________
+CNV-seq Test Run
+____________________________________________________
+# While CNV-seq might be inadequate for the current coverage of the NGS data folders, it might have some uses later on
+
+# Generated a simulated fastq file using my generate_simulation_reads.pl script
+	- processed the simulated reads using BWA
+	bwa aln /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/mask_UMD3 UMD3_simulation.fq > UMD3_simulation.sai
+	
+	- Had to reindex the UMD3 genome (someone has installed a very old version of BWA in the path; I have to be careful to reference MY copy of BWA!)
+	./bwa index -p mask_UMD3 -a bwtsw /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_masked.fa
+	
+	- I was getting a "cannot find mask_UMD3.nt.ann" error which I believe is a problem with colorspace vs nucleotide space alignment. I believe it is because I used an older version of BWA to generate the sam index file for the simulation
+	- Realigned the sam index file for the simulation
+	../bwa-0.5.8a/bwa aln /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/mask_UMD3 UMD3_simulation.fq > UMD3_simulation.sai
+	
+	- That did it! The older version of bwa creates a sam index file that emulates color-space settings
+	../bwa-0.5.8a/bwa samse -n 10 /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/mask_UMD3 UMD3_simulation.sai UMD3_simulation.fq > UMD3_simulation_aln.sam
+	
+	samtools view -bS -o UMD3_simulation.bam UMD3_simulation_aln.sam
+	samtools sort UMD3_simulation.bam UMD3_simulation_sorted.bam
+
+	samtools view UMD3_simulation_sorted.bam.bam | perl -lane 'print "$F[2]\t$F[3]"' > UMD3_simulation.hits
+	- Now I have the "test.hits" file that I need to run the program!
+	
+# Attempted first run:
+	./cnv-seq.pl --test ../blackstar/sembatch1/merged_sort.hits --ref UMD3_simulation.hits --genome-size 2500000000
+		
+		genome size used for calculation is 2500000000
+		../blackstar/sembatch1/merged_sort.hits: 37902244 reads
+		UMD3_simulation.hits: 69518850 reads
+		The minimum window size for detecting log2>= 0.6 should be 6048.67184381621
+		The minimum window size for detecting log2<=-0.6 should be 7633.08787175002
+		window size to use is 7633.08787175002 x 1.5 = 11450
+		window size to be used: 11450
+		read 37902244 test reads, out of 37902244 lines
+		read 69518850 ref reads, out of 69518850 lines
+		write read-counts into file: merged_sort.hits-vs-UMD3_simulation.hits.log2-0.6.pvalue-0.001.count
+		Can't use an undefined value as an ARRAY reference at ./cnv-seq.pl line 204, <REF> line 69518850.
+		
+	- Error: might just be an end of file thing with the reference.hits file.
+	
+	- The end of the reference.hits file generates a TON of columns like this: 
+		*	0
+	- Going to use a perl script to (hopefully) eliminate that
+	
+	- Tried this command line script:
+		find UMD3_simulation.hits | xargs perl -p -i.bak -e 's/\*\t0\n//g'
+		# It worked: all the end columns are gone in the .hits file
+		
+	- Running the program again...
+		genome size used for calculation is 2500000000
+		../blackstar/sembatch1/merged_sort.hits: 37902244 reads
+		UMD3_simulation.hits: 69472580 reads
+		The minimum window size for detecting log2>= 0.6 should be 6050.91194779521
+		The minimum window size for detecting log2<=-0.6 should be 7634.0629336404
+		window size to use is 7634.0629336404 x 1.5 = 11451
+		window size to be used: 11451
+		read 37902244 test reads, out of 37902244 lines
+		read 69472580 ref reads, out of 69472580 lines
+		write read-counts into file: merged_sort.hits-vs-UMD3_simulation.hits.log2-0.6.pvalue-0.001.count
+		Can't use an undefined value as an ARRAY reference at ./cnv-seq.pl line 205, <REF> line 69472580.
+
+	- Still getting errors. At the least, this is a perl script so I should (in theory) be able to modify it!
+	
+2010_09_30
+# Well, MrFAST finally ended. For 300,000 read runs against the UMD3 genome, it takes approximately eight hours when run in massively parrallel
+
+# Hardly an efficient use of time! I believe that the flaw in the program is that it posts EVERY and ALL possible positions of paired end reads (with no option to disable such an exhaustive search!)
+
+____________________________________________________
+Running Variation Hunter
+____________________________________________________
+
+# Now that MrFAST is FINALLY done, I'm going to test out Variation hunter 
+
+# Before I do a bulk comparison, I'm going to run VH on the smallest DIVET.vh file in the first dataset: frag10
+
+# Oh boy! Variation Hunter has very little in the way of parity checking, so if I run something on it, I'm going to have to get it right the first time!
+
+# Test run on frag10 data:
+	$./VariationHunter_SC
+	Please enter the minimum paired-end insert size:
+	150
+	Please enter the maximum paired-end insert size:
+	350
+	Please enter the pre-processing mapping prune probability:   	#This is the probability that the pair maps to this location
+	0
+	Please enter the name of the input file:
+	../blackstar/mrfast/081211_1_frag10.sam_DIVET.vh
+	Please enter the minimum support for a cluster:			#This is the minimum number of pairs that supports this CNV event
+	1
+# Cancelled it; The programmers that designed it included chromosome data for the human genome as the only possiblity
+
+# I have to edit the chroName files in order to put in the coordinates of the Cattle genome so that the comparison is based on the cattle genome sequences.
+	- Finished the edit: all chromosomes have the cattle coordinates apart from ChrUN (which I did not generate a file for)
+	
+	$./VariationHunter_SC
+	Please enter the minimum paired-end insert size:
+	150
+	Please enter the maximum paired-end insert size:
+	350
+	Please enter the pre-processing mapping prune probability:
+	0.000000005
+	Please enter the name of the input file:
+	../blackstar/mrfast/081211_1_frag10.sam_DIVET.vh
+	Please enter the minimum support for a cluster:
+	3
+
+# The program hangs at the converttoINV... object; this program is just not ready for prime-time

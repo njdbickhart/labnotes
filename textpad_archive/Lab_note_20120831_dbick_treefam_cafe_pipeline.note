@@ -1,0 +1,44 @@
+08/31/2012
+# This file contains my notes on the treefam/treebest/PAML/CAFE pipeline that Dennis Larkin used in the Yak genome paper on Nature Genetics
+# I will give a brief summary of my interpretation of the steps involved and how much scripting I would need to do to implement the process
+
+# References and URLS:
+	1. Yak paper: http://www.nature.com/ng/journal/v44/n8/full/ng.2343.html#/supplementary-information
+	2. TreeFam main page: http://www.treefam.org/#data
+	3. TreeFam Perl API: http://treesoft.sourceforge.net/tf-perl-api.shtml
+	4. TreeBest program: http://treesoft.sourceforge.net/treebest.shtml
+	5. Cafe (version 2.2 is the latest): http://sites.bio.indiana.edu/~hahnlab/Software.html
+	6. Cafe paper: http://bioinformatics.oxfordjournals.org/content/22/10/1269.long
+	7. TreeFam paper: http://www.ncbi.nlm.nih.gov/pmc/articles/PMC1347480/
+	8. MODELTEST paper: http://bioinformatics.oxfordjournals.org/content/14/9/817.full.pdf
+	9. Modeltest download (java version): http://darwin.uvigo.es/software/jmodeltest.html
+	10. Modeltest demo: http://www.rhizobia.co.nz/phylogenetics/modeltest
+	11. MrBAYES download: http://mrbayes.sourceforge.net/
+	
+# Interpreted pipeline:
+	# Estimated time of divergence from Nucleotide substitution model
+	1. First, it looks like Larkin downloaded the Ensembl protein coding databases for the species he wanted to use
+		- Need AA sequences for Water buffalo and/or Nelore for this
+	2. Then, he does not say it, but I suspect that he used Heng Li's TreeBest program to redraw the ortholog tree using the new Yak data
+		- Need to create a new Newhampshire-format species tree including waterbuffalo and/or yak + Nelore using 18S rRNA or a similar gene (this is the assumptive model used in the TreeFam prediction)
+		- The default TreeFam species tree can be printed by the TreeBest program using the following command:
+			$ treebest spec
+		- NOTE: name and phylum restrictions on species tree names
+		- TreeBest can create ortholog assignments from sequence alignments (sequences alignments created byusing the Muscle aligner, I'm sure)
+	3. Next, he took the paralog/ortholog assigned genes and collapsed the paralogs from each species into the longest translation sequence
+		- I suspect that he just did this for paralogs for each species
+		- This likely resulted in a series of large amino acid sequence orthologs from each species in separate files
+	4. Now, he took the nucleotide sequence for those representative orthologs from each species and used them to calculate divergence rate
+		- This is where it gets a little confusing.
+		- He says that he took the data from the four-fold degeneracy sites and used it to create a "super-gene" for each species.
+		- My first thoughts on this are that he took all degenerate amino acid codons (with four-fold AA coding potential), stitched them together and thereby created a very large nucleotide sequence for each species
+		- He then used MODELTEST to determine the best substitution model on this "super-gene"
+		- MrBayes was used to create a phylogenetic tree from the "super-gene"
+	5. Finally, he used PAML's MCMCtree program to determine the times of divergence for the species
+	
+	# Gene family expansion and contraction estimation
+	1. CAFE program input
+		- Requires a Newick format tree (derived from the previous time estimation section)
+		- Also requires a listing of gene family numbers (again, derived from the TreeFam run)
+	2. And that is it! This step is highly dependent on the previous method, but it is relatively straight-forward.
+		

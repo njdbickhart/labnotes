@@ -1,0 +1,827 @@
+06/24/2014
+# This file contains my notes on finalizing the figures and tables for the 100 bulls CNV project
+
+______________________
+VST calcluations
+______________________
+
+# I am going to calculate the VST estimates for dataset CNVRs and Gene CN values
+pwd: /home/dbickhart/share/100_bulls_project/final_data/vst
+$ perl ../../../programs_source/Perl/calculate_vst_differences_cn.pl -c ../cnvrs_annotation/final_cngenes_RefseqName.tab -p ../../population_analysis/ind_taurus_pop_struct.txt -o ind_taurus_vst_targets.tab -s BTAN05,BTAN06,AN1776,AN0342,AN0728,starbuck,BINE13,futuro
+$ perl -lane 'if($F[3] > 0.2 && $F[0] ne "chrX"){print $_;}' < ind_taurus_vst_targets.tab  | uniq > ind_taurus_gt20_autosomes.bed
+
+$ perl ../../../programs_source/Perl/calculate_vst_differences_cn.pl -c ../cnvrs_annotation/final_cngenes_RefseqName.tab -p ../../population_analysis/hol_ang_pop_struct.txt -o hol_ang_vst_targets.tab -s BTAN05,BTAN06,AN1776,AN0342,AN0728,starbuck,BINE13,futuro
+$ perl -lane 'if($F[3] > 0.2 && $F[0] ne "chrX"){print $_;}' < hol_ang_vst_targets.tab  | uniq > hol_ang_gt20_autosomes.bed
+$ perl -lane 'if($F[3] > 0.3 && $F[0] ne "chrX"){print $_;}' < hol_ang_vst_targets.tab  | uniq > hol_ang_gt30_autosomes.bed
+$ wc -l hol_ang*
+  1071 hol_ang_gt20_autosomes.bed
+   205 hol_ang_gt30_autosomes.bed
+ 14176 hol_ang_vst_targets.tab
+ 
+# George wanted average and stdev values for each of the VST selected genes
+pwd: /home/dbickhart/share/100_bulls_project/final_data/vst
+# Hol Angus
+$ perl SelectVSTCNValues_avgstdevflags.pl -i hol_ang_gt30_autosomes.bed -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -o hol_ang_tester_gt30.tab -f BTAN,BTHO
+
+# Tau Ind
+$ perl SelectVSTCNValues_avgstdevflags.pl -i ind_taurus_gt20_autosomes.bed -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -o ind_tau_tester_gt20.tab -f BT,BI
+
+________________________
+Circos image
+________________________
+
+# This will be a replacement for the whole genome CNVR plot that Jana created
+# First, to generate the data
+
+pwd: /home/dbickhart/share/100_bulls_project/circos
+$ perl -lane 'if($F[0] =~ /CNVR\#/){next;} print "$F[1] $F[2] $F[3] " . (($F[4] / 75) * 100);' < ../final_data/cnvrs_annotation/final_cnvrs.tab > data/full_cnvrs_percent.dat
+
+# I need to use one-shot scripts to generate some of this data
+$ perl bin/generate_taurus_indicus_circos_dat.pl
+
+# Now to generate the Gene CN VST data
+$ perl -lane 'if($F[0] =~ /chrUn/){next;} if($F[3] < 0){$F[3] = 0;} print "$F[0] $F[1] $F[2] $F[3]";' < ../final_data/vst/hol_ang_vst_targets.tab > data/hol_ang_vst.dat
+$ perl -lane 'if($F[0] =~ /chrUn/){next;} if($F[3] < 0){$F[3] = 0;} print "$F[0] $F[1] $F[2] $F[3]";' < ../final_data/vst/ind_taurus_vst_targets.tab > data/ind_taurus_vst.dat
+
+# Now for gene track names
+$ perl -lane 'if($F[0] =~ /chrUn/){next;} print "$F[0] $F[1] $F[2] 1";' < ../../umd3_data/genedb/refGeneName_umd3_coords.bed > data/refgene_locations.dat
+$ perl -lane 'if($F[0] =~ /chrUn/){next;} print "$F[0] $F[1] $F[2] $F[3]";' < ../../umd3_data/genedb/refGeneName_umd3_coords.bed > data/refgene_names.dat
+
+
+# OK, I need to remove the comparative CNVr frequency and instead put the VST plot within the interior (and make it larger!)
+# The VST plots are way too subtle, I've tried changing the max frequency settings, but now I think that I need to crop down the lists by filtering and then change the track type in circos
+$ cd data
+$ perl -lane 'if($F[3] < 0.05){next;}else{print $_;}' < hol_ang_vst.dat > hol_ang_vst_gt5.dat
+$ perl -lane 'if($F[3] < 0.05){next;}else{print $_;}' < ind_taurus_vst.dat > ind_taurus_vst_gt5.dat
+
+
+
+_________________________
+R plot for CN values
+_________________________
+
+# This will be similar to the previous R plot I created for the figures and tables ppt. 
+# The major difference will be that I need to use the taurus indicus VST values to select the genes
+# I listed many of the major commands in my "Protocols_R_notebook.note" text file for reference
+
+# I wrote a script to preprocess the data I need
+pwd: /home/dbickhart/share/100_bulls_project/final_data/vst
+$ perl SelectVSTCNValues.pl -i ind_taurus_vst_targets.tab -o ind_taurus_vstgenecns.tab -t ../cnvrs_annotation/final_cngenes_RefseqName.tab
+$ R
+	> data <- read.table("ind_taurus_vstgenecns.tab", sep="\t", header = TRUE)
+	# Calculate the mean CN per row and use it to sort the dataframe
+	> data <- transform(data, X=apply(data[,6:80], 1, mean, na.rm = TRUE))
+	> attach(data)
+	> data <- data[order(-X),]
+	
+	# Now to separate the values into taurine and indicine sets and to plot them
+	> i <- sapply(data, is.factor)
+	> data[i] <- lapply(data[i], as.character)
+	> data$gene[29] <- "MGC134040_2"
+	> data$gene[30] <- "MGC134040_1"
+	
+	> genenames <- sprintf("%s (%.2f)", data$gene, data$vst)
+	
+	> taurus <- as.data.frame(c(data[,grepl("BT", names(data))], data[,names(data) %in% c("chairman", "chief", "elevation", "starbuck")]))
+	> indicus <- as.data.frame(c(data[,grepl("BI", names(data))]))
+	> indicus$futuro <- data[,"futuro"]
+	
+	> taurus <- as.data.frame(t(taurus))
+	> indicus <- as.data.frame(t(indicus))
+	> colnames(indicus) <- genenames
+	> colnames(taurus) <- genenames
+	
+	# OK, so the one transcription factor is too high in CN count. I should place it in a separate drawing area
+	> ncol(taurus)
+		[1] 50
+	> ncol(indicus)
+		[1] 50
+	
+	# Setting the layout so that the top portion is printed first
+	> mat <- rbind(c(1, 1), c(2,2), c(2,2), c(2,2), c(2,2), c(2,2))
+	> layout(mat)
+	> genenames[50]
+	[1] "ZNF280B (0.27)"
+	> boxplot(indicus[,50], horizontal = TRUE, names=genenames[50], las = 1, col = "#ff000066", outcol = "#ff000066", border = "#ff000066")
+	> boxplot(taurus[,50], horizontal = TRUE, names=genenames[50], las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66", add = TRUE)
+	> boxplot(indicus[,1:49], horizontal = TRUE, names=genenames[1:49], las = 1, col = "#ff000066", outcol = "#ff000066", border = "#ff000066")
+	> boxplot(taurus[,1:49], horizontal = TRUE, names=genenames[1:49], las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66", add = TRUE)
+	> dev.copy2pdf(file = "vst_tau_ind_cngenes.pdf", useDingbats = FALSE)
+	
+	# The spacing was off, so I generated a top 25 gene list using the following commands instead
+	> mat <- rbind(c(1, 1), c(2,2), c(2,2), c(2,2), c(2,2))
+	> layout(mat)
+	> boxplot(indicus[,50], horizontal = TRUE, names=genenames[50], las = 1, col = "#ff000066", outcol = "#ff000066", border = "#ff000066")
+	> boxplot(taurus[,50], horizontal = TRUE, names=genenames[50], las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66", add = TRUE)
+	> boxplot(indicus[,25:49], horizontal = TRUE, names=genenames[25:49], las = 1, col = "#ff000066", outcol = "#ff000066", border = "#ff000066")
+	> boxplot(taurus[,25:49], horizontal = TRUE, names=genenames[25:49], las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66", add = TRUE)
+	> dev.copy2pdf(file = "vst_tau_ind_top25cn_boxplot.pdf", useDingbats = FALSE)
+	
+	
+	# OK, that takes care of that plot! Now to generate the hol ang plot
+$ perl SelectVSTCNValues.pl -i hol_ang_gt30_autosomes.bed -o hol_ang_vstgenecns.tab -t ../cnvrs_annotation/final_cngenes_RefseqName.tab -r BIBR02,BIBR03,BIBR04,BIBR05,BIBR07,BIBR08,BIBR09,BIGI01,BIGI02,BIGI05,BIGI06,BIGI07,BIGI08,BINE01,BINE04,BINE07,BINE09,BINE10,BINE12,BINE13,BTJE01,BTJE02,BTJE03,BTJE08,BTJE09,BTJE10,BTLM01,BTLM03,BTLM04,BTLM07,BTLM10,BTLM11,BTRO01,BTRO04,BTRO05,BTRO06
+$ R
+	> data <- read.table("hol_ang_vstgenecns.tab", sep="\t", header = TRUE)
+
+	> i <- sapply(data, is.factor)
+	> data[i] <- lapply(data[i], as.character)
+	> data <- transform(data, X=apply(data[,6:ncol(data)], 1, mean, na.rm = TRUE))
+	> data <- data[order(X),]
+
+	# TSPY was too much of an outlier. 300 copies! It was just due to high repetition in the genome
+	> data <- data[!(data$gene %in% "TSPY"),]
+	
+	> genenames <- sprintf("%s (%.2f)", data$gene, data$vst)
+	
+	> holstein <- as.data.frame(c(data[,grepl("BTHO", names(data))], data[,names(data) %in% c("chairman", "chief", "elevation", "starbuck")]))
+	> angus <- as.data.frame(c(data[,grepl("AN", names(data))]))
+	
+	> holstein <- as.data.frame(t(holstein))
+	> angus <- as.data.frame(t(angus))
+	> colnames(angus) <- genenames
+	> colnames(holstein) <- genenames
+	
+	> mat <- rbind(c(1,1), c(2,2), c(2,2), c(2,2))
+	> layout(mat)
+	> boxplot(angus[,34], horizontal = TRUE, names = genenames[34], las = 1, col = "#F4733D66", outcol = "#F4733D66", border= "#F4733D66", ylim=c(0,70))
+	> boxplot(holstein[,34], horizontal = TRUE, names = genenames[34], las = 1, col = "#38595E66", outcol = "#38595E66", border= "#38595E66", add = TRUE)
+	> boxplot(angus[,1:33], horizontal = TRUE, names = genenames[1:33], las = 1, col = "#F4733D66", outcol = "#F4733D66", border= "#F4733D66")
+	> boxplot(holstein[,1:33], horizontal = TRUE, names = genenames[1:33], las = 1, col = "#38595E66", outcol = "#38595E66", border= "#38595E66", add = TRUE)
+	> dev.copy2pdf(file = "vst_hol_ang_genecns.pdf", useDingbats = FALSE)
+
+
+# OK, George brought up a good point that I could list the copy number amounts per breed for certain genes in a sub figure
+# I think that I can do this separately from the main CN gene plots
+pwd: /home/dbickhart/share/100_bulls_project/final_data/vst
+$ R
+	> whole.data <- read.table("ind_taurus_vstgenecns.tab", sep="\t", header = TRUE)
+	> i <- sapply(whole.data, is.factor)
+	> whole.data[i] <- lapply(whole.data[i], as.character)
+	> whole.data$gene[4] <- "MGC134040_1"
+	> whole.data$gene[5] <- "MGC134040_2"
+	> row.names(whole.data) <- whole.data$gene
+	
+	# Now to select a subset of the gene I'm interested in: MCM4
+	> drops <- c("chr", "start", "end", "vst", "gene", "X")
+	> mcm4 <- whole.data["MCM4", !names(whole.data) %in% drops]
+	
+	> mcm4.angus <- as.data.frame(t(mcm4[, grepl("AN", names(mcm4))]))
+	> mcm4.holstein <- as.data.frame(t(as.data.frame(c(mcm4[, grepl("BTHO", names(mcm4))], mcm4[,names(mcm4) %in% c("chairman", "elevation", "starbuck", "chief")]))))
+	> colnames(mcm4.holstein) <- "MCM4"
+	> mcm4.taurus <- as.data.frame(t(as.data.frame(c(mcm4[,grepl("BT", names(mcm4))], mcm4[,grepl("AN.{4}", names(mcm4))], mcm4[,names(mcm4) %in% c("chairman", "elevation", "starbuck", "chief")]))))
+	> mcm4.indicus <- as.data.frame(t(as.data.frame(c(mcm4[,grepl("BI", names(mcm4))], mcm4[,grepl("futuro", names(mcm4))]))))
+	
+	> mcm4.angus$breed <- "Angus"
+	> mcm4.holstein$breed <- "Holstein"
+	> mcm4.indicus$breed <- "Indicus"
+	> mcm4.taurus$breed <- "Taurus"
+	> colnames(mcm4.indicus) <- c("CN", "breed")
+	> colnames(mcm4.holstein) <- c("CN", "breed")
+	> colnames(mcm4.taurus) <- c("CN", "breed")
+	> colnames(mcm4.angus) <- c("CN", "breed")
+	> mcm4.plot <- rbind(mcm4.indicus, mcm4.angus, mcm4.holstein, mcm4.taurus)
+	
+	# OK, now to create the ggplot2 image
+	> ggplot(mcm4.plot, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 1, alpha = 0.50, position="dodge") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff"))
+	
+	# That works quite nice, but I think that the bin width might need to be adjusted or maybe the plot options:
+	> ggplot(mcm4.plot, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 1, alpha = 0.50, position="stack") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff"))
+	> dev.copy2pdf(file = "gene_cn_plot_mcm4.pdf", useDingbats = FALSE)
+	
+	# OK, that worked! Now to try this out on a few other genes
+	# I'm going to create a function to automate this
+	> plot_gene <- function(bdata, gene){
+	drops <- c("chr", "start", "end", "vst", "gene", "X")
+	gname <- bdata[gene, !names(bdata) %in% drops]
+	gname.angus <- as.data.frame(t(gname[, grepl("AN", names(gname))]))
+	gname.holstein <- as.data.frame(t(as.data.frame(c(gname[, grepl("BTHO", names(gname))], gname[,names(gname) %in% c("chairman", "elevation", "starbuck", "chief")]))))
+	gname.taurus <- as.data.frame(t(as.data.frame(c(gname[,grepl("BT", names(gname))], gname[,grepl("AN.{4}", names(gname))], gname[,names(gname) %in% c("chairman", "elevation", "starbuck", "chief")]))))
+	gname.indicus <- as.data.frame(t(as.data.frame(c(gname[,grepl("BI", names(gname))], gname[,grepl("futuro", names(gname))]))))
+	gname.angus$breed <- "Angus"
+	gname.holstein$breed <- "Holstein"
+	gname.indicus$breed <- "Indicus"
+	gname.taurus$breed <- "Taurus"
+	colnames(gname.indicus) <- c("CN", "breed")
+	colnames(gname.holstein) <- c("CN", "breed")
+	colnames(gname.taurus) <- c("CN", "breed")
+	colnames(gname.angus) <- c("CN", "breed")
+	gname.plot <- rbind(gname.indicus, gname.angus, gname.holstein, gname.taurus)
+	ggplot(gname.plot, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 1, alpha = 0.50, position="stack") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff"))
+	return(gname.plot)
+	}
+	
+	> gname.plot <- plot_gene(whole.data, "GAT")
+	# I had to change the binwidth a bit to make the image more palatable...
+	> ggplot(gname.plot, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 0.5, alpha = 0.50, position="stack") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff"))
+	> dev.copy2pdf(file = "gene_cn_plot_GAT.pdf", useDingbats = FALSE)
+	
+	> gname.plot <- plot_gene(whole.data, "KRTAP9-1")
+	> ggplot(gname.plot, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 1, alpha = 0.50, position="stack") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff"))
+	> dev.copy2pdf(file = "gene_cn_plot_KRTAP9-1.pdf", useDingbats = FALSE)
+	
+	# Let's read in the Angus Holstein dataset and make a plot for CATHL1
+	> holang.data <-read.table("hol_ang_vstgenecns.tab", sep="\t", header = TRUE)
+	> i <- sapply(holang.data, is.factor)
+	> holang.data[i] <- lapply(holang.data[i], as.character)
+	> holang.data <- holang.data[holang.data$gene != "TSPY",]
+	> holang.data$gene[7] <- "CD1A_1"
+	> holang.data$gene[8] <- "CD1A_2"
+	> row.names(holang.data) <- holang.data$gene
+	
+	> gname.plot <- plot_gene(holang.data, "CATHL1")
+	> ggplot(gname.plot, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 1, alpha = 0.50, position="stack") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff"))
+	# Crap, futuro is in my data, but the other indicus are not! I need to rerun the data generation perl script to get all animal CNs for this plot
+
+pwd: /home/dbickhart/share/100_bulls_project/final_data/vst
+$ perl SelectVSTCNValues.pl -i hol_ang_gt30_autosomes.bed -o hol_ang_vstgenecns_everyone.tab -t ../cnvrs_annotation/final_cngenes_RefseqName.tab
+	
+	> holang.data <-read.table("hol_ang_vstgenecns_everyone.tab", sep="\t", header = TRUE)
+	> i <- sapply(holang.data, is.factor)
+	> holang.data[i] <- lapply(holang.data[i], as.character)
+	> holang.data <- holang.data[holang.data$gene != "TSPY",]
+	> holang.data$gene[7] <- "CD1A_1"
+	> holang.data$gene[8] <- "CD1A_2"
+	> row.names(holang.data) <- holang.data$gene
+	
+	> gname.plot <- plot_gene(holang.data, "CATHL1")
+	> ggplot(gname.plot, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 0.5, alpha = 0.50, position="stack") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff"))
+	# I think that a discrete X axis would be better:
+	> ggplot(gname.plot, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 0.5, alpha = 0.50, position="stack") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff")) + scale_x_discrete(c(1:12))
+	> dev.copy2pdf(file = "gene_cn_plot_CATHL1.pdf", useDingbats = FALSE)
+	
+# George wants me to separate out the different components to plot the values
+	> gname.subset <- gname.plot[gname.plot$breed %in% c("Angus", "Holstein"),]
+	> ggplot(gname.subset, aes(x=CN, fill=breed)) + geom_histogram(binwidth = 0.5, alpha = 0.50, position="stack") + theme_bw() + scale_fill_manual(values = c("#F4733D", "#38595E", "#ff0000", "#0000ff")) + scale_x_discrete(c(1:10))
+	
+	# I reloaded the ind-taurus vst comparison for the next plot
+	> gname.plot <- plot_gene(whole.data, "KRTAP9-1")
+	> gname.subset <- gname.plot[gname.plot$breed %in% c("Taurus", "Indicus"),]
+
+# OK, one final revisitation given that the Holstein angus Vst shows inconsistencies.
+pwd: /home/dbickhart/share/100_bulls_project/final_data/vst
+$ perl SelectVSTCNValues.pl -i ind_taurus_vst_targets.tab -o ind_taurus_vstgenecns.tab -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab
+$ R	
+	> data <- read.table("ind_taurus_vstgenecns.tab", sep="\t", header = TRUE)
+	> attach(data)
+	> data <- data(order(vst),]
+	> data <- data[order(vst),]
+	> head(data)
+	> i <- sapply(data, is.factor)
+	> data[i] <- lapply(data[i], as.character)
+	> data$gene
+	> data$gene[57] <- "MGC134040_1"
+	> data$gene[58] <- "MGC134040_2"
+	> genenames <- sprintf("%s (%.2f)", data$gene, data$vst)
+	> genenames
+	> taurus <- as.data.frame(c(data[,grepl("BT", names(data))]))
+	> indicus <- as.data.frame(c(data[,grepl("BI", names(data))]))
+	> taurus <- as.data.frame(t(taurus))
+	> indicus <- as.data.frame(t(indicus))
+
+	> colnames(taurus) <- genenames
+	> colnames(indicus) <- genenames
+	> genenames
+	> mat <- rbind(c(1,1), c(2,2), c(2,2), c(2,2), c(2,2), c(2,2))
+	> layout(mat)
+	> boxplot(indicus[,37], horizontal = TRUE, names=genenames[37], las = 1, col = "#ff000066", outcol = "#ff000066", border = "#ff000066")
+	> mat <- rbind(c(1,1), c(2,2), c(2,2), c(2,2), c(2,2))
+	> layout(mat)
+	> boxplot(indicus[,37], horizontal = TRUE, names=genenames[37], las = 1, col = "#ff000066", outcol = "#ff000066", border = "#ff000066")
+	> boxplot(taurus[,37], horizontal = TRUE, names=genenames[37], las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66", add = TRUE)
+	> boxplot(indicus[,c(1:36, 38:61)], horizontal = TRUE, names=genenames[c(1:36, 38:61)], las = 1, col = "#ff000066", outcol = "#ff000066", border = "#ff000066")
+	> boxplot(taurus[,c(1:36, 38:61)], horizontal = TRUE, names=genenames[c(1:36, 38:61)], las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66", add = TRUE)
+	> dev.copy2pdf(file="indicus_taurus_vst_take2_vstsort.pdf", useDingbats = FALSE)
+
+# So that makes a plot that's ordered by Vst rather than average copy number count
+
+# I also created a Gene CN histogram script that will automatically create comparisons between two groups in R
+pwd: /home/dbickhart/share/100_bulls_project/final_data/vst
+$ perl CreateRPlotFromAnnotatedCNList.pl -i KRTAP9-1 -o gene_histo/KRTAP9_1_histo_plot.R -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -1 BT -2 BI
+
+$ perl CreateRPlotFromAnnotatedCNList.pl -i AOX1 -o gene_histo/AOX1_histo_plot.R -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -1 BT -2 BI
+$ perl CreateRPlotFromAnnotatedCNList.pl -i ASZ1 -o gene_histo/ASZ1_histo_plot.R -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -1 BT -2 BI
+$ perl CreateRPlotFromAnnotatedCNList.pl -i FZD3 -o gene_histo/FZD3_histo_plot.R -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -1 BT -2 BI
+$ perl CreateRPlotFromAnnotatedCNList.pl -i GAT -o gene_histo/GAT_histo_plot.R -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -1 BT -2 BI
+$ perl CreateRPlotFromAnnotatedCNList.pl -i GLYAT -o gene_histo/GLYAT_histo_plot.R -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -1 BT -2 BI
+
+# Now for the Holstein Angus comparison
+$ for i in DGAT1 MOGAT2 SEC14L4 CEACAM1 FASN MOGAT1 SLC38A3 GHRHR CYP4F3 ADAMTS20 FASN NLRP12 TLR9 CYP21 CXCL16 MC1R CXCR1; do echo $i; perl CreateRPlotFromAnnotatedCNList.pl -i ${i} -o gene_histo/${i}_hoang_histo_plot.R -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -1 BTAN -2 BTHO; done
+
+# Most of these plots need bin adjustments on the X axis to make them look better
+# I am going to edit the R scripts and then run R batch commands to make the changes
+$ R CMD BATCH gene_histo/CEACAM1_hoang_histo_plot.R
+$ R CMD BATCH gene_histo/GLYAT_histo_plot.R
+$ R CMD BATCH gene_histo/CXCR1_hoang_histo_plot.R
+$ R CMD BATCH gene_histo/SEC14L4_hoang_histo_plot.R
+$ R CMD BATCH gene_histo/NLRP12_hoang_histo_plot.R
+$ R CMD BATCH gene_histo/GAT_histo_plot.R
+
+# one angus holstein gene that I feel deserves some attention
+# I needed to dig into the human blast data to find it though; it is not annotated in cattle very well
+$ perl CreateRPlotFromAnnotatedCNList.pl -i NM_001145304:KIAA1683 -o gene_histo/KIAA1683_hoang_histo_plot.R -t ../cnvrs_annotation/final_annotated_cnvrs_cngenes_HumanBlast.tab -1 BTAN -2 BTHO
+$ R CMD BATCH gene_histo/KIAA1683_hoang_histo_plot.R
+
+# I also reran KRTAP9-1 with scale_x_continuous(breaks=seq(0,32,2)) to set the scale for the X axis to even copy numbers
+_________________________
+Heatmap generation
+_________________________
+# OK, now I need to generate heatmaps for all of the CNVRs
+# This might take a while!
+# First, let's create the regions that I want to visualize
+pwd: /home/dbickhart/share/100_bulls_project/final_data/heatmap
+$ perl -ne 'chomp; @F = split(/\t/); if(!defined($F[19])){next;} if($F[19] eq "RefseqName"){next;} $F[2] -= 5000; $F[3] += 5000; if($F[2] < 0){$F[2] = 0;} $F[19] =~ s/;/_/g; print "$F[1]\t$F[2]\t$F[3]\t$F[19]\t$F[0]\n";' < ../cnvrs_annotation/final_cnvrs.tab > cnvr_heatmap_list.bed
+
+# Now, I need to generate the data from the perl script
+$ perl -lane 'system("perl ../../../programs_source/R/extract_cn_for_heatmap_constant_int.pl -i ../cnvrs_annotation/final_cn_list_pop.txt -c $F[0] -s $F[1] -e $F[2] -o cnvr_$F[4]_$F[3]");' < cnvr_heatmap_list.bed
+
+$ mkdir out_tab
+$ mv *.tab ./out_tab/
+
+> source("/home/dbickhart/share/programs_source/R/heatmap_template_creation_low_span_nodendro.R")
+> for(i in list.files(pattern=".tab")){cnv_heatmap(i); dev.copy2pdf(file = paste0(i,".pdf"), useDingbats=FALSE)}
+
+# I would hit an error every once in a while that would stop the program in its tracks. I think that the larger datafiles cause issues with R
+# Also, I believe that there might be an issue with the last column printout from my program, as the last column header is truncated in every circumstance
+# I'm going to try error handling in R instead to generate these plots
+> source("/home/dbickhart/share/programs_source/R/heatmap_template_creation_low_span_nodendro.R")
+> for(i in list.files(pattern=".tab")){
++ possibleError <- tryCatch(
++ cnv_heatmap(i),
++ error=function(e) e
++ )
++ if(inherits(possibleError, "error")) next
++ dev.copy2pdf(file = paste0(i, ".pdf"), useDingbats = FALSE)
++ }
+
+# That worked! But the animal names are not in the final manuscript format and I need to reorder everything so that the breeds
+# are in the right location.
+# Lets write a script to reformat all of the tab files for this.
+$ for i in *.tab; do echo $i; perl ../process_heatmap_tab_files_keyconvert.pl  -k ../../animal_key_conversion.txt -i $i; done
+
+> source("/home/dbickhart/share/programs_source/R/heatmap_template_creation_low_span_nodendro.R")
+> for(i in list.files(pattern=".tab.r")){
++ possibleError <- tryCatch(
++ cnv_heatmap(i),
++ error=function(e) e
++ )
++ if(inherits(possibleError, "error")) next
++ dev.copy2pdf(file = paste0(i, ".pdf"), useDingbats = FALSE)
++ }
+
+# OK, now to pick out the winners for incorporation into a larger figure
+
+# Here are some of the best CNVRs (asterisks indicate tau-ind VST support as well)
+	- cnvr_1015
+	- cnvr_522
+	- cnvr_20
+	- cnvr_1118*
+	- cnvr_484*
+	- cnvr_1151*
+	- cnvr_1405*
+	- cnvr_1494*
+
+
+# George would like a larger heatmap based on the top 100 Vst values similar to the Campbell 2011, Am J Hum Gen. article figure 4.
+# In order to do this, I'll have to normalize the CN data against a single reference sample and plot that as a heatmap
+pwd: /home/dbickhart/share/100_bulls_project/final_data
+$ perl vst/SelectVSTCNValues.pl -i vst/ind_taurus_gt20_autosomes.bed -t cnvrs_annotation/final_annotated_cnvrs_cngenes_RefseqName.tab -o heatmap/ind_taurus_gt20_vstgenes_CN_values.tab
+
+# Now I need to normalize the values before I load it into R
+# I created a script to automate this, and my first normalization query was chief
+$ cd heatmap
+$ perl normalize_CN_against_reference_animal.pl ind_taurus_gt20_vstgenes_CN_values.tab BTHO20 ind_taurus_gt20_vstgenes_normBTHO20.tab
+$ R
+	> data <- read.delim("ind_taurus_gt20_vstgenes_normBTHO20.tab", sep="\t", header=TRUE, row.names=NULL)
+	> reformatted <- as.matrix(data[,7:79])
+	> library(gplots)
+	> heatmap.2(reformatted, Rowv = TRUE, Colv = FALSE, scale = "none", key = TRUE, symkey = FALSE, density.info = "none", trace = "none")
+	
+	# Crap, the subtraction left me with really negative numbers which saturated the heatmap
+	# I'll have to normalize values across the rows and use a ratio instead of a flat subtraction
+	
+
+
+_________________________
+Creating supplementary tables
+_________________________
+
+# OK, I need to finalize everything by creating the last supplementary tables
+# First things first, I need to redo the CNVR table because I forgot to remove BTAN05 and BTAN06
+pwd: /home/dbickhart/share/100_bulls_project/final_data
+	$ ls cnvs/ | grep -v BTAN05 | grep -v BTAN06 | perl -lane '@s = split(/\./, $F[0]); print "/home/dbickhart/share/100_bulls_project/final_data/cnvs/$F[0]\t$s[0]";' > final_animal_cnvs.tab
+# Now to change the names here so that I don't have to do this later
+	$ perl convert_animal_ids_manuscriptversion.pl -k animal_key_conversion.txt -i final_animal_cnvs.tab -o temp.cnvs -c 1
+	$ mv temp.cnvs final_animal_cnvs.tab
+	
+# Now the CN list
+	$ ls cnlists/ | grep -v BTAN05 | grep -v BTAN06 | perl -lane '@s = split(/\./, $F[0]); print "/home/dbickhart/share/100_bulls_project/final_data/cnlists/$F[0]\t$s[0]";' > final_animal_cnlist.tab
+	$ perl convert_animal_ids_manuscriptversion.pl -k animal_key_conversion.txt -i final_animal_cnlist.tab -o temp.cnvs -c 1
+	$ mv temp.cnvs final_animal_cnlist.tab
+	
+# Now to create the text tab delimited files first
+	$ ~/jdk1.8.0_05/bin/java -jar ../../programs_source/netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../umd3_data/genedb/genedb_list.txt -i final_animal_cnvs.tab -c final_animal_cnlist.tab -o final_annotated_cnvrs -t
+	# Now the non text stuff
+	$ ~/jdk1.8.0_05/bin/java -jar ../../programs_source/netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../umd3_data/genedb/genedb_list.txt -i final_animal_cnvs.tab -c final_animal_cnlist.tab -o final_annotated_cnvrs
+	
+	
+# Now I need to associate the qPCR data with the new CNVR numbers
+# I found out what numbers are associated with the data; they're the final_cnvrs.tab annotation file in /home/dbickhart/share/100_bulls_project/popdoc/oldschool/
+# I've made a spreadsheet in the following directory to keep track of the new CNVR numbers:
+pwd:/ home/dbickhart/share/100_bulls_project/
+$ perl ../final_data/convert_animal_ids_manuscriptversion.pl -k ../final_data/animal_key_conversion.txt -i qpcr_supplementary_data.txt -o qpcr_supplementary_data_converted.txt
+
+# It was tedious, but I used my conversion table to finalize the supplementary table 5
+
+
+# I found Jana's correlation SAS table script so I can do the correlation with the CNVs
+3850: /work3/melvin/jana/data_tracks/corrs2.sas
+
+# Since she's hard coded file entry, let me try to make new files to process in her script
+pwd: /home/dbickhart/share/100_bulls_project/final_data/cnvs
+$ mkdir subsets
+$ for i in BI* futuro.calls.cnvcns.bed; do grep GAIN $i; done | sortBedFileSTDIN.pl | mergeBed -i stdin | perl -lane 'print "$_\tBImrsfastgain";' > subsets/BIlossmrsfast_doc_cnvs.bed
+$ for i in BT* starbuck.calls.cnvcns.bed chief.calls.cnvcns.bed chairman.calls.cnvcns.bed elevation.calls.cnvcns.bed; do grep GAIN $i; done | sortBedFileSTDIN.pl | mergeBed -i stdin | perl -lane 'print "$_\tBTmrsfastgain";' > subsets/BTgainmrsfast_doc_cnvs.bed
+$ for i in BT* starbuck.calls.cnvcns.bed chief.calls.cnvcns.bed chairman.calls.cnvcns.bed elevation.calls.cnvcns.bed; do grep LOSS $i; done | sortBedFileSTDIN.pl | mergeBed -i stdin | perl -lane 'print "$_\tBTmrsfastloss";' > subsets/BTlossmrsfast_doc_cnvs.bed
+
+
+__________________________
+Creating supplementary figures
+__________________________
+
+# I think that Jana's plot is based on older data. Let's see if I can create a better plot in R
+Blade 14: /mnt/iscsi/vnx_gliu_7/acgh_100_bulls/Nimblegen_raw_data
+$ perl ~/bin/get_acgh_ngs_tab_data_for_plot.pl 1.75 > rcv_1.75_ngs_acgh_data.tab
+	chr	start	end	ngs	acgh	rcv
+	chr29	7241332	7243330	2.41108650349453	0.614061817286192	5.5051045211473
+	chr7	10435056	10456054	1.86678677451533	0.414355530786766	1.80183884363341
+	chr6	10402977	10405099	2.48884334485611	0.532407465053263	11.8383546139426
+	...
+# OK, time to plot it in R
+$ R
+	> data <- read.delim("rcv_1.75_ngs_acgh_data.tab", sep="\t", header=TRUE)
+	> plot(data$ngs ~ data$acgh, main="Single channel ACGH correlation with NGS data at rCV > 1.75", ylab="Digital NGS ratio", xlab="Digital ACGH ratio")
+	> lm.out = lm(data$ngs ~ data$acgh)
+	> abline(lm.out, col="red")
+	> dev.off()
+	
+	
+_________________________
+CNV hotspots
+_________________________
+
+# George wants me to define regions that have high CNV frequency within the genome
+# I'm going to use a sliding window based analysis to try to estimate this
+pwd: /home/dbickhart/share/100_bulls_project/final_data/cnvhotspots
+
+# I wrote a script that will process the files and generate statistical comparisons
+# Let's work on the CNVRs
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -c ../cnvrs_annotation/final_annotated_cnvrs_cnvrs.tab -s 1000000 -i 200000 -o total_cnvr_1mb_by_200kb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai 
+	Windows for chr: chrX9
+	Reading CNVR tab file...
+	Calculated average: 0.712934464379551	Calculated Stdev: 1.08245250706762
+	Found 350 windows above the threshold of 3.9602919855824. Total windows: 13321
+	
+	# These are unmerged, so let's try to merge them  using bedtools
+	$ cat total_cnvr_1mb_by_200kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin | wc -l
+		72	
+	$ cat total_cnvr_1mb_by_200kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > total_cnvr_1mb_by_200kb_merged.bed
+	
+	# One down, let's try a bigger window size
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -c ../cnvrs_annotation/final_annotated_cnvrs_cnvrs.tab -s 2000000 -i 400000 -o total_cnvr_2mb_by_400kb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai 
+		Windows for chr: chrX9
+		Reading CNVR tab file...
+		Calculated average: 1.38698065096745	Calculated Stdev: 1.66045193638478
+		Found 125 windows above the threshold of 6.36833646012178. Total windows: 6667
+	$ cat total_cnvr_2mb_by_400kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > total_cnvr_2mb_by_400kb_merged.bed
+	$ wc -l total_cnvr_2mb_by_400kb_merged.bed
+		25 total_cnvr_2mb_by_400kb_merged.bed
+		
+	# One final window size
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -c ../cnvrs_annotation/final_annotated_cnvrs_cnvrs.tab -s 250000 -i 50000 -o total_cnvr_250kb_by_50kb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai
+		Windows for chr: chrX9
+		Reading CNVR tab file...
+		Calculated average: 0.205000563549611	Calculated Stdev: 0.502012122419275
+		Found 1469 windows above the threshold of 1.71103693080744. Total windows: 53234
+	$ cat total_cnvr_250kb_by_50kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > total_cnvr_250kb_by_50kb_merged.bed
+	$ wc -l total_cnvr_250kb_by_50kb_merged.bed
+		293 total_cnvr_250kb_by_50kb_merged.bed
+		
+	# I lied, one more...
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -c ../cnvrs_annotation/final_annotated_cnvrs_cnvrs.tab -s 100000 -i 20000 -o total_cnvr_100kb_by_20kb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai 
+		Windows for chr: chrX9
+		Reading CNVR tab file...
+		Calculated average: 0.102013362292482	Calculated Stdev: 0.330624864533222
+		Found 1032 windows above the threshold of 1.09388795589215. Total windows: 133061
+	$ cat total_cnvr_100kb_by_20kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > total_cnvr_100kb_by_20kb_merged.bed
+	$ wc -l total_cnvr_100kb_by_20kb_merged.bed
+		242 total_cnvr_100kb_by_20kb_merged.bed
+	
+	# I'm a compulsive liar
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -c ../cnvrs_annotation/final_annotated_cnvrs_cnvrs.tab -s 5000000 -i 1000000 -o total_cnvr_5mb_by_1mb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai 
+		Windows for chr: chrX9
+		Reading CNVR tab file...
+		Calculated average: 3.35100821508588	Calculated Stdev: 2.93469194850897
+		Found 49 windows above the threshold of 12.1550840606128. Total windows: 2678
+	$ cat total_cnvr_5mb_by_1mb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > total_cnvr_5mb_by_1mb_merged.bed
+	
+	$ perl -lane 'print "$_\t1mb";' < total_cnvr_1mb_by_200kb_merged.bed > total_cnvr_1mb_by_200kb_merged_named.bed
+	$ perl -lane 'print "$_\t2mb";' < total_cnvr_2mb_by_400kb_merged.bed > total_cnvr_2mb_by_400kb_merged_named.bed
+	$ perl -lane 'print "$_\t250kb";' < total_cnvr_250kb_by_50kb_merged.bed > total_cnvr_250kb_by_50kb_merged_named.bed
+	
+	$ table_bed_length_sum.pl total_cnvr_5mb_by_1mb_merged.bed total_cnvr_2mb_by_400kb_merged.bed total_cnvr_1mb_by_200kb_merged.bed total_cnvr_250kb_by_50kb_merged.bed total_cnvr_100kb_by_20kb_merged.bed
+		FName	IntNum	TotLen	LenAvg	LenStdev	LenMedian	SmallestL	LargestL
+		total_cnvr_5mb_by_1mb_merged.bed	10	88823899	8882389.9	2036759.24463303	9000000	5000000	12823899
+		total_cnvr_2mb_by_400kb_merged.bed	25	93623899	3744955.96	1790063.89834232	3200000	2000000	8000000
+		total_cnvr_1mb_by_200kb_merged.bed	72	131423899	1825331.93055556	930595.737204225	1600000	1000000	5000000
+		total_cnvr_250kb_by_50kb_merged.bed	293	136428918	465627.706484642	245093.951938006	400000	250000	2250000
+		total_cnvr_100kb_by_20kb_merged.bed	242	41840000	172892.561983471	77794.3678146701	160000	100000	800000
+		
+# No, that's not doing it for me... I think that counting CNVs will be better
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -b ../cnvrs_annotation/final_animal_cnvs.tab -s 1000000 -i 200000 -o indiv_cnvs_1mb_by_200kb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai 
+		Windows for chr: chrX9
+		Reading Bed file list...
+		Calculated average: 17.6638390511223	Calculated Stdev: 44.2189537135708
+		Found 287 windows above the threshold of 150.320700191835. Total windows: 13321
+	$ cat indiv_cnvs_1mb_by_200kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > indiv_cnvs_1mb_by_200kb_merge.bed
+	
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -b ../cnvrs_annotation/final_animal_cnvs.tab -s 2000000 -i 400000 -o indiv_cnvs_2mb_by_400kb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai 
+		Windows for chr: chrX9
+		Reading Bed file list...
+		Calculated average: 34.1162441877906	Calculated Stdev: 69.4223405219469
+		Found 143 windows above the threshold of 242.383265753631. Total windows: 6667
+	$ cat indiv_cnvs_2mb_by_400kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > indiv_cnvs_2mb_by_400kb_merge.bed
+	
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -b ../cnvrs_annotation/final_animal_cnvs.tab -s 200000 -i 40000 -o indiv_cnvs_200kb_by_40kb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai 
+		Windows for chr: chrX9
+		Reading Bed file list...
+		Calculated average: 4.45233479116882	Calculated Stdev: 17.6898792704645
+		Found 2624 windows above the threshold of 57.5219726025625. Total windows: 66537
+	$ cat indiv_cnvs_200kb_by_40kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > indiv_cnvs_200kb_by_40kb_merge.bed
+	
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/sliding_window_cnv_check_significance.pl -b ../cnvrs_annotation/final_animal_cnvs.tab -s 500000 -i 100000 -o indiv_cnvs_500kb_by_100kb.bed -f ../../../umd3_data/umd3_kary_extend_hgap.fa.fai 
+		Windows for chr: chrX9
+		Reading Bed file list...
+		Calculated average: 9.47549479851279	Calculated Stdev: 29.1265911411149
+		Found 588 windows above the threshold of 96.8552682218574. Total windows: 26627
+	$ cat indiv_cnvs_500kb_by_100kb.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > indiv_cnvs_500kb_by_100kb_merge.bed
+	
+	$ table_bed_length_sum.pl indiv_cnvs_200kb_by_40kb_merge.bed indiv_cnvs_500kb_by_100kb_merge.bed indiv_cnvs_1mb_by_200kb_merge.bed indiv_cnvs_2mb_by_400kb_merge.bed
+		FName	IntNum	TotLen	LenAvg	LenStdev	LenMedian	SmallestL	LargestL
+		indiv_cnvs_200kb_by_40kb_merge.bed	308	156317153	507523.224025974	378225.659651394	360000	200000	4280000
+		indiv_cnvs_500kb_by_100kb_merge.bed	111	106014032	955081.369369369	574598.976109079	800000	499099	4500000
+		indiv_cnvs_1mb_by_200kb_merge.bed	52	101914933	1959902.55769231	1161015.50825087	1600000	914933	6600000
+		indiv_cnvs_2mb_by_400kb_merge.bed	27	102800000	3807407.40740741	1793388.25317102	3200000	2000000	8400000
+		
+#################################
+#				#
+#	Manuscript notes	#
+#				#
+#################################
+
+# OK, so Evan has sent back his comments, I am listing the ones of highest concern in a table with our feedback
+
+#Evan									Me										George
+1) The manuscript is too descriptive and it reminds me a lot of your    1.	This is a fair criticism. We can crop out a bit of my previous		1. Agreed. Also see No. 9, we need a new Table 2 if it is difficult to draw a Venn diagram; (Derek will do)
+previous ms.  I would suggest spending more time doing additional 	writings, or reorder them and try to stitch them together with more emphasis 
+analyses and highlighting the new pieces				on the new stuff
+
+4) Have you compared Vst vs. Fst--what fraction of CNVs are stratified 	4.	While I know that we did population structure and Vst separately, 	4. Very a few will converge based on CNV's Vst and SNP's Fst. Actually using your genes' Vst (BT:BI>0.2) I overlapped 
+vs. SNPs--Do the same regions show converging evidence of both types 	I wonder if this might be something useful for us to do… Lingyang? What are 	with Lingyang's PS di lists, I found a handful of them. Probably we need to redo the overlap by expending to 1 kb 
+of stratification.							your thoughts?									windows outside genes (i.e. whole-genome). I still feel they are a minority. We need to add a few sentences to explain it in a positive tone. (George & Lingyang will do)
+
+5) be careful of use of the word positive selection¬showing population	5.	This is true. I wonder if he is focusing on Lingyang’s sections though.	5. We will use population differentiation instead of PS. Because the founder effect can achieve a 
+differentiation does not equate with positive selection			 Perhaps Evan has an evolutionary biologist/molecular biologist view of 	similar freq difference between the groups.
+									positive selection as opposed to a population geneticist’s?
+									
+7) How do you determine haplotypes for duplicated regions--this is 	7.	A fair criticism. We need to focus on this perhaps?			7. He is referring to Figure 6 haplotype network analysis. I totally agreed with him: genotyping and haplotyping 
+tricky at best and was a sudden shift in the text that was unclear 
+to me.
+
+
+# I think that my tasks are pretty easy:
+	1. Create a table of VST identified genes and label them if they have been discovered in other studies
+	2. Create a VENN diagram showing overlaps with our previous results (lifted over)
+	3. Add a section in the text explaining them
+	
+
+
+# Liftover comparisons
+# Since I'm working from home, I'll have to do this from the 3850
+3850: /seq1/side_projects/100_bulls/comparisons
+
+# NOPE, can't do it because the 3850 doesn't have a recent version of zlib! Great!
+# Working on my virtualbox
+pwd: /home/dbickhart/share/100_bulls_project/comparisons_old_results
+	$ ../../umd3_data/liftover/liftOver btau4_cnvrs.bed bosTau4ToBosTauMd3.over.chain six_bulls_umd3_liftover.bed six_bulls_umd3_liftover.unmapped.bed
+	$ wc -l six_bulls_umd3_liftover.bed
+		849 six_bulls_umd3_liftover.bed
+	
+	# there is an option for multiple mapping. Let's try that as well
+	$ ../../umd3_data/liftover/liftOver -multiple btau4_cnvrs.bed bosTau4ToBosTauMd3.over.chain six_bulls_umd3_liftover.multiple.bed six_bulls_umd3_liftover.multiple.unmapped.bed
+		Reading liftover chains
+		Mapping coordinates
+		Can only lift BED4, BED5, BED6 to multiple regions
+		# was worth a try
+	
+	$ ../../umd3_data/liftover/liftOver -minMatch=0.75 btau4_cnvrs.bed bosTau4ToBosTauMd3.over.chain six_bulls_umd3_liftover.min75.bed six_bulls_umd3_liftover.min75.unmapped.bed
+	$ wc -l six_bulls_umd3_liftover.min75.bed
+		1008 six_bulls_umd3_liftover.min75.bed	<- better, but still not 100%. Closer to 80%
+		
+	# One more
+	$ ../../umd3_data/liftover/liftOver -minMatch=0.50 btau4_cnvrs.bed bosTau4ToBosTauMd3.over.chain six_bulls_umd3_liftover.min50.bed six_bulls_umd3_liftover.min50.unmapped.bed
+	$ wc -l six_bulls_umd3_liftover.min50.bed
+		1164 six_bulls_umd3_liftover.min50.bed
+	# That is close to 90%
+	
+	# Now let's get the lengths of each
+	$ table_bed_length_sum.pl six_bulls_umd3_liftover.bed six_bulls_umd3_liftover.min75.bed six_bulls_umd3_liftover.min50.bed
+	FName	IntNum	TotLen	LenAvg	LenStdev	LenMedian	SmallestL	LargestL
+	six_bulls_umd3_liftover.bed	849	24,401,948	28741.988221437	31610.2667672272	19450	10018	420,465
+	six_bulls_umd3_liftover.min75.bed	1008	36,835,601	36543.2549603175	54363.8340549692	20728.5	8286	718,429
+	six_bulls_umd3_liftover.min50.bed	1164	53,346,179	45830.0506872852	112006.501848425	22086	5795	2,516,464
+	
+	# Let's work on all three and see how the data turns out
+	# First, the non-exclusive regions
+	$ intersectBed -a six_bulls_umd3_liftover.bed -b 100_bulls_umd3_cnvrs.bed -v | wc -l 
+		437
+	$ intersectBed -a six_bulls_umd3_liftover.min75.bed -b 100_bulls_umd3_cnvrs.bed -v | wc -l 
+		480
+	$ intersectBed -a six_bulls_umd3_liftover.min50.bed -b 100_bulls_umd3_cnvrs.bed -v | wc -l 
+		517
+		
+	# Interesting, so the permissiveness of the liftover actually allows more regions that are CNVs to match up.
+	# Let's see the total length of regions that match
+	$ intersectBed -a six_bulls_umd3_liftover.bed -b 100_bulls_umd3_cnvrs.bed | bed_length_sum.pl | grep 'Total'
+		Total Length:		11,828,571
+	$ intersectBed -a six_bulls_umd3_liftover.min75.bed -b 100_bulls_umd3_cnvrs.bed | bed_length_sum.pl | grep 'Total'
+		Total Length:		20,921,412
+	$ intersectBed -a six_bulls_umd3_liftover.min50.bed -b 100_bulls_umd3_cnvrs.bed | bed_length_sum.pl | grep 'Total'
+		Total Length:		29,774,740
+		
+	# OK, they're not sorted. Let me do that and create an "autosome" file too
+	# OK, that didn't matter
+	# Let's try autosome comparisons
+	$ intersectBed -a six_bulls_umd3_liftover.min50.auto.bed -b 100_bulls_umd3_cnvrs.bed -v | wc -l
+		433	< - OK, about 40% did not overlap. Damn
+		
+	
+	# My thoughts: maybe because of gaps or permissive segmentation, some of the non-cnv regions from btau 4 were called as CNVs and not on UMD3
+	# Let me calculate the average copy number for each of those segments to see if this is the case
+	# I'll trick my annotation program a bit to do this for me
+	$ intersectBed -a six_bulls_umd3_liftover.sorted.bed -b 100_bulls_umd3_cnvrs.bed -v | perl -e '$c = 1; while(<>){chomp; print "$_\t$c\n"; $c++;}' > six_bulls_umd3_liftover.sorted.remaining.bed
+	$ ~/jdk1.8.0_05/bin/java -jar ../../programs_source/netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d fake_genedb.list -i six_bulls_umd3_liftover.sorted.remaining.bed -c ../final_data/cnvrs_annotation/final_animal_cnlist.tab -o comparison_all -t
+	
+	# OK, when I select the max average copy number value, and select regions that are higher than a CN of 3, 169 regions out of 437 are selected (38%).
+	# So only 268 regions remain
+	$ perl -lane 'if($F[-1] <= 3 && $F[2] ne "start"){print "$F[1]\t$F[2]\t$F[3]";}' < comparison_all_cngenes_six.tab > sixanimals_remaininglocs_undercn3.bed
+	
+	# here I'm calculating repetitive region percentages
+	$ perl -lane 'open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $F[0]:$F[1]-$F[2] |"); $h = <IN>; $c = 0; while(<IN>){$n = ($_ =~ tr/NX/NX/); $c += $n;} $len = $F[2] - $F[1]; print "$F[0]\t$F[1]\t$F[2]\t$len\t$c\t" . ($c / $len) . " ";' < sixanimals_remaininglocs_undercn3.bed | perl -lane 'if($F[5] > 0.5){next;}else{print $_;}' | wc -l
+		60	<- > 50% repetitive DNA in the region
+	$ perl -lane 'open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $F[0]:$F[1]-$F[2] |"); $h = <IN>; $c = 0; while(<IN>){$n = ($_ =~ tr/NX/NX/); $c += $n;} $len = $F[2] - $F[1]; print "$F[0]\t$F[1]\t$F[2]\t$len\t$c\t" . ($c / $len) . " ";' < sixanimals_remaininglocs_undercn3.bed | perl -lane 'if($F[5] > 0.3){next;}else{print $_;}' | wc -l
+		18	<- > 30% repetitive DNA in the region
+		
+	# So that accounts for it all!
+	# Let's try the most permissive liftover
+	$ intersectBed -a six_bulls_umd3_liftover.min50.sorted.bed -b 100_bulls_umd3_cnvrs.bed -v | perl -e '$c = 1; while(<>){chomp; print "$_\t$c\n"; $c++;}' > six_bulls_umd3_liftover.min50.sorted.remaining.bed
+	$ ~/jdk1.8.0_05/bin/java -jar ../../programs_source/netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d fake_genedb.list -i six_bulls_umd3_liftover.min50.sorted.remaining.bed -c ../final_data/cnvrs_annotation/final_animal_cnlist.tab -o comparison_all.min50 -t
+	$ perl -lane 'if($F[-1] <= 3 && $F[2] ne "start"){print "$F[1]\t$F[2]\t$F[3]";}' < comparison_all.min50_cngenes_six.tab > sixanimals_remaininglocs_min50_undercn3.bed
+	$ wc -l sixanimals_remaininglocs_min50_undercn3.bed
+		295 sixanimals_remaininglocs_min50_undercn3.bed <- about the same count
+	
+	$ perl -lane 'open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $F[0]:$F[1]-$F[2] |"); $h = <IN>; $c = 0; while(<IN>){$n = ($_ =~ tr/NX/NX/); $c += $n;} $len = $F[2] - $F[1]; print "$F[0]\t$F[1]\t$F[2]\t$len\t$c\t" . ($c / $len) . " ";' < sixanimals_remaininglocs_min50_undercn3.bed | perl -lane 'if($F[5] > 0.5){next;}else{print $_;}' | wc -l
+		67	<- > 50% repetitive DNA in the region
+	$ perl -lane 'open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $F[0]:$F[1]-$F[2] |"); $h = <IN>; $c = 0; while(<IN>){$n = ($_ =~ tr/NX/NX/); $c += $n;} $len = $F[2] - $F[1]; print "$F[0]\t$F[1]\t$F[2]\t$len\t$c\t" . ($c / $len) . " ";' < sixanimals_remaininglocs_min50_undercn3.bed | perl -lane 'if($F[5] > 0.3){next;}else{print $_;}' | wc -l
+		21	<- > 30% repetitive DNA in the region and they're all under 15,000 in length
+		
+	# So, now let's remove the loser regions (CNVRs that didn't translate over, and the repetitive regions that shouldn't count) and try the overlap again
+	$ perl -lane 'open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $F[0]:$F[1]-$F[2] |"); $h = <IN>; $c = 0; while(<IN>){$n = ($_ =~ tr/NX/NX/); $c += $n;} $len = $F[2] - $F[1]; print "$F[0]\t$F[1]\t$F[2]\t$len\t$c\t" . ($c / $len) . " ";' < sixanimals_remaininglocs_min50_undercn3.bed | perl -lane 'if($F[5] > 0.3){next;}else{print "$F[0]\t$F[1]\t$F[2]";}' > comparison_min50_remaining_unaccountedfor_regions.bed
+	$ intersectBed -a six_bulls_umd3_liftover.min50.sorted.bed -b 100_bulls_umd3_cnvrs.bed -wa | perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' | mergeBed -i stdin > six_bulls_intersected.min50.results.bed
+	$ cat six_bulls_intersected.min50.results.bed comparison_min50_remaining_unaccountedfor_regions.bed | sortBedFileSTDIN.pl | perl -lane 'print "$_\tsixbulls";' > sixbulls_fair_comp.min50.bed
+	$ cat sixbulls_fair_comp.min50.bed | bed_length_sum.pl 
+		Interval Numbers:	630
+		Total Length:		37,778,152
+		Length Average:		59965.3206349206
+		Length Median:		28377.5
+		Length Stdev:		130860.948366573
+		Smallest Length:	8286
+		Largest Length:		2516464
+	# Now to redo the venn
+	$ create_GD_venn_diagram.pl comparison_fair_50_liftover.png 100bulls_cnvrs.bed sixbulls_fair_comp.min50.bed
+	
+________________________________
+Gene Comparison
+________________________________
+# Now I am going to get a list of the genes we discuss in the manuscript, intersect the coordinates and make the table
+pwd: /home/dbickhart/share/100_bulls_project/gene_comparison
+	# Preparing the initial bed data
+	$ cp ../comparisons_old_results/sixbulls_fair_comp.min50.bed ./
+	$ cp ../final_data/vst/ind_taurus_gt20_autosomes.bed ./
+	$ perl -e '$h =<>; while(<>){chomp; @s = split(/\t/); print "$s[1]\t$s[2]\t$s[3]\n";}' < ../final_data/cnvrs_annotation/final_annotated_cnvrs_cnvrs.tab > 100_bulls_cnvrs.bed
+	$ intersectBed -a ind_taurus_gt20_autosomes.bed -b 100_bulls_cnvrs.bed -wa > vst_ind_tau_genes_intersect_cnvr.tab
+	
+	# OK, now to mine the text and grab the interesting genes that we talked about
+	$ cp vst_ind_tau_genes_intersect_cnvr.tab working_list_of_genevsts.tab
+	$ echo -e "chr9\t88231932\t88402262\t0\tRAET1G;ULBP17" >> working_list_of_genevsts.tab
+	$ grep PGR ../final_data/vst/ind_taurus_vst_targets.tab | intersectBed -a stdin -b 100_bulls_cnvrs.bed | grep 8207682 >> working_list_of_genevsts.tab
+	$ grep PNPLA2 ../final_data/vst/ind_taurus_vst_targets.tab >> working_list_of_genevsts.tab
+	$ grep TMED2 ../final_data/vst/ind_taurus_vst_targets.tab >> working_list_of_genevsts.tab
+	$ grep RICTOR ../final_data/vst/ind_taurus_vst_targets.tab >> working_list_of_genevsts.tab
+	$ grep CFH ../final_data/vst/ind_taurus_vst_targets.tab >> working_list_of_genevsts.tab
+	
+	$ cat working_list_of_genevsts.tab | sortBedFileSTDIN.pl | perl -lane 'if($F[3] < 0){$F[3] = 0;} print "$F[4]\t$F[0]:$F[1]-$F[2]\t$F[3]";' > genevst_list_sortchr.tab
+	
+	# Now I need to do the intersections with previous results. I will stick with aCGH and NGS datasets for now	
+	$ perl -ne '$_ =~ s/\r/\n/g; print $_;' < stothard_2011_cnvs.txt > stothard_2011_cnvs.unix.txt
+	$ perl -e '$h = <>; while(<>){chomp; $_ =~ s/\r//g; @s = split(/\t/); $s[0] =~ s/C/c/g; print "$s[0]\t$s[3]\t$s[4]\n";}' < stothard_2011_cnvs.unix.txt > stothard_2011_cnvs.bed	//
+	$ perl -lane '$F[2] =~ s/,//g; $F[3] =~ s/,//g; print "$F[1]\t$F[2]\t$F[3]";' < liu_2010_umd3_cnvs.txt > liu_2010_umd3_cnvs.bed
+	$ cp ../comparisons_old_results/sixan_umd3_liftover.min50.bed ./bickhart_2012_umd3.bed
+	$ perl -ne '$_ =~ s/\r//g; chomp; print "$_\n";' < hou_2012_umd3.txt > hou_2012_umd3.bed     //
+	
+	# OK, I've got my three studies, time to do the intersection and manually add the annotations
+	$ cat working_list_of_genevsts.tab | sortBedFileSTDIN.pl > bickhart_thisstudy.bed
+	$ intersectBed -a bickhart_thisstudy.bed -b bickhart_2012_umd3.bed -wa
+	$ intersectBed -a bickhart_thisstudy.bed -b liu_2010_umd3_cnvs.bed -wa
+	$ intersectBed -a bickhart_thisstudy.bed -b stothard_2011_cnvs.bed -wa
+		# This returned nothing!
+	$ intersectBed -a bickhart_thisstudy.bed -b hou_2012_umd3.bed -wa
+	
+	# Now to sort by gene name
+	$ sort -k1,1 genevst_list_sortchr.tab > genevst_list_sortgene.tab
+	
+___________________________________
+Emergency R plot for paper
+___________________________________
+# OK, Bob has suggested that figure S2 is swapped with figure 1. Unfortunately, this figure was created by Jana, so I need to create a new plot for it
+pwd: /home/dbickhart/share/100_bulls_project/
+
+
+____________________________________
+Log2 ratio CGH for VST
+____________________________________
+# I need to generate log2 ratios for the CGH and see if I can't get VST values from them
+# I know that it's not proper, but let's try to get the raw log2 ratios from the CGH and use them directly
+Blade14: /home/dbickhart/vnx_gliu_7/acgh_100_bulls/Nimblegen_raw_data
+$ for i in *.intensities.bed; do echo $i; name=`echo $i | cut -d'.' -f1`; perl -lane '$lr = log($F[4] / $F[3]) / log(2); print "$F[0]\t$F[1]\t$F[2]\t$lr";' < $i > log2rs/$name.rawlog2.bed;  done
+
+# OK, I'm going to mimic performing an annotation run like with my CNV detection procedure
+pwd: /home/dbickhart/share/100_bulls_project/acgh/nimblegen_log2
+$ for i in *.bed; do name=`echo $i | cut -d'.' -f1`; echo -e "$i\t$name"; done > acgh_log2_cnlist.tab
+
+# I then hand modified the text documents containing the file locations for use in the annotation program
+$ ~/jdk1.8.0_05/bin/java -jar ../../../programs_source/netbeans_workspace/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d ../../../umd3_data/genedb/genedb_list.txt -i cnvlist_cgh.tab -c acgh_log2_cnlist.tab -o acgh_raw_log2 -t
+
+
+# Now to prepare for the vst
+$ perl -lane 'print "$F[1]";' < acgh_log2_cnlist.tab > acgh_population_list.tab
+$ kwrite acgh_population_list.tab
+
+# I'm just doing an indicus vs taurus comparison at this point
+$ perl ../../../programs_source/Perl/perl_toolchain/sequence_data_scripts/calculateVSTDifferencesCN.pl -c acgh_raw_log2_windows_RefseqName.tab -p acgh_population_list.tab -o acgh_raw_log2_vst.bed
+
+$ perl -lane 'if($F[3] > 0.2){print $_;}' < acgh_raw_log2_vst.bed | wc -l 
+190
+
+# OK, at least it was only 190!!! Now to check to see if there are the genes that George wanted in this Vst calculation
+$ grep 'AOX1' acgh_raw_log2_vst.bed
+chr2	89517708	89589232	-0.059760956175299	AOX1
+
+$ grep 'GAT' acgh_raw_log2_vst.bed
+chr15	83472190	83493607	0.195462478184991	GAT
+
+$ grep 'GLYAT' acgh_raw_log2_vst.bed
+chr15	83455512	83469280	0.326071169208424	GLYAT
+
+$ grep 'ASZ1' acgh_raw_log2_vst.bed
+chr4	51294534	51370343	-0.0521739130434784	ASZ1
+
+$ grep 'KRTAP9-1' acgh_raw_log2_vst.bed
+chr19	42101853	42103421	0.603128339648305	KRTAP9-1
+
+$ grep 'FZD3' acgh_raw_log2_vst.bed
+chr8	10002971	10091175	-0.0377668308702792	FZD3
+
+# Now, to create a logR ratio R plot using the three genes listed above
+pwd: /home/dbickhart/share/100_bulls_project/acgh/nimblegen_log2
+$ perl ../../final_data/vst/SelectVSTCNValues.pl -i acgh_raw_log2_vst.bed -t acgh_raw_log2_windows_RefseqName.tab -o acgh_raw_log2_vst_rdata.tab
+$ R
+	> data <- read.table("acgh_raw_log2_vst_rdata.tab", sep="\t", header = TRUE)
+	> i <- sapply(data, is.factor)
+	> data[i] <- lapply(data[i], as.character)
+	
+	> genenames <- sprintf("%s (%.2f)", data$gene, data$vst)
+	> taurus <- as.data.frame(c(data[,grepl("BT", names(data))]))
+	> rownames(taurus) <- genenames
+	> genenames[grepl("GAT", genenames)]
+	> taurus.filtered <- taurus[c("KRTAP9-1 (0.60)", "GLYAT (0.33)", "GAT (0.20)"),]
+	> taurus.filtered <- as.data.frame(t(taurus.filtered))
+	
+	> indicus <- as.data.frame(c(data[,grepl("BI", names(data))]))
+	> rownames(indicus) <- genenames
+	> indicus.filtered <- indicus[c("KRTAP9-1 (0.60)", "GLYAT (0.33)", "GAT (0.20)"),]
+	> indicus.filtered <- as.data.frame(t(indicus.filtered))
+	
+	> boxplot(indicus.filtered, horizontal = TRUE, las = 1, ylim=c(-1.5, 1), col = "#ff000066", outcol = "#ff000066", border = "#ff000066")
+	> boxplot(taurus.filtered, horizontal = TRUE, las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66", add = TRUE)
+	> dev.copy2pdf(file = "acg_raw_vst_threegene_plot.pdf", useDingbats = FALSE)
+

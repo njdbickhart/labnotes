@@ -1,0 +1,48 @@
+02/24/2015
+# I figure that I need a new story for ADSA based on the CNV results. If I focus on Holstein and Jersey I can keep the authors list down
+
+pwd: /home/dbickhart/share/100_bulls_project/dairy_folder
+# I  need to select only the Holstein and Jersey animal data
+$ cp ../final_data/cnvrs_annotation/final_animal* ./
+# I used kwrite to crop down the lists. Now to rerun the annotation program
+
+$ ~/jdk1.8.0_05/bin/java -jar ../../programs_source/netbeans_workspace/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d ../../umd3_data/genedb/genedb_list.txt -i final_animal_cnvs.tab -c final_animal_cnlist.tab -o taurus_dairy -t
+
+$ wc -l taurus_dairy_regions.tab 
+	1359 taurus_dairy_regions.tab
+	
+# OK, now to get a population structure list for my VST program
+$ perl -lane 'print $F[1];' < final_animal_cnvs.tab > dairy_pop_structure.tab
+# I used kwrite here to add in the Jersey and Holstein pop names
+# We're going to skip BTHO20, BTHO21, BTHO22 as they are father-son relations
+$ perl ../../programs_source/Perl/perl_toolchain/sequence_data_scripts/calculateVSTDifferencesCN.pl -c taurus_dairy_windows_RefseqName.tab -p dairy_pop_structure.tab -o dairy_refseqname_vst.bed -s BTHO20,BTHO21,BTHO22
+
+# Now to pick out the significant genes
+$ perl -lane 'if($F[3] > 0.2){print $_;}' < dairy_refseqname_vst.bed | wc -l
+	61
+	
+# That's a good number!
+$ perl -lane 'if($F[3] > 0.2){print $_;}' < dairy_refseqname_vst.bed | sort -k 4 -r > dairy_refseqname_vst_sorted_significant.bed
+# allot of the values had average CNs around 2
+$ perl -lane 'if($F[3] > 0.2){open(IN, "grep $F[4] taurus_dairy_windows_RefseqName.tab |"); $l = <IN>; close IN; @s = split(/\t/, $l); $sum = 0; $c = 0; for($x = 6; $x < scalar(@s); $x++){$sum += $s[$x]; $c++;} $sum /= $c; print "$_\t$sum";}' < dairy_refseqname_vst.bed | sort -k 4 -r | perl -lane 'if($F[5] >= 2){print $_;}' > dairy_refseqname_vst_sorted_significant_byaverage.tab
+
+# Significant genes:
+	CLEC5A 	Duplicated once in two Jerseys
+	ASAP1	Duplicated in Holstein but not Jersey
+	
+# Some summary statistics:
+$ perl -lane 'if($F[0] eq "Region#"){next;}else{print "$F[1]\t$F[2]\t$F[3]";}' < taurus_dairy_regions.tab | bed_length_sum.pl 
+	Interval Numbers:	1358
+	Total Length:		66717532
+	Length Average:		49129.2577319588
+	Length Median:		15199
+	Length Stdev:		137039.351099606
+	Smallest Length:	998
+	Largest Length:		1892877
+	
+$ perl -lane 'if($F[0] eq "Region#"){next;}else{print "$F[4]";}' < taurus_dairy_regions.tab | perl -e '$c = 0; $sum = 0; while(<>){chomp; $c++; $sum += $_ / 28;} $avg = $sum / $c; print "$avg\n";'
+	0.376735745844728
+	
+	
+	@top
+	_1

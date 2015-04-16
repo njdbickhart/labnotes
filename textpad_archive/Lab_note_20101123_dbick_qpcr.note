@@ -1,0 +1,231 @@
+2010_11_23
+# George needs qpcr primers that amplify a known copy number 2 loci, though I'm not sure if that might be the best idea
+# Here are two papers that George wanted me to browse:
+	http://www.biomedcentral.com/1471-2164/11/284
+		- Detected cow cnv's using aCGH
+		- qPCR confirmation using TaqMan qPCR
+		- reference probe was in the Spastin gene's first intron (involved in microtubule recovery and repair) (ubiquitous, so a good marker)
+		- a brief glance at the literature suggests that spastin copy number variation causes onset of lethal diseases
+		- I am guessing that the copy number is one
+	
+	http://www.biomedcentral.com/1471-2164/11/232
+		- BTF3 gene (basic transcription factor 3)
+		- Using Taqman qPCR
+		
+		
+	Jessica's primers
+		- Map to a 217bp region of the cow4 assembly that is marked by the human chain region
+		- The human chain region is simply the results of a reciprocal blast of the human genome against the cow genome
+		- So this is a region that is likely conserved between cows and humans.
+		
+	George's CNV qPCR primers
+		Name   	 Chr          Strand                       Start                      End
+		Control3_F 5                  +                  63,131,027                   63,131,050                    TATACATCTCCTTCCTCTTGAGCG
+		Control3_P 5                 +                  63,131,055                    63,131,078                    TTTTCCTGCTCCACCCCACCCCGT
+		Control3_R 5                 -                  63,131,225                    63,131,247                    TCTACTTCCCTTGCTTTGTCACA
+
+
+# OK here is the issue with the primers:
+	- Spastin primers amplify a 65bp region and the BTF3 primers amplify a 75bp region
+	- The primers we have been designing for test amplicons have been between 150bp and 200bp in length
+	- George's control3 primers have too many alternative hits to make them good candidates
+	- I need to design primers around the spastin and BTF3 regions that amplify between 150bp and 200bp and are almost unique hits
+	
+	# Spastin primer design:
+		PRIMER PICKING RESULTS FOR spastin
+		
+		No mispriming library specified
+		Using 1-based sequence positions
+		OLIGO            start  len      tm     gc%   any    3' seq 
+		LEFT PRIMER        542   20   59.24   50.00  6.00  0.00 ATCGATGAGGACGAGAAAGG
+		RIGHT PRIMER       782   20   59.52   50.00  5.00  2.00 AAACAAAGTCAGCGGCTAGG
+		SEQUENCE SIZE: 945
+		INCLUDED REGION SIZE: 945
+		
+		ADDITIONAL OLIGOS
+		                    start  len      tm     gc%   any    3' seq 
+		
+		 1 LEFT PRIMER        167   20   60.18   55.00  2.00  0.00 GGACGAGGGAAGAAGAAAGG
+		   RIGHT PRIMER       331   20   61.13   60.00  4.00  1.00 GCCTAAGAACAGCGGGTAGG
+		   PRODUCT SIZE: 165, PAIR ANY COMPL: 3.00, PAIR 3' COMPL: 0.00
+		
+		 2 LEFT PRIMER        542   20   59.24   50.00  6.00  0.00 ATCGATGAGGACGAGAAAGG
+		   RIGHT PRIMER       780   19   60.40   57.89  5.00  0.00 ACAAAGTCAGCGGCTAGGG
+		   PRODUCT SIZE: 239, PAIR ANY COMPL: 4.00, PAIR 3' COMPL: 0.00
+		
+		 3 LEFT PRIMER        167   20   60.18   55.00  2.00  0.00 GGACGAGGGAAGAAGAAAGG
+		   RIGHT PRIMER       337   19   61.19   57.89  4.00  2.00 CGCGAAGCCTAAGAACAGC
+		   PRODUCT SIZE: 171, PAIR ANY COMPL: 3.00, PAIR 3' COMPL: 1.00
+		
+		 4 LEFT PRIMER        542   20   59.24   50.00  6.00  0.00 ATCGATGAGGACGAGAAAGG
+		   RIGHT PRIMER       781   20   61.67   55.00  5.00  0.00 AACAAAGTCAGCGGCTAGGG
+		   PRODUCT SIZE: 240, PAIR ANY COMPL: 4.00, PAIR 3' COMPL: 0.00
+		
+		Statistics
+		         con   too    in    in          no    tm    tm  high  high        high      
+		         sid  many   tar  excl   bad    GC   too   too   any    3'  poly   end      
+		        ered    Ns   get   reg   GC% clamp   low  high compl compl     X  stab    ok
+		Left    3988     0     0     0  1607   398    90  1762     0     0    14    47    70
+		Right   3498     0     0     0  1260   449   126  1488     0     2     2    63   108
+		Pair Stats:
+		considered 184, unacceptable product size 172, high any compl 1, ok 11
+		primer3 release 1.1.4
+
+
+	# Spastin in-silico PCR:
+		>chr11:15334788+15335028 241bp ATCGATGAGGACGAGAAAGG AAACAAAGTCAGCGGCTAGG
+		ATCGATGAGGACGAGAAAGGtaaatggggggctgggggggagggggcggc
+		ggcgccgggaagaaagcgatgcggtcgccgagggagggcaacacctgcgt
+		ccctttcctgacggagccagcgggcgcccccgaaactgatctgccctgcg
+		agaccgcttcctcggggttagaccctcatcctttatgagtctcaactgaa
+		aaaccctcccctttcaggcacCCTAGCCGCTGACTTTGTTT
+
+	# Blast results:
+		Forward:
+			Length=20
+			
+			
+			                                                                   Score     E
+			Sequences producing significant alignments:                       (Bits)  Value
+			
+			ref|NW_001492908.2|Bt11_WGA1190_4  Bos taurus chromosome 11 ge...  37.4    0.050
+			
+			ALIGNMENTS
+			>ref|NW_001492908.2|Bt11_WGA1190_4 Bos taurus chromosome 11 genomic contig, reference assembly (based 
+			on Btau_4.0)
+			Length=4468396
+			
+			 Features in this part of subject sequence:
+			   spastin
+			
+			 Score = 37.4 bits (40),  Expect = 0.050
+			 Identities = 20/20 (100%), Gaps = 0/20 (0%)
+			 Strand=Plus/Plus
+			
+			Query  1        ATCGATGAGGACGAGAAAGG  20
+			                ||||||||||||||||||||
+			Sbjct  3084108  ATCGATGAGGACGAGAAAGG  3084127
+			
+		Reverse:
+			Length=20
+			
+			
+			                                                                   Score     E
+			Sequences producing significant alignments:                       (Bits)  Value
+			
+			ref|NW_001492908.2|Bt11_WGA1190_4  Bos taurus chromosome 11 ge...  37.4    0.050
+			ref|NW_001494209.2|Bt24_WGA1964_4  Bos taurus chromosome 24 ge...  30.1    7.4  
+			ref|NW_001493288.2|Bt15_WGA1462_4  Bos taurus chromosome 15 ge...  30.1    7.4  
+			
+			ALIGNMENTS
+			>ref|NW_001492908.2|Bt11_WGA1190_4 Bos taurus chromosome 11 genomic contig, reference assembly (based 
+			on Btau_4.0)
+			Length=4468396
+			
+			 Features in this part of subject sequence:
+			   spastin
+			
+			 Score = 37.4 bits (40),  Expect = 0.050
+			 Identities = 20/20 (100%), Gaps = 0/20 (0%)
+			 Strand=Plus/Minus
+			
+			Query  1        AAACAAAGTCAGCGGCTAGG  20
+			                ||||||||||||||||||||
+			Sbjct  3084348  AAACAAAGTCAGCGGCTAGG  3084329
+			
+			
+			>ref|NW_001494209.2|Bt24_WGA1964_4 Bos taurus chromosome 24 genomic contig, reference assembly (based 
+			on Btau_4.0)
+			Length=2234749
+			
+			 Score = 30.1 bits (32),  Expect = 7.4
+			 Identities = 16/16 (100%), Gaps = 0/16 (0%)
+			 Strand=Plus/Minus
+			
+			Query  2        AACAAAGTCAGCGGCT  17
+			                ||||||||||||||||
+			Sbjct  1867741  AACAAAGTCAGCGGCT  1867726
+			
+			
+			>ref|NW_001493288.2|Bt15_WGA1462_4 Bos taurus chromosome 15 genomic contig, reference assembly (based 
+			on Btau_4.0)
+			Length=2986633
+			
+			 Features flanking this part of subject sequence:
+			   855478 bp at 5' side: placenta-expressed transcript 1 protein precursor
+			
+			 Score = 30.1 bits (32),  Expect = 7.4
+			 Identities = 16/16 (100%), Gaps = 0/16 (0%)
+			 Strand=Plus/Minus
+			
+			Query  2        AACAAAGTCAGCGGCT  17
+			                ||||||||||||||||
+			Sbjct  2977990  AACAAAGTCAGCGGCT  2977975
+			
+			
+			  Database: cow build 4 genome database (reference assembly only)
+			    Posted date:  Aug 1, 2008  2:02 PM
+			  Number of letters in database: -1,388,509,967
+  			Number of sequences in database:  14,195
+  			
+  	#BTF3 primer design:
+  		# Using blast PCR for this step
+  		# primer blast is much better! Pasting preferred primer pairs from that for each reference loci!
+ 
+# Primer blast output:
+
+(For BTF3):
+	Sequence (5'->3')	Strand on template	Length	Start	Stop	Tm	GC%
+Forward primer	CAGTCACCCTGAGCAAAACCGC	Plus	22	2200	2221	58.61	59.09%
+Reverse primer	CGGGCCACGCTGAGACAAAGC	Minus	21	2350	2330	60.89	66.67%
+Internal oligo		Plus					
+Product length	151
+
+	Sequence (5'->3')	Strand on template	Length	Start	Stop	Tm	GC%
+Forward primer	ACAGGAGCACCCAAACATCGACC	Plus	23	4591	4613	59.13	56.52%
+Reverse primer	CCCGTCGTCTCCCAAAGCTGG	Minus	21	4742	4722	59.45	66.67%
+Internal oligo		Plus					
+Product length	152
+
+	Sequence (5'->3')	Strand on template	Length	Start	Stop	Tm	GC%
+Forward primer	GCACCCAAACATCGACCCACAAGG	Plus	24	4597	4620	60.47	58.33%
+Reverse primer	TCCAATCCTCCCCTCCCGTCG	Minus	21	4756	4736	59.43	66.67%
+Internal oligo		Plus					
+Product length	160
+
+(For Spastin):
+	Sequence (5'->3')	Strand on template	Length	Start	Stop	Tm	GC%
+Forward primer	CGCCCTGCGCATCGATGAGG	Plus	20	786	805	60.58	70.00%
+Reverse primer	GATCAGTTTCGGGGGCGCCC	Minus	20	936	917	60.11	70.00%
+Internal oligo		Plus					
+Product length	151
+
+	Sequence (5'->3')	Strand on template	Length	Start	Stop	Tm	GC%
+Forward primer	GGCTCTGCCAGCGCTTCTCC	Plus	20	635	654	60.11	70.00%
+Reverse primer	TCCTCATCGATGCGCAGGGC	Minus	20	806	787	59.28	65.00%
+Internal oligo		Plus					
+Product length	172
+
+	Sequence (5'->3')	Strand on template	Length	Start	Stop	Tm	GC%
+Forward primer	TGGCCGCCAAGAGGAGCTCC	Plus	20	665	684	60.88	70.00%
+Reverse primer	GGACGCAGGTGTTGCCCTCC	Minus	20	897	878	59.97	70.00%
+Internal oligo		Plus					
+Product length	233
+
+We only need to choose one primer pair, in the end, but this way we can hedge our bets with multiple choices. Here are the settings I used for primer blast:
+
+Minimum length: 150
+Maximum length: 250
+
+Melting temperatures:
+Minimum: 58
+Maximum: 61
+
+Specificity check:
+Organism: Bos Taurus
+Database: Genome (reference assembly)
+
+GC clamp: 2
+
+All other settings were default.
+  		

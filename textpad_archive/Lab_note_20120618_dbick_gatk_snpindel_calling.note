@@ -1,0 +1,257 @@
+06/18/2012
+# George would like us to try to get in the business of SNP calling and picking, so this is my attempt to try to identify SNPs from the Angus individual on the Lewis cluster
+# He would like calls and SNP annotation similar to Dindot's BMC genomics paper:
+	http://www.biomedcentral.com/1471-2164/13/78
+	
+# Here are some tables that we should copy from that paper:
+	# Table 1:
+	Method	Lanes	Reads	Bases Mapped (Gb)	Average Depth of Coverage	% of Reference Mapped	Bases Mapped to ChrUn (Mb)	De Novo Assembly of Unmapped (Mb)
+ 
+ 	# Table 2:
+ 	Table 2 Annotation of SNPs in the Quarter Horse genome
+						Total 		Homozygous 		Heterozygous 		Novel 		Ensembl Genes
+	All SNPs 				3,157,093 		1,293,374 		1,863,719 	2,814,367 	24,023
+	Intergenic 				2,224,292 		908,169 		1,316,123 	1,991,041 	19,644
+	Intergenic (Upstream w/in 1 kb) 	40,948 			19,241 			21,707 		37,566 		12,803
+	Intergenic (Downstream w/in 1 kb) 	31,901 			13,327 			18,574 		28,494 		10,580
+	Intergenic (Up/Down w/in 1 kb) 		929 			427 			502 		866 		399
+	Genic 					859,023 		352,210 		506,813 	756,400 	19,414
+	Intron 					811,204 		332,455 		478,749 	712,764 	14,778
+	Non-Coding Exon 			5,935 			2,019 			3,916 		5,575 		2,123
+	5’ UTR 					1,734 			1,014 			720 		1,630 		1,049
+	3’ UTR 					1,821 			780 			1,041 		1,594 		1,184
+	Intron Splice Site 			300 			185 			115 		280 		276
+	Exon Splice Site 			657 			320 			337 		593 		595
+	Coding Exon 				37,372 			15,437 			21,935 		33,964 		10,485 (305 imprinted)
+	Synonymous 				19,667 			7,626 			12,041 		17,699		7,982
+	Stop Gain 				214 			50 			164 		206 		190
+	Stop Loss 				8 			5 			3 		7 		8
+	Non-Synonymous 				18,140 			8,076 			10,064 		16,645 		6,899
+	
+
+# I have made a wrapper script to produce a merged bam file suitable for GATK analysis
+	# Let's try it out
+	Lewis: /ibfs7/asg2/bickhartd/reference
+	$ bsub -J picardrun "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar ~/picard-tools-1.53/CreateSequenceDictionary.jar R=umd3_kary_nmask_hgap.fa O=umd3_kary_nmask_hgap.dict"
+	Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+	$ bsub -J bwagwrap -oo bwagwrap.OUT -n 8 -R "rusage[mem=10000] span[hosts=1]" "perl /ibfs7/asg2/bickhartd/bin/bwa_gatk_wrapper.pl -i AN0544_full_run_spreadsheet.tab -o /ibfs7/asg0/bickhartd/bwaalign -r 8g -t 7 -f /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa"
+	
+	
+	# The samtools merge step failed because I did not remove the previous merged bam (samtools does not overwrite)
+	# Trying it manually
+	Lewis: /ibfs7/asg0/bickhartd/bwaalign/
+	$ bsub -J samtools -oo Samtools_merge.OUT -R "rusage[mem=10000]" "/ibfs7/asg2/bickhartd/bin/samtools merge total_merged_clean_sort.bam *.clean.sort.dup.bam"
+
+	# Crap! That replaced the readgroup info that I had! Need to make a new file to replace the headers of the bams
+	$ /ibfs7/asg2/bickhartd/bin/samtools view -H total_merged_clean_sort.bam > proper_header.txt
+	# Used emacs to add the other readgroup (AN0544P1)
+	$ bsub -J samtools -oo Samtools_merge.OUT -R "rusage[mem=10000]" "/ibfs7/asg2/bickhartd/bin/samtools merge -h proper_header.txt total_merged_clean_sort.bam *.clean.sort.dup.bam"
+	# Removing temp files
+	$ bsub -J rmcmd sh ./removecmd.sh
+	
+	# Indexing the merged and sorted bam
+	$ bsub -J bamindx /ibfs7/asg2/bickhartd/bin/samtools index total_merged_clean_sort.bam
+	
+	# Now to realign reads from the bams to try to find indels for the indelrealigner
+	$ bsub -J realign -oo GATK_realign.OUT -n 4 -R "rusage[mem=4000] span[hosts=1]" /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /home/dbickhar/GenomeAnalysisTK-1.6-11-g3b2fab9/GenomeAnalysisTK.jar -R /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -T RealignerTargetCreator -nt 4 -I total_merged_clean_sort.bam -o forIndelRealigner.intervals
+		INFO  17:23:55,162 TraversalEngine - Total runtime 5028.42 secs, 83.81 min, 1.40 hours
+		INFO  17:23:55,163 TraversalEngine - 22616700 reads were filtered out during traversal out of 177476083 total (12.74%)
+		INFO  17:23:55,163 TraversalEngine -   -> 525064 reads (0.30% of total) failing BadMateFilter
+		INFO  17:23:55,163 TraversalEngine -   -> 22091634 reads (12.45% of total) failing MappingQualityZeroFilter
+		INFO  17:23:55,193 TraversalEngine -   -> 2 reads (0.00% of total) failing UnmappedReadFilter
+		INFO  17:23:56,108 GATKRunReport - Uploaded run statistics report to AWS S3
+	
+	# Now to take the indels identified from the RealignerTargetCreator and run them through the IndelRealigner (NOTE: Does not use -nt to control number of processor cores)
+	$ bsub -J realign -oo GATK_realign.OUT -n 4 -R "rusage[mem=4000] span[hosts=1]" /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /home/dbickhar/GenomeAnalysisTK-1.6-11-g3b2fab9/GenomeAnalysisTK.jar -R /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -T IndelRealigner -I total_merged_clean_sort.bam -targetIntervals forIndelRealigner.intervals -o total_merged_indelrealigned.bam
+		INFO  15:41:19,053 TraversalEngine - Total runtime 28322.84 secs, 472.05 min, 7.87 hours
+		INFO  15:41:19,304 TraversalEngine - 0 reads were filtered out during traversal out of 610408522 total (0.00%)
+		INFO  15:41:23,973 GATKRunReport - Uploaded run statistics report to AWS S3
+	
+	
+	# I will have to get the dbSNP coordinates from NCBI's FTP server (ftp://ftp.ncbi.nlm.nih.gov/snp/organisms/cow_9913/) and convert them to VCF format to run the recalibration steps later
+	# Here are the recalibration steps
+		http://www.broadinstitute.org/gsa/gatkdocs/release/org_broadinstitute_sting_gatk_walkers_recalibration_CountCovariatesWalker.html
+		http://www.broadinstitute.org/gsa/gatkdocs/release/org_broadinstitute_sting_analyzecovariates_AnalyzeCovariates.html
+		http://www.broadinstitute.org/gsa/gatkdocs/release/org_broadinstitute_sting_gatk_walkers_recalibration_TableRecalibrationWalker.html
+		
+	# Right now, I just want to run the UnifiedGenotyper to get the results back
+	$ bsub -J gatkugen -oo GATK_unifiedgenotyper.OUT -n 8 -R "rusage[mem=10000] span[hosts=1]"  /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -Xmx9g -jar ~/GenomeAnalysisTK-1.6-11-g3b2fab9/GenomeAnalysisTK.jar -nt 7 -R /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -T UnifiedGenotyper -I total_merged_indelrealigned.bam -o genotyper_raw_snps.vcf
+		INFO  20:15:57,744 TraversalEngine - Total runtime 7492.36 secs, 124.87 min, 2.08 hours
+		INFO  20:15:57,745 TraversalEngine - 19629156 reads were filtered out during traversal out of 177476158 total (11.06%)
+		INFO  20:15:57,745 TraversalEngine -   -> 763273 reads (0.43% of total) failing BadMateFilter
+		INFO  20:15:57,745 TraversalEngine -   -> 18865883 reads (10.63% of total) failing UnmappedReadFilter
+		INFO  20:16:53,310 GATKRunReport - Uploaded run statistics report to AWS S3
+		$ wc -l genotyper_raw_snps.vcf
+			2386950 genotyper_raw_snps.vcf
+	
+	$ bsub -J variantfilter -oo GATK_variantfiltwalker.OUT -R "rusage[mem=10000] span[hosts=1]" -n 2 /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -Xmx9g -jar ~/GenomeAnalysisTK-1.6-11-g3b2fab9/GenomeAnalysisTK.jar -R /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -T VariantFiltration -o vfilt_gatk_snps.vcf --variant genotyper_raw_snps.vcf --filterExpression "DP > 100 || MQ0 > 40 || SB > -0.10" --filterName "defaultVFfilter" --filterExpression "QUAL < 10" --filterName "Qualfilter"
+		INFO  08:14:44,422 TraversalEngine - [INITIALIZATION COMPLETE; TRAVERSAL STARTING]
+		INFO  08:14:44,423 TraversalEngine -        Location processed.sites  runtime per.1M.sites completed total.runtime remaining
+		INFO  08:15:14,378 TraversalEngine -   chr6:23886683        5.94e+05   30.0 s       50.6 s     25.7%       117.0 s    87.0 s
+		INFO  08:15:44,404 TraversalEngine -  chr12:80818284        1.23e+06   60.1 s       49.0 s     52.7%       113.9 s    53.9 s
+		INFO  08:16:14,408 TraversalEngine -  chr21:45548532        1.87e+06   90.1 s       48.3 s     77.9%       115.7 s    25.6 s
+		INFO  08:16:38,949 TraversalEngine - Total runtime 114.60 secs, 1.91 min, 0.03 hours
+		
+	# that did not remove any lines from the VCF, so I assume that the "filter" column was updated with "PASS" or "FAIL" calls based on the filtration criteria I used.
+	# Since the files are larger, I am going to gzip them before transferring them to my linux virtualbox
+		$ bsub -J gzip "gzip *.vcf"
+		# I will transfer the vcf indices as-is
+		
+		# Using snpEff for annotation
+		pwd:/home/dbickhart/share/bob_missou_data/gatk_snp_pipeline
+		$ perl -e 'while(<>){@s = split(/\t/); if(scalar(@s) > 7){if($s[6] ne "PASS"){$t++;}}} print "$t\n";' < vfilt_gatk_snps.vcf
+			397258  <- snps that did not pass filter
+		$ perl -e 'while(<>){@s = split(/\t/); if(scalar(@s) > 7){if($s[6] eq "PASS"){$t++;}}} print "$t\n";' < vfilt_gatk_snps.vcf
+			1989637 <- snps that did pass filter
+			
+		$ java -jar ../../snpEff_2_1b/snpEff.jar eff UMD3.1.66 vfilt_gatk_snps.vcf -chr -t -o bedAnn > snpeff_test_annotated.bed
+		# Crap, that didn't filter out the failing snps. Going to do that manually
+		$ perl -lane 'if($F[0] =~ /^#+/){print $_;}elsif($F[6] ne "PASS"){next;}else{print $_;}' < vfilt_gatk_snps.vcf > act_filt_gatk_snps.vcf     */
+		$ java -jar ../../snpEff_2_1b/snpEff.jar eff UMD3.1.66 act_filt_gatk_snps.vcf -chr -t -o bedAnn > snpeff_filt_annotated.bed
+		$ java -jar ../../snpEff_2_1b/snpEff.jar eff UMD3.1.66 act_filt_gatk_snps.vcf -chr -t -o vcf > snpeff_filt_annotated.vcf
+		
+		# Finding the number of Stop_gain mutations
+		$ perl -lane 'if($F[-7]){print $_;}' < snpEff_genes.txt | wc -l
+			138
+			
+		$ perl -ne 'if($_ =~ /DNAJC13/ && $_ =~ /CODING/){print $_;}' < snpeff_filt_annotated.vcf
+			chr1	138196398	.	G	T	43.1	PASS	AC=1;AF=0.50;AN=2;BaseQRankSum=1.323;DP=18;Dels=0.00;FS=0.000;HRun=1;HaplotypeScore=0.0000;MQ=44.67;MQ0=0;MQRankSum=0.189;QD=2.39;ReadPosRankSum=-0.819;SB=-29.20;EFF=STOP_GAINED(HIGH|NONSENSE|tCa/tAa|S1154*|DNAJC13|protein_coding|CODING|ENSBTAT00000003865|exon_1_138196391_138196436)	GT:AD:DP:GQ:PL	0/1:15,3:18:73.09:73,0,437
+			
+		# I will try to use samtools' pileup command to generate a pileup view of the snp and the surrounding 25 bp (on each side)
+		Lewis: /ibfs7/asg0/bickhartd/bwaalign
+		$ bsub -J sampileup -oo Samtools_pileup.OUT -R 'rusage[mem=10000]' "/ibfs7/asg2/bickhartd/bin/samtools mpileup -r chr1:138196373-138196423 -f /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa total_merged_indelrealigned.bam"
+		# That worked, but it looks like the stop gain was only one read, and it was the last base on the read that called it!
+		# Saving it for later; I might need it to fine tune my filtering in the future
+		$ mv Samtools_merge.OUT dnaj_gatk_snpcall_samtools_pileup.out
+		
+		# Testing out some more Stop gains
+			chr22	13414365	.	T	G	146.37	PASS	AC=1;AF=0.50;AN=2;BaseQRankSum=0.737;DP=29;Dels=0.00;FS=2.090;HRun=1;HaplotypeScore=1.6643;MQ=51.02;MQ0=0;MQRankSum=-2.161;QD=5.05;ReadPosRankSum=1.195;SB=-86.79;EFF=STOP_GAINED(HIGH|NONSENSE|taT/taG|Y696*|ZNF621|protein_coding|CODING|ENSBTAT00000024707|exon_22_13414200_13414755)	GT:AD:DP:GQ:PL	0/1:21,8:29:99:176,0,600
+		$ bsub -J sampileup -oo znf621_pileup.OUT -R 'rusage[mem=10000]' "/ibfs7/asg2/bickhartd/bin/samtools mpileup -r chr22:13414364-13414366 -f /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa total_merged_clean_sort.bam"
+			<mpileup> Set max per-file depth to 8000
+			chr22   13414364        A       28      ,,,,,,..,,,,,,,,..,,...,,,.,    EF?FI<:8;:J<E?J9>?CG:JJFDEF#
+			chr22   13414365        T       28      ,,,,,,GGgg,g,,,g..,,G..,,,.,    DF:>DF!!!!J!G*I$<*@G!JJFFEF#
+			chr22   13414366        G       28      ,,,,,,AAaa,a,,,a..,,A..,,,.,    DF?FH<!!!!J!G9I$=?)C!JJFFFH#  <- Wow! So this is a phased, amino acid change! Let's expand the window a bit
+		
+		$ bsub -J sampileup -oo znf621_pileup.OUT -R 'rusage[mem=2000]' "/ibfs7/asg2/bickhartd/bin/samtools mpileup -r chr22:13414360-13414370 -f /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa total_merged_clean_sort.bam"
+			chr22   13414360        A       29      .,,,,,,..,,,,,,,,..,,...,,,.,   DHH2GJ>JEEJHBD?FA=*=@HJJFEEC#
+			chr22   13414361        G       29      .,,,,,,..,,,,,,,,.C,,...,,,.,   DFH2GIEICIIFDF9DG;*3@GJJFFEF#
+			chr22   13414362        C       29      .$,,,,,,..,,,,,,,,.A,,...,,,.,  <DH=EIE68:6I=I*E:<*DA8JIDEDF#
+			chr22   13414363        T       28      ,,,,,,CCcc,c,,,c..,,C..,,,.,    DH2BGE5695J<HFJ76:@E7JJFFFF#	<- Double wow! This is the complementary change that prevents this codon from being a stop-gain
+			chr22   13414364        A       28      ,,,,,,..,,,,,,,,..,,...,,,.,    EF?FI<:8;:J<E?J9>?CG:JJFDEF#
+			chr22   13414365        T       28      ,,,,,,GGgg,g,,,g..,,G..,,,.,    DF:>DF!!!!J!G*I$<*@G!JJFFEF#
+			chr22   13414366        G       28      ,,,,,,AAaa,a,,,a..,,A..,,,.,    DF?FH<!!!!J!G9I$=?)C!JJFFFH#
+			chr22   13414367        A       28      ,,,,,,..,,,,,,,,..,,...,,,.,    DDDDH4$$$$I$H:J'?A8=$JJFFFG#
+			chr22   13414368        C       28      ,,,,,,..,,,,,,,,..,,...,,,.,    BD?DGHFFBJJFG*JG??7=HJJHHFH#
+			chr22   13414369        T       28      ,,,,,,..,,,,,,,,..,,...,,,.,    @?=DHICCGIJHDBI?#A8=IJJHHFH#
+			chr22   13414370        G       28      ,,,,,,..,,,,,,,,T.,,...,,,.,    @11@FGEEIJJG:0J?#B6;GJJHHFH#	
+		
+		# In order to view a "human-friendly" read pileup, I can use another tool in the samtools package and screengrab it if necessary
+		$ /ibfs7/asg2/bickhartd/bin/samtools tview total_merged_clean_sort.bam /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa
+		
+	# Using picard to get alignment statistics from the sorted, bam
+	Lewis: /ibfs7/asg0/bickhartd/bwaalign
+	$ bsub -J picard -oo picard_alignment_summary_metrics.OUT -R 'rusage[mem=10000]' "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -Xmx9g -jar ~/picard-tools-1.53/CollectAlignmentSummaryMetrics.jar METRIC_ACCUMULATION_LEVEL=ALL_READS INPUT=total_merged_clean_sort.bam OUTPUT=AN0544P_alignment_sequence_metrics.txt REFERENCE_SEQUENCE=/ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa VALIDATION_STRINGENCY=LENIENT"
+	
+# I can use SNPEff to quickly annotate snps in the database
+	pwd: /home/dbickhart/share/snpEff_2_1b
+	$ java -jar snpEff.jar download UMD3.1.66
+		00:00:39.641	Extracting file 'data/UMD3.1.66/snpEffectPredictor.bin'
+		00:00:39.641	Local file name: '/home/dbickhart//snpEff/data/UMD3.1.66/snpEffectPredictor.bin'
+		00:00:39.641	Creating local directory: '/home/dbickhart/snpEff/data/UMD3.1.66'
+		00:00:40.899	Unzip: OK
+		
+		
+________________________________
+SNP known variant site note
+________________________________
+
+# I found the following advice for the cattle genome on the GATK FAQ forum:
+
+	FrancoisGuillaumeMember?
+
+	August 20Posts: 1
+
+
+
+
+	Hi, I am working on cattle sequence, and to obtain known sites, I used a gvf file found on ensemble ftp site : ftp://ftp.ensembl.org/pub/release-68/variation/gvf/
+
+	The size of the gvf files vary between species but it's at least a starting point. I had to process a little bit the file (with two or three shell/awk command).
+	 1.I discarded SNV with two possible ALT allele (e.g. ALT=A,G)
+	 2.For insertion, I had to search in fasta file the ref allele to add it ahead of the insertion (e.g. convert REF=., ALT=ACCC to REF=C,ALT=CACCC)
+	 3.I discard SNP mapped on several chromosome (same rsid, several position)
+	 4.QUAL and INFO fields were all set to "."
+	 5.FILTER field was set to PASS
+
+	All this transformations were done in order to be read by IGV (maybe GATK is more lenient), sweeping any complex cases. Now my questions, is there any informations that i should not have discarded ? 
+	Should the known sites be as numerous as possible or should they be as reliable as possible (and what criteria could help to assess one SNP quality...when no quality measure is available).
+
+	Furthermore, I went on Illumina and Affimetrix website to download the map file associated to their highest density SNP chip, and based on these, create two additionnal vcf.
+
+	I put all the QUALITY field to ".", but would it be worthwhile to give an arbitrary value (possibly higher than the one of the GVF file SNV)
+
+	I hope this can help.
+
+
+# Eric Banks' response:
+
+	
+	ebanksGSA Official Membermod
+	
+	August 20Posts: 224
+	
+	
+	
+	
+	These are good questions. The last one is the easiest: as far as being a resource for known variation, we do not look at the QUAL field so setting that value to "." is okay. 
+	As for your first question, it really depends on what you are trying to do. In general, it's more important for your truth set to be as accurate as possible - even if it means 
+	missing some real sites because of it. The only thing I would consider doing differently is keeping the multi-allelic SNP sites (since they aren't inherently errorful provided 
+	they show up at the right frequency).
+	
+	
+	Eric Banks, PhD -- Group Leader, Methods Development, MPG, Broad Institute of Harvard and MIT
+	
+# So this is the way to improve the SNP detection using a series of known sites
+
+	
+#########################################
+#					#
+#	Snp calling (GATK) protocol	#
+#					#
+#########################################
+
+# Start with paired end sequence reads (for best effect)
+1. BWA alignment
+	bwa aln -t [threads] [indexed ref genome] [fastq1] > [sai1]
+	bwa aln -t [threads] [indexed ref genome] [fastq2] > [sai2]
+	bwa sampe -r [read group] [indexed ref genome] [sai1] [sai2] [fastq1] [fastq2] > [sam]
+	
+	# Note: read group must contain at least these fields:
+	"@RG\tID:[lane of sequence]\tPL:ILLUMINA\tSM:[sample name]"
+	
+2. Picard filtering
+	for i in *.sam:
+	java -jar path_to_picard/CleanSam.jar I=[bam file] O=[cleaned bam] VALIDATION_STRINGENCY=SILENT
+	java -jar path_to_picard/ReorderSam.jar I=[cleaned bam] O=[reordered bam] R=[indexed ref genome] VALIDATION_STRINGENCY=SILENT  
+	# Note, the last command is optional if the reference is sorted Karyotypically
+	
+	samtools sort -m [memory limit] [reordered bam] [sorted prefix]
+	java -jar path_to_picard/MarkDuplicates.jar I=[reordered bam] O=[marked dup bam] M=metric TMP_DIR=[temp dir] REMOVE_DUPLICATES=TRUE ASSUME_SORTED=TRUE VALIDATION_STRINGENCY=SILENT
+	
+3. Samtools merger and read group retention
+	samtools view -H [one of the bams] | grep -v @RG | grep -v @PG > chr_info.txt
+	for i in *.bam
+	do 
+		samtools view -H $i | grep @RG >> temp_rgs.txt
+	done
+	uniq temp_rgs.txt > unique_rgs.txt
+	samtools view -H [one of the bams] | grep @PG > bwa_info.txt
+	cat chr_info.txt unique_rgs.txt bwa_info.txt > [actual read group file]
+	
+	samtools merge -h [actual read group file] [output merged bam file] *[clean sort bam suffix]
+	
+4. GATK initial raw bam preparation
+	java -jar path_to_GATK/GenomeAnalysisTK.jar -R [indexed ref genome] -T RealignerTargetCreator -nt [number cores] -I [merged bam file] -o [for indelrealigner.intervals]
+	java -jar path_to_GATK/GenomeAnalysisTK.jar -R [indexed ref genome] -T -T IndelRealigner -I [merged bam file] -targetIntervals [for indelrealigner.intervals] -o [indel realigned bam]
+	
+	

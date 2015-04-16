@@ -1,0 +1,296 @@
+2011_01_11 - 2011_01_18
+# Now that I have finished the mrFAST PEM runs for all of the paired end files, it's time to process them into readable data
+
+# Just as a rehash, here's a reprint of my general operating procedure:
+
+###############################################
+#                                             #
+#		Procedure		      #
+#                                             #
+###############################################	
+
+#Running Variation Hunter on paired end files#
+	# Preliminary test of mrsFast alignment to determine optimal interval lengths
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN05P.FC42N19.1.1.15.fq --seq2 BTAN05P.FC42N19.1.2.15.fq --min 100 --max 700 -o ../BTAN05P_1_15_test.sam
+		
+		$ perl sam_avg_stdev.pl BTAN05P_1_15_test.sam
+		
+	# Running mrsFast using the --discordant-vh option
+		$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 BTAN05P.FC42N19.1.1.15.fq --seq2 BTAN05P.FC42N19.1.2.15.fq --discordant-vh --min 100 --max 700 -o ../BTAN05P_1_15_disc.sam
+		
+		#optional#
+		$ ../../samtools-0.1.8/samtools view -bt /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa.fai BTAN05P_1_15_test.sam > BTAN05P_1_15_test.bam
+		
+	# Combining and sorting DIVET file
+		#optional test#
+		$ perl -e '%x = (); while(<>){split(/\t/); $x{$_[9]} += 1;} foreach $k (keys(%x)){ print "$k\t$x{$k}\n";}' < BTAN_combined_pem_DIVET.vh
+			D       25527
+			I       186363
+			E       86599
+			V       24506
+			
+		$ cat DIVET > combined_DIVET
+		
+		$ sort -k 2,3 BTAN_combined_pem_DIVET.vh > BTAN_combined_sorted_DIVET.vh
+		$ perl sort_unique_divet.pl BTAN_combined_sorted_DIVET.vh > BTAN_combined_sorted_cDIVET.vh
+		
+	# Running VariationHunter-sc
+		# move to variation hunter folder
+		$ ./VariationHunter_SC
+				Please enter the minimum paired-end insert size:
+				121
+				Please enter the maximum paired-end insert size:
+				485
+				Please enter the pre-processing mapping prune probability:
+				0.05
+				Please enter the name of the input file:
+				/mnt/gliu1_usb/dbickhart/breed_doc/angus/BTAN05P_1_15_disc.sam_DIVET.vh
+				Please enter the minimum support for a cluster:
+				2
+				
+###############################################
+
+# So, I have been thinking about the paired end data, and I believe that it might be worthwhile to do each animal separately before combining their data
+
+# This way, I can compare results and see if I actually do need to combine datasets to pick up SV's/CNV's
+
+# I believe that I might have already done this with Angus, so how about I "reparse" that information?
+# Actually, I was incorrect; I only did this on one of the Angus samples
+
+# Now, for angus...
+	# Minimum distance: 121
+	# Maximum distance: 485
+	# Preprocessing:
+	$ perl sort_unique_divet.pl BTAN03P.FC42N19.6.1_15.sam_DIVET.vh > BTAN03P.FC42N19.6.1_15.sam_DIVET_c.vh
+	
+	# Running the program:
+	$ ./VariationHunter_SC
+		Please enter the minimum paired-end insert size:
+		121
+		Please enter the maximum paired-end insert size:
+		485
+		Please enter the pre-processing mapping prune probability:
+		0.05
+		Please enter the name of the input file:
+		/mnt/gliu1_usb/dbickhart/Variationhunter/angus/BTAN03P.FC42N19.6.1_15.sam_DIVET_c.vh
+		Please enter the minimum support for a cluster:
+		2
+		
+	# Since settings will be the same for the other angus individuals, I will just list the number of calls in the .SV file at the end of the program
+	# BTAN03P.FC42N19.6.1_15.sam_DIVET_c.vh.SV
+		- 6 calls with greater than 2 supporting pairs
+		
+	# BTAN05P.FC42N19.1.1_15.sam_DIVET_c.vh
+		- 10 calls
+		
+	# BTAN06P.FC42MVF.8.1_15.sam_DIVET_c.vh	
+		- 7 calls
+		
+	# BTAN07M.FC42PGC.7.1_15.sam_DIVET_c.vh
+		# Oops! this was a mate-pair file! 
+		# Had the most discordant reads by far (big surprise!)
+		- 24 calls
+		
+	# BTAN07P.FC42HMD.1.1_14.sam_DIVET_c.vh
+		- 10 calls
+		
+	# Now for the combined file...
+		# BTAN_combined_sorted_cDIVET.vh
+		- I believe that I only merged the paired end files in this combo file
+		- 89 calls
+		
+	# I want to compare the combined vs. individual files, so I am going to create a simple script to convert the DIVET file into a bed file (for bedtools comparisons).
+	# The script is convert_divet_to_bed.pl and it can be used to make bed files that contain useful information on SV's
+		# Example usage:
+		$ perl convert_divet_to_bed.pl BTAN03P.FC42N19.6.1_15.sam_DIVET_c.vh.SV > BTAN03P.FC42N19.6.1_15_SV.bed
+		# Or, for more verbose output:
+		$ BTAN03P.FC42N19.6.1_15.sam_DIVET_c.vh.SV 1
+			#chrome	start		end		SVtype	support
+			chr28   43208070        43208892        2       16
+			chr18   57202475        57206048        2       4
+			chr15   6612726 6624363 4       3
+			chr21   1755868 1944511 5       3
+			chr3    8754907 8756082 2       3
+			chr25   74859   433138  5       3
+
+	# now to intersect
+		$ for i in BTAN*P.*.bed; do ../../BEDTools-Version-2.10.0/bin/intersectBed -a BTAN_combined_sorted_SV.bed -b $i -c > $i.comp; done
+		$ for i in *.comp; do echo $i; perl -ne '@a = split(/\t/); chomp $a[3]; if($a[3]){print $_;}' < $i | wc; done
+			BTAN03P.FC42N19.6.1_15_SV.bed.comp
+			      8      32     195
+			BTAN05P.FC42N19.1.1_15_SV.bed.comp
+			     19      76     477
+			BTAN06P.FC42MVF.8.1_15_SV.bed.comp
+			     11      44     279
+			BTAN07P.FC42HMD.1.1_14_SV.bed.comp
+			     14      56     343
+			Combined total: 52 / 89 # there are quite a few overlaps too
+			
+		# I should check the intervals later to see if they were refined by pooling the samples or if I got too many positives.
+		# Might be more consistent if I pool the samples (since I pool the DoC)
+		$ for i in *.comp; do perl -ne '@a = split(/\t/); chomp $a[3]; if($a[3]){print $_;}' < $i > comp_combined.bed; done
+		$ ../../BEDTools-Version-2.10.0/bin/mergeBed -i comp_combined.bed > comp_combined_merged.bed
+		$ wc comp_combined_merged.bed
+			20  60 463 comp_combined_merged.bed
+		$ more comp_combined_merged.bed
+			chr14   13266005        13266638
+			chr15   6592142 6629895
+			chr15   50185018        50251457
+			chr16   4006380 4182408
+			chr16   5090310 5550194
+			chr17   44270556        44308397
+			chr18   6072992 6073642
+			chr18   57202446        57206048
+			chr19   64370432        64371169
+			chr21   1755868 1944519
+			chr22   41031736        41068662
+			chr23   38130812        38133800
+			chr28   43208062        43208906
+			chr3    8754907 8756082
+			chr3    18789203        19076584
+			chr3    126037882       126038473
+			chr4    124344862       124384958
+			chr5    8574887 8575614
+			chr5    79930372        80080290
+			chr7    77180478        77215904
+		$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a BTAN_combined_sorted_SV.bed -b comp_combined_merged.bed -v > excluded_combined_sorted.bed
+		$ wc excluded_combined_sorted.bed
+			56  168 1306 excluded_combined_sorted.bed
+			
+# I rewrote VariationHunter_SC.cpp to take command line arguments
+	-i <input file>
+	-m <minimum distance>
+	-M <maximum distance>
+	-p <preprocess prune distance>
+	-s <minimum number of supporting clusters>
+	
+# OK, here's my strategy: 
+	# I will create a combined .vh file to run with variation hunter
+	# However, I will also run each .vh file separately
+	# This way, I can check the data and see which is a better dataset
+	
+# Running on Brahman:
+	- minimum 137
+	- maximum 439
+	$ cat *.vh > brahman_combined.divet
+	$ sort -k 2,3 brahman_combined.divet > brahman_combined_sorted.divet
+	$ perl ../angus/sort_unique_divet.pl brahman_combined_sorted.divet > brahman_combined.vh.c
+	$ for i in *.vh
+	> do
+	> perl ../angus/sort_unique_divet.pl $i > $i.c
+	> done
+	$ for i in *.vh.c
+	> do
+	> ../VariationHunter_SC -i $i -m 137 -M 439 -p 0.10 -s 2
+	> done
+	
+# Gir had only one .vh file
+	- minimum 137 # using the same values as Brahman
+	- maximum 439
+	$ ../VariationHunter_SC -i BIGI10P.FC42T6N.7.15.sam_DIVET.vh.c -m 137 -M 439 -p 0.10 -s 2
+
+# Running on Holstein:
+	-minimum 72
+	-maximum 428
+	$ cat *.vh > holstein_combined.divet
+	$ sort -k 2,3 holstein_combined.divet > holstein_combined_sorted.vh
+	$ for i in *.vh
+	> do
+	> perl ../angus/sort_unique_divet.pl $i > $i.c
+	> echo $i.c
+	> ../VariationHunter_SC -i $i.c -m 72 -M 428 -p 0.10 -s 2
+	> done
+	
+# running on Jersey:
+	-minimum 121
+	-maximum 485
+	$ cat *.vh > jersey_combined.divet
+	$ sort -k 2,3 jersey_combined.divet > jersey_combined_sorted.vh
+	$ for i in *.vh
+	> do
+	> perl ../angus/sort_unique_divet.pl $i > $i.c
+	> echo $i.c
+	> ../VariationHunter_SC -i $i.c -m 121 -M 485 -p 0.10 -s 2
+	> done
+
+# running on Limousin:
+	-minimum 80
+	-maximum 417
+	$ cat *.vh > limousin_combined.divet
+	$ sort -k 2,3 limousin_combined.divet > limousin_combined_sorted.vh
+	$ for i in *.vh
+	> do
+	> perl ../angus/sort_unique_divet.pl $i > $i.c
+	> echo $i.c
+	> ../VariationHunter_SC -i $i.c -m 80 -M 417 -p 0.10 -s 2
+	> done
+	
+	# oops! I had a matepair library in there! Redoing
+	
+# running on nelore:
+	-minimum 75
+	-maximum 395
+	$ cat *.vh > nelore_combined.divet
+	$ sort -k 2,3 nelore_combined.divet > nelore_combined_sorted.vh
+	$ for i in *.vh
+	> do
+	> perl ../angus/sort_unique_divet.pl $i > $i.c
+	> echo $i.c
+	> ../VariationHunter_SC -i $i.c -m 75 -M 395 -p 0.10 -s 2
+	> done
+
+# running on romagnola:
+	-minimum 109
+	-maximum 399
+	$ cat *.vh > romagnola_combined.divet
+	$ sort -k 2,3 romagnola_combined.divet > romagnola_combined.vh
+	$ for i in *.vh
+	> do
+	> perl ../angus/sort_unique_divet.pl $i > $i.c
+	> echo $i.c
+	> ../VariationHunter_SC -i $i.c -m 109 -M 399 -p 0.10 -s 2
+	> done
+	
+# Fleckvieh run:
+	# Starting initial mrsfast pe run to determine minimum/maximum distances:
+	$ ../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa --pe --seq1 hmgu_080725_HWI-EAS186_307FYAAXX_1.1.fastq --seq2 hmgu_080725_HWI-EAS186_307FYAAXX_1.2.fastq --min 100 --max 600 -o hmgu_080725_HWI-EAS186_307FYAAXX_1.sam
+	# Got a segmentation fault
+	# I'm not going to have to split all of these, am I?
+	# Here was my problem! I didnt use cow4_36_noun_final.fa!!!
+	
+	$ ./mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 hmgu_080725_HWI-EAS186_307FYAAXX_1.1.fastq --seq2 hmgu_080725_HWI-EAS186_307FYAAXX_1.2.fastq --min 100 --max 500 --discordant-vh -o hmgu_080725_HWI-EAS186_307FYAAXX_1.sam
+	# I messed up
+	$ ../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --seq1 hmgu_080725_HWI-EAS186_307FYAAXX_1.1.fastq --seq2 hmgu_080725_HWI-EAS186_307FYAAXX_1.2.fastq --min 100 --max 600 -o hmgu_080725_HWI-EAS186_307FYAAXX_1.sam
+	$ perl ../breed_doc/angus/sam_avg_stdev.pl hmgu_080725_HWI-EAS186_307FYAAXX_1.sam
+		Splice counter: 1732
+		Average: 147.495642902667
+		Standard Deviation: 97.8186745207637
+		Average + 3 Standard Deviations: 440.951666464958
+		Average - 3 Standard Deviations: -145.960380659624
+		Median: 109
+		MAD: 7
+		Median + 3 MAD: 130
+		Median - 3 MAD: 88
+		After splicing...
+		Average: 143.106978423761
+		Standard Deviation: 88.3080992000769
+		A + 3 Stdevs: 408.031276023992
+		A - 3 Stdevs: -121.81731917647
+
+	# That's pretty bad for this dataset! Maybe the technician who prepared the library cut out too large of a slice?
+	# I'm going to run the pipeline script using a minimum of 80 and a maximum of 408
+	$ perl fleckvieh_mrsfast_pem_wrapper.pl holstein_hits.txt
+	
+	
+# NOTE: I created a file that converts the SV file into a tab-delimited file. Script: convert_sv_to_tab.pl
+# I have another perl script called (convert_divet_to_bed.pl) that converts the SV file into a shorter bed format
+# Finally, I made another script that puts animal ID tags on each bed interval for use in bedtools: (convert_animal_bed_to_short.pl)
+	# Now to combine the "tagged" bed files
+	$ cat *del* > combined_pem_deletions.bed
+	$ cat *unl* > combined_pem_unlikely.bed
+	
+	$ sort -k 1,1 combined_pem_deletions.bed > sort_combined_pem_deletions.bed
+	$ sort -k 1,1 combined_pem_unlikely.bed > sort_combined_pem_unlikely.bed
+	
+	$ ../../BEDTools-Version-2.10.0/bin/mergeBed -i sort_combined_pem_deletions.bed -nms > merged_combined_pem_deletions.bed
+	$ ../../BEDTools-Version-2.10.0/bin/mergeBed -i sort_combined_pem_unlikely.bed -nms > merged_combined_pem_unlikely.bed

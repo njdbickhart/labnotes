@@ -1,0 +1,30 @@
+09/15/2011
+# I need to overlap my CNVs with OMIM gene regions and see what shows up
+# Yali gave me an omim list file (S:\gliu\Derek\omia\omim.txt) and I need to intersect it with gene locations and determine chromosome coords
+
+# Many of the coordinates are based on chromosome arm maps, so the gene coordinates would be a better resource for determining start and end locations
+
+# I wrote a quick script designed to run in the same folder as the omim.txt file
+pwd: /home/derek/share/backup/
+$ perl create_omim_lookup_cross_reference.pl
+
+# created two files:
+	- omim_intersect_bed.tab  		<- full list ordered by animal without headers
+	- qtl_omim_table_intersect.tab		<- abbreviated list ordered by QTL
+	
+# Testing OMIM overlap with CNVs
+	# Created a perl script to generate OMIM file coordinates in a bed type format
+	pwd: /home/derek/share/backup/
+	$ perl generate_omim_cow4_coords.pl
+	$ mergeBed -i cow4_omim_coords.bed | wc
+	   1131
+	$ mergeBed -i cow4_omim_coords.bed > cow4_omim_coords_merge_sort.bed
+	$ mv cow4_omim_coords_merge_sort.bed cow4_omim_coords.bed
+	
+# Now to convert the omim coords into Bin Zhu's format
+	pwd: /mnt/data8/dbickhart/major_tables
+	$ perl -e 'print "chr\tstart\tend\t\n"; while(<>){chomp; @s = split(/\t/); ($chr) = $s[0] =~ /chr(.+)/; if ($chr eq "X"){ $chr = 0;} print "$chr\t$s[1]\t$s[2]\tS\n";}' < cow4_omim_coords.bed > cow4_omim_correlation_style.bed
+	$ perl cnv_sd_correlation_hashed.pl -c corr_correct_style_all_animals_cnvr.bed -s cow4_omim_correlation_style.bed  -r 1000 -i 100000 -l 5000000 -o cnv_omim_correlation_hashed.stats
+	# This generated very little overlap
+	# However, I rewrote Bin's script to incorporate BED tools and faster algorithms, so it now runs 100X faster (no joke) than before
+	$ perl cnv_sd_correlation_derek.pl -c corr_correct_style_all_animals_cnvr.bed -s cow4_omim_correlation_style.bed  -r 1000 -i 100000 -l 5000000 -o cnv_omim_correlation_derek.stats

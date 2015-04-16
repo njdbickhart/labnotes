@@ -1,0 +1,679 @@
+02/11/2011
+# Yali got me updated lists of the data from Tad (S:/gliu/Derek/ngs_update)
+# I am going to process them just like I did with the previous sets of data
+
+# First, I am going to change the script process_yalis_data.pl so that it converts animal names to my format
+
+
+# OK, George asked me to read the GR paper by Akey, et. al. on Dog CNVs. Here is the relevant methods paragraph:
+	aCGH chip design and hybridizations
+	
+	The production of the aCGH chip was carried out by NimbleGen
+	Systems, Inc. (www.NimbleGen.com), with final probe design and
+	locations being approved after individual inspection by eye. We
+	targeted probes to regions designated as segmental duplications
+	(significant WGAC and WSSD support; 106.6 Mb), as well as all
+	regions not formally designated as segmental duplications but
+	possessing significant WGAC or WSSD support (16.4 Mb). In total,
+	368,360 probes were placed into these regions (spanning 123 Mb)
+	with an average probe spacing of 200 bp. Each segmental duplication
+	region was flanked with 5 kb of putative single copy sequence.
+	In cases where the added flanks resulted in overlaps
+	between separate segmental duplications, the segmental duplications
+	were merged together with new flanking regions added to
+	the merged segmental duplication. A total of 9278 probes were
+	placed in flanking regions (10.6 Mb) with a mean spacing of 1 kb.
+	Finally, we placed 8790 probes with a mean spacing of 350 bp into
+	single copy control regions (3.5 Mb). Single copy control regions
+	were defined as being at least 5 Mb away from any predicted segmental
+	duplications (with the exception of three control regions
+	on the X chromosome that were at least 2.5 Mb away from any
+	predicted segmental duplication). All genomic DNA samples were
+	sent to NimbleGen for the hybridizations to be performed. A female
+	Boxer distinct from Tasha was used as a reference sample in
+	each hybridization.
+	
+# So, they used the SD (WSSD, WGAC intersection) regions, added 5kb flanks to them, and merged them together.
+# It looks like they had a different density of probes in the flanking regions (even when they overlapped).
+# Their single copy control regions were simply defined as any region that was 5 Mb away from known SDs. 
+
+# George gave me his note file names, so I am going to check them out really quickly. Lab_note_20090327, Lab_note_20090328
+# Here are some of the relevant sections:
+	5.2.1 NimbleGen Oligonucleotide Microarray Design
+	We targeted 1,211 deletion intervals smaller than 250 kb in size (280,997 probes with an average density of one probe per 173 bp) and 11 deletions ranging from 250 kb to 1 MB in size (12,202 probes with an average density of 681 bp). Additionally, we targeted 272 insertion intervals which overlapped segmental duplications (30,330 probes with an average probe spacing of 173 bp), reasoning that these insertion intervals were most likely to harbor copy-number variation detectable by arrayCGH (gains and losses of duplicated sequences). As a control we included 4 kb of invariant flanking sequence on each side of each interval (66,127 probes, mean probe spacing of 1 probe/173 bp). In addition, we included 6 control regions not predicted to harbor structural variants (the regions around the CFTR, ALB, FOXP2, BRCA1, HoxA, and HoxD genes; 4,195 probes with an average probe spacing of 170 bp). Due to overlap among interval classes, these probe counts contain some redundancies.
+
+	...
+
+	I need add flank 4k space (using Galaxy) and unique control seq:
+	Files are saved at the follwoing locations:
+	
+	1. 4293_all_SD:
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/4293_all_SD.txt
+	
+	2. CNV_05_3:
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/90_hybes_seg_0.5_3_filtered/90_05_3_list_pos.nooverlap
+	also
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/90_hybes_seg_0.5_3_filtered/90_05_3_list
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/90_hybes_seg_0.5_3_filtered/90_05_3_list_pos
+	
+	3. Merged SD-CNV NR. Both are the same: 4293_all_SD_CNV_05_3.txt and 4293_all_SD_CNV_05_3.txt.nooverlap
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/4293_all_SD_CNV_05_3.txt
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/4293_all_SD_CNV_05_3.txt.nooverlap
+	
+	4. Add Flank 4kb using Galaxy
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/4293_all_SD_CNV_05_3_flank4k_raw.txt
+	
+	5. Flank 4kb file after NR
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/4293_all_SD_CNV_05_3_flank4k_raw.txt.nooverlap
+	
+	6. Flank 4kb after NR and - SD/CNV
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/4293_all_SD_CNV_05_3_flank4k.txt
+	
+	7. Merged SD-CNV-flank and NR
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/4293_all_SD_CNV_flank4K.txt
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/4293_all_SD_CNV_flank4K.txt.nooverlap
+	
+	8 control
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/control_NR.txt
+	
+	9 control-SD-CNV-falnk=control
+	/home/gliu/data10/cow3/Mapped_cow4_CGH_Data/SD_CNV_by_Zhu/control_NR_noSD_CNV_flank.txt
+	
+	Conclusion: The final dataset are also saved at also in excel file
+	C:\Documents and Settings\GLIU\My Documents\grant\2008-2009\paper\Kidd\sup\cattle-cnv-cutoff-compare.xls
+	
+	C:\Documents and Settings\GLIU\My Documents\publication\CNV_map\version2\cattle-cnv-cutoff-compare.xls
+	
+	Reasonable expections are 1 probe/3-400bp for small (<250kb) events; 1000bp for large (>=250kb) events.
+	
+__________________________________
+Creating custom array files
+__________________________________
+
+# OK, based on the notes and papers, here's what I have to do:
+	# Create bed file of CNV intervals, extended by 4-5kb and merged
+	# Create control region file
+
+# I am going to make three files, each with a different order of insertion and merger. Here are the datasets:
+	1. HD and LD aCGH, NGS and SD regions
+	2. 1 + HD SNP and Danish intervals
+	3. All datasets (including PEM)
+	
+# For each dataset:
+	# cat together, then extend each interval by 5KB. 
+	# merge
+	# Include other datasets (for dataset 2 and 3)
+	# merge
+	# add on the control intervals
+	
+# To generate the controls:
+	# Take George's control interval file
+	# subtract it with a bed file containing all (merged) CNV locations and SD regions (make this one extended by about 5MB in each direction
+	# if 5 MB is too large, then I'll have to reduce the extension
+	
+# On the SD regions: It looks like George used ALL SD regions (not just the WGAC + WSSD intersection), so I probably should as well. 
+
+# Merger steps (all in share/custom_array):
+	$ cat final* full_pem_ind_deletions.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > ngs_final_set.bed
+	# Removed beginning lines from yali's text files
+	# Removed chrunall from yali's text files
+	
+	$ cat acgh_hd_crop.bed acgh_ld_crop.bed ngs_final_set.bed SD.txt | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > dataset1.bed 
+	$ cat SNP_hd.txt danishCNV.txt | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > dataset2.bed
+	
+	# Extending:
+	$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < dataset1.bed > dataset1_5k.bed
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i dataset1_5k.bed > dataset1_5k_merge.bed
+	
+	$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < dataset2.bed > dataset2_5k.bed
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i dataset2_5k.bed > dataset2_5k_merge.bed
+	
+	$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < full_pem_ind_deletions.bed > pem_5k.bed
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i pem_5k.bed > pem_5k_merge.bed
+	
+	# Now for the dataset mergers in order:
+	$ cat dataset1_5k_merge.bed dataset2_5k_merge.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > dataset1_2_5k_merge.bed
+	
+	$ cat dataset1_2_5k_merge.bed pem_5k_merge.bed  | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > dataset1_2_3_5k_merge.bed
+	
+	$ cat dataset1_2_5k_merge.bed pem_5k_merge.bed  | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > dataset1_2_3_5k_merge.bed
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/, $_); $t += $s[2] - $s[1];} print"\n$t\n";' < dataset1_2_3_5k_merge.bed 
+
+	308683913
+	# That's a 308 megabase region for the first three datasets! let's try dataset 1 and dataset2
+	# Hold it, dataset 2 did not come out because of the extra fields. 
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i dataset2_5k.bed > dataset2_5k_merge.bed
+	# Redid the remaining sets to get the correct number of lines
+	
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/, $_); $t += $s[2] - $s[1];} print"\n$t\n";'< dataset1_2_3_5k_merge.bed 
+
+	442 311 313
+	
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/, $_); $t += $s[2] - $s[1];} print"\n$t\n";'< ngs_final_set.bed 
+
+	163283583	# Looks like my NGS dataset is the largest contributing factor.
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/, $_); $t += $s[2] - $s[1];} print"\n$t\n";'< final_doc_insertions.bed 
+
+	911518074 # I suspect that the nelore data has increased the size of the SD regions significantly here.
+	
+# Now to prepare the control regions:
+	# increase cat'ed intervals by 5,000,000 bases and then subtract control intervals by the increased bed
+	$ cat acgh_hd_crop.bed acgh_ld_crop.bed danish_crop.bed SD.txt ngs_final_set.bed snp_crop.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > cnv_subtract.bed
+	$ perl -lane '$s = $F[1] - 5000000; if ($s < 0){$s = 0;} $e = $F[2] + 5000000; print "$F[0]\t$s\t$e";' < cnv_subtract.bed > cnv_subtract_5mb.bed
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i cnv_subtract_5mb.bed > cnv_subtract_5md_merge.bed
+	
+	# That basically merged across the entire chromosome length... might be a bit too much extension there!
+	# Yup, the following command produced nothing:
+	$ ../BEDTools-Version-2.10.1/bin/subtractBed -a control_format.bed -b cnv_subtract_5mb.bed
+	
+	# Let's start out at 100kb; I think that is far more reasonable anyways.
+	$ perl -lane '$s = $F[1] - 100000; if ($s < 0){$s = 0;} $e = $F[2] + 100000; print "$F[0]\t$s\t$e";' < cnv_subtract.bed > cnv_subtract_100k.bed
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i cnv_subtract_100k.bed > cnv_subtract_100k_merge.bed
+	
+	$ ../BEDTools-Version-2.10.1/bin/subtractBed -a control_format.bed -b cnv_subtract_100k_merge.bed > control_100kb_filter.bed
+	# That produced 8 lines (from an original 12) and a total area of 715469 bases
+	# The original file had 1.9 megabases
+	# Let's try to reduce the flanking by 50kb and see how much more of the control regions we get:
+	$ perl -lane '$s = $F[1] - 50000; if ($s < 0){$s = 0;} $e = $F[2] + 50000; print "$F[0]\t$s\t$e";' < cnv_subtract.bed > cnv_subtract_50k.bed
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i cnv_subtract_50k.bed > cnv_subtract_50k_merge.bed
+	
+	# That produced a control region of 11 lines covering 1.1 megabases.
+	# I think this is reasonable, considering our dataset.
+	
+# Let's see who's increasing the size of our regions:
+	# nelore:
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < combined_nelore.bed
+
+		66372579
+	# Doc insertions
+		$ ../../BEDTools-Version-2.10.1/bin/mergeBed -i ind_ins_4_named.bed | perl -e 'while(<STDIN>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";'
+
+		77554689
+	# Doc deletions
+
+
+# George wants another view of the intervals, so I will create VENN diagrams to better visualize the overlap of each dataset
+	# First, I need to tag each interval with a "name"
+	$ perl -lane 'if ($F[0] =~ /chrX/){ next;}else{ print "$F[0]\t$F[1]\t$F[2]\tahd";}' < acgh_hd_crop.bed > acgh_hd_name.bed
+	$ perl -lane 'if ($F[0] =~ /chrX/){ next;}else{ print "$F[0]\t$F[1]\t$F[2]\tald";}' < acgh_ld_crop.bed > acgh_ld_name.bed
+	$ perl -lane 'if ($F[0] =~ /chrX/){ next;}else{ print "$F[0]\t$F[1]\t$F[2]\tngs";}' < ngs_final_set.bed > ngs_final_name.bed
+	$ perl -lane 'if ($F[0] =~ /chrX/){ next;}else{ print "$F[0]\t$F[1]\t$F[2]\tsd";}' < SD.txt > sd_name.bed
+	
+	# Now to merge
+	$ cat acgh* | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > acgh_hd_ld_merge.bed
+	$ cat acgh_hd_name.bed acgh_ld_name.bed sd_name.bed | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > acgh_sd_merge.bed
+	$ cat acgh_hd_name.bed acgh_ld_name.bed sd_name.bed ngs_final_name.bed | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > all_merge.bed
+	
+	# And the script output:
+	$ perl convert_bed_to_venn.pl acgh_hd_ld_merge.bed
+		type	number	megabases
+		ahd	933	12661591
+		ahd;ald	93	19902895
+		ald	70	6415642
+		
+	$ perl convert_bed_to_venn.pl acgh_sd_merge.bed
+		type	number	megabases
+		ahd	825	9247071
+		ahd;ald	24	2266838
+		ahd;ald;sd	71	22022885
+		ahd;sd	95	6530561
+		ald	43	3229198
+		ald;sd	24	4201837
+		sd	2662	26561076
+	
+	$ perl convert_bed_to_venn.pl all_merge.bed
+		type	number	megabases
+		ahd	695	7130166
+		ahd;ald	9	622896
+		ahd;ald;ngs	14	1646811
+		ahd;ald;ngs;sd	69	23867721
+		ahd;ald;sd	3	394786
+		ahd;ngs	120	3902441
+		ahd;ngs;sd	71	7088861
+		ahd;sd	25	863498
+		ald	35	2382515
+		ald;ngs	8	957388
+		ald;ngs;sd	22	4869589
+		ald;sd	1	36000
+		ngs	6708	115605606
+		ngs;sd	481	21983045
+		sd	1994	10542675
+		
+	# Now to get the NGS data that does not have nelore:
+		$ cat ind_an_del_2_cat.bed ind_ins_4_named.bed unmerged_pem_filtered_name.bed | perl -lane 'if ($F[0] =~ /chrX/){ next;}else{ print "$F[0]\t$F[1]\t$F[2]\tngs";}' > ngs_no_nelore.bed
+		$ cat acgh_hd_name.bed acgh_ld_name.bed sd_name.bed ngs_no_nelore.bed | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > all_no_nelore.bed
+		
+	$ perl convert_bed_to_venn.pl all_no_nelore.bed
+		type	number	megabases
+		ahd	765	7952480
+		ahd;ald	12	764638
+		ahd;ald;ngs	11	1492892
+		ahd;ald;ngs;sd	65	22308970
+		ahd;ald;sd	7	844606
+		ahd;ngs	54	1916697
+		ahd;ngs;sd	66	6784352
+		ahd;sd	30	982737
+		ald	39	2767475
+		ald;ngs	4	556568
+		ald;ngs;sd	22	4595819
+		ald;sd	1	36000
+		ngs	2580	41832100
+		ngs;sd	353	18635942
+		sd	2148	11950378	
+		
+	# Now I just need to cut and paste the values into a venn diagram image.
+		
+# Going to try to merge datasets without the high density nelore and then calculate the megabases they encompass:
+	# merging the no_nelore data with the other dataset1 files:
+	$ cat ngs_no_nelore.bed acgh_hd_crop.bed acgh_ld_crop.bed SD.txt | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > no_nelore_data_1.bed
+	$ wc no_nelore_data_1.bed; wc dataset1.bed
+	  6353  19059 148895 no_nelore_data_1.bed
+	 10465  31395 246157 dataset1.bed
+	 
+	# Extending and remerging
+	$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < no_nelore_data_1.bed > no_nelore_data_1_5k.bed
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i no_nelore_data_1_5k.bed > no_nelore_data_1_5k_merge.bed
+	$ wc no_nelore_data_1_5k_merge.bed
+	  5921  17763 138821 no_nelore_data_1_5k_merge.bed
+	  
+	# Removed chrX from both files
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < no_nelore_data_1_5k_merge.bed
+
+	182517063
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < dataset1_5k_merge.bed
+
+	298445768
+	
+	# Still a difference of about 100 megabases
+	# Going to continue to merge the no-nelore data
+	$ cat no_nelore_data_1_5k_merge.bed dataset2_5k_merge.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > no_nelore_data_1_2_5k_merge.bed
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < no_nelore_data_1_2_5k_merge.bed
+	
+	322230121
+	
+# Redoing the nelore additions just to ensure that everything is in order:
+	$ cat final_doc_all.bed acgh_hd_crop.bed acgh_ld_crop.bed SD.txt | grep -v chrX | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > redo_dataset1.bed
+	$ wc redo_dataset1.bed :  9602
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < redo_dataset1.bed  :  199080455
+	
+	$ cat snp_crop.bed danish_crop.bed | grep -v chrX | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > redo_dataset2.bed
+	$ wc redo_dataset2.bed :  3448
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < redo_dataset2.bed  :  149408348
+	
+	$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";'< redo_dataset1.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > redo_dataset1_5k_merge.bed
+	$ wc redo_dataset1_5k_merge.bed :  8743
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < redo_dataset1_5k_merge.bed  :   289741553
+	
+	$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";'< redo_dataset2.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > redo_dataset2_5k_merge.bed
+	$ wc redo_dataset2_5k_merge.bed  :  3368
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < redo_dataset2_5k_merge.bed  :   183581204
+	
+	$ cat redo_dataset2_5k_merge.bed redo_dataset1_5k_merge.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > redo_dataset1_2_5k_merge.bed
+	$ wc redo_dataset1_2_5k_merge.bed :  10828
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < redo_dataset1_2_5k_merge.bed :  423685179
+	
+	$ cat pem_5k_merge.bed redo_dataset1_2_5k_merge.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > redo_dataset1_2_3_5k_merge.bed
+	$ wc redo_dataset1_2_3_5k_merge.bed :  11365
+	$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < redo_dataset1_2_3_5k_merge.bed :  432522153
+	# My original problem was that I included the pem in the first merger/extend part, that increased the size by quite a bit!
+	# I trust this number more, as it is done in the proper order. 
+	# A rerun of the steps that I did above confirmed that the additional size was due to adding the pem data into the first dataset
+	
+(<>) Another test: Adding and removing chrX:
+	# Received an aCGH file from Yali that included all 86 arrays. I need to process the file and start over again.
+	# I also need to increase the start and end coordsinates of the bed files by "1" base to account for the zero-based nature of the files
+//	$ perl -lane 'if($F[0] =~ /chrU/){next;} else{ $s = $F[1] + 1; $e = $F[2] +1; print "$F[0]\t$s\t$e";}' < 0.5_3_86_all.CNVR > acgh_final_crop.bed
+//	$ perl -lane '$s = $F[1] + 1; $e = $F[2] +1; print "$F[0]\t$s\t$e";' < danish_crop.bed > danish_final_crop.bed
+	$ perl -lane '$s = $F[1] + 1; $e = $F[2] +1; print "$F[0]\t$s\t$e";' < final_doc_all.bed > final_doc_crop.bed
+	$ perl -lane '$s = $F[1] + 1; $e = $F[2] +1; print "$F[0]\t$s\t$e";' < SD.txt > sd_final_crop.bed
+//	$ perl -lane '$s = $F[1] + 1; $e = $F[2] +1; print "$F[0]\t$s\t$e";' < snp_crop.bed > snp_final_crop.bed
+	$ perl -lane '$s = $F[1] + 1; $e = $F[2] +1; print "$F[0]\t$s\t$e";' < unmerged_pem_filtered_name.bed > pem_final_crop.bed
+	# I had used the old pem file that contained some of the Nelore pem data before! This is the proper pem file.
+//	$ perl -lane '$s = $F[1] + 1; $e = $F[2] +1; print "$F[0]\t$s\t$e";' < acgh_ld_crop.bed > acgh_ld_final_crop.bed
+	
+	# Checking acgh to make sure it's the right one: 
+	$ grep -v chrX acgh_final_crop.bed | wc
+	   1610    4830   37731  <- yes, this matches the description by George
+	   
+	# Now to do the merger with X
+		$ cat acgh_final_crop.bed acgh_ld_final_crop.bed sd_final_crop.bed final_doc_crop.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_1_withX.bed
+		$ wc data_1_withX.bed : 10245
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_1_withX.bed  : 216556901
+		
+		$ cat snp_final_crop.bed danish_final_crop.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_2_withX.bed
+		$ wc data_2_withX.bed :  3460
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_2_withX.bed : 150294619
+		
+		$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < pem_final_crop.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > pem_final_5k_merge.bed
+		$ wc pem_final_5k_merge.bed :  158
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < pem_final_5k_merge.bed  : 2608265
+		
+		$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < data_1_withX.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_1_withX_5k_merge.bed
+		$ wc data_1_withX_5k_merge.bed :  9343
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_1_withX_5k_merge.bed  : 313413930
+		
+		$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < data_2_withX.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_2_withX_5k_merge.bed
+		$ wc data_2_withX_5k_merge.bed : 3380
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_2_withX_5k_merge.bed  : 184587477
+		
+		$ cat data_1_withX_5k_merge.bed data_2_withX_5k_merge.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_1_2_withX.bed
+		$ wc data_1_2_withX.bed : 11347
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_1_2_withX.bed  : 444820729
+		
+		$ cat data_1_2_withX.bed pem_final_5k_merge.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_1_2_3_withX.bed
+		$ wc data_1_2_3_withX.bed : 11410
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_1_2_3_withX.bed  : 445653500
+		
+	# Now to repeat the steps w/o X
+		$ cat acgh_final_crop.bed acgh_ld_final_crop.bed sd_final_crop.bed final_doc_crop.bed | grep -v chrX | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_1_woX.bed
+		$ wc data_1_woX.bed : 10049
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_1_woX.bed  : 207763588  # This number is larger because there are more hd_acgh values
+		
+		$ cat snp_final_crop.bed danish_final_crop.bed | grep -v chrX | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_2_woX.bed
+		$ wc data_2_woX.bed :  3448
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_2_woX.bed : 149408348
+		
+		$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < pem_final_crop.bed | grep -v chrX | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > pem_woX_5k_merge.bed
+		$ wc pem_woX_5k_merge.bed : 148
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < pem_woX_5k_merge.bed : 2433817
+		
+		$ perl -lane '$s = $F[1] - 5000; if ($s <= 0){ $s = 1;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < data_1_woX.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_1_woX_5k_merge.bed
+		$ wc data_1_woX_5k_merge.bed :  9163
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_1_woX_5k_merge.bed : 302752164
+		
+		$ perl -lane '$s = $F[1] - 5000; if ($s < 0){ $s = 0;} $e = $F[2] + 5000; print "$F[0]\t$s\t$e";' < data_2_woX.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_2_woX_5k_merge.bed
+		$ wc data_2_woX_5k_merge.bed : 3368
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_2_woX_5k_merge.bed : 183581206
+		
+		$ cat data_1_woX_5k_merge.bed data_2_woX_5k_merge.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_1_2_woX.bed
+		$ wc data_1_2_woX.bed :  11160
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_1_2_woX.bed : 433885730
+		
+		$ cat pem_woX_5k_merge.bed data_1_2_woX.bed | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > data_1_2_3_woX.bed
+		$ wc data_1_2_3_woX.bed :  11221
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < data_1_2_3_woX.bed : 434695713
+		
+	# Now, I need to make sure that the controls are properly "cropped" with the addition of new data.
+		$ cat pem_final_crop.bed sd_final_crop.bed snp_final_crop.bed acgh_final_crop.bed acgh_ld_final_crop.bed final_doc_crop.bed danish_final_crop.bed | perl -lane '$s = $F[1] - 50000; if ($s < 0){ $s = 0;} $e = $F[2] + 50000; print "$F[0]\t$s\t$e";' | ../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > all_data_50kb_extend.bed
+		# That should make the 50kb extended and merged list to crop the controls with
+		# Should not matter if chrX is in there
+		
+		$ ../BEDTools-Version-2.10.1/bin/subtractBed -a control_50k_crop.bed -b all_data_50kb_extend.bed > control_recrop_50kb_crop.bed
+		# Some control intervals start 1bp later: this is because I extended the bed files by one basepair in the initial steps
+		# For all intents and purposes, the control files are the same (minus those ~4bp cropped off the "recrop").
+		
+	# Finally, I'm going to check to see if the chromosome ends extend beyond the actual chromosome lengths.
+		# Created a perl script to do this: compare_chr_lengths.pl
+		$ perl compare_chr_lengths.pl cow4_chr_lengths.txt data_1_2_3_withX.bed
+			chr1	161034292	161110382	true_end: 161106243	dist: 4139
+			chr10	106075572	106388598	true_end: 106383598	dist: 5000
+			chr12	85282166	85361299	true_end: 85358539	dist: 2760
+			chr13	84385316	84420122	true_end: 84419198	dist: 924
+			chr17	75962358	76508619	true_end: 76506943	dist: 1676
+			chr19	65171001	65317493	true_end: 65312493	dist: 5000
+			chr24	64936001	65025234	true_end: 65020233	dist: 5001
+			chr25	43965409	44065404	true_end: 44060403	dist: 5001
+			chr26	51231906	51751083	true_end: 51750746	dist: 337
+			chr28	45449716	46089207	true_end: 46084206	dist: 5001
+			chr4	124088204	124459209	true_end: 124454208	dist: 5001
+			Total divergence = 39840 bp
+			# The "dist" column is the "end" position minus the true end of the chromosome.
+		
+		# Looks like the chromosome was simply extended by 5001 bp if the CNV was at the end, so nothing too fishy here.
+		# The program also prints out a bed file with the corrected chromosome end points:
+			$ mv reformat.bed data_1_2_3_withX_true_end.bed
+			$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' data_1_2_3_withX_true_end.bed : 445613660
+			# 445653500 (before the formatting) - 445613660 (after the formatting) = 39840
+			# Exactly the "total divergence" calculated by the program.
+			
+		$ perl compare_chr_lengths.pl cow4_chr_lengths.txt data_1_2_3_woX.bed
+			chr1	161034292	161110382	true_end: 161106243	dist: 4139
+			chr10	106075572	106388598	true_end: 106383598	dist: 5000
+			chr12	85282166	85361299	true_end: 85358539	dist: 2760
+			chr13	84385316	84420122	true_end: 84419198	dist: 924
+			chr17	75962358	76508619	true_end: 76506943	dist: 1676
+			chr19	65171001	65317493	true_end: 65312493	dist: 5000
+			chr24	64936001	65025234	true_end: 65020233	dist: 5001
+			chr25	43965409	44065404	true_end: 44060403	dist: 5001
+			chr26	51231906	51751083	true_end: 51750746	dist: 337
+			chr28	45449716	46089207	true_end: 46084206	dist: 5001
+			chr4	124088204	124459209	true_end: 124454208	dist: 5001
+			Total divergence = 39840 bp
+			# exactly the same as the "withX" data
+		
+		$ mv reformat.bed data_1_2_3_woX_true_end.bed
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' data_1_2_3_woX_true_end.bed : 434655873
+		
+	# Final Tabulations:
+		# control:
+		$ perl -e 'while(<>){chomp $_; @s = split(/\t/); $t += $s[2] - $s[1];} print "\n$t\n";' < control_recrop_50kb_crop.bed :  1128585
+		# With X: 445613660
+		# Without X: 434655873
+		
+		# probe lengths (includes control region):
+		# With X: 620.5 bp
+		# Without X: 605.2 bp
+		
+		
+# Final draft/design 
+	# Received the files from the Roche design team.
+	# user: 28377
+	# pass: strife40
+	
+	# OK, so I am going to take an initial look at the probe stats file for both the modified and standard window selection parameters
+	# Ryan told me that he first used a 100bp window script to select the probes (standard) then used a 20bp window (modified)
+		# Four files for each selection type
+		* Two .gffs (one for probed locations and the other for specific probe positions)
+		* One stats file that is a tab delimited file with critical probe information
+		* One text file with the actual probe sequence and selection criteria for each probe
+		
+	# Looks like both are fairly similar, but with some key differences:
+	# Standard
+		SEQ_ID	LENGTH	PROBES	DENSITY	MEAN_INTERVAL	MEDIAN_INTERVAL	1ST_QUARTILE	3RD_QUARTILE	MIN_INTERVAL	MAX_INTERVAL	COVERAGE
+		SUMMARY	446753650	719867	579	519	525	487	571	417	207506	39932225
+		
+		# Areas that were not probed:
+		chr7:12679000-12713000	34001	0	-	-	-	-	-	-	-	-
+		chr9:24205000-24275000	70001	0	-	-	-	-	-	-	-	-
+		chr26:21895000-21953000	58001	0	-	-	-	-	-	-	-	-
+		chr29:13105001-13175001	70001	0	-	-	-	-	-	-	-	-
+
+	# Modified
+		SEQ_ID	LENGTH	PROBES	DENSITY	MEAN_INTERVAL	MEDIAN_INTERVAL	1ST_QUARTILE	3RD_QUARTILE	MIN_INTERVAL	MAX_INTERVAL	COVERAGE
+		SUMMARY	446753650	719930	579	508	510	504	525	488	207506	39853125
+		
+		# Areas that were not probed:
+		chr7:12679000-12713000	34001	0	-	-	-	-	-	-	-	-
+		chr9:24205000-24275000	70001	0	-	-	-	-	-	-	-	-
+		chr26:21895000-21953000	58001	0	-	-	-	-	-	-	-	-
+		chr29:13105001-13175001	70001	0	-	-	-	-	-	-	-	-
+		
+	# OK, so my largest concern is whether or not the unprobed regions intersect with my controls. Let's see.
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed  -a control_recrop_50kb_crop.bed -b unprobed_fixed.bed 
+	# produced nothing, so we're in the clear with that
+	
+	# Now to see which dataset made those calls and then to figure out why they weren't probed! If I had to guess, it would be because of gaps
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed -a final_doc_all.bed -b unprobed_fixed.bed
+		# nope
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed -a snp_crop.bed -b unprobed_fixed.bed 
+		# nope
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed -a acgh_final_crop.bed -b unprobed_fixed.bed (HD set)
+		chr26	21900000	21948000
+		chr7	12684000	12708000
+		chr9	24210000	24270000
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed -a acgh_ld_final_crop.bed -b unprobed_fixed.bed 
+		chr29	13110001	13170001
+		
+	# OK, so all regions present and accounted for! Let's check them out in UCSC
+		chr26	21900000	21948000
+		# 100% gap, across the entire CNV
+		
+		chr7	12684000	12708000
+		# 100% gap, across the entire CNV
+		
+		chr9	24210000	24270000
+		# 100% gap, across the entire CNV
+		
+		chr29	13110001	13170001
+		# 100% gap, across the entire CNV
+		
+	# So, that's the reason why! 
+	
+	# After looking at the stats files, I think that the smart thing to do would be to select the standard settings design
+	# It covers more sequence (nearly 100kb more), and still has a very acceptable mean probe spacing (519  vs 508). 
+	
+_______________________________
+Additional tests
+_______________________________
+
+# George wants me to check a few things before we fire back some questions to Ryan.
+# First, we want to check how many probes map to unique locations vs multiple locations
+# Doing this with a one-liner:
+	$ perl -e '%h = (); while(<>){ $_=~ s/\r//g; @s = split(/\t/,$_); $h{$s[5]} += 1; $c += 1;} print "Total number of locations: $c\n"; foreach $k (sort {$a <=> $b} (keys(%h))){ $p = $h{$k} / $c; print "count$k\t$h{$k}\t$p\n";}' < OID28377_standard_param_-_probe_locations.gff 
+		
+		Standard:
+		Total number of locations: 719867
+		count01	616378	0.856238721875013
+		count02	68831	0.095616273561644
+		count03	14772	0.0205204572511311
+		count04	7689	0.0106811397105299
+		count05	4230	0.0058760854435611
+		count06	2493	0.00346313971886473
+		count07	1848	0.00256714087463379
+		count08	1411	0.00196008429334863
+		count09	1188	0.00165030484797886
+		count10	1027	0.00142665242329486
+	
+	$ perl -e '%h = (); while(<>){ $_=~ s/\r//g; @s = split(/\t/,$_); $h{$s[5]} += 1; $c += 1;} print "Total number of locations: $c\n"; foreach $k (sort {$a <=> $b} (keys(%h))){ $p = $h{$k} / $c; print "count$k\t$h{$k}\t$p\n";}' < OID28377_modified_param_-_probe_locations.gff
+		
+		Modified:
+		Total number of locations: 719930
+		count01	602265	0.836560498937397
+		count02	70894	0.0984734626977623
+		count03	17055	0.0236898031753087
+		count04	9561	0.0132804578222883
+		count05	5993	0.008324420429764
+		count06	4147	0.00576028224966316
+		count07	3090	0.0042920839526065
+		count08	2518	0.00349756226299779
+		count09	2257	0.00313502701651549
+		count10	2150	0.00298640145569708
+		
+# George also wants the alternative mapping sites for the probes
+# I could develop a script to do this, but he says that Roche already has the output
+
+# Finally, I want to pull out the probe locations that have the highest max spacing, and then check them against my datasets to see what the big deal was
+# Let's start with a 100kb criterion and see how many probes match that. 
+	$ perl -lane 'if ($F[9] > 10000){ print "$_";}' < OID28377_standard_param_-_probe_stats.txt | wc
+	    244    2684   17013
+	# Whoops! Did 10kb by accident
+	$ perl -lane 'if ($F[9] > 100000){ print "$_";}' < OID28377_standard_param_-_probe_stats.txt | wc 
+	     40     440    2846
+	# Still a bit high, but workable
+	
+	$ perl -lane 'if ($F[9] > 100000){ print "$_";}' < OID28377_modified_param_-_probe_stats.txt | wc 
+	     40     440    2846
+	# So, same with the modified dataset
+	
+	
+	$ perl -lane 'if ($F[9] > 100000){($c, $s, $e) = $F[0] =~ /(chr.+)\:(\d+)\-(\d+$)/; print "$c\t$s\t$e";}' < OID28377_standard_param_-_probe_stats.txt
+	# This script created the bed file to check the intervals; the intervals were the same between the modified and standard datasets
+		chr3	8775001	8974397			<- gap in middle
+		chr3	12697001	12908286	<- gap in middle
+		chr3	22504113	22959074	<- gap in middle
+		chr4	1515731	1704801			<- gap in middle
+		chr4	117121510	117639880	<- gap in middle, lots of repeats
+		chr5	9464065	10151212		<- gap in middle, lots of repeats
+		chr5	109236999	110063310	<- gap in middle, lots of repeats
+		chr6	5446001	6109717			<- gap in middle, lots of repeats
+		chr6	6132910	6689901
+		chr7	61504471	61718243
+		chr8	23581001	23979426
+		chr8	24465333	24781520
+		chr8	58808085	59059452
+		chr8	62674052	62962277
+		chr8	73197001	73961540
+		chr12	69756629	70534667
+		chr15	44982112	45553552
+		chr15	82776833	83122898
+		chr16	10293001	10475600
+		chr16	51714881	51943450
+		chr16	70332127	70465207
+		chr17	3628078	3780793
+		chr17	45025856	45794101
+		chr18	60238681	60893981
+		chr18	63032217	63523102
+		chr19	15445000	15635000
+		chr19	51667482	51938381
+		chr21	1568531	2347788
+		chr21	19264001	19785051
+		chr21	53179824	53368622
+		chr23	4873868	5246022
+		chr27	6403498	8007168
+		chr27	42255761	42721888
+		chr27	43428001	43625228
+		chr29	1	189431
+		chr29	28435100	28665257
+		chrX	60517073	60863195
+		chrX	83157001	83333655
+		chrX	83677001	85055319
+	
+	
+	
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed -a snp_crop.bed -b large_max_intervals.bed | wc
+	     44     132    1021  # OK, so some of these are from the SNP
+	     
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed -a final_doc_crop.bed -b large_max_intervals.bed | wc
+	     86     258    1978  # Same with the doc
+	     
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed -a acgh_ld_final_crop.bed -b large_max_intervals.bed | wc
+	     23      69     529
+	     
+	$ ../BEDTools-Version-2.10.1/bin/intersectBed -a acgh_final_crop.bed -b large_max_intervals.bed | wc
+	     48     144    1108
+	     
+	# I think that the issue here are the repeats within these intervals rather than gaps. 
+	
+# Now, I want to see if I can address George's question about 10 match vs 15 vs 20
+# From his lab notes:
+
+	...
+	>3. You understand pros and cons of more matches better than I do. From 
+	>your experiences with other mammalian genomes, such as human, monkeys, 
+	>mouse, rat, and dog, do you have any recommendations? Or does Ben have 
+	>some things to say?
+	
+	In our experience with human and mouse (which we've tested more extensively 
+	than other organisms), allowing up to 10 matches between a probe and the 
+	genome does not cause significant problems in CGH designs.
+	
+	The numbers I get for chrU:
+	  match2,  spacing 170 bases, 2181 contigs covered, 1105 contigs missing
+	  match5,  spacing 200 bases, 2531 contigs covered,  755 contigs missing
+	  match10, spacing 220 bases, 2702 contigs covered,  584 contigs missing (the 
+	numbers of missing contigs includes the 393 with no probes
+	possible)
+	
+	Regards, 
+	
+	Sue
+	
+# Now, from Sudemant's supplemental:
+	...
+	2.5 Copy number aware array comparative genomic hybridization
+	Our analysis of 159 genomes provides a reference set of DNA and cell lines from which a specific
+	reference DNA sample of known absolute copy may be used to maximize copy number sensitivity. We
+	refer to this pre-selection of a particular reference of known absolute copy number as copy number
+	aware array CGH. We demonstrate its utility and the accuracy of our predictions by reanalyzing the
+	Page 10
+	17q21.31 region discussed above. We selected a DNA sample, NA19240, whose copy number across
+	the mosaic region ranged from 1-5 copies (Fig. S31). This particular individual was an ideal reference
+	sample because its copy number range approximated the median copy number for the populations
+	suited. Comparative genomic hybridization using this reference sample was performed on five HapMap
+	individuals with custom, high-density oligonucleotide 4x180K Agilent chips targeted to the 17q21.31
+	region with a density of 1 probe per 100 bp. Array CGH showed strong concordance with the
+	computational predictions. We identified three distinct copy number polymorphisms of size 155, 205
+	and 135 kbp as well as numerous smaller common CNPs within this region. Additionally, using the copy
+	numbers estimated in our reference genome, we were able to infer the true exact copy of the variable
+	loci targeted in the test samples.
+	

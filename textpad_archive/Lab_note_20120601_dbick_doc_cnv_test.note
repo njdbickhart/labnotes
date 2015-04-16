@@ -1,0 +1,185 @@
+06/01/2012
+# This note file contains my setup and run commands for three different DOC analysis programs: RDXplorer, cn.mops and CNVnator
+
+# My goal is to try to rerun the DTTRACE simulation data on these alignment programs and determine the overlap of CNV calls against the previous WSSD/WGAC results.
+# I will have to realign DTTRACE using BWA in order to do this (I think) since MrsFAST produces non-standard SAM output.
+
+# I will be using the highly masked cow4 reference assembly to do this
+# First, I need to index the reference fasta.
+	Server 3: /mnt/data110/dbickhart/reference
+	$ ~/bwa-0.6.1/bwa index cow4_36_noun_rmask_a.fa
+	
+# I also installed the newset versions of bwa, samtools and picard tools in my home directory on server3
+
+# created a one-shot script to start aligning everything:
+	Server 3: /mnt/data8/dbickhart/trace_reads
+	$ perl trace_reads_bwa_wrapper.pl
+	
+	# All of the reads aligned. I will have to create a script/program to gather some statistics on them later
+	
+
+# While compiling scipy and numpy on server 3, I ran into some fatal compilation errors. This means that I will not be able to run RDXplorer on Server 3 for the time being
+# I might have to migrate the bam files over to Blade2 in order to get this package to work.
+
+# Now to test out CNVnator on the trace bams
+	# Installation
+		- I had to install "root" from root.cern.ch
+		- I also had to set the ROOTSYS and LD_LIBRARY_PATH variables
+		- I also had to make the local version of samtools that was packaged within CNVnator prior to running make in the base CNVnator directory
+		
+		# Big problem: the chromosome lengths are contained within the source code (Genome.cpp, Genome.hh)
+		# I had to change the variables in the aforementioned files to make things work
+		
+	# Running the pipeline
+		# First, extract read mapping from bams
+		Server 3: /mnt/data8/dbickhart/trace_reads/bwa_trace_data
+		$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root cnvnator_cow4.root -tree ../bwa_trace_bams/older_trace_10.fa.fq.gz.sorted.marked.bam
+		
+		# That seemed to work. Removed the root file (it is appended to by each run, not removed) and started looping through each bam file
+		$ for i in ../bwa_trace_bams/*.bam; do echo $i; ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root cnvnator_cow4.root -tree $i; done    */
+		
+		# Now, I need to create a directory with separate chromosome fastas for the program
+		Server 3: /mnt/data110/dbickhart/reference/
+		$ perl ~/bin/split_fasta.pl cow4_36_noun_rmask_a.fa
+		
+		$ mkdir cow4_separate_chrs
+		$ mv chr*.fa ./cow4_separate_chrs/
+		
+		# Back to the pipeline
+		Server 3: /mnt/data8/dbickhart/trace_reads/bwa_trace_data
+		$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root cnvnator_cow4.root -his 1000 -d /mnt/data110/dbickhart/reference/cow4_separate_chrs
+			# They suggest a bin size of 300 for a 4x coverage of the genome, but I am playing it safe here
+		$ ~/CNVnator_v0.2.5/src/cnvnator -root cnvnator_cow4.root -stat 1000
+			Average RD per bin (1-22) is 0.00937156 +- 0.17119 (after GC correction)
+			Average RD per bin (X,Y)  is 1.48553e-06 +- 0.778639 (after GC correction)
+			
+		$ ~/CNVnator_v0.2.5/src/cnvnator -root cnvnator_cow4.root -partition 1000
+		$ ~/CNVnator_v0.2.5/src/cnvnator -root cnvnator_cow4.root -call 1000 > cnvnator_cnv_calls_1000.txt
+		
+		# OK, so it basically segmented the entire genome without any normal regions! Let's try a different approach:
+		# I will try to generate separate root files for each chromosome and then merge them instead of just appending to the existing root file
+		# I will also try using a 500 bp window to try to increase sensitivity (I hope).
+			$ for i in ../bwa_trace_bams/*.bam; do prefix=`echo $i | cut -d'/' -f3`; echo $prefix; ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root $prefix.root -tree $i; done   */
+
+			# Merging
+			$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root older_root_merge.root -merge older_trace_10.fa.fq.gz.sorted.marked.bam.root older_trace_11.fa.fq.gz.sorted.marked.bam.root older_trace_12.fa.fq.gz.sorted.marked.bam.root older_trace_13.fa.fq.gz.sorted.marked.bam.root older_trace_14.fa.fq.gz.sorted.marked.bam.root older_trace_15.fa.fq.gz.sorted.marked.bam.root older_trace_1.fa.fq.gz.sorted.marked.bam.root older_trace_2.fa.fq.gz.sorted.marked.bam.root older_trace_3.fa.fq.gz.sorted.marked.bam.root older_trace_4.fa.fq.gz.sorted.marked.bam.root older_trace_5.fa.fq.gz.sorted.marked.bam.root older_trace_6.fa.fq.gz.sorted.marked.bam.root older_trace_7.fa.fq.gz.sorted.marked.bam.root older_trace_8.fa.fq.gz.sorted.marked.bam.root older_trace_9.fa.fq.gz.sorted.marked.bam.root trace_wgs_10.fa.fq.gz.sorted.marked.bam.root
+			$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root newer_root_merge.root -merge trace_wgs_10.fa.fq.gz.sorted.marked.bam.root trace_wgs_1.fa.fq.gz.sorted.marked.bam.root trace_wgs_2.fa.fq.gz.sorted.marked.bam.root trace_wgs_3.fa.fq.gz.sorted.marked.bam.root trace_wgs_4.fa.fq.gz.sorted.marked.bam.root trace_wgs_5.fa.fq.gz.sorted.marked.bam.root trace_wgs_6.fa.fq.gz.sorted.marked.bam.root trace_wgs_7.fa.fq.gz.sorted.marked.bam.root trace_wgs_8.fa.fq.gz.sorted.marked.bam.root trace_wgs_9.fa.fq.gz.sorted.marked.bam.root
+			$ ~/CNVnator_v0.2.5/src/cnvnator -root total_merged_file.root -merge older_root_merge.root newer_root_merge.root 
+
+			$ ls -al total_merged_file.root cnvnator_cow4.root 
+				-rw-r--r-- 1 dbickhart mapping 165548632 2012-06-05 10:56 cnvnator_cow4.root
+				-rw-r--r-- 1 dbickhart mapping 131934507 2012-06-05 12:28 total_merged_file.root
+			# So the files are different sizes; I wonder if this will influence the analysis
+			$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root total_merged_file.root -his 500 -d /mnt/data110/dbickhart/reference/cow4_separate_chrs
+			$ ~/CNVnator_v0.2.5/src/cnvnator -root total_merged_file.root -stat 500
+				Average RD per bin (1-22) is 7.49869e-15 +- 14.5917 (after GC correction)
+				Average RD per bin (X,Y)  is 2.30787e-13 +- 12.7395 (after GC correction)
+				
+			$ ~/CNVnator_v0.2.5/src/cnvnator -root total_merged_file.root -partition 500
+			$ ~/CNVnator_v0.2.5/src/cnvnator -root total_merged_file.root -call 500 > merged_cnvnator_cow4_calls.txt
+			
+			# A comparison of line content between the files
+			$ wc -l merged_cnvnator_cow4_calls.txt cnvnator_cnv_calls_1000.txt 
+			   993 merged_cnvnator_cow4_calls.txt
+			  2765 cnvnator_cnv_calls_1000.txt
+  			
+			
+			# Calculating the number of bases present in each file
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); ($st, $en) = $s[1] =~ m/chr.+:(\d+)-(\d+)/; $t += $en - $st;} print "$t\n";' < merged_cnvnator_cow4_calls.txt 
+				2630740507
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); ($st, $en) = $s[1] =~ m/chr.+:(\d+)-(\d+)/; $t += $en - $st;} print "$t\n";' < cnvnator_cnv_calls_1000.txt 
+				2618668235
+				
+			# basically, the whole genome again!
+			# I think that the use of the heavily masked genome is the issue. I should use an unmasked genome for alignment.
+			# If this fails, I will chalk it up to being a crappy distribution not worth using outside of human genomics
+			
+			Server 3: /mnt/data110/dbickhart/reference/
+			$ samtools faidx bosTau4.fa
+			# Removing chrun contigs
+			$ perl -e 'while(<>){if($_ =~ /chrUn.004.1/){last;}else{print $_;}}' < bosTau4.fa > cow4_unmasked_test.fa
+			$ samtools faidx cow4_unmasked_test.fa
+			$ ~/bwa-0.6.1/bwa index -a bwtsw cow4_unmasked_test.fa
+			
+			Server 3: / mnt/data8/dbickhart/trace_reads
+			$ perl trace_reads_bwa_wrapper.pl
+			
+			$ for i in ../bwa_trace_bams/*.bam; do prefix=`echo $i | cut -d'/' -f3`; echo $prefix; ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root $prefix.root -tree $i; done   */
+			$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root older_root_merge.root -merge older_trace_10.fa.fq.gz.sorted.marked.bam.root older_trace_11.fa.fq.gz.sorted.marked.bam.root older_trace_12.fa.fq.gz.sorted.marked.bam.root older_trace_13.fa.fq.gz.sorted.marked.bam.root older_trace_14.fa.fq.gz.sorted.marked.bam.root older_trace_15.fa.fq.gz.sorted.marked.bam.root older_trace_1.fa.fq.gz.sorted.marked.bam.root older_trace_2.fa.fq.gz.sorted.marked.bam.root older_trace_3.fa.fq.gz.sorted.marked.bam.root older_trace_4.fa.fq.gz.sorted.marked.bam.root older_trace_5.fa.fq.gz.sorted.marked.bam.root older_trace_6.fa.fq.gz.sorted.marked.bam.root older_trace_7.fa.fq.gz.sorted.marked.bam.root older_trace_8.fa.fq.gz.sorted.marked.bam.root older_trace_9.fa.fq.gz.sorted.marked.bam.root trace_wgs_10.fa.fq.gz.sorted.marked.bam.root
+			$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root newer_root_merge.root -merge trace_wgs_10.fa.fq.gz.sorted.marked.bam.root trace_wgs_1.fa.fq.gz.sorted.marked.bam.root trace_wgs_2.fa.fq.gz.sorted.marked.bam.root trace_wgs_3.fa.fq.gz.sorted.marked.bam.root trace_wgs_4.fa.fq.gz.sorted.marked.bam.root trace_wgs_5.fa.fq.gz.sorted.marked.bam.root trace_wgs_6.fa.fq.gz.sorted.marked.bam.root trace_wgs_7.fa.fq.gz.sorted.marked.bam.root trace_wgs_8.fa.fq.gz.sorted.marked.bam.root trace_wgs_9.fa.fq.gz.sorted.marked.bam.root
+			$ ~/CNVnator_v0.2.5/src/cnvnator -root unmasked_merged_file.root -merge older_root_merge.root newer_root_merge.root
+			
+			# Creating new separate chr files for the unmasked sequence
+			Server 3: /mnt/data110/dbickhart/reference
+			$ perl ~/bin/split_fasta.pl cow4_unmasked_test.fa
+			$ mv chr*.fa ./cow4_separate_chrs/
+			
+			Server 3: /mnt/data8/dbickhart/trace_reads/bwa_trace_data
+			$ ~/CNVnator_v0.2.5/src/cnvnator -genome cow4 -root unmasked_merged_file.root -his 500 -d /mnt/data110/dbickhart/reference/cow4_separate_chrs
+			$ ~/CNVnator_v0.2.5/src/cnvnator -root unmasked_merged_file.root -stat 500
+				Average RD per bin (1-22) is 40.6631 +- 18.7074 (after GC correction)
+				Average RD per bin (X,Y)  is 41.8831 +- 18.4638 (after GC correction)
+			
+			$ ~/CNVnator_v0.2.5/src/cnvnator -root unmasked_merged_file.root -partition 500
+			$ ~/CNVnator_v0.2.5/src/cnvnator -root unmasked_merged_file.root -call 500 > unmasked_cnvnator_cow4_calls.txt
+			
+			$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2];} print "$t\n";' < unmasked_cnvnator_cow4_calls.txt
+				315064500  <- better, but still pretty terrible!
+			$ wc -l unmasked_cnvnator_cow4_calls.bed
+				6522 unmasked_cnvnator_cow4_calls.bed
+				# Hold on, many of these deletion regions are likely gaps. Let's remove them
+				
+				$ perl -e 'while(<>){chomp; @s = split(/\t/); ($chr, $start, $end) = $s[1] =~ /(chr.+):(\d+)-(\d+)/; print "$chr\t$start\t$end\n";}' < unmasked_cnvnator_cow4_calls.txt > unmasked_cnvnator_cow4_calls.bed
+				$ intersectBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed -v | wc -l
+					721
+				$ intersectBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed -v > unmasked_cnvnator_cow4_nogaps_calls.bed
+				$ perl -e 'while(<>){chomp; @s =split(/\t/); $t+= $s[2] - $s[1];} print "$t\n";' < unmasked_cnvnator_cow4_nogaps_calls.bed
+					28,808,279 <- Hmmm... much more intriguing...
+					
+				# Let's overlap with the WSSD and WGAC
+				$ intersectBed -a unmasked_cnvnator_cow4_nogaps_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed | wc -l
+					362
+				$ intersectBed -a unmasked_cnvnator_cow4_nogaps_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					6468480
+					
+				# I wonder what happens if I just remove the gaps and do not remove intervals that overlap them...
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					162,368,532
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | wc -l
+					15625
+
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -a stdin -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					95,670,910					
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -a stdin -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed | wc -l
+					8235
+					
+				# Just WSSD calls:
+				$ wc -l ../trace_bams/trace_windows/george_wssd_autosome.wssd
+					1603 ../trace_bams/trace_windows/george_wssd_autosome.wssd
+				$ cat ../trace_bams/trace_windows/george_wssd_autosome.wssd | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					31,447,740	
+					
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -b stdin -a ../trace_bams/trace_windows/george_wssd_autosome.wssd | wc -l
+					818
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -b stdin -a ../trace_bams/trace_windows/george_wssd_autosome.wssd |  perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					13,799,217  <- so a little under half
+				
+				
+				# Now to compare to my previous DTTRACE
+				$ wc -l /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/dttrace_all_chr_both_named.bed 
+					668 /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/dttrace_all_chr_both_named.bed
+				$ cat /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/dttrace_all_chr_both_named.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					36,437,950
+				$ subtractBed -a /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/dttrace_all_chr_both_named.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -a stdin -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					30,040,737 <- overlap between dttrace and wssd wgac results
+				
+				
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -a stdin -b /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/dttrace_all_chr_both_named.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					17,598,170
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -a stdin -b /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/dttrace_all_chr_both_named.bed | wc -l
+					718
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -b stdin -a /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/dttrace_all_chr_both_named.bed  -v | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					10,444,796   <- unique to alkan's method
+				$ subtractBed -a unmasked_cnvnator_cow4_calls.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/cow4_reordered_cropped_gaps_nochrun.bed | intersectBed -a stdin -b /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/dttrace_all_chr_both_named.bed  -v | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+					141,861,353  <- unique to cnvnator
+				

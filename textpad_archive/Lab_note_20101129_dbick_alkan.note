@@ -1,0 +1,752 @@
+2010_11_29 - 2010_12_16
+# My first Alkan note file was getting too big
+# This one will be devoted to the troubleshooting of the program and the (hopefully) successfull run of it on the data
+
+# Protocols will be listed at the end of the file
+
+________________________________________
+Redoing the controls
+________________________________________
+
+# Alright, I think that the big issue here is my control files. I need to make them more specific.
+
+# I found a segment in Alkan's control guidelines that gives exact intersectbed commands for generating the controls
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_36_finalcombined.fa.coverage -b cow4_controls_5k.bed -f 1.0 -r > cow4_recip_file1_controls.bed
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_36_finalcombined.fa.copynumber -b cow4_controls_5k.bed -f 1.0 -r > cow4_recip_file3_controls.bed
+	
+	# OOps! I did this for the wrong -a file! I should use the file1 and file2 readdepth blackstar files for this!
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a ./blackstartest/blackstar_hits_nochrun_file1.bed -b cow4_controls_5k.bed -f 1.0 -r > cow4_recip_file1_controls.bed
+	# Still nothing...
+	# So I believe that I am doing the control file generation correctly, it is just that the control file is far too broad.
+	# Wait... he was describing the intersection of the final control windows file with the sample dataset control file. 
+	
+	
+	$ wc blackstar_file3_control.bed <- my file3 control
+	  850003  3400012 22556800 blackstar_file3_control.bed
+	$ wc blackstar_hits_nochrun_file3.bed <- my file3 DoC
+	  916249  3664996 24319600 blackstar_hits_nochrun_file3.bed
+	$ wc hg17.copycontrol.bed <- Alkan's file3 control
+ 	  213186  639558 5090869 hg17.copycontrol.bed
+ 	  
+ 	# So, I have too many control regions to make an accurate comparison. Here is how I am going to deal with this:
+ 		1. determine the mean and median of the hits for files 3 and 1 (both the control and regular files)
+ 		2. crop out regions of the control that are 2 standard deviations above the median
+ 		3. save those cropped intervals in a second file that will be used to subtract positions from the original file1 and file 3 control interval files
+ 		# Using just blackstar might bias the data... so I will combine the hits files of blackstar, holstein and angus then calculate the values
+ 		# First, let's bin the hits within gc regions using my script (and the control file)
+ 		
+ 		$ perl bin_from_copynumber.pl --wssd cow4_gc_file1_controls.bed --name blackstar_test --in blackstartest/blackstar_file1_control.bed
+			# The file, blackstar_test.txt is saved in the shared folder
+			# Basically, I have overrepresentation at the upper end of the GC spectrum and at the lower end
+			# I need to crop out some control segments in the upper end, lower end and some in the middle as well.
+			# Let's see if my median subtraction method works to create the curve.
+			# I didn't do this subtraction yet, instead I am focusing on the workflow of the pipeline to better understand what is going on.
+
+# Creating bed files for the different breeds and then merging
+	$ perl -ne '@a = split(/\t/); chomp $a[1]; $b = $a[1] + 36; print "$a[0]\t$a[1]\t$b\n";' < merged.hits > angus_hits.bed
+	$ perl -ne 'if($_ =~ m/chrUn/){next;}else{print $_;}' < angus_hits.bed > angus_nochrun_hits.bed
+	$ perl -ne 'if($_ =~ m/chrUn/){next;}else{print $_;}' < holstein_hits.bed > holstein_nochrun_hits.bed
+	$ cat *_nochrun*.bed | sort -k 1,1 -k 2,2n > combined_nochrun.bed
+	
+# Intersecting the combined bed files and obtaining the hits from them
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ../cow4_file1_controls.bed -b combined_nochrun.bed -c > combined_file1_controls.bed
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ../cow4_file3_controls.bed -b combined_nochrun.bed -c > combined_file3_controls.bed
+	
+	$ perl generate_alkans_numbers.pl combined_file1_controls.bed
+		Average: 941.427176330687
+		Stdev: 5629.7416915825
+		Num3 is average + 3 standard deviations
+		2=941.427176330687
+		3=17830.6522510782
+		4=3566.13045021564
+		7=-10318.0562068343
+		8=-2063.61124136686
+		9=12200.9105594957
+		10=188.285435266137
+		
+	$ perl generate_alkans_numbers.pl combined_file3_controls.bed
+		Average: 197.380163364129
+		Stdev: 2288.42691702901
+		Num3 is average + 3 standard deviations
+		2=197.380163364129
+		3=7062.66091445116
+		4=1412.53218289023
+		7=-4379.47367069389
+		8=-875.894734138779
+		9=4774.23399742215
+		10=39.4760326728259
+		
+	# OK, so lets remove intervals that are three standard deviations above the average
+	$ perl -ne 'split(/\t/); chomp $_[3]; if($_[3] >= 17830){next;}else{print $_;}' < combined_file1_controls.bed > combined_file1_avg_3std_controls.bed
+		$wc combined_file1_avg_3std_controls.bed
+		1719581  6878324 47933978 combined_file1_avg_3std_controls.bed
+		$ wc combined_file1_controls.bed
+ 		1719695  6878780 47937398 combined_file1_controls.bed
+ 		# That didn't change too much, but let us see if the numbers came out differently
+		$ perl generate_alkans_numbers.pl combined_file1_avg_3std_controls.bed
+			Average: 921.138220880552
+			Stdev: 326.296504676035
+			Num3 is average + 3 standard deviations
+			2=921.138220880552
+			3=1900.02773490866
+			4=380.005546981731
+			7=268.545211528482
+			8=53.7090423056963
+			9=1573.73123023262
+			10=184.22764417611
+			
+		# Excellent! That worked better than expected!	
+		# Lets check the other control file:
+		$ perl -ne 'split(/\t/); chomp $_[3]; if($_[3] >= 7062){next;}else{print $_;}' < combined_file3_controls.bed > combined_file3_avg_3std_controls.bed
+		$ perl generate_alkans_numbers.pl combined_file3_avg_3std_controls.bed
+			Average: 193.716804122498
+			Stdev: 94.368854962588
+			Num3 is average + 3 standard deviations
+			2=193.716804122498
+			3=476.823369010262
+			4=95.3646738020525
+			7=4.97909419732244
+			8=0.995818839464488
+			9=382.454514047674
+			10=38.7433608244997
+			
+		# Again, much better!
+		# Now let's extract the intervals that are above those cut-offs
+		$ perl -ne 'split(/\t/); chomp $_[3]; if($_[3] >= 17830){print "$_[0]\t$_[1]\t$_[2]\n";}else{next;}' < combined_file1_controls.bed > problem_file1_controls.bed
+		$ perl -ne 'split(/\t/); chomp $_[3]; if($_[3] >= 7062){print "$_[0]\t$_[1]\t$_[2]\n";}else{next;}' < combined_file3_controls.bed > problem_file3_controls.bed
+
+		# Now to remove the problem intervals from the control files
+		$ ../../BEDTools-Version-2.10.0/bin/subtractBed -a ../cow4_file1_controls.bed -b problem_file1_controls.bed > cow4_file1_subtract_controls.bed
+		$ ../../BEDTools-Version-2.10.0/bin/subtractBed -a ../cow4_file3_controls.bed -b problem_file3_controls.bed > cow4_file3_subtract_controls.bed
+		
+		# Creating GC files:
+		$ perl ../GC_control_intervals.pl --genome cow4 --path /mnt/gliu1_usb/dbickhart/alkan_files/separate_chrs --name cow4
+		
+		# OK, so the GC files are created, I just need to intersect the new windows with the blackstar hits and I will attempt to run the blackstar dataset again
+		# If this turns out not to work that well, I might want to GC normalize the combined control files prior to estimating averages and stdev's then performing the whole thing again
+		$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_file1_subtract_controls.bed -b blackstar_nochrun_hits.bed -c > blackstar_file1_subtract_control.bed
+		$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_file3_subtract_controls.bed -b blackstar_nochrun_hits.bed -c > blackstar_file3_subtract_control.bed
+		$ perl generate_alkans_numbers.pl blackstar_file1_subtract_control.bed
+			Average: 243.694807048926
+			Stdev: 93.7956794026343
+		
+		$perl generate_alkans_numbers.pl blackstar_file3_subtract_control.bed
+			Average: 50.6011282751156
+			Stdev: 31.4146827115365
+			
+		# OK, the blackstar file 3 is not so good, but lets run it anyways	
+		
+		# I rewrote the updated_alkan_pipeline.sh to use the new subtracted control files and now I will run it with the new blackstar controls!
+		$ ../blackstartest/run_alkan_pipeline.pl --File1 ../blackstartest/blackstar_hits_nochrun_file1.bed --File1_c blackstar_file1_subtract_control.bed --File2 ../blackstartest/blackstar_hits_nochrun_file2.bed --File3 ../blackstartest/blackstar_hits_nochrun_file3.bed --File3_c blackstar_file3_subtract_control.bed
+		$ perl -e '$a = 0; $b = 0; while(<>){split(/\t/); chomp $_[4]; $b += $_[4]; $a++;} print $b / $a;' < blackstar_file1_subtract_control.bed.gc.depth.normalized
+			243.694911026069
+		# Not much of a difference in the average, so that is great!	
+		# OOps! I forgot to convert the file3 control into alkan's hyphen delimited format! Redoing...
+		
+		# One interesting thing from this run: The final .CN file shows copy number higher than 2 for most everything. I believe that there might be a problem 
+		$ perl -e '$b = 0; $a = 0; while(<>){split(/\t/); chomp $_[3]; $a += $_[3]; $b++;} print $a / $b;' <  ../blackstartest/blackstar_hits_nochrun_file3.bed.CN
+			# Yup, the average came out to 4.22059507096855
+			# Unless the cattle genome suddendly turned tetra ploid, I believe that there might be an issue with Alkan's final calculation
+			# I found out why: the average calculation on line 189 was not being performed. Changed the path to statStd.pl to account for the actual path of the program.
+			# Rerunning...
+			
+# Understanding filtered control regions
+	# Here is a list of the merged regions that were filtered out of the control files:
+		chr11:108838315-108840299	simple repeat
+		chr16:6857566-6858630	Unknown							<-
+		chr19:64488603-64489840	simple repeat
+		chr1:23401477-23415165	Large region, broken by masked repeats			<-
+		chr20:74349801-74360577	Large region, broken by masked repeats			<-
+		chr21:662946-673898	Large region, broken by masked repeats			<-
+		chr21:65618527-65620387	simple repeat
+		chr23:37159622-37160704	simple repeat
+		chr24:1214721-1216491	simple repeat
+		chr26:14790417-14791528	T rich region
+		chr28:43207664-43208858	simple repeat
+		chr3:20193928-20196191	simple repeat
+		chr4:124115203-124127353	Large region, broken by masked repeats		<-
+		chr7:6097617-6110585	Large region, broken by masked repeats			<-
+		chr8:115354118-115358888	simple repeat
+		
+	# The arrows indicate regions that I should investigate in order to determine what is going on there.
+	
+	# Here is how I am going to do that:
+		1. Formatdb the catenated fasta sequences
+		2. blastn the individual fasta sequences against the new database
+		3. Parse with a blastparser
+		4. use miropeats to visualize (if necessary)
+		
+	# Command line input:
+		$ pb formatdb -p F -i trouble_control_filter.txt -n trouble_control -t "trouble" -o T
+			WARNING: Inconsistent protocol version: client 20, server 15
+		$ pb blastall -p blastn -d trouble_control -i trouble_control_filter.txt -o trouble_output.blast -m 8 -e 1e-2
+			# Basically everything looks the same...
+			# Going to try a higher e-value
+			
+		$ pb blastall -p blastn -d trouble_control -i trouble_control_filter.txt -o trouble_output.blast -m 8 -e 1	
+			
+		# Next, I used George's blastparser and	filtered out the self hits that were exact mirrors
+		$ perl blastparser.pl -in trouble_output.blast -filter '-del_self_identity=>yes' -v
+		# output was in trouble_output.blast.parse in the control_filter folder on server 3
+		# Not very convincing... but George might want to see it.
+		# So, again, I blasted each sequence against a database of the other sequences using an evalue of "1" and then I used the blastparser.pl script to filter out self-mirror hits
+
+________________________________________
+Running through the pipeline stage-by-stage
+________________________________________
+
+# Pipeline progress:
+	1. WSSD_hg17 
+		Synopsis: basically, calculates average DOC, standard deviation, r^2 and plots r^2
+		input: File1_control, File1, File2, File3_control, File3, 1
+		Variable names:
+			BACDOCFileName = File1_control
+			HG175KDOCFileName = File1
+			HG171KDOCFileName = File2
+			BACnonovp1KDOCFileName = File3_control
+			HG17nonovp1KDOCFileName = File3
+			sex = 1
+			
+			
+		
+	2. gcnorm-auto_female-hg17_full.sh
+		Synopsis: Main wrapper script; is downstream of WSSD_hg17, but does most of the work. 
+		input: 
+			#$1 BAC doc file name -> File1_control
+			#$2 unique bacs average DOC
+			#$3 unique bacs avg+3stdev
+			#$4 unique bacs (avg+3stdev)/5
+			#$5 HG17 5K DOC file name -> File1
+			#$6 HG17 1K DOC file name -> File2
+			#$7 unique bacs avg-2stdev
+			#$8 unique bacs (avg-2stdev)/5
+			#$9 unique bacs avg+2stdev
+			#$10 unique bacs avg/5
+			#$11 BAC nonoverlapping 1K DOC file name -> File3_control
+			#$12 HG17 nonoverlapping 1K DOC file name -> File3
+			
+		Process steps:
+			1. Joins DoC and GC columns
+			2. calls partgcdepth
+			
+#George has suggested that we take a look at the constituitive parts of the pipeline and understand them.
+
+#So far we have looked at the main c wrapper program (WSSD_hg17.c), the female shell script, partgcdepth and depthloess-avg.
+	# I translated partgcdepth into perl. The new script is called: partgcdebug.pl. 
+	# I also translated depthloess-avg into perl. The new script is called: depthloess_avg.pl.
+
+# Command line input:
+	$ perl depthloess_avg.pl -i ../blackstartest/blackstar_file1_control.bed.unique.gc.depth -a test3.txt -e 256.398913 > blackstar_file1_control.unique.gc.depth.normalized
+	$ cut -f 5 blackstar_file1_control.unique.gc.depth.normalized | ./statStd.pl | grep Average | awk '{print $2}'
+		258.517702
+	$ cut -f 5 blackstar_file1_control.unique.gc.depth.normalized | ./statStd.pl | grep Deviation | awk '{print $3}'
+		3798.848100
+	
+	corr_auto3std = 15453.910
+	corr_auto2std = 11655.062
+	corr_autorefine = 3090.782
+	corr_auto2delstd = -14936.874
+	corr_autodelrefine = -2987.37
+	
+	cp ../blackstartest/blackstar_hits_nochrun_file*.gc.depth ./
+	
+	$ perl depthloess_avg.pl -i blackstar_hits_nochrun_file1.bed.gc.depth -a test3.txt -e 256.398913 > blackstar_hits_nochrun_file1.bed.gc.depth.normalized
+	$ perl depthloess_avg.pl -i blackstar_hits_nochrun_file2.bed.gc.depth -a test3.txt -e 256.398913 > blackstar_hits_nochrun_file2.bed.gc.depth.normalized
+	
+	$ cut -f 1,2,3,5 blackstar_hits_nochrun_file1.bed.gc.depth.normalized > blackstar_hits_nochrun_file1.bed.depth.normalized
+	$ cut -f 1,2,3,5 blackstar_hits_nochrun_file2.bed.gc.depth.normalized > blackstar_hits_nochrun_file2.bed.depth.normalized
+
+	$ ./wssd_picker.pl -f blackstar_hits_nochrun_file1.bed.depth.normalized -w 7 -s 6 -c 15453.910 -b 3 -k blackstar_hits_nochrun_file2.bed.depth.normalized -n 5 -i 1 -t 3090.782 -o blackstar_hits_nochrun_file1.bed.wssd.tab
+	
+	#-bookmark-#
+	$ ./coordsMerger_sort.pl -i blackstar_hits_nochrun_file1.bed.wssd.tab -h -u -n 0 -b 1 -e 2 -o blackstar_hits_nochrun_file1.bed.wssd.merged
+	$ cat blackstar_hits_nochrun_file1.bed.wssd.merged | gawk '{ if($3-$2>=10000) print $0; }' > blackstar_hits_nochrun_file1.bed.wssdGE10K.tab
+	$ ./twoPartOvp_mgsrt.pl -i blackstar_hits_nochrun_file1.bed.wssdGE10K.tab -f -j ../cow4_reordered_cropped_gaps_nochrun.bed -t -L -o blackstar_hits_nochrun_file1.bed.gcnorm.wssd.tab
+
+	$ ./wssd_picker.pl -f blackstar_hits_nochrun_file1.bed.depth.normalized -m -w 7 -s 6 -c -14936.874 -b 3 -k blackstar_hits_nochrun_file2.bed.depth.normalized -n 5 -i 1 -t -2987.37 -o blackstar_hits_nochrun_file1.bed.deletions.tab
+		# this has the "-m" option flagged, so it is checking for deletions
+		# it obviously picked nothing, since the threshold was set WAY too low!
+		# The low threshold is a result of a high standard deviation which was in turn derived from the control file
+		
+	(<>) The following would have done nothing with the empty file:
+	$GINGERBIN/coordsMerger_sort.pl -i $5.deletions.tab -h -u -n 0 -b 1 -e 2 -o $5.deletions.merged
+	cat $5.deletions.merged | gawk '{ if($3-$2>=10000) print $0; }' > $5.deletionsGE10K.tab
+	$GINGERBIN/twoPartOvp_mgsrt.pl  -i $5.deletionsGE10K.tab -f -j $GAPSFILE -t  -L -o $5.gcnorm.deletions.tab
+	grep -v chrY $5.gcnorm.deletions.tab > temp
+	mv temp $5.gcnorm.deletions.tab
+	rm $5.deletions.tab $5.deletions.merged $5.deletionsGE10K.tab
+	(<>)Since the file was empty, I skipped this stage
+	
+	$ awk '{if ($4 > var) print $1"\t"$2"\t"$3}' var=11655.062 blackstar_hits_nochrun_file1.bed.depth.normalized > blackstar_hits_nochrun_file1.bed.redgray
+	$ ./pad -w blackstar_hits_nochrun_file1.bed.gcnorm.wssd.tab -p blackstar_hits_nochrun_file1.bed.redgray -o blackstar_hits_nochrun_file1.bed.padded.tab
+		$head blackstar_hits_nochrun_file1.bed.padded.tab
+			chr4    124429748       124446482
+			chr6    5546342 5579524
+			chr6    5579573 5583107
+			chr6    5583156 5613494
+			chr6    5784256 5822004
+			chr6    5822053 5833086
+			chr6    6409001 6451878
+			chr7    6091617 6115180
+			chr16   6845566 6860003
+			chr21   65610527        65621036
+	
+	# I skipped artifact masking, for now
+	
+	$ awk '{if($3-$2 >= 10000) print $0}' blackstar_hits_nochrun_file1.bed.padded.tab | grep -v chrY > blackstar_hits_nochrun_file1.bed.final.wssd	
+			head blackstar_hits_nochrun_file1.bed.final.wssd
+			chr4    124429748       124446482
+			chr6    5546342 5579524
+			chr6    5583156 5613494
+			chr6    5784256 5822004
+			chr6    5822053 5833086
+			chr6    6409001 6451878
+			chr7    6091617 6115180
+			chr16   6845566 6860003
+			chr21   65610527        65621036
+			chr25   433967  459742
+			
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' ../blackstartest/blackstar_file3_control.bed | sort -k 1,1 > blackstar_file3_control.bed.tab	
+	$ join ../cow4_file3_controls.bed blackstar_file3_control.bed.tab | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > blackstar_file3_control.bed.gc.depth
+	# After this I started getting errors, so I took a break
+	
+	# Here's my problem: I used the original cow4_file3_controls.bed file, I should have used cow4_gc_file3_controls.bed in the join command
+	# I also forgot to add Alkan's weird format (with dashes) to the cow4_file3_controls.bed file, doing that with awk now:
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' ../cow4_gc_file3_controls.bed | sort -k 1,1 > cow4_gc_file3_controls.bed.tab
+	$ join cow4_gc_file3_controls.bed.tab blackstar_file3_control.bed.tab | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > blackstar_file3_control.bed.gc.depth
+	# That worked
+	
+	$ perl partgcdepth.pl blackstar_file3_control.bed.gc.depth > blackstar_file3_control.bed.gc.depth-avg
+	$ cut -f 5 blackstar_file3_control.bed.gc.depth | ./statStd.pl | grep Average | awk '{print $2}'
+		Average = 52.847604
+	$ perl depthloess_avg.pl -i blackstar_file3_control.bed.gc.depth -a blackstar_file3_control.bed.gc.depth-avg -e 52.847604 > blackstar_file3_control.bed.gc.depth.normalized
+	
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' ../blackstartest/blackstar_hits_nochrun_file3.bed | sort -k 1,1 > blackstar_hits_nochrun_file3.bed.tab
+	$ join ../cow4_gc_copynumber_nochrun.tab blackstar_hits_nochrun_file3.bed.tab  | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > blackstar_hits_nochrun_file3.bed.gc.depth
+	$ perl depthloess_avg.pl -i blackstar_hits_nochrun_file3.bed.gc.depth -a blackstar_file3_control.bed.gc.depth-avg -e 52.847604 > blackstar_hits_nochrun_file3.bed.gc.depth.normalized
+	$ awk '{print $1"\t"$2"\t"$3"\t"$5/var*2}' var=52.847604 blackstar_hits_nochrun_file3.bed.gc.depth.normalized > blackstar_hits_nochrun_file3.bed.CN
+	# So, this last file is actually just the normalized file3 with just the DoC. I guess this is an optional step, since Alkan does not do anything with the remaining .CN file.
+	
+(<>) Rewriting the c wrapper:
+	# I have created a new wrapper program that just calculates the values necessary for the shell script and pipes the files/data into that script
+	# File name is run_alkan_pipeline.pl
+	# I also modified the shell script and changed the name to cattle_female_pipeline.sh
+	# Test run in the /mnt/gliu1_usb/dbickhart/alkan_files/blackstartest/ folder:
+	$ ./run_alkan_pipeline.pl --File1 blackstar_hits_nochrun_file1.bed --File1_c blackstar_file1_control.bed --File2 blackstar_hits_nochrun_file2.bed --File3 blackstar_hits_nochrun_file3.bed --File3_c blackstar_file3_control.bed
+	# it works! Alright, now I have to make better control files...
+
+_____________________________________
+Artifact Masking
+_____________________________________
+
+# First, I need to generate the simulation reads. In order to do that, I need to create a script to generate those initial simulation reads
+
+# George has a point: the 36x coverage will give better resolution in terms of artifact identification
+
+# I need to determine how to generate realistic phred scores for each read base. 
+	# I believe that I might have a method: determine the average phred score per base position in order, then write the simulation script to deviate from that phred score by 5
+	# I started generating a script to determine the average phred score per base, but I realized that I might have to create an array of arrays to do more calculations.
+	# perhaps the median is better, and then determine the std deviation from the median.
+	
+	# Alright, after some debugging, I created a script that will calculate the median, average and stdev of each base quality score and print them
+	# My goal is to take the average of all of those numbers, then design a simulation script that generates variable fastq values that tail off like the actual dataset
+	# The script takes a while to run, but it works
+	$ for i in 0*.fastq; do perl calculate_perbase_qs.pl $i >> qs_perbase.txt; done
+	# there seems to be a trend with some of the last bases; almost a plateau effect
+	
+	# I finished 30 out of the 33 blackstar files, then I calculated the average of averages and average of standard deviations
+		30	2
+		30	3
+		30	3
+		29	3
+		29	3
+		29	3
+		29	3
+		29	3
+		28	4
+		28	4
+		28	4
+		28	4
+		28	4
+		27	4
+		27	5
+		27	5
+		27	5
+		26	5
+		26	5
+		26	5
+		26	5
+		26	5
+		25	5
+		25	6
+		25	6
+		24	7
+		23	7
+		23	7
+		22	8
+		22	8
+		20	8
+		19	9
+		18	9
+		16	9
+		15	8
+		14	9
+
+	# First column is the average and second column  is the standard deviation
+	
+	# OK, so I made a test script (test_qs_generation.pl) to check out the quality score simulation, and I'm pretty happy with the results.
+	# I catenated the stitched chrUnall file and the unmasked fasta. I realized that I had to remove the chrUn contigs again, so I wrote a one liner to do that
+	$ perl simulate_36x_reads_artifact.pl bosTau4_stitched_chrun.fa			<-- screen -r 2116
+	
+	# Now that I think about it... I believe that my simulation script will not print out reads from chrUnall... no matter. I can revisit that bag of worms later.
+	
+	# OK, that generated WAY too many reads! There is no way that I will be able to align all of this! Also, my program failed to terminate when a sequence is less than 36bp
+	# Maybe I should work on the masked genome? Yeah, I think that would be far better.
+	
+	# Running the simulation script (with a few modifications) on the masked cow4 genome now:
+		$ perl simulate_36x_reads_artifact.pl bosTau4_noUn.masked
+		# The script creates an outfile called cow4_masked_simulation.fq
+		# The script stops generating reads once it reaches 36bp from the end of the chromosome
+		
+	# There are still quite a few reads to parse through... but I have reduced the number by about half.
+	# Ran the following command to generate separate fastq files:
+		$ split -l 200000000 cow4_masked_simulation.fq ./mask_sim/cow4_mask_sim
+		# That should make fastq files with about 50 million reads each
+		# This means that the final file count should be around 24 - 25 files (based on the gigabyte sizes of the files involved)
+		
+	# Yes, the final count was 24. Going to run them all through mrsfast...
+		for i in cow4*
+		> do
+		> /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/cow4_36_noun_final.fa --seq $i -o $i.sam
+		> done
+		
+	# Next I converted them to bams and then sorted them using samtools
+	# Now I am going to merge them using samtools into a sorted bam and delete the old sam files
+		$ sleep 10h; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools merge simulation_merged.bam *.sort.bam
+
+	# Creating hits
+	$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view simulation_merged.bam | perl -lane 'if($F[2] =~ /\*/){next;}else{print "$F[2]\t$F[3]"}' > simulation_merged.hits
+	# removing the sam.bam files. 
+	$ rm *.sam.bam
+	
+	$ perl -ne '@a=split(/\t/); chomp $a[1]; $b = $a[1] + 36; print "$a[0]\t$a[1]\t$b\n";' < simulation_merged.hits > simulation_merged.bed
+	
+	# Now to intersect them with the file 1 (coverage) file 2 (wssd) and file 3 (copynumber) regions, then with the control regions
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa_nochrun.coverage -b simulation_merged.bed -c > simulation_merged_file1.bed
+	# Server 3 crashed, so I did not get a file from that
+	
+	# Just to ensure that BEDtools is not crashing the server (by loading all of that file into memory, I will split the file and then reparse it individually
+	$ split -l 261775067 simulation_merged.bed
+	# This resulted in three equal files.
+	
+	# I need to intersect the file controls as well; just checking to see if the controls have the same number of chromosomes...
+	$ perl -e '%h; while(<>){@s=split(/\t/); $h{$s[0]} += 1;} foreach $key (keys %h){print "$key\n";}' < cow4_file1_controls.bed
+	# looks like it!
+	
+	# The split files are still too big... going to cut them in half
+	$ split -l 130887534 simulation_merged.bed
+	
+	# Trying the wrapper merge script
+	$ perl bedtools_intersect_simulation.pl
+
+	# Oh man! It actually worked! I did some brief checking to make sure that everything seemed ok, and now I will run the files through the pipeline
+	
+	$ ./run_alkan_pipeline.pl --File1 simulation_merged_file1.bed --File1_c simulation_merged_file1_c.bed --File2 simulation_merged_file2.bed --File3 simulation_merged_file3.bed --File3_c simulation_merged_file3_c.bed
+		Calculating average...
+		Calculating stdev...
+		Average was: 3924.33069643163
+		Stdev was; 927.245171705086
+		Running following command:
+		sh /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/cattle_female_pipeline.sh simulation_merged_file1_c.bed 3924.33069643163 6706.06621154689 1341.21324230938 simulation_merged_file1.bed simulation_merged_file2.bed 2069.84035302146 413.968070604293 5778.82103984181 784.866139286327 simulation_merged_file3_c.bed simulation_merged_file3.bed
+	
+	# OK, so the standard deviation is WAY too high and this resulted in ~2000 CNV calls
+	# I need to do (at least one of) two things:
+		1. Rewrite the pipeline so that it calculates an average and std-dev for each chromosome and normalizes each chromosome separately
+		2. empirically crop the artifact files of excessively high values prior to running them through the existing pipeline.
+		
+	# First, I want to test something, and that is the average copy number of the chromosomes as writen in the *.CN file
+	# I designed a script to check it:
+		$ perl check_avg_chr_copy.pl simulation_merged_file3.bed.CN
+			chrname number  average median
+			chr1    52163   4.07046731898083        3.97554
+			chr10   38166   4.19050210684906        4.04494
+			chr11   40349   4.15704483332915        4.05733
+			chr12   30104   4.08115558929044        3.98793
+			chr13   31893   4.17813105759883        4.07468
+			chr14   28580   4.09140974142757        3.99784
+			chr15   27826   4.22626424423197        4.05486
+			chr16   27373   4.13788465787451        4.04742
+			chr17   25736   4.11103611555794        4.01272
+			chr18   24965   4.37894981654314        4.11434
+			chr19   26477   4.26612578955316        4.10195
+			chr2    48105   4.08096638374384        3.99041
+			chr20   25759   4.08143817966534        4.00528
+			chr21   24038   4.20847924494551        4.05486
+			chr22   24200   4.15064988140494        4.07468
+			chr23   20930   4.26512598471092        4.07716
+			chr24   24496   4.17544301763553        4.03503
+			chr25   16544   4.21657283365568        4.10443
+			chr26   19204   4.17820939647989        4.07221
+			chr27   18068   4.32698810216956        4.0375
+			chr28   16272   4.15031093657816        4.06725
+			chr29   17929   2.0483303251715 2
+			chr3    42449   4.20810174256161        4.04246
+			chr4    44168   4.12834375475455        4.00776
+			chr5    42198   4.22093035641495        4.01767
+			chr6    37968   4.06889641566579        3.94827
+			chr7    39205   4.1581968646856 4.03503
+			chr8    38807   4.19219937356656        4.02511
+			chr9    36835   4.09340281037057        3.98297
+			chrX    25442   4.26879117797345        4.03998
+	
+	# So, chromosome #29 is screwing up the proportions... that is odd! Lets see what the problem is...
+	$ perl -ne '@a = split(/\t/); chomp $a[3]; if($a[3] < 3){print $_;}' < chr29_artifact_intervals.bed | wc
+	  	17660   70640  464287
+	$ perl -ne '@a = split(/\t/); chomp $a[3]; if($a[3] > 3){print $_;}' < chr29_artifact_intervals.bed | wc
+	    	269    1076    8402
+	    	
+	# So... the entire chromosome is a CNV... Not likely. 
+	# Let's try an initial artifacts file with the segments of chr29 that are less than 3, and see how the CN file turns out...
+	# I just tried the following command before doing that:
+		$ grep 'chr29' simulation_merged_file3.bed.gc.depth | more
+	# Aha! So many of these intervals on chr29 have ZERO reads that mapped to them! That means that the intervals are incapable of being mapped to...
+	# Time to remove them
+		$ perl -ne '@a = split(/\t/); chomp $a[4]; if ($a[4] == 0){ print $_;}' < simulation_merged_file3.bed.gc.depth > zero_value_artifacts.bed
+		$ wc zero_value_artifacts.bed
+ 			15720  78600 544483 zero_value_artifacts.bed
+
+	# Wait just a second... I remember now: the simulation program likely does not generate reads for chromosome 29... let me check this...
+	# Yup, so I didnt generate reads for chromosome 29. I don't necessarily have to do that either. 
+	# I just have to remove chr29 from the calculation of the average values, and then take the intervals that had any reads at all in the chr29 intervals
+	# I can do this by putting the chr29_artifact_intervals.bed file as an "artifact" file prior to running the script
+		ARTIFACT_FILE=/mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/chr29_artifact_intervals.bed
+		
+	# Let's run the pipeline again...
+	$ ./run_alkan_pipeline.pl --File1 simulation_merged_file1.bed --File1_c simulation_merged_file1_c.bed --File2 simulation_merged_file2.bed --File3 simulation_merged_file3.bed --File3_c simulation_merged_file3_c.bed
+		Loading numbers from simulation_merged_file1_c.bed into array...
+		Calculating average...
+		Calculating stdev...
+		Average was: 3924.33069643163
+		Stdev was; 927.245171705086
+		Running following command:
+			sh /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/cattle_female_pipeline.sh 
+			simulation_merged_file1_c.bed 
+			3924.33069643163 
+			6706.06621154689 
+			1341.21324230938 
+			simulation_merged_file1.bed 
+			simulation_merged_file2.bed 
+			2069.84035302146 
+			413.968070604293 
+			5778.82103984181 
+			784.866139286327 
+			simulation_merged_file3_c.bed 
+			simulation_merged_file3.bed
+	
+	# The initial average is the problem... going to remove chr29 from the calculation in the wrapper script (run_alkan_pipeline.pl)
+	$ ./run_alkan_pipeline.pl --File1 simulation_merged_file1.bed --File1_c simulation_merged_file1_c.bed --File2 simulation_merged_file2.bed --File3 simulation_merged_file3.bed --File3_c simulation_merged_file3_c.bed
+		Average was: 3998.32032973481
+		Stdev was; 763.522971052984
+		# That helped...
+		# But other parts of the pipeline still use chr29's values
+		# I am going to add the average value to each of the intervals in chr29 to mask this out.
+		# Actually, I can't (because the file intervals are different) Time to generate some sequence for chr29 then...
+			$ perl simulate_36x_reads_artifact.pl bosTau4_noUn.masked
+			# The script was modified to only read from chr29
+			$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/cow4_36_noun_final.fa --seq chr29_masked_simulation.fq -o chr29_masked_simulation.sam
+			$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view -bt /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa.fai chr29_masked_simulation.sam > chr29_masked_simulation.bam
+			$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools sort chr29_masked_simulation.bam chr29_masked_simulation_sort
+			$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools merge full_sim_merged.bam chr29_masked_simulation_sort.bam simulation_merged.bam
+			
+			# That might take a while, going to try to merge them as a part of the whole instead:
+			$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view chr29_masked_simulation_sort.bam | perl -lane 'if($F[2] =~ /\*/){next;}else{print "$F[2]\t$F[3]"}' > chr29_sim.hits
+			$ perl -ne '@a=split(/\t/); chomp $a[1]; $b = $a[1] + 36; print "$a[0]\t$a[1]\t$b\n";' < chr29_sim.hits > chr29_sim.bed
+			# I redesigned my original combination script as a separate subroutine that is adaptable to more than one file
+			$ perl combine_bed_hits.pl
+			
+		# Let's run it again!
+		$ ./run_alkan_pipeline.pl --File1 final_sim_file1.bed --File1_c final_sim_file1_c.bed --File2 final_sim_file2.bed --File3 final_sim_file3.bed --File3_c final_sim_file3_c.bed
+			Loading numbers from final_sim_file1_c.bed into array...
+			Calculating average...
+			Calculating stdev...
+			Average was: 4004.74625209703
+			Stdev was; 782.243726176706
+			
+			Control GC files ready
+			Normalizing control regions
+			Recalculating averages
+			Avg:  4004.746252  std:  737.884310  AutoCut:  6956.283492  AutoCut2:  6218.399182
+			AvgS:   stdS:   SexCut:   SexCut2:
+			Preparing the full genome
+			
+		# still quite a few outliers... I think that I have some "repeat" regions in my control files. going to check that...
+		$ cut -f 5 final_sim_file3_c.bed.gc.depth.normalized | ../statStd.pl
+			total   850003
+			Minimum 1041.658293
+			Maximum 28988.658293
+			Average 1647.316586
+			Median  1637.658293
+			Standard Deviation      225.104232
+			Mode(Highest Distributed Value) 1733.658293
+			# average + 3 standard Devs = 2322
+			# average - 3 standard Devs = 972
+			# So it is just values that are above the average... likely...
+			
+			$ perl -ne '@a = split(/\t/); chomp $a[4]; if($a[4] > 2322){print $_;}' < final_sim_file3_c.bed.gc.depth.normalized | wc
+				6829   34145  290269
+			# So, that's still alot to remove! putting them into a file
+			$ perl -ne '@a = split(/\t/); chomp $a[4]; if($a[4] > 2322){print $_;}' < final_sim_file3_c.bed.gc.depth.normalized > file3_removal_ints.bed
+				
+		$ cut -f 5 final_sim_file1_c.bed.gc.depth.normalized | ../statStd.pl
+			total   1719695
+			Minimum 2528.93247906114
+			Maximum 70994.0739396186
+			Average 4004.746252
+			Median  3897.47168633009
+			Standard Deviation      737.884310
+			Mode(Highest Distributed Value) 3981.01368392306
+			# average + 3 standard Devs = 6215
+			
+			$ perl -ne '@a = split(/\t/); chomp $a[4]; if($a[4] > 6215){print $_;}' < final_sim_file1_c.bed.gc.depth.normalized | wc
+				28402  142010 1347112
+# Remaking the controls:
+$ ../../../BEDTools-Version-2.10.0/bin/subtractBed -a ../../cow4_file3_controls.bed -b file3_removal_ints.bed > cow4_rem_file3_controls.bed
+$ perl GC_control_intervals.pl --genome cow4_rem --path ../separate_chrs --name cow4_rem
+
+# Now remaking the control hits file
+$ perl combine_bed_hits.pl
+	/mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/controlfilter/cow4_rem_file1_controls.bed -b /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/mask_sim/chr29_sim.bed -c > /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/mask_sim/full_sim_file1_c.bed
+
+# Now rerunning the pipeline script:
+	$ ./run_alkan_pipeline.pl --File1 final_sim_file1.bed --File1_c final_sim_file1_c.bed --File2 final_sim_file2.bed --File3 final_sim_file3.bed --File3_c final_sim_file3_c.bed
+		Loading numbers from final_sim_file1_c.bed into array...
+		Calculating average...
+		Calculating stdev...
+		Average was: 3860.4487984703
+		Stdev was; 528.866550730125
+		
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		Avg:  3860.448798  std:  305.008745  AutoCut:  5080.483778  AutoCut2:  4775.475033
+		# That REALLY helped!
+	
+# I was still getting a copy number of "4" on each chromosome, but I figured out why!
+# Alkan calculates the average from a non-normalized gc.depth file (line 191 of updated_alkan_pipeline.sh) and uses it on the normalized dataset!
+	$ awk '{print $1"\t"$2"\t"$3"\t"$5/var*2}' var=1622 final_sim_file3.bed.gc.depth.normalized > final_sim_file3.bed.CN
+	$ perl check_avg_chr_copy.pl final_sim_file3.bed.CN                               chrname number  average median
+		chr1    52163   2.03035040756865        1.98405
+		chr10   38166   2.09066186579685        2.01734
+		chr11   40349   2.07363132394863        2.02351
+		chr12   30104   2.03555357560464        1.98898
+		chr13   31893   2.08382824193411        2.03214
+		chr14   28580   2.04064033135063        1.99392
+		chr15   27826   2.108664417092  2.02228
+		chr16   27373   2.06390387644772        2.01858
+		chr17   25736   2.05103260063735        2.00131
+		chr18   24965   2.18418971440026        2.05187
+		chr19   26477   2.12756370850186        2.0457
+		chr2    48105   2.03561028188344        1.99022
+		chr20   25759   2.03581900423158        1.99762
+		chr21   24038   2.09954778808561        2.02228
+		chr22   24200   2.07026163429765        2.03214
+		chr23   20930   2.12748736980419        2.03337
+		chr24   24496   2.0827440353528 2.01365
+		chr25   16544   2.10323454545458        2.04694
+		chr26   19204   2.08386196834001        2.03091
+		chr27   18068   2.15847548372818        2.01365
+		chr28   16272   2.0701216433137 2.02844
+		chr29   17929   2.14298952311903        2.03707
+		chr3    42449   2.09890493604091        2.01611
+		chr4    44168   2.05912529342515        1.99885
+		chr5    42198   2.10554577017871        2.00378
+		chr6    37968   2.02967679124526        1.96926
+		chr7    39205   2.07394940313748        2.01241
+		chr8    38807   2.09121560646285        2.00748
+		chr9    36835   2.04188696511472        1.98652
+		chrX    25442   2.12972733472217        2.01488
+	# The previous average was a 811, so this one was 2x higher!
+	
+# OK, so everything looks ok. Let's use the artifact file (final_sim_file1.bed.final.wssd) and my new, cropped controls on the blackstar dataset
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ../wssd-package/artifact/cow4_rem_file1_controls.bed -b blackstar_nochrun_hits.bed -c > ../blackstartest/blackstar_rem_file1_c.bed
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ../wssd-package/artifact/cow4_rem_file3_controls.bed -b blackstar_nochrun_hits.bed -c > ../blackstartest/blackstar_rem_file3_c.bed
+
+# aw, crap! I just realized that the gc normalization stage of the pipeline likely does not apply to the simulation! I'll have to generate the artifact file over again!
+
+# Wait, even worse: I forgot an important step in Alkan's "howto" file. I need to check the artifacts against the segmental duplications track and remove artifacts that are listed as seg-dups.
+# Yup, I think that was it...
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a final_sim_file1.bed.final.wssd -b ../../WSSD_WGAC_finalmerged_noChrun.bed -v > nonoverlap_artifacts.bed
+	$ wc final_sim_file1.bed.final.wssd
+  		4558  13674 106951 final_sim_file1.bed.final.wssd
+	$ wc nonoverlap_artifacts.bed
+		772  2316 18153 nonoverlap_artifacts.bed
+
+	
+###############################################
+#                                             #
+#	List of Commands for test run	      #
+#                                             #
+###############################################
+
+# Commands were issued in the (/mnt/gliu1_usb/dbickhart/alkan_files/wssd-package) folder
+
+# Starting from line 50 of the female shell script:
+$ perl depthloess_avg.pl -i ../blackstartest/blackstar_file1_control.bed.unique.gc.depth -a test3.txt -e 256.398913 > blackstar_file1_control.unique.gc.depth.normalized
+
+$ cut -f 5 blackstar_file1_control.unique.gc.depth.normalized | ./statStd.pl | grep Average | awk '{print $2}'
+	258.517702
+$ cut -f 5 blackstar_file1_control.unique.gc.depth.normalized | ./statStd.pl | grep Deviation | awk '{print $3}'
+	3798.848100
+
+	corr_auto3std = 15453.910
+	corr_auto2std = 11655.062
+	corr_autorefine = 3090.782
+	corr_auto2delstd = -14936.874
+	corr_autodelrefine = -2987.37
+	
+$ cp ../blackstartest/blackstar_hits_nochrun_file*.gc.depth ./
+# This moved the .gc.depth files created by the previous failed run into the wssd-package folder. Skip the two awk and join command lines (lines 82, 85, 89, 92)
+
+$ perl depthloess_avg.pl -i blackstar_hits_nochrun_file1.bed.gc.depth -a test3.txt -e 256.398913 > blackstar_hits_nochrun_file1.bed.gc.depth.normalized
+$ perl depthloess_avg.pl -i blackstar_hits_nochrun_file2.bed.gc.depth -a test3.txt -e 256.398913 > blackstar_hits_nochrun_file2.bed.gc.depth.normalized
+
+$ cut -f 1,2,3,5 blackstar_hits_nochrun_file1.bed.gc.depth.normalized > blackstar_hits_nochrun_file1.bed.depth.normalized
+$ cut -f 1,2,3,5 blackstar_hits_nochrun_file2.bed.gc.depth.normalized > blackstar_hits_nochrun_file2.bed.depth.normalized
+
+$ ./wssd_picker.pl -f blackstar_hits_nochrun_file1.bed.depth.normalized -w 7 -s 6 -c 15453.910 -b 3 -k blackstar_hits_nochrun_file2.bed.depth.normalized -n 5 -i 1 -t 3090.782 -o blackstar_hits_nochrun_file1.bed.wssd.tab
+
+$ ./coordsMerger_sort.pl -i blackstar_hits_nochrun_file1.bed.wssd.tab -h -u -n 0 -b 1 -e 2 -o blackstar_hits_nochrun_file1.bed.wssd.merged
+$ cat blackstar_hits_nochrun_file1.bed.wssd.merged | gawk '{ if($3-$2>=10000) print $0; }' > blackstar_hits_nochrun_file1.bed.wssdGE10K.tab
+$ ./twoPartOvp_mgsrt.pl -i blackstar_hits_nochrun_file1.bed.wssdGE10K.tab -f -j ../cow4_reordered_cropped_gaps_nochrun.bed -t -L -o blackstar_hits_nochrun_file1.bed.gcnorm.wssd.tab
+
+$ ./wssd_picker.pl -f blackstar_hits_nochrun_file1.bed.depth.normalized -m -w 7 -s 6 -c -14936.874 -b 3 -k blackstar_hits_nochrun_file2.bed.depth.normalized -n 5 -i 1 -t -2987.37 -o blackstar_hits_nochrun_file1.bed.deletions.tab
+
+# Skipped the next 6 commands, since the previous file was empty
+
+$ awk '{if ($4 > var) print $1"\t"$2"\t"$3}' var=11655.062 blackstar_hits_nochrun_file1.bed.depth.normalized > blackstar_hits_nochrun_file1.bed.redgray
+$ ./pad -w blackstar_hits_nochrun_file1.bed.gcnorm.wssd.tab -p blackstar_hits_nochrun_file1.bed.redgray -o blackstar_hits_nochrun_file1.bed.padded.tab
+
+# Skipped artifact masking
+
+$ awk '{if($3-$2 >= 10000) print $0}' blackstar_hits_nochrun_file1.bed.padded.tab | grep -v chrY > blackstar_hits_nochrun_file1.bed.final.wssd
+
+$ awk '{print $1"-"$2"-"$3"\t"$4}' ../blackstartest/blackstar_file3_control.bed | sort -k 1,1 > blackstar_file3_control.bed.tab
+$ awk '{print $1"-"$2"-"$3"\t"$4}' ../cow4_gc_file3_controls.bed | sort -k 1,1 > cow4_gc_file3_controls.bed.tab
+
+$ join cow4_gc_file3_controls.bed.tab blackstar_file3_control.bed.tab | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > blackstar_file3_control.bed.gc.depth
+
+$ perl partgcdepth.pl blackstar_file3_control.bed.gc.depth > blackstar_file3_control.bed.gc.depth-avg
+
+# The next few steps seem optional. Basically, they are designed to normalize File3. Alkan's comment on line 184 of the shell script suggests that this normalization could be helpful for future analysis
+
+$ cut -f 5 blackstar_file3_control.bed.gc.depth | ./statStd.pl | grep Average | awk '{print $2}'
+	Average = 52.847604
+$ perl depthloess_avg.pl -i blackstar_file3_control.bed.gc.depth -a blackstar_file3_control.bed.gc.depth-avg -e 52.847604 > blackstar_file3_control.bed.gc.depth.normalized
+
+$ awk '{print $1"-"$2"-"$3"\t"$4}' ../blackstartest/blackstar_hits_nochrun_file3.bed | sort -k 1,1 > blackstar_hits_nochrun_file3.bed.tab
+
+$ join ../cow4_gc_copynumber_nochrun.tab blackstar_hits_nochrun_file3.bed.tab  | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > blackstar_hits_nochrun_file3.bed.gc.depth
+
+$ perl depthloess_avg.pl -i blackstar_hits_nochrun_file3.bed.gc.depth -a blackstar_file3_control.bed.gc.depth-avg -e 52.847604 > blackstar_hits_nochrun_file3.bed.gc.depth.normalized
+
+$ awk '{print $1"\t"$2"\t"$3"\t"$5/var*2}' var=52.847604 blackstar_hits_nochrun_file3.bed.gc.depth.normalized > blackstar_hits_nochrun_file3.bed.CN

@@ -1,0 +1,537 @@
+10/05/2011
+# These are my notes on preparing the dog genome (Canis lupus familiaris 2.0) for Alkan's wssd pipeline and for initial mapping of the reads
+# I need to download and prep the genome, then construct a simulation of it and finally run the pipeline itself
+
+# Downloading the following files from UCSC (seems to be current)
+	- chromFa.tar.gz
+	- chromOut.tar.gz
+	- chromTRF.tar.gz
+	- chromAgp.tar.gz
+	
+# I am unsure if I trust their repeatmasking and TRF masking, but I will run with it for now. 
+# Downloaded files to /mnt/data110/dbickhart/reference
+	$ tar -xzvf dog_chromFa.tar.gz
+	# Moved all the files to /mnt/data110/dbickhart/reference/dog_pre/
+	$ cat *.fa > can_fam_2_combined.fa
+	$ calculate_base_composition_fasta.pl can_fam_2_combined.fa
+		chr10:  A: 12098362     C: 9269862      G: 9286923      N: 3609701      T: 12081180     X: 0
+		chr11:  A: 13338128     C: 8954312      G: 8927901      N: 3584869      T: 13278045     X: 0
+		chr12:  A: 13385320     C: 8412832      G: 8403950      N: 3291610      T: 13347410     X: 0
+		chr13:  A: 11612356     C: 7692495      G: 7651014      N: 3537511      T: 11544820     X: 0
+		chr14:  A: 11540028     C: 7173019      G: 7172779      N: 3351387      T: 11581469     X: 0
+		chr15:  A: 11446059     C: 7620434      G: 7635824      N: 3495906      T: 11457242     X: 0
+		chr16:  A: 10754036     C: 7571592      G: 7533253      N: 3809383      T: 10693136     X: 0
+		chr17:  A: 11420745     C: 8439197      G: 8392640      N: 3343502      T: 11399682     X: 0
+		chr18:  A: 9660620      C: 7451791      G: 7442262      N: 3641233      T: 9642699      X: 0
+		chr19:  A: 9862615      C: 6042670      G: 6043782      N: 3229604      T: 9859888      X: 0
+		chr1:   A: 21826314     C: 15741205     G: 15726130     N: 3996621      T: 21803149     X: 0
+		chr20:  A: 9666966      C: 8047811      G: 8051472      N: 3611087      T: 9724001      X: 0
+		chr21:  A: 8706594      C: 5893051      G: 5925732      N: 3313132      T: 8776691      X: 0
+		chr22:  A: 12098140     C: 7184749      G: 7193893      N: 3218859      T: 12145726     X: 0
+		chr23:  A: 9217699      C: 6122855      G: 6148809      N: 3328106      T: 9286187      X: 0
+		chr24:  A: 7803725      C: 6502567      G: 6499058      N: 3400295      T: 7811354      X: 0
+		chr25:  A: 9028403      C: 6513522      G: 6536367      N: 3485345      T: 9019750      X: 0
+		chr26:  A: 6388205      C: 5551132      G: 5515220      N: 3355097      T: 6357064      X: 0
+		chr27:  A: 8113269      C: 5435423      G: 5446043      N: 3272570      T: 8139038      X: 0
+		chr28:  A: 7198097      C: 5820229      G: 5819853      N: 3300174      T: 7229867      X: 0
+		chr29:  A: 7736594      C: 4645291      G: 4653965      N: 3198409      T: 7743854      X: 0
+		chr2:   A: 14443638     C: 11097348     G: 11115873     N: 4064024      T: 14510862     X: 0
+		chr30:  A: 7010441      C: 5046821      G: 5022279      N: 3242549      T: 6995901      X: 0
+		chr31:  A: 7506649      C: 4787610      G: 4789520      N: 3415849      T: 7517655      X: 0
+		chr32:  A: 7285951      C: 4014183      G: 4030527      N: 3078690      T: 7299371      X: 0
+		chr33:  A: 5843188      C: 3712605      G: 3707460      N: 3246394      T: 5804258      X: 0
+		chr34:  A: 7925150      C: 5414430      G: 5444543      N: 3254154      T: 7981476      X: 0
+		chr35:  A: 4685988      C: 3366024      G: 3373898      N: 3176414      T: 4703097      X: 0
+		chr36:  A: 6092059      C: 3717649      G: 3732686      N: 3159761      T: 6101321      X: 0
+		chr37:  A: 5947374      C: 3970991      G: 3974370      N: 3187196      T: 5978699      X: 0
+		chr38:  A: 4453441      C: 3094312      G: 3086918      N: 3229075      T: 4411977      X: 0
+		chr3:   A: 16552618     C: 11238878     G: 11223117     N: 3509899      T: 16520612     X: 0
+		chr4:   A: 16106587     C: 10934093     G: 10919871     N: 3338282      T: 16096626     X: 0
+		chr5:   A: 15310019     C: 12750704     G: 12689777     N: 3509790      T: 15222345     X: 0
+		chr6:   A: 13292345     C: 10105684     G: 10075480     N: 3732653      T: 13212228     X: 0
+		chr7:   A: 14445915     C: 10161095     G: 10193300     N: 3694910      T: 14490515     X: 0
+		chr8:   A: 13190388     C: 9071330      G: 9115650      N: 3429186      T: 13296721     X: 0
+		chr9:   A: 10332450     C: 9260192      G: 9291571      N: 3828103      T: 10369664     X: 0
+		chrUn:  A: 4229993      C: 4135809      G: 4116774      N: 11389815     T: 4208359      X: 0
+		chrX:   A: 16941972     C: 11447962     G: 11485249     N: 4609373      T: 16969435     X: 0
+		
+		Total Counts:
+		A:      414498441
+		C:      293413759
+		G:      293395733
+		T:      414613374
+		X:      0
+		N:      146470518
+		total autosomal:        1415921307      total repetitive:       146470518       perc auto:       90.6252378144644
+		
+	$ mkdir dog_pre/repeat
+	$ tar -xzvf dog_chromOut.tar.gz
+	$ mv ./*/*.out ./dog_pre/repeat/
+	$ for i in {1..38}; do rm -R $i; done
+	
+	pwd: /mnt/data110/dbickhart/reference/dog_pre/repeat
+	$ cat *.out > dog_repeatmask_full.out
+	$ perl -lane 'if ($_ =~ /SW/ || $_ =~ /score/ || $_ =~ /^\s*$/){next;} $s = $F[5] - 36; if ($F[5] < 1){$F[5] = 1;} $e = $F[6] + 36; print "$F[4]\t$s\t$e";' < dog_repeatmask_full.out > dog_repeatmask_full_36bp_extend.bed
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi can_fam_2_combined.fa -bed ./repeat/dog_repeatmask_full_36bp_extend.bed -fo can_fam_2_combined_rm_36.bed
+	$ calculate_base_composition_fasta.pl can_fam_2_combined_rm_36.fa
+		total autosomal:        1221459593      total repetitive:       1309561010      perc auto:       48.2595673678916
+		
+	$ tar -xzvf dog_chromTrf.tar.gz
+	$ cd trfMaskChrom/
+	$ cat *.bed | perl -lane '$s = $F[1] - 36; if($s < 1){ $s = 1;} $e = $F[2] + 36; print "$F[0]\t$s\t$e";' > dog_all_36_trf.bed
+	$ cp dog_all_36_trf.bed ../dog_pre/
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi can_fam_2_combined_rm_36.fa -bed dog_all_36_trf.bed -fo can_fam_2_combined_rm_trf_36.fa
+	$ calculate_base_composition_fasta.pl can_fam_2_combined_rm_trf_36.fa
+		total autosomal:        1220072080      total repetitive:       1311585750      perc auto:       48.1926137704004
+		
+	$ tar -xzvf dog_chromAgp.tar.gz
+	$ mv ./*/*.agp ./dog_pre/repeat/
+	$ cat *.agp > dog_agp_full.agp
+	$ perl -lane 'if($F[4] =~ /N/){print "$F[0]\t$F[1]\t$F[2]";}' < dog_agp_full.agp > dog_full_gaps.bed
+	$ cat dog_full_gaps.bed | bed_length_sum.pl
+	        Interval Numbers:       35694
+	        Total Length:           146641716
+	        Length Average:         4108.30156328795
+	        Length Median:          295
+       		Length Stdev:           99180.3934240451
+       	# That is alot of Gaps! Not too sure if that is accurate...
+       	$ cd ..
+       	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi can_fam_2_combined_rm_trf_36.fa -bed ./repeat/dog_full_gaps.bed -soft -fo can_fam_2_combined_gap_soft.fa
+       	$ perl -ne 'if($_ =~ />/){print $_; next;} $_ =~ tr/nacgt/XXXXX/; print $_;' < can_fam_2_combined_gap_soft.fa > can_fam_2_combined_full_masked.fa
+       	$ calculate_base_composition_fasta.pl can_fam_2_combined_full_masked.fa
+       		total autosomal:        1220072080      total repetitive:       1311585750      perc auto:       48.1926137704004
+       		Total size of genome (based off the autosomal and repetitive numbers): 2,531,657,830
+       		
+       	$ cp can_fam_2_combined_full_masked.fa ../can_fam_2_combined_full_masked_a.fa
+	
+# Now, it is time to index the reference and make windows out of it!
+	pwd: /mnt/data110/dbickhart/reference/
+	$ mrsfast --index can_fam_2_combined_full_masked_a.fa
+	
+	# Splitting off the chromosomes to make the windows. 
+	$ mkdir dog_sep
+	$ cp /mnt/data110/dbickhart/reference/tmp/split_fasta.pl dog_sep/
+	$ cd dog_sep
+	$ perl split_fasta.pl ../can_fam_2_combined_full_masked_a.fa
+	$ for i in *.fa; do /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/winmaker $i; echo $i; done
+	$ cat *.file1 > dog_template_file1.bed
+	$ cat *.file2 > dog_template_file2.bed
+	$ cat *.file3 > dog_template_file3.bed
+	
+	$ wc dog_template_file*
+	  2122132   6366396  49719682 dog_template_file1.bed
+	  2288994   6866982  53625360 dog_template_file2.bed
+	  1207234   3621702  28280708 dog_template_file3.bed
+	$ mkdir ../../dog_2_windows
+	$ cp dog_template_file* ../../dog_2_windows/
+	$ rm -R dog_sep
+	
+	# Now to start making the simulation
+	$ mkdir ../dog_2_sim
+	
+	pwd: /mnt/data110/dbickhart/dog_2_sim
+	$ perl simulate_36x_reads_artifact.pl /mnt/data110/dbickhart/reference/dog_pre/can_fam_2_combined.fa
+	$ mkdir bams
+	# Now to split up the workload and prepare to convert the reads
+	$ ls *.fq | split -l 21
+	# Perhaps I don't need separate list files, I am going to try a forked "ls" based command style first
+	
+	$ cp can_fam_2_combined_full_masked_a.fa can_fam_2_combined_full_masked_b.fa
+	...
+	$ cp can_fam_2_combined_full_masked_a.fa can_fam_2_combined_full_masked_f.fa
+	$ for i in can_fam_2_combined_full_masked_b.fa can_fam_2_combined_full_masked_c.fa can_fam_2_combined_full_masked_d.fa can_fam_2_combined_full_masked_e.fa can_fam_2_combined_full_masked_f.fa; do mrsfast --index $i; done
+	
+	# Now for the wrapper script
+	$ perl mrsfast_fork_letter_wrapper.pl 'ls *.fq' bams
+	# I need to add the $out flag to the removal of the .nohit files and add a loop to wait for remaining forks at the end of the script
+	
+	$ gzip *.fq
+	pwd: /mnt/data110/dbickhart/dog_2_sim/bams
+	$ for i in *.sam; do echo $i; perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' < $i >> dog_pre_sim.bed; done
+	
+	# Now time to create the control windows and then get ready to run the pipeline
+	pwd: /mnt/data110/dbickhart/dog_2_windows
+	$ perl -lane '$F[0] =~ s/\r//g; ($c,$s,$e) = $F[0] =~ m/(chr.+)\:(\d+)\-(\d+)/; if($c =~ /chrUN/){$c = "chrUn";} print "$c\t$s\t$e";' < dog_cnvs_ucsc.txt | mergeBed -i stdin > dog_cnvs_acgh.bed
+	$ intersectBed -a dog_template_file1.bed -b dog_cnvs_acgh.bed -v > dog_template_file1_control_1.bed
+	$ intersectBed -a dog_template_file3.bed -b dog_cnvs_acgh.bed -v > dog_template_file3_control_1.bed
+	
+	$ perl -lane 'if($F[0] =~ /chrom/){next;}else{print "$F[0]\t$F[1]\t$F[2]";}' < 1318181905_canFam2-depthcoverageWSSD_2011Oct09.tab > dog_wssd_previous.bed
+	$ intersectBed -a dog_template_file1_control_1.bed -b dog_wssd_previous.bed -v > dog_template_file1_control_2.bed
+	$ intersectBed -a dog_template_file3_control_1.bed -b dog_wssd_previous.bed -v > dog_template_file3_control_2.bed
+	
+	pwd: /mnt/data110/dbickhart/dog_2_sim/bams
+	$ combine_bed_hits_utilitarian.pl dog_pre_sim.bed dog_36x_sim ../../dog_2_windows/dog_template_file1.bed ../../dog_2_windows/dog_template_file2.bed ../../dog_2_windows/dog_template_file3.bed ../../dog_2_windows/dog_template_file1_control_2.bed ../../dog_2_windows/dog_template_file3_control_2.bed
+	# Ran into an error. Copying everything to the same folder
+	$ cp ../../dog_2_windows/*file* ./
+	$ mkdir dog_2_sim_win
+	$ combine_bed_hits_utilitarian.pl dog_pre_sim.bed dog_2_sim_win dog_template_file1.bed dog_template_file1_control_2.bed dog_template_file2.bed dog_template_file3.bed dog_template_file3_control_2.bed
+	# Must have run out of memory, running my "lowmem" pipeline.
+	$ combine_bed_hits_lowmem.pl dog_pre_sim.bed dog_2_sim_win dog_template_file1.bed dog_template_file1_control_2.bed dog_template_file2.bed dog_template_file3.bed dog_template_file3_control_2.bed
+	
+# Now to prune the control files
+	$ cut -f4 dog_pre_sim_dog_template_file1_control_2.bed | statStd.pl
+		total   2010603
+		Minimum 1870
+		Maximum 357546
+		Average 2566.508327
+		Median  2377
+		Standard Deviation      2453.330205
+		Mode(Highest Distributed Value) 2408
+	$ cut -f4 dog_pre_sim_dog_template_file3_control_2.bed | statStd.pl
+		total   1154079
+		Minimum 302
+		Maximum 186917
+		Average 527.053263
+		Median  490
+		Standard Deviation      858.690579
+		Mode(Highest Distributed Value) 517
+		
+	# So, I think that I will use 2 x Stdev as the high end cutoff and one third of the average as the low-end cutoff (this is the simulation data after all!)
+		$ perl -lane 'if($F[3] > 7472 || $F[3] < 770){next;}else{print "$F[0]\t$F[1]\t$F[2]";}' < dog_pre_sim_dog_template_file1_control_2.bed > dog_template_file1_control_3.bed
+			$ wc dog_pre_sim_dog_template_file1_control_2.bed dog_template_file1_control_3.bed
+			  2010603   8042412  57168945 dog_pre_sim_dog_template_file1_control_2.bed
+			  1995998   5987994  46763474 dog_template_file1_control_3.bed
+			  4006601  14030406 103932419 total
+		$ perl -lane 'if($F[3] > 2243 || $F[3] < 158){next;}else{print "$F[0]\t$F[1]\t$F[2]";}' < dog_pre_sim_dog_template_file3_control_2.bed > dog_template_file3_control_3.bed
+			$ wc dog_pre_sim_dog_template_file3_control_2.bed dog_template_file3_control_3.bed
+			 1154079  4616316 31657557 dog_pre_sim_dog_template_file3_control_2.bed
+			 1150332  3450996 26943103 dog_template_file3_control_3.bed
+			 2304411  8067312 58600660 total
+		
+		$ perl -lane 'if($F[3] > 7472 || $F[3] < 770){next;}else{print "$F[3]";}' < dog_pre_sim_dog_template_file1_control_2.bed | statStd.pl
+			total   1995998
+			Minimum 1870
+			Maximum 7472
+			Average 2423.886282
+			Median  2377
+			Standard Deviation      328.302092
+			Mode(Highest Distributed Value) 2408
+		
+		$ perl -lane 'if($F[3] > 2243 || $F[3] < 158){next;}else{print "$F[3]";}' < dog_pre_sim_dog_template_file3_control_2.bed | statStd.pl
+			total   1150332
+			Minimum 302
+			Maximum 2243
+			Average 497.579224
+			Median  490
+			Standard Deviation      79.750661
+			Mode(Highest Distributed Value) 517
+			
+		# That didn't work out that poorly! The Stdevs are less than 1/5th of the average (which is good) and I didn't have to remove that many intervals
+		# Still, I want to rerun the bed merge script to ensure that the merger gives similar values in these windows (edge effects might still play a role here)
+		
+		$ cp *control_3.bed ../../../dog_2_windows/
+		
+	$ combine_bed_hits_lowmem.pl dog_pre_sim.bed dog_2_sim_win dog_template_file1.bed dog_template_file1_control_3.bed dog_template_file2.bed dog_template_file3.bed dog_template_file3_control_3.bed
+	
+#########################################
+#					#
+#	Processing the data		#
+#					#
+#########################################
+
+# I received the files from Dr. Schnabel, but they were zip archived again. I needed to unzip them and gzip them to save space.
+# Sequence files were located here: /mnt/data8/dbickhart/UMC/UMC_dog/
+# I used a trick from Steve to run loops in the background in order to multi-plex the unzipping and gzipping.
+	for i in Jasper*fastq.zip; do \
+	../../unzip -p ${i} | gzip > ${i%.zip}.gz; done &
+	
+	for i in Katie*fastq.zip; do \
+	../../unzip -p ${i} | gzip > ${i%.zip}.gz; done &
+	
+	for i in Maddy*fastq.zip; do \
+	../../unzip -p ${i} | gzip > ${i%.zip}.gz; done &
+	
+	for i in Maggie*fastq.zip; do \
+	../../unzip -p ${i} | gzip > ${i%.zip}.gz; done &
+	
+	for i in Miranda*fastq.zip; do \
+	../../unzip -p ${i} | gzip > ${i%.zip}.gz; done &
+	
+	for i in Oliver*fastq.zip; do \
+	../../unzip -p ${i} | gzip > ${i%.zip}.gz; done &
+	
+	for i in Skittles*fastq.zip; do \
+	../../unzip -p ${i} | gzip > ${i%.zip}.gz; done &
+	
+# Each loop is run in the background so they process the files silently without chewing up all of the processors.
+# Two sequence files could not be unzipped (corrupted archives?)
+	- SkittlesAP.02.1.fastq.zip
+	- SkittlesAP.02.2.fastq.zip
+	
+# Also, the reads were not sufficiently filtered, AND they were in different illumina formats!
+# I designed a script to process the gzipped reads using forked processes. 
+# The script also splits the read files into 5 million read "chunks" and rezips the files after it completes.
+	$ fastq_filter_reads_illumina.pl -l 'ls *.fastq.gz' -g
+	$ fastq_filter_reads_illumina.pl -l 'ls Jasper*fastq.gz' -j -g
+	
+	# I need to make more space to properly generate the "chunked" reads so I will move the original gzipped files to a section on my data110 partition
+		$ cd /mnt/data110/dbickhart/
+		$ mkdir UMC_dog_orig
+		
+		# Actually, lets clean up gliu1_usb and move the files there
+		$ pwd
+			/mnt/gliu1_usb/dbickhart
+		$ mkdir UMC_dog_orig
+		
+		# Transferring files
+		$ mv AllistairAP.01.1.fastq.gz AllistairAP.01.2.fastq.gz AllistairAP.02.1.fastq.gz AllistairAP.02.2.fastq.gz AllistairBP.01.1.fastq.gz AllistairBP.01.2.fastq.gz SkittlesAP.02.1.fastq.zip SkittlesAP.02.2.fastq.zip /mnt/gliu1_usb/dbickhart/UMC_dog_orig/
+		$ mv Clifford*fastq.gz /mnt/gliu1_usb/dbickhart/UMC_dog_orig/; mv Dandy*fastq.gz /mnt/gliu1_usb/dbickhart/UMC_dog_orig/; mv Allistair*fastq.gz /mnt/gliu1_usb/dbickhart/UMC_dog_orig/
+		$ mv JasperAP.02.1.fastq.gz JasperAP.03.1.fastq.gz JasperAP.04.1.fastq.gz JasperAP.05.1.fastq.gz JasperAS.01.1.fastq.gz JasperBP.02.1.fastq.gz JasperBP.03.1.fastq.gz JasperBP.04.1.fastq.gz JasperBP.05.1.fastq.gz JasperBS.01.1.fastq.gz KatieA.01.1.fastq.gz KatieA.01.2.fastq.gz KatieB.01.1.fastq.gz KatieB.01.2.fastq.gz MaddyAP.01.1.fastq.gz MaddyAP.01.2.fastq.gz MaddyBP.01.1.fastq.gz MaddyBP.01.2.fastq.gz /mnt/gliu1_usb/dbickhart/UMC_dog_orig/
+		$ mv MaggieAP.01.1.fastq.gz MaggieAP.01.2.fastq.gz MaggieAP.02.1.fastq.gz MaggieAP.02.2.fastq.gz MaggieBP.01.1.fastq.gz MaggieBP.01.2.fastq.gz MaggieBP.02.1.fastq.gz MaggieBP.02.2.fastq.gz MirandaAP.01.1.fastq.gz MirandaAP.01.2.fastq.gz MirandaAP.02.1.fastq.gz MirandaAP.02.2.fastq.gz MirandaBP.01.1.fastq.gz MirandaBP.01.2.fastq.gz OliverAP.02.1.fastq.gz OliverAP.02.2.fastq.gz OliverAP.03.1.fastq.gz OliverAP.03.2.fastq.gz /mnt/gliu1_usb/dbickhart/UMC_dog_orig/
+		$ mv OliverAP.04.1.fastq.gz OliverAP.04.2.fastq.gz OliverAS.01.1.fastq.gz OliverBP.02.1.fastq.gz OliverBP.02.2.fastq.gz OliverBP.03.1.fastq.gz OliverBP.03.2.fastq.gz OliverBS.01.1.fastq.gz SkittlesAP.01.1.fastq.gz SkittlesAP.01.2.fastq.gz SkittlesBP.01.1.fastq.gz SkittlesBP.01.2.fastq.gz SkittlesBP.02.1.fastq.gz SkittlesBP.02.2.fastq.gz TangoAP.01.1.fastq.gz TangoAP.01.2.fastq.gz TangoBP.01.1.fastq.gz TangoBP.01.2.fastq.gz TansisA.01.1.fastq.gz TansisA.01.2.fastq.gz TansisB.01.1.fastq.gz TansisB.01.2.fastq.gz WoodyAP.01.1.fastq.gz WoodyAP.01.2.fastq.gz WoodyBP.01.1.fastq.gz WoodyBP.01.2.fastq.gz /mnt/gliu1_usb/dbickhart/UMC_dog_orig/
+		$ mv Jasper*.fastq.gz /mnt/gliu1_usb/dbickhart/UMC_dog_orig/
+		
+	# There was a slight flaw with my script, if the first few reads had all "B's" in them, the script would not be able to "guess" the quality score format
+	# I've updated the script to calculate it better
+	
+	# Now to split the reads into nonoverlapping 36bp fragments
+	$ perl simple_split_fastq.pl 'ls *fastqf*.gz' 36 /mnt/data110/dbickhart/UMC_dog_split
+	
+# Setting up a samtools fasta index (.fai) to turn my sam files into bam files immediately
+# Now to run the fork letter wrapper to process everything
+	pwd: /mnt/data110/dbickhart/UMC_dog_split
+	output: /mnt/data8/dbickhart/dog_indiv_bams
+	$ perl mrsfast_fork_letter_wrapper.pl 'ls *.gz' /mnt/data8/dbickhart/dog_indiv_bams
+	# Checking the map stats for each bam using my bam_stats.pl script:
+	Server3: /mnt/data8/dbickhart/dog_indiv_bams
+	$ for i in *.bam; do echo $i; bam_stats.pl $i >> bam_map_stats.txt; done
+	
+# While that is going, it is time to generate bed files from the bams of the completed dogs
+	Same directory
+	$ mkdir beds
+	$ for i in Allistair*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Allistair_complete_hits.bed; done
+	$ for i in Clifford*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Clifford_complete_hits.bed; done
+	$ for i in Dandy*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Dandy_complete_hits.bed; done; for i in Jasper*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Jasper_complete_hits.bed; done
+	$ for i in Katie*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Katie_complete_hits.bed; done; for i in Maddy*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Maddy_complete_hits.bed; done; for i in Maggie*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Maggie_complete_hits.bed; done
+	$ for i in Miranda*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Miranda_complete_hits.bed; done; for i in Oliver*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Oliver_complete_hits.bed; done; for i in Skittles*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Skittles_complete_hits.bed; done
+	$ for i in Tango*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Tango_complete_hits.bed; done; for i in Tansis*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Tansis_complete_hits.bed; done;
+	$ for i in Woody*; do ~/bin/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> beds/Woody_complete_hits.bed; done;
+	
+# Transferring some of the bed files to Blade2 in order to relieve some of the stress on Server 3
+	$ scp  Clifford_complete_hits.bed dbickhart@172.16.0.102:/home/dbickhart/iscsi_4/dbickhart/dog_batch_2/beds/Clifford_complete_hits.bed
+	Blade2: $ scp dbickhart@172.16.0.190:/mnt/data8/dbickhart/dog_indiv_bams/beds/Jasper_complete_hits.bed Jasper_complete_hits.bed
+	Blade2: $ scp dbickhart@172.16.0.190:/mnt/data8/dbickhart/dog_indiv_bams/beds/Maggie_complete_hits.bed Maggie_complete_hits.bed
+	Blade2: $ scp dbickhart@172.16.0.190:/mnt/data8/dbickhart/dog_indiv_bams/beds/Tango_complete_hits.bed Tango_complete_hits.bed
+	
+# I think that I'm safe to delete some of the split fastq files on data110 on server 3
+	Server3: /mnt/data110/dbickhart/UMC_dog_split
+	$ rm *.gz
+	# The original read files are still located on the gliu1_usb drive.
+	
+# Intersecting the bed files with the windows
+	# Now that all of the alignment is done on this initial set, I am going to start the intersection. I will use processors on both servers to try to accomplish this as fast as possible
+	Server3: /mnt/data8/dbickhart/dog_indiv_bams/beds
+	$ mkdir Katie_windows
+	$ combine_bed_hits_lowmem.pl Katie_complete_hits.bed Katie_windows /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	$ mkdir Maddy_windows
+	$ combine_bed_hits_lowmem.pl Maddy_full_hits.bed Maddy_windows /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	$ combine_bed_hits_lowmem.pl Miranda_complete_hits.bed Miranda_windows /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	$ combine_bed_hits_lowmem.pl Oliver_complete_hits.bed Oliver_windows /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	$ combine_bed_hits_lowmem.pl Tansis_complete_hits.bed Tansis_windows /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	$ combine_bed_hits_lowmem.pl Woody_full_hits.bed Woody_windows /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	
+	
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/beds
+	$ mkdir Allistair_windows
+	$ combine_bed_hits_lowmem.pl Allistair_complete_hits.bed Allistair_windows ../../dog_2_windows/dog_template_file1.bed ../../dog_2_windows/dog_template_file2.bed ../../dog_2_windows/dog_template_file3.bed ../../dog_2_windows/dog_template_file1_control_3.bed ../../dog_2_windows/dog_template_file3_control_3.bed
+	$ mkdir Clifford_windows
+	$ combine_bed_hits_lowmem.pl Clifford_complete_hits.bed Clifford_windows ../../dog_2_windows/dog_template_file1.bed ../../dog_2_windows/dog_template_file2.bed ../../dog_2_windows/dog_template_file3.bed ../../dog_2_windows/dog_template_file1_control_3.bed ../../dog_2_windows/dog_template_file3_control_3.bed
+	$ mkdir Dandy_windows
+	$ combine_bed_hits_lowmem.pl Dandy_complete_hits.bed Dandy_windows ../../dog_2_windows/dog_template_file1.bed ../../dog_2_windows/dog_template_file2.bed ../../dog_2_windows/dog_template_file3.bed ../../dog_2_windows/dog_template_file1_control_3.bed ../../dog_2_windows/dog_template_file3_control_3.bed
+	$ combine_bed_hits_lowmem.pl Jasper_complete_hits.bed Jasper_windows ../../dog_2_windows/dog_template_file1.bed ../../dog_2_windows/dog_template_file2.bed ../../dog_2_windows/dog_template_file3.bed ../../dog_2_windows/dog_template_file1_control_3.bed ../../dog_2_windows/dog_template_file3_control_3.bed
+	$ combine_bed_hits_lowmem.pl Maggie_complete_hits.bed Maggie_windows ../../dog_2_windows/dog_template_file1.bed ../../dog_2_windows/dog_template_file2.bed ../../dog_2_windows/dog_template_file3.bed ../../dog_2_windows/dog_template_file1_control_3.bed ../../dog_2_windows/dog_template_file3_control_3.bed; combine_bed_hits_lowmem.pl Tango_complete_hits.bed Tango_windows ../../dog_2_windows/dog_template_file1.bed ../../dog_2_windows/dog_template_file2.bed ../../dog_2_windows/dog_template_file3.bed ../../dog_2_windows/dog_template_file1_control_3.bed ../../dog_2_windows/dog_template_file3_control_3.bed
+	
+	
+#########################################
+#					#
+#	The second batch		#
+#					#
+#########################################
+
+# Bob Schnabel gave us a second round of dog data to download
+# From his email to George:
+	George,
+	
+	I put some new fastq files on our ftp site which you should grab.  I created a folder for you that has one dog in it and there are two other dogs in the ivansson folder you should also grab.  These are reruns for these three dogs.  For each one, the 300bp library didn't perform well the first time so our core lab pooled the three and gave us another lane for free.  Let me know when you've grabbed them.
+	
+	Site: mugenomics.col.missouri.edu
+	User: mugenomicsftp
+	P/W: B5_i*rKg
+	
+	
+	Bob
+
+# There were three more dog libraries (Tango, Woody and Maddy) all zipped and unsplit
+# I will be using Blade2 to process these files since Server 3 is still busy aligning dog data in the meantime
+
+# The files are all downloaded. I just need to split them and then start aligning
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/fastqs
+	$ scp dbickhart@172.16.0.190:/mnt/data8/dbickhart/UMC/UMC_dog/20111004/simple_split_fastq.pl simple_split_fastq.pl
+	$ perl simple_split_fastq.pl 'ls Maddy* Tango*' 36 dog_split
+	$ perl simple_split_fastq.pl 'ls Woody*' 36 dog_split
+	# Now to split them
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/fastqs/dog_split/
+	$ fastq_filter_reads_illumina.pl -l 'ls *.gz' -g
+	$ rm MaddyAP.02.1.fastq_0.gz MaddyAP.02.2.fastq_0.gz MaddyAP.02.1.fastq_1.gz MaddyAP.02.2.fastq_1.gz TangoAP.02.1.fastq_0.gz TangoAP.02.1.fastq_1.gz TangoAP.02.2.fastq_0.gz TangoAP.02.2.fastq_1.gz WoodyAP.02.1.fastq_0.gz WoodyAP.02.1.fastq_1.gz WoodyAP.02.2.fastq_0.gz WoodyAP.02.2.fastq_1.gz
+	
+	
+# Now to align
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/fastqs/dog_split
+	$ mrsfast_fork_letter_wrapper.pl 'ls *.gz' /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/bams /home/dbickhart/iscsi_4/dbickhart/reference/can_fam_2_combined_full_masked_a.fa
+	# Turning them all into beds:
+		$ for i in Maddy Tango Woody; do for h in `ls $i*.bam`; do echo $h; perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' < $h >> $i.secondrun.bed; done; done
+	
+	# Transferring to server3
+		Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/beds/
+		$ scp Maddy.secondrun.bed dbickhart@172.16.0.190:/mnt/data8/dbickhart/dog_indiv_bams/beds/Maddy_secondrun.bed
+		$ scp Woody.secondrun.bed dbickhart@172.16.0.190:/mnt/data8/dbickhart/dog_indiv_bams/beds/Woody_secondrun.bed
+		
+	# concatenating the files 
+		Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/beds/
+		$ cat Tango_complete_hits.bed Tango.secondrun.bed > Tango_full_hits.bed
+		
+		Server3: /mnt/data8/dbickhart/dog_indiv_bams/beds/
+		$ cat Maddy_complete_hits.bed Maddy_secondrun.bed > Maddy_full_hits.bed
+		$ cat Woody_complete_hits.bed Woody_secondrun.bed > Woody_full_hits.bed
+		
+#########################################
+#					#
+#		Processing		#
+#					#
+#########################################
+# Setting up my scripts on the different servers
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_2_windows
+		$ scp dbickhart@172.16.0.190:/mnt/data110/dbickhart/reference/dog_pre/repeat/dog_full_gaps.bed ./dog_full_gaps.bed
+		
+	# Making the GC windows
+	Pwd: /home/dbickhart/share/UMC_dog/dog_2_windows
+		$ perl ../../backup/Perl/GC_intervals_utility.pl --genome can_fam_2_combined_full_masked_a.fa --ls 'ls dog_template_file*.bed' --name gc_win
+
+
+# Checking the windows
+	# I just need to be certain that the windows are ok 
+	# I am going to parse out the data to see if there are any universal problem areas
+		$ cut -f4 Katie_complete_hits_dog_template_file1_control_3.bed | statStd.pl
+		total   1995998
+		Minimum 0
+		Maximum 23927
+		Average 655.888209
+		Median  621
+		Standard Deviation      209.260518
+		Mode(Highest Distributed Value) 590
+
+# Setting up the pipeline
+	# Converting the GC windows into a "tab" format
+		$ awk '{print $1"-"$2"-"$3"\t"$4}' gc_win_dog_template_file1.bed | sort -k 1,1 > gc_win_dog_template_file1.bed.tab
+		$ awk '{print $1"-"$2"-"$3"\t"$4}' gc_win_dog_template_file2.bed | sort -k 1,1 > gc_win_dog_template_file2.bed.tab
+		$ awk '{print $1"-"$2"-"$3"\t"$4}' gc_win_dog_template_file3.bed | sort -k 1,1 > gc_win_dog_template_file3.bed.tab
+		
+	# OK, it took me a while, but I created a pipeline script to run off of the dog data.
+	# Called: dog_separate_pipeline and it is found here: /home/dbickhart/iscsi_4/dbickhart/alkan_files/wssd-package
+	
+	# Created a script in my bin folder to run everything: run_dog_wssd_pipeline.pl
+	# Testing it:
+		Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/beds/Allistair_windows
+		$ run_dog_wssd_pipeline.pl --File1 Allistair_complete_hits_dog_template_file1.bed --File2 Allistair_complete_hits_dog_template_file2.bed --File3 Allistair_complete_hits_dog_template_file3.bed --File1_c Allistair_complete_hits_dog_template_file1_control_3.bed --File3_c Allistair_complete_hits_dog_template_file3_control_3.bed
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < Allistair_complete_hits_dog_template_file1.bed.final.wssd
+		59169842
+		
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $h{$s[0]} += $s[2] - $s[1];} foreach $k (sort {$a cmp $b} keys(%h)){print "$k\t$h{$k}\n";}' < Allistair_complete_hits_dog_template_file1.bed.final.wssd
+		chr1    2700211
+		chr10   1396295
+		chr11   2519168
+		chr12   975267
+		chr13   907007
+		chr14   1326145
+		chr15   1312861
+		chr16   3362454
+		chr17   1820047
+		chr18   2148921
+		chr19   1176708
+		chr2    3536873
+		chr20   1302970
+		chr21   1782213
+		chr22   524932
+		chr23   710049
+		chr24   721419
+		chr25   1223734
+		chr26   3145110
+		chr27   1327197
+		chr28   456918
+		chr29   554198
+		chr3    1145776
+		chr4    955754
+		chr5    1165857
+		chr6    1539092
+		chr7    1304039
+		chr8    2414899
+		chr9    1123698
+		chrX    14590030  <- this was the most. the entire X chromosome is borked. Given the name of the dog, perhaps this is to be expected?
+		
+	# Now running it on the remaining windows on Blade2
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/dog_batch_2/beds/
+	$ for i in Clifford Dandy Jasper Maggie Tango; do dir=`echo $i"_windows"`; echo $dir; f1=`echo $i"_complete_hits_dog_template_file1.bed"`; f2=`echo $i"_complete_hits_dog_template_file2.bed"`; f3=`echo $i"_complete_hits_dog_template_file3.bed"`; f1c=`echo $i"_complete_hits_dog_template_file1_control_3.bed"`; f3c=`echo $i"_complete_hits_dog_template_file3_control_3.bed"`; cd $dir; run_dog_wssd_pipeline.pl --File1 $f1 --File2 $f2 --File3 $f3 --File1_c $f1c --File3_c $f3c; echo "run_dog_wssd_pipeline --File1 $f1 --File2 $f2 --File3 $f3 --File1_c $f1c --File3_c $f3c"; cd ..; done
+	
+	# Now to set it up on Server 3
+	# All of the files were transferred over from Blade 2 to server 3, so the pipeline should be ready
+	# Now, I need to create the windows for each Dog on Server 3 and then run the pipeline on them all
+	Server3:/mnt/data8/dbickhart/dog_indiv_bams/beds
+	$ for i in Katie Maddy Miranda Oliver Skittles Tansis Woody; do dir=`echo $i"_windows"`; echo $dir; f1=`echo $i"_complete_hits_dog_template_file1.bed"`; f2=`echo $i"_complete_hits_dog_template_file2.bed"`; f3=`echo $i"_complete_hits_dog_template_file3.bed"`; f1c=`echo $i"_complete_hits_dog_template_file1_control_3.bed"`; f3c=`echo $i"_complete_hits_dog_template_file3_control_3.bed"`; cd $dir; run_dog_wssd_pipeline.pl --File1 $f1 --File2 $f2 --File3 $f3 --File1_c $f1c --File3_c $f3c; echo "run_dog_wssd_pipeline --File1 $f1 --File2 $f2 --File3 $f3 --File1_c $f1c --File3_c $f3c"; cd ..; done
+	
+	# The Woody and Maddy files were named differently. I had to rerun the loop to process them
+	$ for i in Maddy Woody; do dir=`echo $i"_windows"`; echo $dir; f1=`echo $i"_full_hits_dog_template_file1.bed"`; f2=`echo $i"_full_hits_dog_template_file2.bed"`; f3=`echo $i"_full_hits_dog_template_file3.bed"`; f1c=`echo $i"_full_hits_dog_template_file1_control_3.bed"`; f3c=`echo $i"_full_hits_dog_template_file3_control_3.bed"`; cd $dir; run_dog_wssd_pipeline.pl --File1 $f1 --File2 $f2 --File3 $f3 --File1_c $f1c --File3_c $f3c; echo "run_dog_wssd_pipeline --File1 $f1 --File2 $f2 --File3 $f3 --File1_c $f1c --File3_c $f3c"; cd ..; done
+	Server3:/mnt/data8/dbickhart/dog_indiv_bams/beds
+	$ wc -l ./*/*.final.*
+		     5 ./Katie_windows/Katie_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Katie_windows/Katie_complete_hits_dog_template_file1.bed.final.un.wssd
+		  1911 ./Katie_windows/Katie_complete_hits_dog_template_file1.bed.final.wssd
+		     3 ./Maddy_windows/Maddy_full_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Maddy_windows/Maddy_full_hits_dog_template_file1.bed.final.un.wssd
+		  1933 ./Maddy_windows/Maddy_full_hits_dog_template_file1.bed.final.wssd
+		    43 ./Miranda_windows/Miranda_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Miranda_windows/Miranda_complete_hits_dog_template_file1.bed.final.un.wssd
+		  1864 ./Miranda_windows/Miranda_complete_hits_dog_template_file1.bed.final.wssd
+		    18 ./Oliver_windows/Oliver_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Oliver_windows/Oliver_complete_hits_dog_template_file1.bed.final.un.wssd
+		  2017 ./Oliver_windows/Oliver_complete_hits_dog_template_file1.bed.final.wssd
+		     5 ./Tansis_windows/Tansis_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Tansis_windows/Tansis_complete_hits_dog_template_file1.bed.final.un.wssd
+		  2064 ./Tansis_windows/Tansis_complete_hits_dog_template_file1.bed.final.wssd
+		     5 ./Woody_windows/Woody_full_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Woody_windows/Woody_full_hits_dog_template_file1.bed.final.un.wssd
+		  1808 ./Woody_windows/Woody_full_hits_dog_template_file1.bed.final.wssd
+		 11676 total
+	Blade2: /mnt/iscsi/md3200i_4/dbickhart/dog_batch_2/beds
+	$ wc -l ./*/*.final*
+		    13 ./Allistair_windows/Allistair_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Allistair_windows/Allistair_complete_hits_dog_template_file1.bed.final.un.wssd
+		  1822 ./Allistair_windows/Allistair_complete_hits_dog_template_file1.bed.final.wssd
+		     4 ./Clifford_windows/Clifford_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Clifford_windows/Clifford_complete_hits_dog_template_file1.bed.final.un.wssd
+		  1966 ./Clifford_windows/Clifford_complete_hits_dog_template_file1.bed.final.wssd
+		     5 ./Dandy_windows/Dandy_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Dandy_windows/Dandy_complete_hits_dog_template_file1.bed.final.un.wssd
+		  1913 ./Dandy_windows/Dandy_complete_hits_dog_template_file1.bed.final.wssd
+		    25 ./Jasper_windows/Jasper_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Jasper_windows/Jasper_complete_hits_dog_template_file1.bed.final.un.wssd
+		  2017 ./Jasper_windows/Jasper_complete_hits_dog_template_file1.bed.final.wssd
+		    38 ./Maggie_windows/Maggie_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Maggie_windows/Maggie_complete_hits_dog_template_file1.bed.final.un.wssd
+		  1945 ./Maggie_windows/Maggie_complete_hits_dog_template_file1.bed.final.wssd
+		    13 ./Tango_windows/Tango_complete_hits_dog_template_file1.bed.final.deletions.tab
+		     0 ./Tango_windows/Tango_complete_hits_dog_template_file1.bed.final.un.wssd
+		  1875 ./Tango_windows/Tango_complete_hits_dog_template_file1.bed.final.wssd
+		 11636 total
+	
+	# Now to turn all of the files into named bed files (AnimalName_gain/loss_dog)
+	Server3: /mnt/data8/dbickhart/dog_indiv_bams/beds
+	$ for i in Katie Maddy Miranda Oliver Skittles Tansis Woody; do echo $i; dir=`echo $i"_windows"`; cd $dir; out=`echo $i"_named_all_cnv.bed"`; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $t = $ARGV[2]; chomp($f, $p, $t); open(IN, "< $f"); $l = "$p\_$t\_dog"; while(<IN>){chomp; print "$_\t$l\n";} close IN;' $i*.final.wssd $i gain > $out; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $t = $ARGV[2]; chomp($f, $p, $t); open(IN, "< $f"); $l = "$p\_$t\_dog"; while(<IN>){chomp; print "$_\t$l\n";} close IN;' $i*.final.deletions.tab $i loss >> $out; cd .. ; done
+	#oops! Apparently I forgot to make the Skittles windows!
+	$ combine_bed_hits_lowmem.pl Skittles_complete_hits.bed Skittles_windows /mnt/data110/dbickhart/dog_2_windows/dog_template_file1.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file2.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file1_control_3.bed /mnt/data110/dbickhart/dog_2_windows/dog_template_file3_control_3.bed
+	$ cd Skittles_windows
+	$ run_dog_wssd_pipeline.pl --File1 Skittles_complete_hits_dog_template_file1.bed --File1_c Skittles_complete_hits_dog_template_file1_control_3.bed --File2 Skittles_complete_hits_dog_template_file2.bed --File3 Skittles_complete_hits_dog_template_file3.bed --File3_c Skittles_complete_hits_dog_template_file3_control_3.bed
+	
+	Blade2: /mnt/iscsi/md3200i_4/dbickhart/dog_batch_2/beds
+	$ for i in Allistair Clifford Dandy Jasper Maggie Tango; do echo $i; dir=`echo $i"_windows"`; cd $dir; out=`echo $i"_named_all_cnv.bed"`; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $t = $ARGV[2]; chomp($f, $p, $t); open(IN, "< $f"); $l = "$p\_$t\_dog"; while(<IN>){chomp; print "$_\t$l\n";} close IN;' $i*.final.wssd $i gain > $out; perl -e '$f = $ARGV[0]; $p = $ARGV[1]; $t = $ARGV[2]; chomp($f, $p, $t); open(IN, "< $f"); $l = "$p\_$t\_dog"; while(<IN>){chomp; print "$_\t$l\n";} close IN;' $i*.final.deletions.tab $i loss >> $out; cd .. ; done
+	
+	

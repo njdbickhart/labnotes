@@ -1,0 +1,423 @@
+02/12/2011
+
+# This is going to simply be a list of commands that I am going to do to rebuild the masked genome for Alkan's pipeline and rerun it on all the samples
+
+# So, here are the steps that I need to do (general steps but in order):
+	1. Extract bed positions from TRF and simple repeats files (from UCSC)
+	2. Use slopBed or Perl to increase the size of those intervals by 36bp in either direction
+	3. Mask genome using the new intervals
+	4. Generate new window files using winmaker.c (Alkan's)
+	5. Remake control windows
+	6. Intersect simulation reads with windows 
+	7. Rerun all samples
+	
+	
+# The most time consuming portion will be the rerunning of all samples, but I believe that I have an automation script (or could make one very fast) to do this
+
+# Well, let's get started:
+
+1.  Extract bed positions from TRF and simple repeats files (from UCSC)
+	# First, I cleaned up some clutter (I moved all old index files into a folder, old_indicies)
+	# Now I need to work on making the bed files
+	# Copied the simple repeats and trf files to /mnt/gliu1_usb/dbickhart/alkan_files/simple_trf
+	# the trf file is already in bed format (except it is extended bed, with alot of unnecesary columns)
+	
+	$ perl -lane 'unless ($F[0] =~ /chrUn/){print "$F[0]\t$F[1]\t$F[2]";}' < bosTau4.trf.bed > trf_cropped.bed
+	
+	# Now for the simple file.
+	$ perl -lane 'unless($F[1] =~ /chrUn/){print "$F[1]\t$F[2]\t$F[3]";}' < simpleRepeat.txt > simple_repeat.bed
+	
+	# Now to cat them and process using mergebed
+	$ cat simple_repeat.bed trf_cropped.bed | ../../BEDTools-Version-2.10.0/bin/mergeBed -i stdin > repeat_merged_noextend.bed
+	
+	$ perl -lane '$ns = $F[1] - 36; if($ns < 0){$ns = 0;} $ne = $F[2] + 36; print "$F[0]\t$ns\t$ne";' < repeat_merged_noextend.bed > repeat_merged_extended.bed
+	$  ../../BEDTools-Version-2.10.0/bin/mergeBed -i repeat_merged_extended.bed > repeat_extended_final.bed
+	
+	# Now, the repeat file should be finalized.
+	
+2. This was redundant, skipping to #3.
+
+3. Mask genome using the new intervals
+	# Using bedtools maskfastafrombed to do this step
+	$ ../../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi cow4_36_noun_final.fa -bed repeat_extended_final.bed -fo cow4_36_noun_rmask_final.fa
+	# Now, I want to do some tests to make sure that something actually happened here!
+	$perl -e 'while(<>){if($_ =~ /[NAGTCX]/){$g = $g + ($_ =~ tr/G/G/); $c += ($_ =~ tr/C/C/ ); $a += ($_ =~ tr/A/A/); $t += ($_ =~ tr/T/T/); $n += ($_ =~ tr/N/N/); $x += ($_ =~ tr/X/X/);}} print "G\t$g\nC\t$c\nA\t$a\nT\t$t\nX\t$x\nN\t$n\n";' < cow4_36_noun_rmask_final.fa
+		G       205178106
+		C       204832500
+		A       263180354
+		T       263680933
+		X       167325501
+		N       1530216352
+	
+	# The old one:
+	$ perl -e 'while(<>){if($_ =~ /[NAGTCX]/){$g = $g + ($_ =~ tr/G/G/); $c += ($_ =~ tr/C/C/ ); $a += ($_ =~ tr/A/A/); $t += ($_ =~ tr/T/T/); $n += ($_ =~ tr/N/N/); $x += ($_ =~ tr/X/X/);}} print "G\t$g\nC\t$c\nA\t$a\nT\t$t\nX\t$x\nN\t$n\n";' < cow4_36_noun_final.fa
+		G       207374713
+		C       207037939
+		A       265702711
+		T       266209886
+		X       167379839
+		N       1520708587
+		
+	# So, that's about 9507765 more "N's"
+	# It's time to start making windows
+	# Whoops! Looks like some of the gaps were removed! Going to have to softmask them and remask!
+	
+	$ ../../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi cow4_36_notdone.fa -bed ../cow4_reordered_cropped_gaps_nochrun.bed -fo cow4_36_notdone_soft.fa -soft
+	perl -ne 'if ($_ =~ />/){print $_; next;}else{$_ =~ tr/[nacgtx]/X/; print $_;}' < cow4_36_notdone_soft.fa > cow4_36_noun_rmask.fa
+	
+	$  perl -e 'while(<>){if($_ =~ /[NAGTCX]/){$g = $g + ($_ =~ tr/G/G/); $c += ($_ =~ tr/C/C/ ); $a += ($_ =~ tr/A/A/); $t += ($_ =~ tr/T/T/); $n += ($_ =~ tr/N/N/); $x += ($_ =~ tr/X/X/); $l += ($_ =~ tr/x/X/);}}print "G\t$g\nC\t$c\nA\t$a\nT\t$t\nX\t$x\nN\t$n\nx\t$l\n";' < cow4_36_noun_rmask.fa
+		G       205178106
+		C       204832500
+		A       263180354
+		T       263680933
+		X       167379839
+		N       1530162014
+		x       0
+	
+	
+4. Generate new window files using winmaker.c (Alkan's)
+	# winmaker just accepts argv input, so I should be able to run it just using the program call.
+	# Ah, but there is an issue: winmaker only works on one chromosome at a time!
+	# Using my script, split_fasta.pl and a for loop to take care of this:
+	$ perl ../split_fasta.pl cow4_36_noun_rmask.fa
+	
+	$ for i in *.fa; do ./winmaker $i; done
+	
+	$ cat *.coverage > template_file1_rmask.bed
+	$ cat *wssd > template_file2_rmask.bed
+	$ cat *copynumber > template_file3_rmask.bed
+	
+	
+	# coverage is File1
+	# wssd is File2
+	# copynumber is File3
+	
+5. Remake control windows
+	# OK, so I need to re-subtract the WGAC/WSSD intervals and do some "manual filtering."
+	
+	# cow4_controls_5k.bed should be a good point from my previous control creation to start off from. It was the chromosome lengths minus the gaps
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a template_file1_rmask.bed -b cow4_controls_5k.bed -wa | uniq > template_file1_control_rmask.bed
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a template_file3_rmask.bed -b cow4_controls_5k.bed -wa | uniq > template_file3_control_rmask.bed
+	
+	$ wc template*
+	  1715342   5146026  40306712 template_file1_control_rmask.bed
+	  1788684   5366052  42020406 template_file1_rmask.bed
+	  2271839   6815517  53349583 template_file2_rmask.bed
+	   841414   2524242  19794486 template_file3_control_rmask.bed
+	   906779   2720337  21326988 template_file3_rmask.bed
+	   
+	# Now for the painful part, I need to rerun the GC interval scripts and generate GC information for each interval. I will have to rewrite each of the scripts to do this on the main files
+	
+	# rewrote the GC_control_intervals script, running that now:
+	$ perl GC_control_intervals.pl --path ./separate_chrs --name rmask
+	
+	# Also rewrote the GC_intervals script and ran it:
+	$ perl GC_intervals.pl --path ./separate_chrs --name rmask
+	
+	# OK, that wasn't too painful... for now..
+	
+6. Intersect simulation reads with windows
+	# OK, this part may take a long time.
+	# rewrote combine_bed_hits.pl to process all of the simulation hit subsections and turn them into artifact files
+	# Going to test it now...
+	
+	# I need to combine chr29 with the last simulation file.
+	$ cat simulation_mergedaf.bed chr29_sim.bed > simulation_merged_chr29.bed
+	
+	# Ah, I also need to remove hits that were part of the simple and trf files! Going to create a perl script to do that
+	# On second thought, I might as well just use subtractbed
+	$ for i in simulation_mergeda*.bed; do prefix=`echo $i | cut -d'.' -f1`; name=$prefix".rem"; echo $name; /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/subtractBed -a $i -b /mnt/gliu1_usb/dbickhart/alkan_files/simple_trf/repeat_merged_extended.bed > $name; done
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/subtractBed -a simulation_merged_chr29.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/simple_trf/repeat_merged_extended.bed > simulation_merged_chr29.rem
+	
+	$ perl combine_bed_hits.pl
+	
+	# OK that worked, now I have to manually edit the control files. In order to do this, I am going to GC normalize them, then subtract out the regions that are 3 Stdev away from the average.
+	# Or did it... It looks like the combine_bed_hits.pl script failed. I had included a previous window file in the list of files to be combined and that screwed things up, I think!
+	# Yes, whenever the line segments don't match between one file and another, the program does not output the hits to the intervals
+	# I was getting tons of intervals with "zero hits" which shouldn't be the case!
+	# OK, now they're all full.
+	
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' rmask_sim_file1_c.bed | sort -k 1,1 > rmask_sim_file1_c.merge
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' ../../rmask_gc_file1_subtract_controls.bed | sort -k 1,1 > rmask_gc_file1.merge
+	$ join rmask_gc_file1.merge rmask_sim_file1_c.merge | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > rmask_file1_control.gc.depth
+	$ cat rmask_file1_control.gc.depth | ../partgcdepth.pl > rmask_file1_control.gc.depth_avg
+	$ cut -f 4 rmask_sim_file1_c.bed | ../statStd.pl | grep Average | awk '{print $2}'
+		3997
+	$ ../depthloess_avg.pl -i rmask_file1_control.gc.depth -a rmask_file1_control.gc.depth_avg -e 3997 > rmask_file1_control.gc.norm
+	$ cut -f 5 rmask_file1_control.gc.norm | ../statStd.pl
+		total   1715342
+		Minimum 2654.75644513538
+		Maximum 24962.5809386973
+		Average 3997.000000
+		Median  3903.37399485365
+		Standard Deviation      641.155136
+		Mode(Highest Distributed Value) 3887.94599686028
+		
+		# So, my cropping value would be: 5920 for the upper limit and 2074 for the lower limit
+		# Time to start chopping values! Let's see how many intervals would be chopped first.
+		
+	$ perl -lane 'if($F[4] > 5920 || $F[4] < 2074){ print $_;}' < rmask_file1_control.gc.norm | wc
+  		31165  155825 1474543
+  		
+  	# That's respectable; I believe that I had to crop that many with my previous control files.
+  	$ perl -lane 'if($F[4] > 5920 || $F[4] < 2074){ print $_;}' < rmask_file1_control.gc.norm > file1_control_subtract.bed
+  	
+  	# Now, lets repeat the process with the file3 controls
+  	$ awk '{print $1"-"$2"-"$3"\t"$4}' rmask_sim_file3_c.bed | sort -k 1,1 > rmask_sim_file3_c.merge
+  	$ awk '{print $1"-"$2"-"$3"\t"$4}' ../../rmask_gc_file3_subtract_controls.bed | sort -k 1,1 > rmask_gc_file3.merge
+  	$ join rmask_gc_file3.merge rmask_sim_file3_c.merge | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > rmask_file3_control.gc.depth
+  	$ cat rmask_file3_control.gc.depth | ../partgcdepth.pl > rmask_file3_control.gc.depth_avg
+  	$ cut -f 4 rmask_sim_file3_c.bed | ../statStd.pl | grep Average | awk '{print $2}'
+		821.353033
+	$ ../depthloess_avg.pl -i rmask_file3_control.gc.depth -a rmask_file3_control.gc.depth_avg -e 821 > rmask_file3_control.gc.norm
+	$ cut -f 5 rmask_file3_control.gc.norm | ../statStd.pl
+		total   841414
+		Minimum 173.107751129649
+		Maximum 11180.68704
+		Average 821.000000
+		Median  810.801963048499
+		Standard Deviation      168.039500
+		Mode(Highest Distributed Value) 891.137879542061
+		
+		# High crop: 1325 	Low crop: 317
+	$ perl -lane 'if($F[4] > 1325 || $F[4] < 317){ print $_;}' < rmask_file3_control.gc.norm | wc
+	   8832   44160  416964
+	$ perl -lane 'if($F[4] > 1325 || $F[4] < 317){ print $_;}' < rmask_file3_control.gc.norm > file3_control_subtract.bed
+	
+	# Now I need to remove those intervals from the template file1 and 3 controls.
+		$ ../BEDTools-Version-2.10.0/bin/subtractBed -a template_file1_control_rmask.bed -b ./wssd-package/artifact/file1_control_subtract.bed > sim_sub_file1_control_rmask.bed
+		$ ../BEDTools-Version-2.10.0/bin/subtractBed -a template_file3_control_rmask.bed -b ./wssd-package/artifact/file3_control_subtract.bed > sim_sub_file3_control_rmask.bed
+	
+	# Doing combine_bed_hits.pl first, then I need to remake the GC interval files
+	# I had rewritten combine_bed_hits.pl in order to use the new interval files.
+	$ perl combine_bed_hits.pl
+	
+	# Now to create the GC interval files
+	$ perl GC_control_intervals.pl --path ./separate_chrs --name sub_rmask
+	
+	# From here, all I have to do is modify the alkan script, then run the simulation files through it.
+	# Crap, most of the GC files have to be modified to Alkan's format (1-2-3\t4)
+	$  for i in rmask_gc*; do awk '{print $1"-"$2"-"$3"\t"$4}' $i | grep -v chrX | sort -k 1,1 > $i.tab; done
+	
+	# Updated all the files, so now all I have to do is copy over the newer run_alkan_pipeline.pl script to the artifact directory and run the files!
+	$ perl run_alkan_pipeline.pl --File1 rmask_sim_file1.bed --File1_c rmask_sim_file1_c.bed --File2 rmask_sim_file2.bed --File3 rmask_sim_file3.bed --File3_c rmask_sim_file3_c.bed
+	
+	# Oh no! I accidentally rewrote OVER the previous sim files! I'm going to have to recombine them...
+	# The good thing is that the pre-merged bed files are still there, so I just have to combine the files...
+	$ perl combine_bed_hits.pl
+	# Restarting..
+	$ perl run_alkan_pipeline.pl --File1 rmask_sim_file1.bed --File1_c rmask_sim_file1_c.bed --File2 rmask_sim_file2.bed --File3 rmask_sim_file3.bed --File3_c rmask_sim_file3_c.bed
+		Avg:  3857.011777  std:  521.383775  AutoCut:  6463.930652  AutoCut2:  5421.163102  Del:  2292.860452
+	
+	$ wc rmask_sim_t_file1.bed-auto.padded.tab
+	  4751  14253 111589 rmask_sim_t_file1.bed-auto.padded.tab
+	  
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a rmask_sim_t_file1.bed-auto.padded.tab -b ../../WSSD_WGAC_finalmerged_noChrun.bed -v > cropped_sim_artifact.bed
+	$ wc cropped_sim_artifact.bed
+	 352 1056 8279 cropped_sim_artifact.bed
+	# Previously, that was 700ish intervals. Let's get the fasta sequences for George to look at:
+	
+	$ ../../../BEDTools-Version-2.10.0/bin/fastaFromBed -fi ../../cow4_36_noun_rmask.fa -bed cropped_sim_artifact.bed -fo artifact_rmask_intervals.fa
+	# OK, so I like this, but we'll just have to see how the results turn out! 
+	# I will start running the pipeline in anticipation of this having worked effectively (and to see if my controls are ok!
+	
+7. Rerun all samples
+	# OK, the simplest but most time-consuming step
+	# Well, the standard deviation of the control file was way too high...
+		Average was: 39.8484916722914
+		Stdev was; 77.4455860465409
+	# Let's see if we can't remove some of the control intervals.
+	$ cut -f 4 BTAN01_auto_r_file1.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		total   1788684
+		Minimum 0
+		Maximum 26502
+		Average 41.470311
+		Median  40
+		Standard Deviation      85.164073
+		Mode(Highest Distributed Value) 0
+	$ cut -f 4 BTAN01_auto_r_file1_c.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		total   1683056
+		Minimum 0
+		Maximum 26502
+		Average 39.848492
+		Median  39
+		Standard Deviation      77.445609
+		Mode(Highest Distributed Value) 0
+		
+	# my use of intersectBed might have created all the zeroes
+	# No, that probably wasn't it (it would have generated similar results)
+	
+	$ perl -lane 'if ($F[3] == 0){print "$F[0]";}' < BTAN01_auto_r_file1_c.bed | wc
+	  50827   50827  255119
+	$ perl -lane 'if ($F[3] > 250){print "$F[0]";}' < BTAN01_auto_r_file1_c.bed | wc
+	     87      87     513
+	# 250 looks like a good cutoff, and I'm not going to lose that many intervals for file1_c
+	$ cut -f 4 BTAN01_auto_r_file3_c.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		total   832582
+		Minimum 0
+		Maximum 5849
+		Average 8.491685
+		Median  8
+		Standard Deviation      12.100067
+		Mode(Highest Distributed Value) 6
+	$ perl -lane 'if ($F[3] == 0){print "$F[0]";}' < BTAN01_auto_r_file3_c.bed | wc
+	  40121   40121  209286
+	$ perl -lane 'if ($F[3] > 50){print "$F[0]";}' < BTAN01_auto_r_file3_c.bed | wc
+	     49      49     283
+	# I'm choosing 50 because it is 5 fold less than 250 (Alkan's logic)
+	
+	$ perl -lane 'if ($F[3] > 50){print "$F[0]\t$F[1]\t$F[2]";}' < BTAN01_auto_r_file3_c.bed > /mnt/gliu1_usb/dbickhart/alkan_files/more_crop_file3_c.bed
+	$ perl -lane 'if ($F[3] > 250){print "$F[0]\t$F[1]\t$F[2]";}' < BTAN01_auto_r_file1_c.bed > /mnt/gliu1_usb/dbickhart/alkan_files/more_crop_file1_c.bed
+	
+	$ ../BEDTools-Version-2.10.0/bin/subtractBed -a sim_sub_file1_control_rmask.bed  -b more_crop_file1_c.bed > final_sub_file1_control_rmask.bed
+	$ ../BEDTools-Version-2.10.0/bin/subtractBed -a sim_sub_file3_control_rmask.bed  -b more_crop_file3_c.bed > final_sub_file3_control_rmask.bed
+	
+	# Rewrote GC_control_intervals.pl to take the new files into account
+	$ perl GC_control_intervals.pl --path ./separate_chrs --name rmask
+	# final files were:
+		rmask_gc_file1_f_controls.bed
+		rmask_gc_file3_f_controls.bed
+	# I updated Alkan's pipeline and the auto_full_alkan_pipeline.pl script (to use final_sub_file1_control_rmask.bed for the latter).
+	
+	# Testing it out on BTAN01
+	$ perl auto_full_alkan_pipeline.pl --in BTAN01_auto.bed
+	
+	# That worked! At least for BTAN01!
+	Avg:  40.743312  std:  13.148362  AutoCut:  106.485122  AutoCut2:  80.188398  Del:  1.298226
+	
+	# Going to set it up to run on the whole shin-dig after this finishes.
+		[dbickhart@bfgl-svr3 BTAN01_auto_r]$ wc *final.wssd
+		 181  543 4139 BTAN01_auto_r_file1.bed.final.wssd
+		[dbickhart@bfgl-svr3 BTAN01_auto_r]$ wc *final.deletions.tab
+		 3  9 68 BTAN01_auto_r_file1.bed.final.deletions.tab
+		[dbickhart@bfgl-svr3 BTAN01_auto_r]$ wc ../BTAN01_auto_4/*final.wssd
+		 309  927 7118 ../BTAN01_auto_4/BTAN01_auto_file1.bed.final.wssd
+		[dbickhart@bfgl-svr3 BTAN01_auto_r]$ wc ../BTAN01_auto_4/*final.deletions.tab
+		 3  9 72 ../BTAN01_auto_4/BTAN01_auto_file1.bed.final.deletions.tab
+		 
+	# George won't like this, but it makes some sense. 
+	# Whoops! the autocut for insertions was set to 5! Reset it to 4.
+	
+	# Running the whole shebang.
+	$ sh automate_indv_alkan_pipe.sh
+	# And that's it for tonight!
+	
+# I just want to test the accurracy of the artifact files.
+	$ wc nonoverlap_artifacts.bed
+	  772  2316 18153 nonoverlap_artifacts.bed
+	$ wc cropped_sim_artifact.bed
+	 352 1056 8279 cropped_sim_artifact.bed
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a nonoverlap_artifacts.bed -b cropped_sim_artifact.bed -v | wc
+	    580    1740   13660
+	$ ../../../BEDTools-Version-2.10.0/bin/subtractBed -a nonoverlap_artifacts.bed -b cropped_sim_artifact.bed | wc
+	    840    2520   19752
+	# So, it looks like I found some new intervals to mask, but a good proportion of old artifact intervals are still getting picked up
+	
+	# Let's check to see how many bases are being masked in each:
+	$ perl -e 'while(<>){chomp $_; @a = split(/\t/); $b += $a[2] - $a[1];} print "$b\n";' < nonoverlap_artifacts.bed
+	14824791
+	$ perl -e 'while(<>){chomp $_; @a = split(/\t/); $b += $a[2] - $a[1];} print "$b\n";' < cropped_sim_artifact.bed
+	5645560
+	
+	# Significantly less, in fact, less than half. 
+	
+# Bos indicus problem
+	# I received very high stdev values for B. indicus breeds
+		Avg:  42.813920  std:  20.356876  AutoCut:  124.241424  AutoCut2:  103.884548  Del:  -18.256708
+		
+	# I am going to have to remake the control files again.
+		$ perl -lane 'if ($F[3] > 200){print "$F[0]\t$F[1]\t$F[2]";}' < BINE01_auto_r_file1_c.bed | wc
+		      0       0       0
+		$ perl -lane 'if ($F[3] == 0){print "$F[0]\t$F[1]\t$F[2]";}' < BINE01_auto_r_file1_c.bed | wc
+		  52788  158364 1201924
+		
+		$ perl -lane 'if ($F[3] == 0){print "$F[0]\t$F[1]\t$F[2]";}' < ../BINE01_auto_5/BINE01_auto_5_file1_c.bed | wc
+		  52996  158988 1206776
+		# So the zeroes are not the problem...
+		$ cut -f 4 BINE01_auto_r_file1_c.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   1682957
+			Minimum 0
+			Maximum 106
+			Average 15.177497
+			Median  15
+			Standard Deviation      7.275968
+			Mode(Highest Distributed Value) 14
+		
+		$ perl -lane 'if ($F[3] > 50){print "$F[0]\t$F[1]\t$F[2]";}' < BINE01_auto_r_file1_c.bed | wc  <- average + 5 standard deviations
+		    163     489    3712
+		    
+		$ cut -f 4 BINE01_auto_r_file3_c.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   832533
+			Minimum 0
+			Maximum 34
+			Average 3.248389
+			Median  3
+			Standard Deviation      2.581671
+			Mode(Highest Distributed Value) 2
+			
+		$ cut -f 4 ../BINE02_auto_r/BINE02_auto_r_file1_c.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   1682957
+			Minimum 0
+			Maximum 4889
+			Average 41.557621
+			Median  40
+			Standard Deviation      22.355464
+			Mode(Highest Distributed Value) 0
+			
+		$ perl -lane 'if ($F[3] > 172){print "$F[0]\t$F[1]\t$F[2]";}' < ../BINE02_auto_r/BINE02_auto_r_file1_c.bed | wc   <- average + 6 standard deviations
+		     66     198    1435
+		     
+		$ cut -f 4 ../BINE02_auto_r/BINE02_auto_r_file3_c.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   832533
+			Minimum 0
+			Maximum 4838
+			Average 8.831872
+			Median  6
+			Standard Deviation      9.744412
+			Mode(Highest Distributed Value) 3
+			
+		$ perl -lane 'if ($F[3] > 62){print "$F[0]\t$F[1]\t$F[2]";}' < ../BINE02_auto_r/BINE02_auto_r_file3_c.bed | wc  <- average + 6 stdevs
+		    158     474    3712
+		    
+		# I think that these are the culprits
+		$ perl -lane 'if ($F[3] > 62){print "$F[0]\t$F[1]\t$F[2]";}' < ../BINE02_auto_r/BINE02_auto_r_file3_c.bed > /mnt/gliu1_usb/dbickhart/alkan_files/yet_more_file3_control_crop.bed
+		$ perl -lane 'if ($F[3] > 172){print "$F[0]\t$F[1]\t$F[2]";}' < ../BINE02_auto_r/BINE02_auto_r_file1_c.bed > /mnt/gliu1_usb/dbickhart/alkan_files/yet_more_file1_control_crop.bed
+		$ ../BEDTools-Version-2.10.0/bin/intersectBed -a final_sub_file1_control_rmask.bed -b yet_more_file1_control_crop.bed -v > temp_sub_file1_rmask.bed
+		$ mv temp_sub_file1_rmask.bed ./final_sub_file1_control_rmask.bed
+		$ ../BEDTools-Version-2.10.0/bin/intersectBed -a final_sub_file3_control_rmask.bed -b yet_more_file3_control_crop.bed -v > temp_sub_file3_rmask.bed
+		$ mv temp_sub_file3_rmask.bed ./final_sub_file3_control_rmask.bed
+
+		$ perl GC_control_intervals.pl --path ./separate_chrs --name rmask	
+		
+		# OK, that should have done it.
+		$ sh automate_indv_alkan_pipe.sh
+		
+		# It didn't
+		$ cut -f 4 BTAN02_auto_r_file1_c.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   1682681
+			Minimum 0
+			Maximum 1975
+			Average 29.042658
+			Median  25
+			Standard Deviation      21.878650
+			Mode(Highest Distributed Value) 0
+			
+		$ perl -lane 'if ($F[3] > 155){print "$F[0]\t$F[1]\t$F[2]";}' < BTAN02_auto_r_file1_c.bed | wc
+		    263     789    6197
+		$ perl -lane 'if ($F[3] > 155){print "$F[0]\t$F[1]\t$F[2]";}' < BTAN02_auto_r_file1_c.bed > /mnt/gliu1_usb/dbickhart/alkan_files/yet_more_file1_control_crop.bed
+		
+		$ cut -f 4 BTAN02_auto_r_file3_c.bed | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   832375
+			Minimum 0
+			Maximum 153
+			Average 6.329660
+			Median  3
+			Standard Deviation      8.537403
+			Mode(Highest Distributed Value) 0
+			
+		$ perl -lane 'if ($F[3] > 62){print "$F[0]\t$F[1]\t$F[2]";}' < BTAN02_auto_r_file3_c.bed | wc
+		   1027    3081   24195
+		$ perl -lane 'if ($F[3] > 62){print "$F[0]\t$F[1]\t$F[2]";}' < BTAN02_auto_r_file3_c.bed > /mnt/gliu1_usb/dbickhart/alkan_files/yet_more_file3_control_crop.bed
+		$ ../BEDTools-Version-2.10.0/bin/intersectBed -a final_sub_file1_control_rmask.bed -b yet_more_file1_control_crop.bed -v > temp_sub_file1_rmask.bed
+		$ mv temp_sub_file1_rmask.bed ./final_sub_file1_control_rmask.bed
+		$ perl GC_control_intervals.pl --path ./separate_chrs --name rmask

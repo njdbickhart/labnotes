@@ -1,0 +1,186 @@
+2010_11_08
+# Organization and processing of CR1 data
+
+# Goals:
+	- Identify the work that I've already done on the Turkey CR1 elements
+	- Organize that work in one unified lab note file
+	- List folders containing data
+	- Begin processing the Turkey CR1 elements into NJ and MS trees
+	
+# Caveats:
+	- I need to determine the best methods for generating the NJ tree (off of consensus CR1 sequences or the most populous members of that family)
+	- I need to figure out how to draw the MS tree (by hand or by program?)
+	
+###############################################
+#                                             #
+#		File locations		      #
+#                                             #
+###############################################	
+
+# Locally saved CR1 data: C:\SharedFolders\Turkey\CR1_repeat_data
+# Remote files: Server 2 :/mnt/data6/gliu/dbickhart/Turkey/CR1_fasta
+# RepeatMasker files: Server 2 :/mnt/data6/gliu/dbickhart/RepeatMasker/turkey
+
+
+# A relisting of everything I have done so far#
+###############################################
+#                                             #
+#		Records			      #
+#                                             #
+###############################################
+
+2010_09_15
+#Configured RepeatMasker for the cross_match executable located in: 
+	 /mnt/data7/dbeast/usr/local/pkg/phrap.old/
+	 
+#Will test out the program on turkey chromosome 26 prior to setting up and running the automation script, turkey_repeat_automation.pl
+	RepeatMasker -s -no_is -dir /mnt/data6/gliu/dbickhart/RepeatMasker/turkey -lib /mnt/data6/gliu/dbickhart/Libraries/combined_465 /mnt/data6/gliu/turkey2.01/fasta/Chr26.fa
+	started: 10:57 am
+	ended: 11:20 am
+	#So for a 6 mb file, it took about 25ish minutes. For the 198 mb chromosome 1, I'd expect about 13 hours of runtime. 
+	#For the whole dataset, I'd expect ~ 70 hours (uninterrupted). 
+	
+#Note: my turkey_repeat_automation.pl script doesn't display the proper time; I'll have to revise that in the script and get the proper time function
+
+#Ran turkey_repeat_automation.pl today in order to mask all of the turkey chromosomes sequentially. 
+
+
+2010_09_20
+#While I wait to sort out the problems with MrFast, I will take a look at the finished RepeatMasker data and try to extract useful information from it
+
+#File format (the *.out file) is tab delimited with the following headers:
+	SW   perc perc perc  query     position in query                 matching     repeat           position in repeat
+	score   div. del. ins.  sequence  begin     end            (left)   repeat       class/family   begin  end    (left)    ID
+	0	1	2	3	4	5	6	7	8	9	11	12	13	14	15	16
+	
+	- I'm looking for [4] (query sequence) [5] (start seq) [6] (end seq) [9] (repeat name) and [16/17] for the asterisk (asterixed ID's are lower in score and overlap with another repeat call)
+	
+	- My Perl script to parse this all out should do the following:
+		# Generate a hash-key based file with the nucleotide positions of all called repeats per chromosome (one file per chromosome)
+		# Generate a tab-delimited file with all of the repeat information (concatenation of data from all chromosomes at the end)
+		# Generate a smaller "count" file in order to count repeat classes
+		
+#Big problem: the repeatmasker files are not tab-delimited! I have to convert them prior to using them.
+	- Problem solved! I created a script (convert_RM_out_tab.pl) to remove the spaces and replace them with tabs!
+	- Script is stored on my Ubuntu virtual box in the /home/Perl folder
+	
+#Completed my extract_repeat_information.pl script! 
+	- Location: /home/Perl folder of my Ubuntu virtual box
+	- Creates the following files:
+		- *.nps  <- nucleotide positions for CR1 elements
+		- *.tbl  <- table of CR1 elements (with asterisks to indicate that the element is NOT the best match)
+		- repeatcount.txt  <- count of all identified CR1 repeats by repeatmasker
+		
+#My next task is to extract the nucleotide sequence using the .nps files for each repeat class.
+
+#I can either do this using a script or try to figure out how to use FASTACMD on the servers.
+	- Attempted to make a script to automate it, but sadly, my methods of extracting fasta information were WAY too slow!
+	- Script name: extract_repeat_fasta.pl
+	- Downloading and attempting to install BioPERL for SeqIO module
+	
+#In order to use SeqIO to extract sequence information:
+	use Bio::SeqIO
+	my $seqio = Bio::SeqIO->new(-format => 'fasta', -file => 'file.fasta');
+	my $seq = $seqio->next_seq;
+	$seq->subseq(x,y)    
+	
+2010_09_21
+
+#I was able to use that snippet of code for Bio::SeqIO in order to extract sequences MUCH faster than before!
+
+#I did have an issue loading the Bio::SeqIO module though
+	- Received an @INC error from the Perl compiler
+	- Used the UNIX command, "locate" to find the SeqIO.pm file
+	- Then I fixed it by including the following header line in the script
+		use lib '/home/derek/.cpan/build/BioPerl-1.6.1-2NvxkL/';
+
+2010_10_13
+# While I wait for repeatmasker to finish, I have decided to return to the Turkey CR1 sequences to get that project back on track
+
+# I have found a method for developing consensus sequences from the CR1 fastas that I generated way back in September
+	- Align sequences using Muscle
+	- Process sequences using em_cons (emboss, consensus program)
+	# Both programs are installed on my Ubuntu virtualbox
+	- Next I will create a consensus tree using Neighbor-Joining methods
+	
+# Commands for doing this:
+	- muscle -in CR1-B.fn -out CR1-B.aln
+	- em_cons -sequence CR1-B.aln -outseq CR1-B.fa -name CR1-B
+
+# Created a script to automatically run those two commands for each file in a directory
+	# Script name is repeat_consensus.pl
+	$ find *.fn | xargs -n1 perl repeat_consensus.pl
+	
+	# Some of the repeat files were single copy, therefore, the consensus program generated an error and produced a zero byte file.
+	# I simply copied the .aln file of the single copy repeats and turned them into .fa files for easier concatenation
+	
+	$ muscle -in repeat_consensus.fa -out repeat_consensus.aln
+	# I need to convert the clustal format into phylip format for the rapidNJ program
+	# Tried to do so in clustal but...
+	$ ../../../rapidNJ/bin/nj -i pa repeat_consensus.alnphy
+		Phylip alignments cannot be read yet. Use stockholm format for alignments.
+
+	# Found a phylip to stockholm conversion webpage...
+	http://www.bugaco.com/converter/biology/sequences/phylip_to_stockholm.php
+	
+	$ ../../../rapidNJ/bin/nj -i sth repeat_consensus.sth 
+		((((('CR1-F2_con':0.41982,'CR1-X1_2_c':0.34514):0.1652, ...
+		
+	# Looks like it worked	
+	# Installed tree-puzzle to view it
+	# Did not load into tree-puzzle, so I will attempt to view it in tree-view X
+	# Nope. Maybe I should just try the NJ function of clustal?
+	
+	# Lots of error messages from clustal
+		
+		 WARNING: sequences 36 and 37 are non-overlapping
+		
+		 WARNING: sequences 36 and 57 are non-overlapping
+		
+		 WARNING: sequences 36 and 59 are non-overlapping
+		
+		 WARNING: sequences 6 and 36 are non-overlapping
+		
+		 WARNING: sequences 36 and 47 are non-overlapping
+
+	# Does not load in any of the tree programs that I have tried
+	
+	
+______________________________________________
+Progressing from here
+______________________________________________
+
+# Some observations of my dataset:
+	# I did not remove the CR1 sequences with less than (or more than) 98% of the length of the 465bp consensus sequences.
+	# I did not extract the %divergence of the sequences from the consensus
+	
+# Both of these flaws can be corrected quickly with some perl scripting
+
+# My first goal is to re-extract the %divergence from the repeat files (modify extract_repeat_information.pl)
+
+# Next, incorporate the %divergence into the fasta header for the repeats (modify extract_repeat_fasta.pl) and simultaneously crop out the reads shorter than 455bp or longer than 465bp.
+
+#Actually, I found out that I did extract the consensus divergence; however, I did not screen for smaller repeats. The Remotely stored perl scripts (extract_repeat_fasta.pl and extract_repeat_information.pl are up to date.
+
+# convert_RM_out_tab.pl (script that removes the whitespace from the repeatmasker out files) has been modified to use threads
+	# Server 2's perl interpreter was not built with threads active! I can't use this script on server2!
+	# moving the chr_fa.out files to my shared folder; I'll run this script locally
+	# It is taking a long time to run locally, but I believe that it will finish before the end of today.
+	# I will have to run the other scripts on server 2 to make sure that they run over night (I will just split the number of files into four batches (make sure to split mega chromosomes among all four))
+
+# Scratch all that: made some modifications that sped up the process significantly
+	$ perl convert_RM_out_tab.pl
+	
+	$ perl extract_repeat_information.pl batch1.txt 1
+	$ perl extract_repeat_information.pl batch2.txt 2
+	$ perl extract_repeat_information.pl batch3.txt 3
+	$ perl extract_repeat_information.pl batch4.txt 4
+
+	# I didn't need to batch out the files; they completed within a few seconds!
+	
+	# The Turkey chromosome fastas had an extraneous newline at the top of the file; removed it with several of these commands:
+		awk ' NR>1 ' Chr2.fa > Chr2.sm; mv Chr2.sm Chr2.fa
+		
+	$ perl extract_repeat_fasta.pl
+		# produce about 10678 repeats spread amongst multiple families
+		# The extract script was modified to include the divergence percentage in the fasta header (it is the second number after the chromosome number in the header)

@@ -1,0 +1,70 @@
+03/21/2013
+# These are my notes on Jeff's exome project and my SNP and CNV calling
+# I am going to run the data through my pipeline to generate the mrsfast and gatk bams first and then I'll try running just the splitread caller, first
+
+# The exomes are located here: 
+	/Drobo1/jeff/exomes
+
+# Currently I do not have permission to view the files so I can instead work on the reference genome first
+
+# Downloaded the files from UCSC to here: /home/dbickhart/share/human_data
+
+# Since I am not doing DOC, I don't think that I need to be too cautious here.
+
+# Now, to get some statistics on the files
+	$ wc -l /Drobo1/jeff/exomes/*/*/*.fastq
+	   283240408 /Drobo1/jeff/exomes/A01895/IL100006647/s_3_1_sequence.fastq
+	   283240408 /Drobo1/jeff/exomes/A01895/IL100006647/s_3_2_sequence.fastq
+	   290461172 /Drobo1/jeff/exomes/A01907/IL100006646/s_2_1_sequence.fastq
+	   290461172 /Drobo1/jeff/exomes/A01907/IL100006646/s_2_2_sequence.fastq
+	   292924880 /Drobo1/jeff/exomes/A01984/IL100006645/s_1_1_sequence.fastq
+	   292924880 /Drobo1/jeff/exomes/A01984/IL100006645/s_1_2_sequence.fastq
+  	  1733252920 total
+  	  
+  	pwd: /home/bickhart/POD1_1
+  	$ for i in /Drobo1/jeff/exomes/*/*/*.fastq; do echo $i; ~/FastQC/fastqc --noextract -t 8 -o ./jeffexome_qc -j ~/jdk1.7.0/bin/java -f fastq $i; done
+  	pwd: /home/bickhart/POD1_1/reference/hg19_indiv_chrs
+  	$ cat chr1.fa.masked chr2.fa.masked chr3.fa.masked chr4.fa.masked chr5.fa.masked chr6.fa.masked chr7.fa.masked chr8.fa.masked chr9.fa.masked chr10.fa.masked chr11.fa.masked chr12.fa.masked chr13.fa.masked chr14.fa.masked chr15.fa.masked chr16.fa.masked chr17.fa.masked chr18.fa.masked chr19.fa.masked chr20.fa.masked chr21.fa.masked chr22.fa.masked chrX.fa.masked chrY.fa.masked chrM.fa.masked > ../hg19_kary_nmask_ngap_nun.fa
+  	
+  	pwd: /home/bickhart/POD1_1/reference
+  	$ mrsfast --index hg19_kary_nmask_ngap_nun.fa
+	
+	# Ran a modified perl script to generate the spreadsheet for the files
+	pwd: /home/bickhart/POD1_1/
+	$ perl ~/bin/convert_jeff_fq_to_spreadsheet.pl jeff_exome_file_list.txt
+	
+	# Manually added the file list into the config file
+	
+	# The pipeline was hanging right before my consolidate script could work
+	# I think that I might have found the problem: I didn't fasta index the human reference genome first. I will have to test this out on another run
+	
+# Manually consolidating mrsfast sam files
+	$ perl ~/bin/convert_mrsfast_sams_to_bam.pl -i A01895 -r ../reference/hg19_kary_nmask_ngap_nun.fa.fai -b ~/bin -c 1
+	$ perl ~/bin/convert_mrsfast_sams_to_bam.pl -i A01907 -r ../reference/hg19_kary_nmask_ngap_nun.fa.fai -b ~/bin -c 1
+	$ perl ~/bin/convert_mrsfast_sams_to_bam.pl -i A01984 -r ../reference/hg19_kary_nmask_ngap_nun.fa.fai -b ~/bin -c 1
+	# This last one did not work because there were no mrsfast sams to be found... wonder why...
+	
+	
+	# I am also noticing alot of anchor reads in the single.txt files, but no discordant reads and no remapped splits
+	# I'm going to have to recheck this as well
+	
+# Manually consolidating bwa bam files
+	$ perl ~/bin/merge_bams_sort_index.pl -i ./A01895/ -b ~/bin -o A01895.full.sorted.merged.bam -l 200 -p 2 -f 1
+	$ perl ~/bin/merge_bams_sort_index.pl -i ./A01907/ -b ~/bin -o ./A01907/A01907.full.sorted.merged.bam -l 200 -p 2 -f 1; perl ~/bin/merge_bams_sort_index.pl -i ./A01984/ -b ~/bin -o ./A01984/A01984.full.sorted.merged.bam -l 200 -p 2 -f 1
+	
+# Now, running the GATK pipeline on the consolidated BWA bams
+	$ perl ~/bin/run_gatk_walkers.pl -i A01895/A01895.full.sorted.merged.bam -o A01895/A01895.gatk -b ~/bin -p 10 -r ../reference/hg19_kary_nmask_ngap_nun.fa -j ~/jdk1.7.0/bin/java -g ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -t ../reference/hg19_training_snpset.txt -s '-Xmx20g' -f 1
+	
+	
+	$ ~/jdk1.7.0/bin/java -Xmx40g -Djava.io.tmpdir=./tmp -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -T BaseRecalibrator -R ../reference/hg19_kary_nmask_ngap_nun.fa -I ./A01895/A01895.full.sorted.merged.bam -I ./A01907/A01907.full.sorted.merged.bam -I ./A01984/A01984.full.sorted.merged.bam -knownSites /POD1_1/users/bickhart/reference/dbsnp_135.b37.vcf -o jeff_exome.grp
+	
+	$ ~/jdk1.7.0/bin/java -Xmx40g -Djava.io.tmpdir=./tmp -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -T RealignerTargetCreator -R ../reference/hg19_kary_nmask_ngap_nun.fa -I ./A01895/A01895.full.sorted.merged.bam -I ./A01907/A01907.full.sorted.merged.bam -I ./A01984/A01984.full.sorted.merged.bam -nt 5 -o jeff_exome_indel.intervals
+	
+	$ ~/jdk1.7.0/bin/java -Xmx40g -Djava.io.tmpdir=./tmp -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -T IndelRealigner -R ../reference/hg19_kary_nmask_ngap_nun.fa -I ./A01895/A01895.full.sorted.merged.bam -I ./A01907/A01907.full.sorted.merged.bam -I ./A01984/A01984.full.sorted.merged.bam  -targetIntervals jeff_exome_indel.intervals -o jeff_combined_realigned.bam
+	
+	$ ~/jdk1.7.0/bin/java -Xmx40g -Djava.io.tmpdir=./tmp -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -T UnifiedGenotyper -R ../reference/hg19_kary_nmask_ngap_nun.fa -I jeff_combined_realigned.bam -o jeff_combined_unfiltered.vcf
+	
+	$ ~/jdk1.7.0/bin/java -Xmx40g -Djava.io.tmpdir=./tmp -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -T VariantRecalibrator -R ../reference/hg19_kary_nmask_ngap_nun.fa -input jeff_combined_unfiltered.vcf -resource:hapmap,known=false,training=true,truth=true,prior=15.0 /POD1_1/users/bickhart/reference/hapmap_3.3.b37.sites.vcf -resource:omni,known=false,training=true,truth=false,prior=12.0 /POD1_1/users/bickhart/reference/1000G_omni2.5.b37.sites.vcf -resource:dbsnp,known=true,training=false,truth=false,prior=6.0 /POD1_1/users/bickhart/reference/dbsnp_135.b37.vcf -an QD -an HaplotypeScore -an MQRankSum -an ReadPosRankSum -an FS -an MQ -mode SNP -recalFile jeff_exome.recal -tranchesFile jeff_exome.tranches -rscriptFile jeff_exome_tranches.pdf
+	
+	$ ~/jdk1.7.0/bin/java -Xmx40g -Djava.io.tmpdir=./tmp -jar ~/GenomeAnalysisTK-2.3-3-g4706074/GenomeAnalysisTK.jar -T ApplyRecalibration -R ../reference/hg19_kary_nmask_ngap_nun.fa -input jeff_combined_unfiltered.vcf --ts_filter_level 99.0 -mode SNP -recalFile jeff_exome.recal -tranchesFile jeff_exome.tranches -o jeff_combined_recal_filtered.vcf
+	

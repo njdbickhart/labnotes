@@ -1,0 +1,220 @@
+03/20/2012
+# This note file contains my commands for testing and running split read (the Eichler lab package) as a potential dual-use program with my mrsfast DOC pipeline
+# Creating a location on Blade 2 for my test:
+Blade 2: /mnt/iscsi/md3200i_4/dbickhart/SplitRead_test
+# Here is a suitable test fastq
+$ gunzip -c /mnt/iscsi/md3200i_4/schroeder/Project_WaterBuffalo/Sample_ITWB1/ITWB1_NoIndex_L001_R1_001.fastq.gz > test_itwb1_noindex_l001_r1_001.fq
+
+# Now to make the input files necessary for the program.
+# Here is what the "manual" page says:
+	./SplitReadAll_lite   <split_reference>                                 // The reference sequence for mapping of the split reads.
+	                   <whole_reference>                                    // The reference sequence for the mapping of the whole reads. It is usually the same as the previous one.
+	                 <The target definition>                                // The bed file for the regions to be captured. This is not necessary unless read depth is used.
+	                 <read_len>                                             // The read length for the whole reads.
+	                 <whole read edit_distance>                      	// Edit distance for the whole reads. 6% of the read length is recommended.
+	                 <split read edit_distance>                         	// Edit distance for the split reads. It is usually half of the whole read edit_distance.
+	                 <lower insert size>                                    // The lower limit for the span size. The read length is recommended.    
+	                <upper insert size>                        		// The upper limit for the span size. It is recommended as 500 but can be adjusted more accuratly for better results
+	                 <maximum size for discordant mappings>     		//The upper bound for detecting deletions. Recommended setting is 10000000.
+	                 <reference index of the fasta file for samtools>  	// The .fai file for the reference sequence.  
+	                <Input FASTQ>                         			//FASTQ file for the whole reads.    
+	                <Whole read mapping output = match>                     // The output filename for the mappings of the whole reads.
+	                 <Whole read unmapped reads = unmapped>                 // The unmapped whole reads
+	                 <Split read output prefix = output>                    // The prefix for the output files from the split mappings. 
+	
+# Its a mess. I might rewrite it to take arguments instead of simple argv input.
+# Another few things I noticed: 
+	# The "target definition file" is referenced in the splitreadall_lite.c source but is never passed to the linked programs.
+	# The "split_reference" file is used in the first Mrsfast instance. The "whole_reference" file is used in the second mrsfast instance (both can be the same)
+	# Mrsfast is used twice in their pipeline.
+	
+# So, I need to make a dummy blank text file to fill up the argument for the target definition file and then continue on with the pipeline
+	Blade 2: /mnt/iscsi/md3200i_4/dbickhart/SplitRead_test
+	$ touch blank.txt
+	
+	# Now to test it out
+	$ SplitReadAll_lite /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa blank.txt 100 6 3 100 500 10000000 /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa.fai test_itwb1_noindex_l001_r1_001.fq test_itwb1_l001_mapped.sam test_itwb1_l001_unmapped.sam test_itwb1_split
+	# Well, that was fast and ended in failure!
+	# I think that it might be the author's use of printf to perform the system command that is causing the issue
+	# I will try to use the "system" command to do it instead.
+	
+	$ SplitReadAll_lite /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa blank.txt 100 6 3 100 500 10000000 /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa.fai test_itwb1_noindex_l001_r1_001.fq test_itwb1_l001_mapped.sam test_itwb1_l001_unmapped.sam test_itwb1_split
+	
+	# this time it is running. I will have to keep an eye on the memory usage of each subprogram to make sure that I can use this on the lewis cluster.
+	# It took an incredibly long time to run the paired-end_match_sam.c subprogram! I found out why: the authors use an unconventional fastq format: interleaved reads from both pairs. 
+	# I will do a paired end mrsfast run on two good buffalo sequence files and then try to put the output into the paired-end_match_sam subprogram separately
+	$ gunzip -c ../../schroeder/Project_WaterBuffalo/Sample_ITWB1/ITWB1_NoIndex_L001_R2_001.fastq.gz > test_itwb1_noindex_l001_r2_001.fq
+	
+	# Actually, looking at the source code closer, it appears that the mrsfast command is completely borked. I will have to alter the code to make this work after all
+	$ mrsfast --search /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa --pe --seq1 test_itwb1_noindex_l001_r1_001.fq --seq2 test_itwb1_noindex_l001_r2_001.fq -e 6 -o test_itwb1_l001_mapped.sam -u test_itwb1_l001_unmapped.sam --min 200 --max 500
+	# Got a segmentation fault.
+	# going to try a lower amount of reads and if that fails, I will drop this method of analysis
+	$ perl -e '$c = 0; while($c < 800000){$s = <>; print $s; $c++;}' < test_itwb1_noindex_l001_r1_001.fq > short_itwb1_noindex_l001_r1_001.fq
+	$ perl -e '$c = 0; while($c < 800000){$s = <>; print $s; $c++;}' < test_itwb1_noindex_l001_r2_001.fq > short_itwb1_noindex_l001_r2_001.fq
+	
+	$ mrsfast --search /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa --pe --seq1 short_itwb1_noindex_l001_r1_001.fq --seq2 short_itwb1_noindex_l001_r2_001.fq -e 6 -o short_itwb1_l001_mapped.sam -u short_itwb1_l001_unmapped.sam --min 200 --max 500
+	# Note: memory usage here was 776 Megabytes, so a bit higher than I would like for the Lewis cluster
+	$ Paired-end_match_sam -i short_itwb1_l001_mapped.sam -o short_itwb1_match -l 200 -u 500 -m 10000000
+		500009
+		Input done.
+		nseq: 250005
+		# That took less than two seconds. Apparently the program was trying to find paired end information and was failing hard
+		
+	$ ~/bin/samtools view -bt /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa.fai short_itwb1_match > short_itwb1_match.bam
+	$ ~/bin/samtools sort short_itwb1_match.bam short_itwb1_match.sorted
+	
+	$ ~/bin/samtools view -bt /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa.fai short_itwb1_match.inv.evert.txt > short_itwb1_match.inv.evert.bam
+	$ ~/bin/samtools sort short_itwb1_match.inv.evert.bam short_itwb1_match.inv.evert.sorted
+	
+	$ ~/bin/samtools view -bt /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa.fai short_itwb1_match.transchr.txt > short_itwb1_match.transchr.bam
+	$ ~/bin/samtools sort short_itwb1_match.transchr.bam short_itwb1_match.transchr.sorted 
+	
+	$ awk '{print $1}' short_itwb1_match.single.txt | uniq > short_itwb1_match.oea.name
+	# Now I hit a snag: the fastqdeloea program requires the interleaved fastq file that was the input for the program in the first place. 
+	# Lets try to interleave it to see what it does.
+	
+	$ perl -e 'chomp(@ARGV); open(I1, "< $ARGV[0]"); open(I2, "< $ARGV[1]"); while($h1 = <I1>){$s1 = <I1>; $p1 = <I1>; $q1 = <I1>; $h2 = <I2>; $s2 = <I2>; $p2 = <I2>; $q2 = <I2>; print "$h1$s1$p1$q1$h2$s2$p2$q2";} close I1; close I2;' short_itwb1_noindex_l001_r1_001.fq short_itwb1_noindex_l001_r2_001.fq > combined_itwb1_short.fq
+	# Trying the full pipeline again
+	
+	$ SplitReadAll_lite /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa blank.txt 100 6 3 100 500 10000000 /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa.fai combined_itwb1_short.fq combined_itwb1_l001_mapped.sam combined_itwb1_l001_unmapped.sam combined_itwb1_split
+	# Note: memory usage here is sub 500 megs (since it is in single-end mode)
+	# found a bug on line 110: samtoolsexec was not printed into the format command
+	# Another bug on line 268: did not print samtools exec again
+	# The illumina headers (ie, @readname 1:N:0) are causing a problem with the fastqdeloea.c program that splits the reads
+	# I need to reformat the inteleaved fastq in order to remove this bias.
+	
+	$ perl -e 'chomp(@ARGV); open(I1, "< $ARGV[0]"); open(I2, "< $ARGV[1]"); while($h1 = <I1>){$s1 = <I1>; $p1 = <I1>; $q1 = <I1>; $h2 = <I2>; $s2 = <I2>; $p2 = <I2>; $q2 = <I2>; @head1 = split(/\s+/, $h1); @tab1 = split(/:/, $head1[1]); $h1 = "$head1[0]_$tab1[0]"; @head2  = split(/\s+/, $h2); @tab2 = split(/:/, $head2[1]); $h2 = "$head2[0]_$tab2[0]"; print "$h1\n$s1$p1$q1$h2\n$s2$p2$q2";} close I1; close I2;' short_itwb1_noindex_l001_r1_001.fq short_itwb1_noindex_l001_r2_001.fq > combined_itwb1_short.fq
+	# Running it again
+	$ SplitReadAll_lite /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa blank.txt 100 6 3 100 500 10000000 /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa.fai combined_itwb1_short.fq combined_itwb1_l001_mapped.sam combined_itwb1_l001_unmapped.sam combined_itwb1_split
+	# Checking the paired end output against a single-read run from mrsfast on the same file
+		$ mrsfast --search /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa --seq combined_itwb1_short.fq -o combined_itwb1_non_pipeline.sam
+		$ samtools view combined_itwb1_split.sorted.bam | wc -l
+			50440	<- supposedly the paired-end aligned sequences
+		$ wc -l combined_itwb1_non_pipeline.sam
+			48028 combined_itwb1_non_pipeline.sam <- the single end version of the pipeline
+		
+		# Going to sort it to see what's going on
+		$ samtools view -bt /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa.fai combined_itwb1_non_pipeline.sam > combined_itwb1_non_pipeline.bam
+		$ samtools sort combined_itwb1_non_pipeline.bam combined_itwb1_non_pipeline_sorted
+		
+		# Hmm... they're both very different...
+		# Ah, I forgot that I used an edit distance of 6 in the Split Read pipeline
+		$ mrsfast --search /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa --seq combined_itwb1_short.fq -e 6 -o combined_itwb1_non_pipeline.sam
+		
+		# Checking a paired end search to see the quality of the built-in paired end check module of Split read
+		$ mrsfast --search /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa --pe --seq1 short_itwb1_noindex_l001_r1_001.fq --seq2 short_itwb1_noindex_l001_r2_001.fq -e 6 -o short_pe_mrsfast_check.sam --min 200 --max 500
+# Testing my changes
+	# I have made some changes the the Paired-end_match_samd.c source code 
+	# The changes revolve around generating divet files for use in variation hunter at the same time as producing the regular output of the program
+	
+	$ gcc -O3 -o Paired-end_match_samd Paired-end_match_samd.c -static -lz -lm
+	$ ./Paired-end_match_samd -i combined_itwb1_non_pipeline.sam -o combined_itwb1_alt_test -l 100 -u 500 -m 10000000
+		500009
+		Input done.
+		nseq: 250005
+		Segmentation fault
+		
+	# OK, now to try to debug this mess... maybe try gdb? 
+	$ gcc -O3 -o Paired-end_match_samd -g Paired-end_match_samd.c -static -lz -lm
+	# oh god, there is no gdb installed on blade 2!
+	# migrating it all to server 3...
+	Server 3: /mnt/data110/dbickhart/split_read_test
+	$ gcc -O3 -o Paired-end_match_samd -g Paired-end_match_samd.c -static -lz -lm
+	$ gdb Paired-end_match_samd
+		(gdb) set args -i combined_itwb1_non_pipeline.sam -o combined_itwb1_alt_test -l 100 -u 500 -m 10000000
+		(gdb) run
+		(gdb) bt
+			#0  0x0000000000425d70 in strlen ()
+			#1  0x000000000043ea29 in vfprintf ()
+			#2  0x0000000000414d76 in fprintf ()
+			#3  0x0000000000401985 in divetOut (fwdname=<value optimized out>, revname=<value optimized out>,
+			    fwd=0x7b1aa0, rev=0x6c27a0, i=<value optimized out>, call=4) at Paired-end_match_samd.c:1128
+			#4  0x0000000000401b1b in matchout (fwdname=0x7fff1f887360 "HWI-ST644:73:81LV3ABXX:1:1101:5945:10980/1",
+			    revname=0x7fff1f887290 "HWI-ST644:73:81LV3ABXX:1:1101:5945:10980/2", fwd=0x7b1aa0, rev=0x6c27a0, i=4426,
+			    call=4, outmain=0x7f93640) at Paired-end_match_samd.c:886
+			#5  0x00000000004027ee in doCompare (seqcnt=<value optimized out>, output=0x7f93640, upper=500, lower=100,
+			    maxdist=10000000, mindist=35) at Paired-end_match_samd.c:718
+			#6  0x0000000000402e25 in main (argc=<value optimized out>, argv=<value optimized out>)
+    			at Paired-end_match_samd.c:250
+		(gdb) b 1128
+		(gdb) run
+		(gdb) print chr
+			No symbol "chr" in current context.
+		(gdb) print svtype
+			$8 = "delinv\000\000\005\000\000\000\000\000\000\000\020Ý\005\001"
+		(gdb) print ed_dist
+			No symbol "ed_dist" in current context.
+		(gdb) print avg_phred
+			No symbol "avg_phred" in current context.
+		(gdb) print prob_phred
+			No symbol "prob_phred" in current context.
+			
+	# This is giving me alot of trouble
+	# I am going to run it in netbeans instead
+	# I found out the problem, my printf statements for single chars have to be a %c not a %s 
+	# Such a stupid convention!
+	
+	# Now just debugging the output to see if I am generating data similar to what mrsfast --divet-vh would give me
+	$ ./Paired-end_match_samd -i combined_itwb1_non_pipeline.sam -o combined_itwb1_alt_test -l 100 -u 500 -m 10000000
+	$ mrsfast --search /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa --pe --seq1 short_itwb1_noindex_l001_r1_001.fq --seq2 short_itwb1_noindex_l001_r2_001.fq --discordant-vh -o vh_sam.sam --max 500 --min 100
+	
+	# Now to check the divet concordance
+	$ perl -e 'chomp(@ARGV); open(I1, "< $ARGV[0]"); while(<I1>){chomp; @s =split(/\t/); $r = shift(@s); $h{$r} = [@s];} close I1; open(I2, "< $ARGV[1]"); while(<I2>){chomp; @s = split(/\t/); $r = shift(@s); if(exists($h{$r})){print "$r:\n" . join("\t", @{$h{$r}}) . "\n" . join("\t", @s) . "\n";}else{$non++}} print "$non\n";' combined_itwb1_alt_test.divet.vh vh_sam.sam_DIVET.vh
+		...
+		HWI-ST644:73:81LV3ABXX:1:1101:11910:13334:
+		chrX    62188767        62188866        F       58365414        58365513        R       inversion       11      27.955000       0.00000000000000000184
+		chrX    62188767        62188866        F       chrX    58364382        58364481        R       E       11      28      0.00000000000000000184
+		HWI-ST644:73:81LV3ABXX:1:1101:11910:13334:
+		chrX    62188767        62188866        F       58365414        58365513        R       inversion       11      27.955000       0.00000000000000000184
+		chrX    62188767        62188866        F       chrX    58365414        58365513        R       E       11      28      0.00000000000000000184
+		HWI-ST644:73:81LV3ABXX:1:1101:11910:13334:
+		chrX    62188767        62188866        F       58365414        58365513        R       inversion       11      27.955000       0.00000000000000000184
+		chrX    62188767        62188866        F       chrX    58366424        58366523        R       E       11      28      0.00000000000000000184
+		HWI-ST644:73:81LV3ABXX:1:1101:11910:13334:
+		chrX    62188767        62188866        F       58365414        58365513        R       inversion       11      27.955000       0.00000000000000000184
+		chrX    62188767        62188866        F       chrX    58367404        58367503        R       E       11      28      0.00000000000000000184
+		non: 31
+		
+		# Very good concordance! I'm pleased!
+		# Now to check to see what I'm missing (the "non");
+	$ perl -e 'chomp(@ARGV); open(I1, "< $ARGV[0]"); while(<I1>){chomp; @s =split(/\t/); $r = shift(@s); $h{$r} = [@s];} close I1; open(I2, "< $ARGV[1]"); while(<I2>){chomp; @s = split(/\t/); $r = shift(@s); if(exists($h{$r})){}else{print "$r" . join("\t", @s) . "\n"; $non++}} print "$non\n";' combined_itwb1_alt_test.divet.vh vh_sam.sam_DIVET.vh
+		HWI-ST644:73:81LV3ABXX:1:1101:20763:3932chr11   35815539        35815638        R       chr11   18747860        18747959        R       V  12       36      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:10176:8658chr11   49707259        49707358        R       chr11   81906635        81906734        F       E  834      0.00000000000000000049
+		HWI-ST644:73:81LV3ABXX:1:1101:16144:6276chr13   91452   91551   R       chr13   17913684        17913783        F       E       6       38 0.00000000000000000299
+		HWI-ST644:73:81LV3ABXX:1:1101:19668:8110chr14   539946  540045  R       chr14   1114767 1114866 F       E       5       30      0.00000000000001422327
+		HWI-ST644:73:81LV3ABXX:1:1101:9005:2870chr15    20574217        20574316        F       chr15   49380187        49380286        R       D  835      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:19994:4421chr21   60773107        60773206        R       chr21   1463429 1463528 R       V       11      38 0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:19994:4421chr21   60773107        60773206        R       chr21   1948270 1948369 F       D       7       38 0.00000000000000000001
+		HWI-ST644:73:81LV3ABXX:1:1101:17352:7524chr21   60773169        60773268        F       chr21   1462734 1462833 F       V       10      39 0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:17352:7524chr21   60773169        60773268        F       chr21   1948962 1949061 R       E       8       39 0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:21100:9573chr21   60773176        60773275        F       chr21   1948798 1948897 R       E       9       37 0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:15219:8767chr2    54105594        54105693        R       chr2    136763550       136763649       F       E  11       36      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:15219:8767chr2    54105594        54105693        R       chr2    136795882       136795981       R       V  11       36      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:15219:8767chr2    54105594        54105693        R       chr2    136910223       136910322       F       E  12       36      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:15219:8767chr2    54593882        54593981        R       chr2    136763550       136763649       F       E  11       36      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:15219:8767chr2    54593882        54593981        R       chr2    136795882       136795981       R       V  11       36      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:15219:8767chr2    54593882        54593981        R       chr2    136910223       136910322       F       E  12       36      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:17147:5839chrX    37350553        37350652        R       chrX    14364357        14364456        F       D  733      0.00000000000000000003
+		HWI-ST644:73:81LV3ABXX:1:1101:17280:9854chrX    128133168       128133267       F       chrX    32597890        32597989        F       V  10       37      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:13128:12178chrX   18656705        18656804        R       chrX    128215703       128215802       F       E  837      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    10499754        10499853        F       chrX    94538503        94538602        R       D  11       30      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    10499754        10499853        F       chrX    94727708        94727807        F       V  10       30      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    10499754        10499853        F       chrX    95186286        95186385        F       V  930      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    10499754        10499853        F       chrX    95780976        95781075        R       D  11       30      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    10677631        10677730        F       chrX    94538503        94538602        R       D  11       30      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    10677631        10677730        F       chrX    94727708        94727807        F       V  10       30      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    10677631        10677730        F       chrX    95186286        95186385        F       V  930      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    10677631        10677730        F       chrX    95780976        95781075        R       D  11       30      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    78864573        78864672        R       chrX    94538503        94538602        R       V  10       30      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    78864573        78864672        R       chrX    94727708        94727807        F       E  930      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    78864573        78864672        R       chrX    95186286        95186385        F       E  830      0.00000000000000000000
+		HWI-ST644:73:81LV3ABXX:1:1101:8758:12403chrX    78864573        78864672        R       chrX    95780976        95781075        R       V  10       30      0.00000000000000000000
+		31
+		
+		# Ah, so these are outside of the 10Mb limit that I placed on the program. Not bad!
+		$ perl -lane 'if($F[12] >= 1){ print $_;}' < vh_sam.sam_DIVET.vh
+			HWI-ST644:73:81LV3ABXX:1:1101:8806:10159        chr4    85606369        85606468        F       chr4    85607348        85607447        R  D0       33      1.00000000000000000000
+			# mrsfast outputs an incorrect format that adds the "chr" designation to the second read
+			# variationHunter does not take this format
+		$ perl -lane 'if($F[11] >= 1){ print $_;}' < combined_itwb1_alt_test.divet.vh
+			HWI-ST644:73:81LV3ABXX:1:1101:8806:10159        chr4    85606369        85606468        F       85607348        85607447        R       deletion    0       33.000000       1.00000000000000000000

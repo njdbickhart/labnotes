@@ -1,0 +1,107 @@
+10/09/2014
+# these are my notes for selecting bac clones and preparing them for John's sequencing project
+
+# I am going to select RP42 Holstein BACs by using the coordinates of bac end sequences from NCBI and the Trace archive
+# First, the NCBI bac end sequences are from this query: GSS(in the dropbox)  AJ698510:AJ698674[pacc] 
+pwd: /home/dbickhart/share/umd3_data
+$ formatdb -i umd3_kary_unmask_ngap.fa -p F -o T
+
+# Now to do the alignment
+pwd: /home/dbickhart/share/side_projects/john_sequencing/bac_sequencing/RP42
+$ blastall -p blastn -d /home/dbickhart/share/umd3_data/umd3_kary_unmask_ngap.fa -i ncbi_bac_end.fasta -m 9 -o ncbi_bac_end_output.blast
+
+# That took too long. Plan #2, work with BWA mem
+# I also downloaded all RP42 SANGER trace reads by searching this query: GCC(in the dropbox) Bovine BAC End Sequences from Library RPCI-42 
+# This script turned each Sanger read into a pseudo fastq read
+$ perl process_fasta_to_fastq_bac_libraries.pl ncbi_genbank_full_bac_end.fasta
+$ bwa mem -t 2 /home/dbickhart/share/umd3_data/umd3_kary_unmask_ngap.fa ncbi_genbank_full_bac_end.fasta.fq > ncbi_genbank_full_bac_end.sam
+$ samtools view -bS ncbi_genbank_full_bac_end.sam | samtools sort - ncbi_genbank_full_bac_end_sorted
+$ samtools index ncbi_genbank_full_bac_end_sorted.bam
+
+$ samtools view ncbi_genbank_full_bac_end_sorted.bam chr18:56089121-58089121
+$ samtools view ncbi_genbank_full_bac_end_sorted.bam chr18:56089121-58089121 | perl -lane 'print "$F[0]";'
+	48h2342.r1
+	RP42-79G12	<-	
+	RP42-59D07	<-
+	RP42-79G12	<-
+	RP42-14J09
+	RP42-164L10	<-
+	RP42-59D07	<-
+	RP42-14D18	<-
+	RP42-164L10	<-
+	RP42-14D18	<-
+	RP42-164O21
+	RP42-3D15
+	RP42-3D15
+	
+	BAC	chr	start		end
+	79G12	chr18	56133889	56167261
+	59D07	chr18	56162986	56351588
+	164L10	chr18	56270552	56482581
+	14D18	chr18	56389162	56528901
+	164O21	chr18	56864136	???
+	3D15	chr18	57657380	57806510 	<- this is the closest one...
+	
+$ perl process_fasta_to_fastq_bac_libraries.pl ncbi_bac_end.fasta
+$ bwa mem -t 2 /home/dbickhart/share/umd3_data/umd3_kary_unmask_ngap.fa ncbi_bac_end.fasta.fq > ncbi_genbank_small_bac_end.sam
+$ samtools view -bS ncbi_genbank_small_bac_end.sam | samtools sort - ncbi_genbank_small_bac_end_sorted
+$ samtools index ncbi_genbank_small_bac_end_sorted.bam
+
+
+# Nothing! But there are more traces
+# I searched NCBI using the following query: GCC (in the dropbox) (RPCI-42) AND Bos taurus[Organism] 
+$ perl process_fasta_to_fastq_bac_libraries.pl ncbi_everything_gss_bac.fasta
+$ bwa mem -t 2 /home/dbickhart/share/umd3_data/umd3_kary_unmask_ngap.fa ncbi_everything_gss_bac.fasta.fq > ncbi_everything_genbank_bac_end.sam
+$ samtools view -bS ncbi_everything_genbank_bac_end.sam | samtools sort - ncbi_everything_genbank_bac_end_sorted
+$ samtools index ncbi_everything_genbank_bac_end_sorted.bam
+
+$ samtools view ncbi_everything_genbank_bac_end_sorted.bam chr18:57089121-58089121 |
+> perl -lane 'print "$F[0]";'
+	RPCI42_135O9.TV
+	RPCI42_151I4.TV
+	RPCI42_152K4.TJ
+	RPCI42_135O9.TJ
+	RPCI42_154M1.TJ		<-
+	RPCI42_128M4.TJ
+	RPCI42_154M1.TV		<-
+	RPCI42_118F24.TJ	<-
+	RPCI42_118B22.TJ	<-
+	RP42-3D15	<- so, before this one
+	RPCI42_127O19.TV
+	RPCI42_127O19.TJ
+	RPCI42_118B22.TV	<-
+	RPCI42_118F24.TV	<-
+	RPCI42_105H10.TV
+	RP42-3D15
+	RPCI42_148C7.TV
+	RPCI42_138K23.TJ
+	RPCI42_133E3.TV
+	RPCI42_148C7.TJ
+	RPCI42_143G24.TV
+	RPCI42_103O9.TJ
+	
+BAC Library	BAC	chr	start		end
+RPCI42		154M1	chr18	57371161	57531510
+RPCI42		118F24	chr18	57548063	57704285
+RPCI42		118B22	chr18	57548064	57704269
+RPCI42		3D15	chr18	57657380	57806510
+
+
+#################################
+#				#
+#	Testing BACs		#
+#				#
+#################################
+
+# Tim has sent me an assembled bac clone that appears to be in good shape
+# I will test it out with real sequence data and see if there are any discordant read pairings within it
+
+Bender: /seq1/side_projects/john_chr18
+$ perl -e '$h = <>; $s = <>; $h = ">BAC260L6"; chomp $s; $s =~ s/(.{60})/$1\n/g; print "$h\n$s\n";' < LIB10310_BARC_BAC260L6_largest_contig_edit2_polished_vector_removed.fastq > BAC260L6_largest_contig.fa
+
+# Now it's BWA mem time!
+$ bwa index BAC260L6_largest_contig.fa
+$ mrsfast --index BAC260L6_largest_contig.fa
+
+$ mkdir lewin_align_260L6
+$ perl ~/perl_toolchain/sequence_data_scripts/bwaFQFork.pl -r BAC260L6_largest_contig.fa -i ../../fastq_files/lewin_fq/lewin_just_fastqs.txt -o lewin_align_260L6 -n 5

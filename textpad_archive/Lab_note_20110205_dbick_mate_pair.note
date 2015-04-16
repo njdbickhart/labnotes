@@ -1,0 +1,69 @@
+2011_02_05
+
+# So, George wants me to try to map the mate-pairs for the paired end analysis. 
+# I need to figure out a way to do this in a fast, but accurate fashion
+# So, I believe that I should map the files into normal sam files, then calculate stats on them, and finally map them as normal mate pairs
+# I will use the mrsfast -pe settings and set it up so that only read pairs from 2000 to 5000 are mapped
+
+# Second stage will be the actual discordant-vh step where I create the discordant mapping files
+
+# Collecting the directory data for the mate-pair libraries
+	$ find ./*/*/B*M.*.*.*.*.*.gz > mate_pair_list.txt
+	# 46 total files, that makes 23 pairs
+	
+# It looks like mrsFAST can process gziped fastq files (--seqcomp)
+# Made a wrapper script and the output should be in breed_doc/mate_pair
+
+# Well, that didn't work for the following reason: I didn't reverse complement the sequence files!
+# I changed my script (rev_comp_matepair.pl) to use gunzip -c in order to keep the original fastqs from being unzipped. 
+$  perl rev_comp_matepair.pl --in mate_pair_list.txt
+
+# I redid the "find" command and piped it into mate_pair_list.txt
+# Trying it again...
+$ perl automate_mrsfast_wrapper.pl mate_pair_list.txt
+
+# Alright, even THAT failed; here are the sam files:
+	ls -l
+	total 47800
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-09 18:46 BIBR03M_21.sam
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-09 20:57 BIBR03M_22.sam
+	-rw-rw-r--+ 1 dbickhart mapping      752 2011-02-08 21:17 BINE02M_12.sam
+	-rw-rw-r--+ 1 dbickhart mapping     2259 2011-02-09 02:32 BINE02M_14.sam
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-08 12:38 BINE03M_9.sam
+	-rw-rw-r--+ 1 dbickhart mapping     1896 2011-02-08 16:15 BINE04M_10.sam
+	-rw-rw-r--+ 1 dbickhart mapping      757 2011-02-08 12:33 BINE05M_8.sam
+	-rw-rw-r--+ 1 dbickhart mapping     1138 2011-02-09 05:04 BINE06M_15.sam
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-08 08:38 BINE06M_7.sam
+	-rw-rw-r--+ 1 dbickhart mapping      753 2011-02-08 18:53 BINE07M_11.sam
+	-rw-rw-r--+ 1 dbickhart mapping     2633 2011-02-09 00:10 BINE08M_13.sam
+	-rw-rw-r--+ 1 dbickhart mapping 21033858 2011-02-07 18:27 BTAN01M_1.sam
+	-rw-rw-r--+ 1 dbickhart mapping      752 2011-02-07 15:42 BTAN02M_0.sam
+	-rw-rw-r--+ 1 dbickhart mapping      756 2011-02-08 05:24 BTAN02M_5.sam
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-08 00:18 BTAN03M_4.sam
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-07 21:06 BTAN06M_3.sam
+	-rw-rw-r--+ 1 dbickhart mapping     1505 2011-02-08 08:34 BTAN06M_6.sam
+	-rw-rw-r--+ 1 dbickhart mapping     2828 2011-02-07 20:59 BTAN07M_2.sam
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-09 11:13 BTHO02M_18.sam
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-09 13:35 BTHO02M_19.sam
+	-rw-rw-r--+ 1 dbickhart mapping        0 2011-02-09 16:18 BTHO06M_20.sam
+	-rw-rw-r--+ 1 dbickhart mapping 17956857 2011-02-09 11:05 BTLM01M_17.sam
+	-rw-rw-r--+ 1 dbickhart mapping  9744338 2011-02-09 08:17 BTLM03M_16.sam
+	
+# Only BTAN01M, BTLM01M and BTLM03M had any meaningful amount of "normal" mate paired reads.
+
+# Here's the problem: the mate-pair files were compromised: the end of the sequence reads were absolute junk!
+# When I reverse complemented them, the "B" tag was placed in the beginning of the read, making mrsfast throw it out
+	$ perl -ne '$h = <>; $s = <>; $p = <>; $q =<>; if($q =~ /^B.*/){ print "1\n";}' < BTAN02M.FC42PGC.1.1.15_rc.fq | wc
+		 677562  677562 1355124
+	$ perl -ne '$h = <>; $s = <>; $p = <>; $q =<>; if($q =~ /^B.*/){ print "1\n";}' < BTAN02M.FC42PGC.1.2.15_rc.fq | wc
+		1000789 1000789 2001578
+	# As I suspected, the "mate" file is even worse. So, this is just a case of crappy libraries or horrible runs. 
+	
+# Well, let's try to extract the data from these sam files anyways
+	$ for i in *.sam; do perl /mnt/gliu1_usb/dbickhart/breed_doc/angus/sam_avg_stdev.pl $i >> sam_read_stats.txt; done
+	# Data is in the file: sam_read_stats.txt
+	
+# I am going to start running mrsfast on the Angus and Limousin mate pairs
+	$ ../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --discordant-vh --seq1 ../angus/fastqs/BTAN01M.FC42PER.3.1.15_rc.fq --seq2 ../angus/fastqs/BTAN01M.FC42PER.3.2.15_rc.fq --min 1213 --max 6443 -o BTAN01M_disc.sam
+	$ ../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --discordant-vh --seq1 ../limousin/fastq/BTLM01M.FC42PEK.2.1.15_rc.fq --seq2 ../limousin/fastq/BTLM01M.FC42PEK.2.2.15_rc.fq --min 1629 --max 6928 -o BTLM01M_disc.sam
+	$ ../../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_noun_final.fa --pe --discordant-vh --seq1 ../limousin/fastq/BTLM03M.FC42PGC.2.1.15_rc.fq --seq2 ../limousin/fastq/BTLM03M.FC42PGC.2.2.15_rc.fq --min 645 --max 6208 -o BTLM03M_disc.sam

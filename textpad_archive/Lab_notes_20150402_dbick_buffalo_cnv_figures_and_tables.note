@@ -1,0 +1,133 @@
+04/02/2015
+# These are my notes on the generation of figures and tables for the buffalo CNV manuscript
+# I need to pick several highlights and publish them. I feel that the bitter taste receptor
+# Is a good first bet. I will scan for several others.
+
+Creating example images
+=======================
+
+# Let's start with one of the bitter taste receptor genes
+Blade14: /home/dbickhart/vnx_gliu_7/buffalo_project/indiv_buff_windows
+$ gunzip -c buffalo_annotation_cngenes_refgene.tab.gz | grep 'T2R65A'
+T2R65A  chr5    105932002       105932890                       0.000   0.000   0.000   0.000   0.000 0.000    0.000   0.000   0.000   0.000   0.000   0.000   0.000   0.000
+
+# OK, to confirm, let's pull a bam slice and take a look at the reads within the region
+Blade14: /home/dbickhart/vnx_gliu_7/buffalo_project/cow4_align/merged
+$ samtools view ITWB1.merged.sorted.bam chr5:105932002-105932890
+# Nothing
+$ samtools view ITWB2.merged.sorted.bam chr5:105932002-105932890
+$ samtools view ITWB3.merged.sorted.bam chr5:105932002-105932890
+$ samtools view ITWB4.merged.sorted.bam chr5:105932002-105932890
+HWI-ST644:73:81LV3ABXX:4:2208:12049:104223      99      chr5    105932320       40      64S19M17S     =105932320       19      GCTTGGAGCAGAATTCTTGGGTCACATGGTAACTCTGCTTTTAACTTTTTGCAGAACTACCTGACTTTTTCATGTGGCTGAAACATTTTACATTCCCATC   ;<@DD?ADDD>FHDBB@FH9C?:8CB@2CEHH<BEG>9CH@CFCA<B4BGBGCE8B@FGGGGHHIHGEG37;7C)776AB@@>;3@.>;;;>ADCD####   NM:i:0  MD:Z:19 AS:i:19 XS:i:0  RG:Z:ITWB4.38
+HWI-ST644:73:81LV3ABXX:4:2208:12049:104223      147     chr5    105932320       40      32S19M49S     =105932320       -19     CTCTGCTTTTAACTTTTTGCAGAACTACCTGACTTTTTCATGTGGCTGAAACATTTTACATTCACATCAGCAGAGTATATGGGAGTCCAGATTTCTCCAA   #####@CA>;;.'(7..==7>DG@=))@.@88GEG=FBDD9HF@<?B<?0*00*????1?:*1*4@C9234E<>HFEGCHDCFA+CBFHFF8DAB??1B?   NM:i:0  MD:Z:19 AS:i:19 XS:i:0  RG:Z:ITWB4.38
+
+# Interesting, so only one crappy alignment by about 19 bases
+# Let's pull the divet information here
+$ grep 'deletion' ITWB1.preprocess.D.divet | perl -lane 'if($F[1] eq "chr5" && $F[5] eq "chr5" && $F[2] > 105930002 && $F[3] < 105934890){print $_;}'
+6133631369585077956     chr5    105930022       105930122       R       chr5    105904221       105904321      F       deletion        0.0     38.835  0.999999        0
+$ grep 'deletion' ITWB2.preprocess.D.divet | perl -lane 'if($F[1] eq "chr5" && $F[5] eq "chr5" && $F[2] > 105930002 && $F[3] < 105934890){print $_;}'
+-8151034368849073794    chr5    105930022       105930122       R       chr5    105904244       105904344      F       deletion        0.0     38.0    0.999999        0
+8877342740376133713     chr5    105930022       105930122       R       chr5    105904397       105904497      R       deletion        0.0     37.025000000000006      0.4874405678424521      0
+$ grep 'deletion' ITWB3.preprocess.D.divet | perl -lane 'if($F[1] eq "chr5" && $F[5] eq "chr5" && $F[2] > 105930002 && $F[3] < 105934890){print $_;}'
+HWI-ST644:73:81LV3ABXX:3:1104:16998:188590      chr5    105930021       105930121       R       chr5  105904397        105904497       R       deletion        0.0     37.57   0.49995 0
+HWI-ST644:73:81LV3ABXX:3:1202:14135:170751      chr5    105930022       105930122       R       chr5  105904397        105904497       R       deletion        0.0     35.555  0.4900236884251556      0
+
+$ grep 'deletion' ITWB11.preprocess.D.divet | perl -lane 'if($F[1] eq "chr5" && $F[5] eq "chr5" && $F[2] > 105930002 && $F[3] < 105934890){print $_;}'
+-5734244511371957165    chr5    105930022       105930122       R       chr5    105904166       105904266      F       deletion        0.0     21.715  0.999999        0
+-7175325928890881824    chr5    105930022       105930122       R       chr5    105904036       105904136      F       deletion        0.0     24.685  0.999999        0
+-8176292279598608132    chr5    105930062       105930162       R       chr5    105904433       105904533      F       deletion        0.0     29.58   0.0     0
+9074425409878446324     chr5    105930022       105930122       R       chr5    105904212       105904312      F       deletion        0.0     25.185  0.999999        0
+
+# OK, so the T2R65A gene is a clearly defined deletion. Let's see if we can determine the mechanisms 
+# of the deletion by assembly
+
+# OK, we have plenty of "not primary alignment flags" set for reads overlapping: chr5:105931649
+# In ITWB11, it doesn't pick up again until: chr5: 105940295! 
+# Let's start with pulling those and trimming them based on quality score
+Blade14: /home/dbickhart/vnx_gliu_7/buffalo_project/cow4_align/merged
+$ samtools view ITWB11.merged.sorted.bam chr5:105930002-105940890 | perl -lane 'if($F[1] & 0x100 && $F[2] eq 'chr5' && $F[3] == 105931649){print "$F[0]";}' > split_reads.txt
+
+# Now to brute-force pull all of the assocated reads
+$ perl ~/perl_toolchain/sequence_data_scripts/pullReadsFromSam.pl -i ITWB11.merged.sorted.bam -r split_reads.txt -o ITWB11.T2R65A.split.sam
+
+# OK, now to extract the fq and start the assembly work
+$ perl -lane 'print "\@$F[0]\n$F[9]\n+\n$F[10]";' <  ITWB11.T2R65A.split.sam > ITWB11.T2R65A.untrimmed.fq
+$ perl ~/perl_toolchain/sequence_data_scripts/trimFastqToFasta.pl -i ITWB11.T2R65A.untrimmed.fq -s 33 -t 15 -o ITWB11.T2R65A.trimmed.fa
+
+# OK, that trimmed a healthy amount of bases. Let's see how many remain
+# Not allot, but there's some sequence in each read
+# Time to assemble
+
+$ ~/velvet_1.2.10/velveth T2R65A_assembly 21 -short ITWB11.T2R65A.trimmed.fa
+$ ~/velvet_1.2.10/velvetg T2R65A_assembly
+
+# Damn, 13 contigs. Well, that's what I get for using this crappy data!
+# Let's do non-redundant blasts against the non-redudant database!
+# The longest three contigs hit the ends of SINEs on different chromosomes
+# The SINE family was BOV-A
+
+# OK, let's try this with a progressively less strict filter
+$ perl ~/perl_toolchain/sequence_data_scripts/trimFastqToFasta.pl -i ITWB11.T2R65A.untrimmed.fq -s 33 -t 3 -o ITWB11.T2R65A.trimmed.permissive.fa
+
+$ ~/velvet_1.2.10/velveth T2R65A_perm_assembly 21 -short ITWB11.T2R65A.trimmed.permissive.fa
+$ ~/velvet_1.2.10/velvetg T2R65A_perm_assembly
+
+# Still 13 contigs! Damn!
+# OK, we're not going to filter at all now
+$ perl ~/perl_toolchain/sequence_data_scripts/trimFastqToFasta.pl -i ITWB11.T2R65A.untrimmed.fq -s 33 -t 0 -o ITWB11.T2R65A.untrimmed.fa
+
+$ ~/velvet_1.2.10/velveth T2R65A_untrimmed_assembly 21 -short ITWB11.T2R65A.untrimmed.fa
+$ ~/velvet_1.2.10/velvetg T2R65A_untrimmed_assembly
+
+# Much worse, 21 contigs
+# Let's see if any are larger
+# The largest contig still mapped to a flanking region of the Bov-A SINE on chr 3
+# From UCSC, there is a member of BovA at the 3' end of T2R65A. It looks like that SINE had
+# excised itself in buffalo!
+# Let's search for others
+
+$ gunzip -c buffalo_annotation_cngenes_refgene.tab.gz | perl -e '$h = <>; $thresh = 0.10; while(<>){chomp; @s = split(/\t/); $num = scalar(@s); $c = $num - 6; $sum = 0; foreach $b (6 .. $num){$sum += $s[$b];} $avg = $sum / $c; if($avg <= $thresh){print join("\t", @s); print "\n";}}' > ../cow4_align/merged/no_rd.refgene.tab
+
+# OK, I'm going to search for windows that have zero coverage across all samples
+
+$ perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/identifyUniformBEDRegionsOfNoCoverage.pl -i Sample_ITWB10/Sample_ITWB10.hits_template_file1_rmask.bed,Sample_ITWB11/Sample_ITWB11.hits_template_file1_rmask.bed,Sample_ITWB12/Sample_ITWB12.hits_template_file1_rmask.bed,Sample_ITWB13/Sample_ITWB13.hits_template_file1_rmask.bed,Sample_ITWB14/Sample_ITWB14.hits_template_file1_rmask.bed,Sample_ITWB15/Sample_ITWB15.hits_template_file1_rmask.bed,Sample_ITWB1/Sample_ITWB1.hits_template_file1_rmask.bed,Sample_ITWB2/Sample_ITWB2.hits_template_file1_rmask.bed,Sample_ITWB3/Sample_ITWB3.hits_template_file1_rmask.bed,Sample_ITWB4/Sample_ITWB4.hits_template_file1_rmask.bed,Sample_ITWB5/Sample_ITWB5.hits_template_file1_rmask.bed,Sample_ITWB6/Sample_ITWB6.hits_template_file1_rmask.bed,Sample_ITWB7/Sample_ITWB7.hits_template_file1_rmask.bed,Sample_ITWB8/Sample_ITWB8.hits_template_file1_rmask.bed -t 0 -o ITWB_nocov_windows.bed
+
+$ mergeBed -i ITWB_nocov_windows.bed
+chr11   54182856        54192186
+chr15   1496382 1540325	GRIA4 intron
+chr29   50386306        50395327	BM251313, BM251275 leukocyte mid-lactation EST
+chr8    58702993        58719745
+chrX    26911695        26962019
+chrX    46901068        46913722
+chrX    67211797        67233078	ARHGEF7 first exon
+
+# These are good starts!
+# Still, no real smoking gun
+
+# Let's check these with the pipeline I used to find T2R65A
+
+$ perl /home/dbickhart/perl_toolchain/sequence_data_scripts/pullSupportingDivetReads.pl -i ITWB10,ITWB10.preprocess.D.divet_ITWB11,ITWB11.preprocess.D.divet_ITWB12,ITWB12.preprocess.D.divet_ITWB13,ITWB13.preprocess.D.divet_ITWB14,ITWB14.preprocess.D.divet_ITWB15,ITWB15.preprocess.D.divet_ITWB1,ITWB1.preprocess.D.divet_ITWB2,ITWB2.preprocess.D.divet_ITWB3,ITWB3.preprocess.D.divet_ITWB4,ITWB4.preprocess.D.divet_ITWB6,ITWB6.preprocess.D.divet_ITWB7,ITWB7.preprocess.D.divet -b ITWB10,ITWB10.merged.sorted.bam_ITWB11,ITWB11.merged.sorted.bam_ITWB12,ITWB12.merged.sorted.bam_ITWB13,ITWB13.merged.sorted.bam_ITWB14,ITWB14.merged.sorted.bam_ITWB15,ITWB15.merged.sorted.bam_ITWB1,ITWB1.merged.sorted.bam_ITWB2,ITWB2.merged.sorted.bam_ITWB3,ITWB3.merged.sorted.bam_ITWB4,ITWB4.merged.sorted.bam_ITWB6,ITWB6.merged.sorted.bam_ITWB7,ITWB7.merged.sorted.bam -o chr11_nocov -c chr11 -s 54182856 -e 54192186
+
+# OK, so chr11 had issues because the BWA bam was NOT empty at these locations!
+# Mostly due to density of repeats in these regions
+# Still, let's see if I can salvage this:
+# Starting with chr15
+	$ samtools view ITWB11.merged.sorted.bam chr15:1496382-1508029 | less
+	$ samtools view ITWB11.merged.sorted.bam chr15:1517542-1531083 | less
+	
+	$ perl /home/dbickhart/perl_toolchain/sequence_data_scripts/pullSupportingDivetReads.pl -i ITWB10,ITWB10.preprocess.D.divet_ITWB11,ITWB11.preprocess.D.divet_ITWB12,ITWB12.preprocess.D.divet_ITWB13,ITWB13.preprocess.D.divet_ITWB14,ITWB14.preprocess.D.divet_ITWB15,ITWB15.preprocess.D.divet_ITWB1,ITWB1.preprocess.D.divet_ITWB2,ITWB2.preprocess.D.divet_ITWB3,ITWB3.preprocess.D.divet_ITWB4,ITWB4.preprocess.D.divet_ITWB6,ITWB6.preprocess.D.divet_ITWB7,ITWB7.preprocess.D.divet -b ITWB10,ITWB10.merged.sorted.bam_ITWB11,ITWB11.merged.sorted.bam_ITWB12,ITWB12.merged.sorted.bam_ITWB13,ITWB13.merged.sorted.bam_ITWB14,ITWB14.merged.sorted.bam_ITWB15,ITWB15.merged.sorted.bam_ITWB1,ITWB1.merged.sorted.bam_ITWB2,ITWB2.merged.sorted.bam_ITWB3,ITWB3.merged.sorted.bam_ITWB4,ITWB4.merged.sorted.bam_ITWB6,ITWB6.merged.sorted.bam_ITWB7,ITWB7.merged.sorted.bam -o chr15_149_150_nocov -c chr15 -s 1496382 -e 1508029
+	# most of the divet entries were chr translocations
+	$ perl -e '%h; while(<>){chomp; @s = split(/\t/); $h{$s[9]} +=1;} foreach $k (keys(%h)){print "$k\t$h{$k}\n";}' < chr15_149_150_nocov/ITWB11.selected.divet 
+		eversion        7
+		inversion       41
+		maxdist 10
+		transchr        193
+	# Let's get single read mappings from the divet to see where they go in terms of classification
+	$ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} += 1;} seek(IN, 0, 0); %t; while(<IN>){chomp; @s = split(/\t/); if($h{$s[0]} == 1){$t{$s[9]} += 1;}} close IN; foreach $k (keys(%t)){print "$k\t$t{$k}\n";}' chr15_149_150_nocov/ITWB11.selected.divet
+		maxdist 2
+		inversion       24
+		transchr        89
+		eversion        5
+	# This still fits the profile of a repeat moving into the region in Buffalo. 
+	# "Inversions" are unmapped reads that BWA mem couldn't place. I suspect that they are novel sequence or split reads
+	# This is likely a chromosome breakpoint

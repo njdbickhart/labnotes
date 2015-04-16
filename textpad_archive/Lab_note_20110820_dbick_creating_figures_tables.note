@@ -1,0 +1,556 @@
+08/20/2011
+# This file contains all of my command line prompts and notes on figure creation for the manuscript
+# George wants a powerpoint of the figures and tables before we proceed.
+# I need to make two separate files and send them to him
+
+______________________________
+Main text figures
+______________________________
+
+# Circos figure of CNVs.
+	# The good news is that I already created a circos plot of all the CNVs located in the autosomes
+	# It is located here: /media/sf_share/backup/circos-0.52/hd_animals_cnvs_plot.png
+	# I need to make the unique duplications stand out (perhaps green?)
+	# Here are sections from my notes (Lab_note_20110714_dbick_finalized_data.txt)
+	/*
+			# I like the second option, but let's try the first one
+				pwd: /home/derek/share/backup/circos-0.52/gr_manuscript_work
+				$ perl -lane 'print "$F[3]\t$F[4]\t$F[5]";' < cow4_refseq_bands.txt > cow4_refseq.bed
+				$ /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i cow4_refseq.bed -d 10000 | wc
+				   6905   20715  162909 <- a 10kb merger is a start, but I need to reduce the number of bands down to 1000 or fewer
+				$ /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i cow4_refseq.bed -d 100000 | wc
+				   3409   10227   80264 
+				$ /home/derek/share/BEDTools-Version-2.10.1/bin/mergeBed -i cow4_refseq.bed -d 500000 | wc
+				   1134    3402   26581 <- ok, that's the range I need, but it might not be too informative at this point! Going to try it anyways
+				
+				$ perl -lane '($cn) = $F[0] =~ /chr(.+)/; print "band bt$cn $F[0] $F[0] $F[1] $F[2] $F[0]";' < cow4_refseq_500k_merge.bed > cow4_refseq_500k_bands.txt
+				# Added these bands to the karyotype text file.
+			
+			# Silly stuff prevented me from generating the image in a rapid order
+				# If I use the "u" units, make sure that I have the "chromosomes_units" equal to 100000
+				# Also, make sure that config files do not have redundant <ideogram></ideogram> headers or else circos will ignore them.
+				
+			# Now it's time to make a circular diagram out of my cnvs
+				pwd: /home/derek/share/cow4_doc/hd_an_trace_art/
+				$ for i in *length_type.bed; do prefix=`echo $i | cut -d '_' -f1`; echo $prefix; perl -lane '($b) = $F[0] =~ m/chr(.+)/; $val; if($F[4] eq "gain"){ $val = 1;}elsif($F[4] eq "loss"){ $val = -1;} print "bt$b $F[1] $F[2] $val";' < $i > $prefix.circos.dat; done
+				
+	*/
+	# I just need to make a script to calculate the unique intervals and replot them. 
+	pwd: /media/sf_share/cow4_doc/hd_an_trace_art
+	# This folder already has the unique intervals and the named beds. All I have to do is reset the values for these in the circos plots to higher than "1"
+	# Created a script to do this. Unique gains are 2 and unique losses are -2.
+	$ perl bed_create_circos_respect_unique.pl
+	# Files are now here: /media/sf_share/cow4_doc/hd_an_trace_art/named_beds/*_highlight_circos.dat
+	
+	pwd: /media/sf_share/backup/circos-0.52
+	$ ./bin/circos -conf gr_manuscript_work/plot_all_cnvs_hd_an.conf
+
+# Top 25 Genes in figure form
+	# George suggested that we make this into a table instead; however, I will still create the figure form to show him
+	> library(lattice)
+	> setwd("/media/sf_share/cow4_doc/r_plots/")
+	> top_gene <- read.delim("top_variable_gene_list.txt", header = TRUE, sep = "\t")
+	> library(reshape2)
+	> crop_gene <- data.frame(gene = top_gene$gene.ID, BINE12 = top_gene$BINE12, BTAN02 = top_gene$BTAN02, BTAN09 = top_gene$BTAN09, BTAN10 = top_gene$BTAN10, BTHO11 = top_gene$BTHO11, DTTRACE = top_gene$DTTRACE)
+	> reformat_gene <- melt(crop_gene)
+	> two_gene <- reformat_gene[reformat_gene$gene == "MGC134093",]
+	> two_gene$gene <- rep(c("MGC134093_a", "MGC134093_b"))
+	> two_plot <- dotplot(gene ~ value, data = two_gene, groups = c("BINE12", "BTAN02", "BTAN09", "BTAN10", "BTHO11", "DTTRACE"), xlab = NULL, par.settings = list(superpose.symbol = list(pch = 21, fill = c("lightblue", "lightgreen", "red", "yellow", "purple", "orange"), cex = 1, col = "black", alpha = 0.65)))
+	> further_crop <- crop_gene[3:25,]
+	> melt_twofive <- melt(further_crop)
+	> mod_genes <- data.frame(lapply(further_crop$gene, as.character), stringsAsFactors=FALSE)
+	> mod_genes[,"X.BNBD10."] <- "BNBD10_a"
+	> mod_genes[,"X.BNBD10..1"] <- "BNBD10_b"
+	> melt_twofive <- melt(further_crop)
+	> melt_twofive$gene <- rep(mod_genes)
+	> full_stdev <- data.frame(top_gene$stdev)
+	> crop_stdev <- full_stdev[3:25,]
+	> melt_twofive$stdev <- rep(crop_stdev)
+	> melt_twofive <- melt_twofive[order(melt_twofive$stdev),]
+	> melt_twofive$gene <- ordered(melt_twofive$gene, levels = melt_twofive$gene)
+	> k <- simpleKey(c ("BINE12", "BTAN02", "BTAN09", "BTAN10", "BTHO11", "DTTRACE"))
+	> k$points$fill <- c("lightblue", "lightgreen", "red", "yellow", "purple", "orange")
+	> k$points$pch <- 21
+	> k$points$col <- "black"
+	> k$points$cex <- 1.6
+	> two_fiveplot <- dotplot(gene ~ value, data = melt_twofive, groups = variable, xlab = "Copy Number", key = k, par.settings = list(superpose.symbol = list(pch = 21, fill = c("lightblue", "lightgreen", "red", "yellow", "purple", "orange"), cex = 1, col = "black", alpha = 0.65)))
+	> dev.copy2pdf(file = "top25_key.pdf", useDingbats = FALSE)
+	> two_fiveplot <- dotplot(gene ~ value, data = melt_twofive, groups = variable, xlab = "Copy Number", par.settings = list(superpose.symbol = list(pch = 21, fill = c("lightblue", "lightgreen", "red", "yellow", "purple", "orange"), cex = 1, col = "black", alpha = 0.65)))
+	> print(two_plot, position=c(0, 0.80, 1,1), more = TRUE)
+	> print(two_fiveplot, position=c(0, 0, 1,0.88))
+	> dev.copy2pdf(file = "top25_sort_stdev.pdf", useDingbats = FALSE)
+	
+	# Now I just need to manipulate it in inkscape and I'm done
+	
+	
+# Parasight images
+	# I am just going to pick out a few of my rplots, change them around in Inkscape and merge them into a figure
+	# This will just be a demonstration to George, and then he can make the final plots in parasight
+
+# Heatmap images
+	# I already have some heatmap plots
+	# I can just make them look "pretty" in Inkscape and paste them into the powerpoint
+	
+# dacgh verification
+	# I would like to add another graph to this, but for the meantime, I will just include the  original r plot
+	# Something else for verification would be nice
+	
+	
+_____________________________________
+Supplementary Figures and tables
+_____________________________________
+
+# OK, lets make up an initial order for them first:
+	1. List of all CNVRs (merged across animals)
+	2. List of all gene intersections
+	3. Different animal dacgh whole genome correlation plots
+	4. Rplots of other genes not mentioned in the text
+	5. A heatmap plot
+	6. qPCR confirmed table
+	7. qPCR primer lists and locations
+	8. Panther table for each animal
+	
+	
+# List of all CNVRs
+	# This table will have the following headers:
+	# number, chr, start, end, length, type, count(# animals)
+	
+
+
+
+___________________________________
+Revising and editing figures and tables
+___________________________________
+
+# My first goal is to redo the array correlation with dacgh for dttrace by incorporating a reciprocal 40% overlap criteria
+	# I just changed the bedtools intersect bed line to include a -f 0.40 (40% overlap) and -r (reciprocal overlap)
+	# This should weed out the non-overlapping hits and only plot the values from each that would contribute to a CNVR
+	# On second thoughts, I also removed the merge section. If this gives me artifacts (really large interval discrepancies because of overlapping intervals) I can readd it later.
+	pwd: /mnt/data8/dbickhart/major_tables
+	$ perl calculate_cnv_length_table_comp.pl dttrace_all_chr_both_named.bed WGAC_WSSD_intersect_msort_filter.bed dttrace wgac_wssd
+	
+	> setwd("/home/derek/share/cow4_doc/r_plots/")
+	> cnv <- read.delim("cnv_length_comp_table.tab", header = TRUE, sep ="\t")
+	> attach(cnv)
+	> cor.test(dttrace, wgac_wssd)	
+		Pearson's product-moment correlation
+	
+		data:  dttrace and wgac_wssd 
+		t = 26.9333, df = 216, p-value < 2.2e-16
+		alternative hypothesis: true correlation is not equal to 0 
+		95 percent confidence interval:
+		 0.8432983 0.9051159 
+		sample estimates:
+		      cor 
+		0.8778124
+	> plot(dttrace, wgac_wssd)
+	> x <- c(0,1)
+	> y <- c(0,1)
+	> abline(x ~ y)
+	# Not a bad correlation, but the values are still skewed towards the NGS intervals being larger
+	# Going to change the order in which I intersect the files to see if it improves
+	
+	$ perl calculate_cnv_length_table_comp.pl WGAC_WSSD_intersect_msort_filter.bed dttrace_all_chr_both_named.bed wgac_wssd dttrace
+	> cnv <- read.delim("cnv_length_comp_table.tab", header = TRUE, sep ="\t")
+	> attach(cnv)
+	> cor.test(wgac_wssd, dttrace)
+		Pearson's product-moment correlation
+	
+		data:  wgac_wssd and dttrace 
+		t = 30.5347, df = 225, p-value < 2.2e-16
+		alternative hypothesis: true correlation is not equal to 0 
+		95 percent confidence interval:
+		 0.8688845 0.9202138 
+		sample estimates:
+		      cor 
+		0.8975486	
+	# Even better still
+	# The plot is still lopsided, however.
+	# Something is fishy... George's paper lists SD's that are half a mb in length, but the files I have only have intervals of 200kb size, max!
+	# Found his supplemental table S3 (/mnt/data110/gliu/mrfast/CommonFiles/cattleSD_web/Table_S3.xls) and used those coordinates instead
+	
+	$ perl calculate_cnv_length_table_comp.pl dttrace_all_chr_both_named.bed WGAC_WSSD_1020_no_chrun.txt dttrace wgac_wssd
+	> cor.test(wgac_wssd, dttrace)
+		Pearson's product-moment correlation
+	
+		data:  wgac_wssd and dttrace 
+		t = 30.5575, df = 210, p-value < 2.2e-16
+		alternative hypothesis: true correlation is not equal to 0 
+		95 percent confidence interval:
+		 0.8753753 0.9256011 
+		sample estimates:
+		      cor 
+		0.9035457
+	# That was it! 
+	> plot(dttrace, wgac_wssd, ylim = c(0, 700000), xlim = c(0, 700000))
+	> abline(a = 1, b = 1)
+	> mtext("R sqr = 0.904", side = 3)
+	> dev.copy2pdf(file = "improved_dttrace_wgac_wssd_comp.pdf", useDingbats = FALSE)
+	
+
+# Unique CNVs plots
+	# I need to get some good unique CNV intervals to plot and show in the main text
+	# I will take my unique CNV list and try to draw R figures for them
+	# Then I will take the good ones and try to fiddle around with Parasight.
+	$ cat /home/derek/share/cow4_doc/hd_an_trace_art/named_beds/*.unique.bed > hd_animals_unique_unnamed.bed
+	# Now I need to change the naming before I run them through the R pipeline.
+	$ perl -lane '@nam = split(/\_/, $F[3]); ($c) = $F[0] =~ /chr(.+)/; $s = $F[1] - 50000; if ($s < 0){ $s = 0;} $e = $F[2] + 50000; print "$F[0]\t$s\t$e\t$nam[0]\_$nam[1]\_$c\_$F[1]\_$F[2]";' < hd_animals_unique_unnamed.bed > hd_animals_unique_intervals_named.bed
+	
+	# There are approximately 473 unique beds, which would make my current iteration of the R pipeline take a long time to complete!
+	# I need to streamline the pipeline somehow.
+	# Maybe I can do the looping in R itself?
+	# This way, I don't have to load each dataset every iteration
+	$ perl -lane '($c) = $F[0] =~ /chr(.+)/; print "$c\t$F[1]\t$F[2]\t$F[3]";' < hd_animals_unique_intervals_named.bed > hd_animals_unique_r_format.bed
+	
+	# Created two scripts to automate the process:
+		# create_alkan_load_data_queue.R <- loads the data into objects
+		# create_alkan_plot_r_pipeline.R <- workhorse to subset and print out the data
+		
+	# R commands to run the files
+		> library(GenomeGraphs)
+		> source("create_alkan_load_data_queue.R")
+		> file <- read.delim("hd_animals_unique_r_format.bed", header= FALSE, sep = "\t")
+		> for(i in 1:nrow(file)){ c <- file[i, 1]; minBase <- file[i, 2]; maxBase <- file[i, 3]; output <- I(file[i, 4]); pdf(file = output, useDingbats = FALSE); source("create_alkan_plot_r_pipeline.R"); gdPlot(blist, minBase = minBase, maxBase = maxBase, labelCex = 0.5); dev.off(); }
+		# Significantly faster. Creates a new plot in about 15 - 20 seconds
+		
+# Determining copynumber of Array
+	# copied over the .CN files and array segment calls to a new folder on data8
+	pwd: /mnt/data8/dbickhart/major_tables/acgh_cn_calculation
+	$ perl create_copynumber_indiv_cnv_table.pl -i hacgh_files.list -c cn_1k_list.txt
+	# This should create an excel table that I can use to visualize the data
+	# oops! Forgot Dominette!
+	$ cat *_hacgh_all.bed > dttrace_hacgh_all.bed
+	$ echo dttrace_hacgh_all.bed >> hacgh_files.list
+	
+	# After some fiddling around, I finally got the script to produce a ratio of confirmed calls
+	$ perl create_copynumber_indiv_cnv_table.pl -i hacgh_files.list -c cn_1k_list.txt
+		Working on 1kb cn windows
+		Number of cnv files: 5
+		Working on BINE12
+		Working on BTAN02
+		Working on BTAN09
+		Working on BTAN10
+		Working on BTHO11
+		255 confirmed out of 295
+		
+	# 14 intervals had no available doc CN intervals, so that makes the ratio better!
+	# 255 / 281 = 90.7% 
+
+# Now I need to create the parasight images for figure # 2. 
+# This will give me enough to talk about in the text, so I can focus 100% on writing.
+	# So, It appears that I have all of the parasight files that I need here:
+		pwd: /mnt/data8/dbickhart/major_tables/parasight/
+	# I need to regenerate figure 1 according to George's preference
+		1. DTTRACE
+		2. CNVR
+		3. BINE12
+		4. BTAN02
+		5. BTAN09
+		6. BTAN10
+		7. BTHO11
+		
+	# I need to change the offset value of the "extra" files to suit this order
+		1. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t8\t4\t";}' < dttrace_cnv.extra > dttrace_full_reformat.extra
+		2. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t14\t4\t";}' < update_cnvr.extra > cnvr_full_reformat.extra
+		3. Proper offset
+		4. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t26\t4\t";}' < btan02_cnv.extra > btan02_full_reformat.extra
+		5. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t32\t4\t";}' < btan09_cnv.extra > btan09_full_reformat.extra
+		6. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t38\t4\t";}' < btan10_cnv.extra > btan10_full_reformat.extra
+		7. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t44\t4\t";}' < btho11_cnv.extra > btho11_full_reformat.extra
+		
+	# So, I need to reformat Yali's "command" file and run Parasight
+	# I need Xming active to view the X window first
+	$ ./parasight751.pl -showseq chr1:chr2:chr3:chr4:chr5:chr6:chr7:chr8:chr9:chr10:chr11:chr12:chr13:chr14:chr15:chr16:chr17:chr18:chr19:chr20:chr21:chr22:chr23:chr24:chr25:chr26:chr27:chr28:chr29:chrX -extra gap5k.extra:1867_ge_5k_SD.extra:dttrace_full_reformat.extra:cnvr_full_reformat.extra:bine12_cnv.extra:btan02_full_reformat.extra:btan09_full_reformat.extra:btan10_full_reformat.extra:btho11_full_reformat.extra -align intra.xw.al_01 -template globalview10k.pst -option '-alignment_wrap=>100,-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>180000000,-graph_scale_height=>200,-pair_intra_on=>0,-seq_label_offset_h=>-35, -seq_line_spacing_btwn=>55, -printer_page_length=>20i,-seq_tick_b_length=>2,-seq_tick_b_width=>1' -precode '&print_all (0, "full_dataset_all_breed_reformat")' -die
+	# Leave off the ' -precode '&print_all (0, "full_dataset_all_breed_reformat")' -die '  section if you want to view the image in the X window
+	
+	# Now, I want to try to make a full genome view without two of the angus animals (to increase the width and offset of each breed)
+		1. DTTRACE
+		2. CNVR
+		3. BINE12
+		4. BTAN09
+		5. BTHO11
+		
+		# Previously, the pixel space occupied by the previous plots was 6 x 7 = 49
+		# Now, the pixel space will be 10 x 5 = 50
+		1. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t10\t8\t";}' < dttrace_cnv.extra > dttrace_condensed_format.extra
+		2. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t20\t8\t";}' < update_cnvr.extra > cnvr_condensed_format.extra
+		3. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t30\t8\t";}' < bine12_cnv.extra > bine12_condensed_format.extra
+		4. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t40\t8\t";}' < btan09_cnv.extra > btan09_condensed_format.extra
+		5. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t50\t8\t";}' < btho11_cnv.extra > btho11_condensed_format.extra
+		
+	$ ./parasight751.pl -showseq chr1:chr2:chr3:chr4:chr5:chr6:chr7:chr8:chr9:chr10:chr11:chr12:chr13:chr14:chr15:chr16:chr17:chr18:chr19:chr20:chr21:chr22:chr23:chr24:chr25:chr26:chr27:chr28:chr29:chrX -extra gap5k.extra:1867_ge_5k_SD.extra:dttrace_condensed_format.extra:cnvr_condensed_format.extra:bine12_condensed_format.extra:btan09_condensed_format.extra:btho11_condensed_format.extra -align intra.xw.al_01 -template globalview10k.pst -option '-alignment_wrap=>100,-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>180000000,-graph_scale_height=>200,-pair_intra_on=>0,-seq_label_offset_h=>-35, -seq_line_spacing_btwn=>60, -printer_page_length=>20i,-seq_tick_b_length=>2,-seq_tick_b_width=>1' -precode '&print_all (0, "condensed_dataset_all_breed_reformat")' -die
+	
+	
+	# Now to make the individual genes
+		# This will be painful as I have to edit the files manually to calculate the draw offset
+		pwd: /home/derek/share/cow4_doc/hd_an_trace_art/raw_files
+		# AOX1 <- in the folder as well
+			# For this plot, I'm going to take the RD values, dacgh and farray values along with the SD values from the whole genome table
+			# I copied the 1867_ge_5k_SD.extra file over from server 3. I will try to plot it above the chromosome.
+			$ cp ../1867_ge_5k_SD.extra ./
+			# Plotting the following:
+				# These values were calculated from the previous program's additions and offsets
+				# The goal was to make the offset for each one sequentially, 20 more than the previous.
+				# file			offset		width
+				1. 1867_gaps   		 -5		8
+				2. gaps			as is
+				3. AOX1_BINE12_RD	as is		as is
+				4. AOX1_DTTRACE_RD	as is		as is
+				5. AOX1_BINE12_dacgh	subtract 260	as is
+				6. AOX1_BINE12_farray	subtract 560	as is
+				
+			# Let's try this
+				1. perl -lane 'if($F[0] =~ /seqName/){print $_;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t-5\t8\t$F[6]";}' < 1867_ge_5k_SD.extra > above_chr_sd.extra
+				2. as is
+				3. perl -ne '@F = split(/\t/); if($F[1] =~ /start/){print "seqName\tbegin\tend\tcolor\toffset\width\ttype";}else{ print $_;}' < AOX1_BINE12_RD_values.bed > AOX1_BINE12_RD.extra
+				4. perl -ne '@F = split(/\t/); if($F[1] =~ /start/){print "seqName\tbegin\tend\tcolor\toffset\width\ttype";}else{ print $_;}' < AOX1_DTTRACE_RD_values.bed > AOX1_DTTRACE_RD.extra
+				5. perl -ne '@F = split(/\t/); if($F[1] =~ /start/){print "seqName\tbegin\tend\tcolor\toffset\width\ttype\n";}else{ $o = $F[4] - 260; print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$o\t$F[5]\t\n";}' < AOX1_BINE12_dacgh_values.bed > AOX1_BINE12_dacgh.extra
+				6. perl -ne '@F = split(/\t/); if($F[1] =~ /start/){print "seqName\tbegin\tend\tcolor\toffset\width\ttype\n";}else{ $o = $F[4] - 260; print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$o\t$F[5]\t\n";}' < AOX1_BINE12_farray_values.bed > AOX1_BINE12_farray.extra
+		
+		# Now to plot it in parasight
+		#	chr2	93150000	93750304	AOX1
+		# The showseq option requires the chromosome name, length of chromosome, start, end positions
+			chr1	161106243  
+			chr2	140800416  
+			chr3	127923604  
+			chr5	125847759  
+			chr4	124454208  
+			chr6	122561022  
+			chr8	116942821  
+			chr7	112078216  
+			chr11	110171769  
+			chr9	108145351  
+			chr10	106383598  
+			chrX	88516663  
+			chr12	85358539  
+			chr15	84633453  
+			chr13	84419198  
+			chr14	81345643  
+			chr16	77906053  
+			chr17	76506943  
+			chr20	75796353  
+			chr21	69173390  
+			chr18	66141439  
+			chr19	65312493  
+			chr24	65020233  
+			chr22	61848140  
+			chr23	53376148  
+			chr29	51998940  
+			chr26	51750746  
+			chr27	48749334  
+			chr28	46084206  
+			chr25	44060403
+		
+		$ ./parasight751.pl -showseq chr2,140800416,93150000,93750304: -extra gap5k.extra:above_chr_sd.extra:AOX1_BINE12_RD.extra:AOX1_DTTRACE_RD.extra:AOX1_BINE12_dacgh.extra:AOX1_BINE12_farray.extra -align intra.xw.al_01 -template globalview10k.pst -option '-alignment_wrap=>100,-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>180000000,-graph_scale_height=>200,-pair_intra_on=>0,-seq_label_offset_h=>-35, -seq_line_spacing_btwn=>60, -printer_page_length=>20i,-seq_tick_b_length=>2,-seq_tick_b_width=>1'
+		# That failed miserably. I really hate parasight.
+		
+		# New strategy: I'm going to remake my raw file generation script to generate the raw files with proper headers, then plot the whole thing and manipulate it in Inkscape
+		$ perl generate_raw_files_from_bed.pl -b priority_genes_extended.bed
+		# Transferred the entire folder over to the S:/drive
+		# George "cat"ed the whole folder and plotted it. I'm going to try the same.
+		$ cat *.bed > ../AOX1_all_files.extra
+		$ ./parasight751.pl -showseq chr2,140800416,93435668,93501087: -extra AOX1_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>500000'
+		
+		# ULBP17
+		$ cat *.bed > ../ULBP17_all_files.extra
+		$ ./parasight751.pl -showseq chr9,108145351,90051002,90782846: -extra ULBP17_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		# Now to shorten it for processing
+		# 90209622  90499803
+		$ ./parasight751.pl -showseq chr9,108145351,90209622,90499803: -extra ULBP17_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		
+		# FABP2
+		$ cat *.bed > ../FABP2_all_files.extra
+		$ ./parasight751.pl -showseq chr6,122561022,6457241,7130000: -extra FABP2_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		# 6701747	6947111
+		$ ./parasight751.pl -showseq chr6,122561022,6701747,6947111: -extra FABP2_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		$ ./parasight751.pl -showseq chr6,122561022,6701747,6888288: -extra FABP2_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		
+		# BSP30A
+		$ cat *.bed > ../BSP30A_all_files.extra
+		$ ./parasight751.pl -showseq chr13,84419198,63160000,63669818: -extra BSP30A_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		# 63364661	63487495
+		$ ./parasight751.pl -showseq chr13,84419198,63364661,63487495: -extra BSP30A_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		
+		# APOL3
+		$ cat *.bed > ../APOL3_all_files.extra            
+		$ ./parasight751.pl -showseq chr5,125847759,79979819,80656885: -extra APOL3_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		# 82152459	82311109
+		$ ./parasight751.pl -showseq chr5,125847759,80152459,80311109: -extra APOL3_all_files.extra:gap5k.extra:above_chr_sd.extra -align intra.xw.al_01 -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+
+# CATHL4 locus quick check
+	pwd: /home/derek/share/cow4_doc/r_plots/
+	> c <- 22
+	> minBase <- 52745014
+	> maxBase <- 52882413
+	> dir()
+	> source("create_alkan_plot_cn.R")
+	> gdPlot(blist, labelCex = 0.5)
+	> dev.copy2pdf(file = "cathl4_locus_quick.pdf", useDingbats = FALSE)
+
+# APOL3 quick plot
+	pwd: /home/derek/share/cow4_doc/r_plots/
+	> library(GenomeGraphs)
+	> c <- 5
+	> minBase <- 80152459
+	> maxBase <- 80311109
+	> source("create_alkan_plot_cn.R")
+	> gdPlot(blist, labelCex = 0.5)
+	> dev.copy2pdf(file = "APOL3_supp_pdf_image.pdf", useDingbats = FALSE)
+	
+# AOX1 quick plot
+	> c <- 2
+	> minBase <- 93150000
+	> maxBase <- 93750304
+	> source("create_alkan_plot_cn.R")
+	> minBase <- 93350000
+	> maxBase <- 93470000
+	> source("create_alkan_plot_cn.R")
+	> gdPlot(blist, labelCex = 0.5)
+	> dev.copy2pdf(file= "AOX1_supp_pdf_image.pdf", useDingbats = FALSE)
+	
+# Reformating the DTTRACE WGAC + WSSD confirmation plot
+	> setwd("share/cow4_doc/r_plots/")
+	> cnv <- read.delim("cnv_length_comp_table.tab", header = TRUE, sep ="\t")
+	> attach(cnv)
+	> plot(dttrace, wgac_wssd, ylim = c(0,700000), xlim = c(0, 700000), xlab = "DTTRACE interval lengths", ylab = "WGAC+ WSSD+ interval lengths", xaxt = "n", yaxt = "n")
+	> xpos <- seq(0, 700000, by = 100000)
+	> axis(1, at=xpos, labels = sprintf("%d kb", xpos/1000))
+	> axis(2, at=xpos, labels = sprintf("%d kb", xpos/1000))
+	> mtext("R sqr = 0.904", side = 3)
+	> abline(a = 1, b = 1)
+	> dev.copy2pdf(file = "publication_dttrace_wgac_confirmation.pdf", useDingbats = FALSE)
+	
+# Reformating the BTAN2(BTAN09) confirmation plot
+	> setwd("d_acgh_comp/")
+	> whole <- read.delim("ngs_vs_whole_angus_data_filt.tab", header = TRUE, sep = "\t")
+	> attach(whole)
+	> plot(btan09_ngs, btan09_whole, xlab = "BTAN2 Digital aCGH ratios", ylab = "BTAN2 whole genome aCGH ratios")
+	> mtext("R sqr = 0.524", side = 3)
+	> abline(lm(btan09_whole ~ btan09_ngs))
+	> dev.copy2pdf(file = "publication_btan09_confirmation.pdf", useDingbats = FALSE)
+	
+# Replacing R^2 with r:
+	> setwd("share/cow4_doc/r_plots/")
+	> cnv <- read.delim("cnv_length_comp_table.tab", header = TRUE, sep ="\t")
+	attach(cnv)
+	cor.test(wgac_wssd, dttrace)
+	xpos <- seq(0, 700000, by = 100000)
+	plot(dttrace, wgac_wssd, ylim = c(0,700000), xlim = c(0, 700000), xlab = "DTTRACE interval lengths", ylab = "WGAC+ WSSD+ interval lengths", xaxt = "n", yaxt = "n")
+	axis(1, at=xpos, labels = sprintf("%d kb", xpos/1000))
+	axis(2, at=xpos, labels = sprintf("%d kb", xpos/1000))
+	mtext("r = 0.951", side = 3)
+	abline(a = 1, b = 1)
+	dev.copy2pdf(file = "pub_corr_dttrace_wgac_confirmation.pdf", useDingbats = FALSE)
+	
+	> setwd("d_acgh_comp/")
+	> whole <- read.delim("ngs_vs_whole_angus_data_filt.tab", header = TRUE, sep = "\t")
+	> attach(whole)
+	> plot(btan09_ngs, btan09_whole, xlab = "BTAN2 Digital aCGH ratios", ylab = "BTAN2 whole genome aCGH ratios")
+	mtext("r = 0.724", side = 3)
+	abline(lm(btan09_whole ~ btan09_ngs))
+	dev.copy2pdf(file = "pub_corr_btan09_confirmation.pdf", useDingbats = FALSE)
+	
+	whole <- read.delim("ngs_vs_whole_angus_data_filt.tab", header = TRUE, sep = "\t")
+	> attach(whole)
+	plot(btan02_ngs, btan02_whole, xlab = "BTAN1 Digital aCGH ratios", ylab = "BTAN1 whole genome aCGH ratios")
+	cor.test(btan02_ngs, btan02_whole)
+	> mtext("r = 0.434", side = 3)
+	> abline(lm(btan02_whole ~ btan02_ngs))
+	> dev.copy2pdf(file = "pub_corr_btan02_conf.pdf", useDingbats = FALSE)
+	
+	> whole <- read.delim("ngs_vs_whole_array_data_filt.tab", header = TRUE, sep = "\t")
+	> attach(whole)
+	> plot(btho11_ngs, btho11_whole, xlab = "BTHO Digital aCGH ratios", ylab = "BTHO whole genome aCGH ratios")
+	> cor.test(btho11_ngs, btho11_whole)
+	> mtext("r = 0.429", side = 3)
+	> abline(lm(btho11_whole ~ btho11_ngs))
+	> dev.copy2pdf(file = "pub_corr_btho_conf.pdf", useDingbats = FALSE)
+	
+	> plot(bine12_ngs, bine12_whole, xlab = "BINE Digital aCGH ratios", ylab = "BINE whole genome aCGH ratios")
+	> cor.test(bine12_ngs, bine12_whole)
+	> mtext("r = 0.264", side = 3)
+	> abline(lm(bine12_whole ~ bine12_ngs))
+	> dev.copy2pdf(file = "pub_corr_bine_conf.pdf", useDingbats = FALSE)
+	
+	
+_____________________________
+SD Overlap
+_____________________________
+
+# George would like me to use one of his former student's scripts to generate 1000 simulations to see if the SD regions overlap
+# I am going to try to run this on server 3
+	pwd: /mnt/data8/dbickhart/major_tables
+	$ cat *all_chr.bed dttrace_all_chr_both_named.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin > all_animals_dttrace_cnvr.bed
+	$ perl cnv_sd_correlation.pl -c all_animals_dttrace_cnvr.bed -s WGAC_WSSD_1020_no_chrun.txt  -r 1000 -i 100000 -l 5000000 -o sd_cnv_nochrun_correlation_SD.stats
+	
+	# Well, that's annoying... he apparently used files with headers and the chromosomes as numbers (rather than as "chrnum" style)
+	$ echo -e "chr\tstart\tend" > corr_style_all_animals_cnvr.bed
+	$ perl -lane '($c) = $F[0] =~ /chr(.+)/; print "$c\t$F[1]\t$F[2]\tC";' < all_animals_dttrace_cnvr.bed >> corr_style_all_animals_cnvr.bed
+	
+	$ echo -e "chr\tstart\tend" > g_wgac_wssd_correlation_style.bed
+	$ perl -lane '($c) = $F[0] =~ /chr(.+)/; print "$c\t$F[1]\t$F[2]\tS";' < WGAC_WSSD_1020_no_chrun.txt >> g_wgac_wssd_correlation_style.bed
+	
+	# Trying it again
+	$ perl cnv_sd_correlation.pl -c corr_style_all_animals_cnvr.bed -s g_wgac_wssd_correlation_style.bed  -r 1000 -i 100000 -l 5000000 -o sd_cnv_nochrun_correlation_SD.stats
+	
+	# OK, so I figured out the output file format that he used:
+		- Column # 1 is the overlap between SD and CNV from the files initially input
+		- Columns 2 to n are the random simulations and their overlap count with the SD
+		- Each row is an increment in the CNV length based on the -i value. So, its basically a "slop" value to see if increasing lengths correspond to increased SD overlap
+	# I am unsure which statistical test to use here, so I will generate an R plot for George and ask him about it
+	# From the initial table, it looks good, but I'm unsure of the statistical power.
+	
+	# In R
+	> setwd("/media/sf_share/cow4_doc/r_plots/")
+	> x <- read.delim("sd_cnv_average_nochrun_correlation.txt", header = FALSE, sep = "\t")
+	> plot(x[,1], type = "o", ylim = c(0, 1100), ylab = "Overlap count", xlab = "SD margin size (100kb extensions)", col = "blue", pch=20)
+	> lines(x[,2], type = "o", pch=20, lty = 2, col = "red")
+	> legend(1, max(x[,1]), c("observed cnvs", "random cnvs"), cex = 0.8, col = c("blue", "red"), pch=20, lty=1:2)
+	> dev.copy2pdf(file = "total_cnv_sd_correlation.pdf", useDingbats = FALSE)
+	
+	# Testing the genes
+	$ echo -e "chr\tstart\tend" > gene_overlap_cnvs.txt
+	$ perl -lane '($c) = $F[0] =~ /chr(.+)/; $F[2] =~ s/\r//g; print "$c\t$F[1]\t$F[2]\tC";' < hd_animal_gene_overlaps.bed >> gene_overlap_cnvs.txt
+	$ perl cnv_sd_correlation.pl -c hd_animal_gene_overlaps.bed -s g_wgac_wssd_correlation_style.bed  -r 1000 -i 100000 -l 5000000 -o sd_gene_correlation_SD.stats
+	
+	# Trying to plot the percentages
+	
+	> plot(real, type = "o", yaxt = "n", ylab = "Overlap percentage", ylim = c(0, 1), xlab = "SD margin size (100 kb extensions)", col = "blue", pch = 20)
+	> axis(2, at=yval, labels = sprintf("%d", yval * 100))
+	> lines(sim, type = "o", pch = 20, col = "red")> legend(1, max(real), c("observed CNVs", "random simulated CNVs"), cex = 0.8, col = c("blue", "red"), pch = 20, lty = 1)
+	> x <- read.delim("sd_cnv_average_nochrun_correlation.txt", header = FALSE, sep ="\t")
+	> real <- x[,1] / 1265
+	> sim <- x[,2] / 1000
+	> dev.copy2pdf(file = "sd_cnv_correlation_percentage_plot.pdf", useDingbats = FALSE)
+	
+	
+	# Creating Yali's snp correlation data in R
+	ls()
+	data <- read.delim(file = 
+	real <- data[,1]
+	savg<-rowMeans(data[,2:1000])
+	apply(data[,2:1000], 1,sd)
+	sstdev<-apply(data[,2:1000],1,sd)
+	library(plotrix)
+	plot(real, type = "o", ylab = "Overlap with SD intervals", ylim = c(0, 2035), xlab = "SD margin size (100 kb extensions)", col = "blue", pch = 20)
+	plotCI(x = c(1:51), y=savg, 2*sstdev, add=TRUE, col = "red", pch = 20)
+	dev.copy2pdf(file = "hd_sd_snp_comp.pdf", useDingbats = FALSE)
+____________________________
+Estimating percentage of library PE
+____________________________
+	
+	# Nelore PE	1161763453 
+	# Nelore SE	33208047
+	# Blackstar PE	20828050
+	# Blackstar SE	84118944
+	
+	# Total PE: 1182591503
+	# Total reads: 
+	
+	george_wssd_autosome.wssd 	31447740
+	dttrace_autosome.wssd  		30775639
+	merged				21079982
+	dttrace minus george		7009086
+	george minus dttrace		8959678
+	total merged area		37048746
+	merged divided by total 	56.9% 

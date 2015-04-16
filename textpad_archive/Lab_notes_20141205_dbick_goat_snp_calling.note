@@ -1,0 +1,175 @@
+12/05/2014
+# these are my notes on the goat project
+
+
+# I am going to try to reassign the snp probe locations from the BGI assembly coords to the new assembly
+# Then I am going to try to find the snp probes that are on the same contig/chromosome on both assemblies and estimate the differences
+pwd: /home/dbickhart/share/goat_assembly_paper
+	$ bwa index working.koren.goat.assembly.fasta
+	$ cd snp_probes/
+	$ perl compareSNPprobeLocsByDist.pl -t capri4dbsnp-base-CHI-OAR-UMD.csv -r ../working.koren.goat.assembly.fasta -c 10 -p 11 -s 1 -n 0 -o koren.goat.locs.tab
+	$ perl identifyAnomalousSNPs.pl -t koren.goat.locs.tab -o initial_test_problems
+	$ wc -l initial_test_problems.*   
+		8 initial_test_problems.diffnewchr
+	  	16 initial_test_problems.toolarge
+  		24 total
+  
+  	# OK, not so much, but I'm getting alot of probes that did not map to Sergey's assembly
+  	$ cat koren.goat.locs.tab | grep '*' | wc -l
+		800
+	
+	# Hmm... let me try a more refined approach to figure this out
+	$ cat koren.goat.locs.tab | grep '*' | perl -lane '$F[1] =~ m/(^.+)\[.+\](.+$)/; $q = "I" x length($1); print "\@$F[0].1\n$1\n+\n$q\n\@$F[0].2\n$2\n+\n$q";' > test_unmapped.fq
+	$ bwa mem ../working.koren.goat.assembly.fasta test_unmapped.fq > test_unmapped.sam
+	# Still no mappings.
+	
+	# I wonder if that other fasta included in the assembly has these probe locations?
+	$ cd ..
+	$ mv asm.deg.fasta deg.koren.goat.assembly.fasta
+	$ bwa index deg.koren.goat.assembly.fasta
+	$ samtools faidx working.koren.goat.assembly.fasta; echo "done with one"; samtools faidx deg.koren.goat.assembly.fasta
+	
+	# I am indexing the fastas just to see what's really going on in there.
+	# The "deg" fasta has about 300 megabases in it
+	$ cd snp_probes/
+	$ bwa mem ../deg.koren.goat.assembly.fasta test_unmapped.fq > test_unmapped.deg.sam
+	# OK, some map but others still don't. Going to make it into a bam and check the unmapped reads
+	$ samtools view -bS test_unmapped.deg.sam | samtools sort - test_unmapped.deg.sorted
+	
+	$ samtools index test_unmapped.deg.sorted.bam
+	# 421 did not map at all, but since each read counts twice, this means that about 210 probes were not on the larger fasta
+	$ samtools idxstats test_unmapped.deg.sorted.bam | perl -lane 'if($F[2]){print $_;}' | wc -l
+		591
+	
+	# Hmm... so far, I think that there is only one or two probes that are not on the BGI assembly
+	$ samtools view -bS test_unmapped.sam | samtools sort - test_unmapped.sorted
+	$ samtools index test_unmapped.sorted.bam
+	$ samtools idxstats test_unmapped.sorted.bam
+	# No mappings at all there
+	
+	
+	# OK, let's check the BGI mappings by comparison
+	$ cat capri4dbsnp-base-CHI-OAR-UMD.csv | perl -lane 'if($F[10] eq "null"){print $_;}'
+		snp11205-scaffold1400-547534	CAGCCAGCATTAACCATCAGAAGTATTTCCATAATTCCAGATCTCCTGTGTTCAAGTCAC[T/C]TTAGTGTTTGCACTTTACCAACCGAGGCTCCCCATGTGGGACAGTGCAGAAACTGTGAGC	1	1	0.461	0.988	3	null	scaffold1400	547534	null	null	15	66123976	15	68768925
+	# Now to see if it maps back to Sergey's assembly
+	$ perl -e '$s1 = "CAGCCAGCATTAACCATCAGAAGTATTTCCATAATTCCAGATCTCCTGTGTTCAAGTCAC"; $s2 = "TTAGTGTTTGCACTTTACCAACCGAGGCTCCCCATGTGGGACAGTGCAGAAACTGTGAGC"; $q = "I" x length($s1); print "\@test1\n$s1\n+$q\n\@test2\n$s2\n+\n$q\n";' > missing_from_bgi.fq
+	$ bwa mem ../working.koren.goat.assembly.fasta missing_from_bgi.fq > missing_from_bgi.sam
+	$ bwa mem ../deg.koren.goat.assembly.fasta missing_from_bgi.fq > missing_from_bgi.deg.sam
+	
+	# Alright, let's collect the names of all of the SNPs that did not map to any of the contigs in Sergey's assembly
+	$ perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] eq "*"){$F[0] =~ s/\.\d+//g; print $F[0];}' < test_unmapped.deg.sam | sort | uniq > not_found_snpprobe_names.lst	//
+	$ for i in `cat not_found_snpprobe_names.lst`; do grep $i koren.goat.locs.tab ; done > not_found_snpprobe_names.tab
+	$ perl -e 'my %h; while(<>){chomp; @s = split(/\t/); $h{$s[2]} += 1;} foreach my $k (sort {$h{$b} <=> $h{$a}} keys(%h)){print "$k\t$h{$k}\n";}' < not_found_snpprobe_names.tab
+		NC_022322.1	125	<- chromosome X
+		NC_022308.1	8
+		NC_022311.1	6
+		NC_022303.1	5
+		NC_022317.1	5
+		NC_022315.1	5
+		NC_022310.1	4
+		NC_022309.1	4
+		NC_022306.1	4
+		NC_022299.1	4
+		NW_005101067.1	4
+		NC_022295.1	4
+		NC_022298.1	4
+		NC_022321.1	4
+		NC_022313.1	3
+		NC_022304.1	3
+		NC_022307.1	3
+		NC_022294.1	2
+		NW_005101059.1	2
+		NC_022305.1	2
+		NW_005101258.1	1
+		NW_005102779.1	1
+		NW_005102127.1	1
+		NC_022316.1	1
+		NC_022312.1	1
+		NW_005104521.1	1
+		NC_022296.1	1
+		NC_022314.1	1
+		NC_022300.1	1
+		NW_005102411.1	1
+		NW_005101335.1	1
+		NC_022318.1	1
+		NW_005101155.1	1
+		NW_005101629.1	1
+
+
+	# I'm curious to see if I can align the probes to the BGI assembly using bwa mem
+	# Testing:
+	pwd: /home/dbickhart/share/goat_assembly_paper/bgi_assembly
+		$ gunzip chrX.fa.gz
+		$ bwa index chrX.fa
+		
+	pwd: /home/dbickhart/share/goat_assembly_paper/snp_probes
+		$ bwa mem ../bgi_assembly/chrX.fa test_unmapped.fq > test_unmapped.bgichrx.sam
+		$ perl -lane 'if($F[2] eq "*"){print $_;}' < test_unmapped.bgichrx.sam | wc -l
+			634	<- divided by 2: 317
+			
+# In light of this, I want to see if these probe sequences exist in actual animals. I am going to download some data from the SRA to check this
+Bender: /seq1/side_projects/goat_testing
+	$ wget ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByRun/sra/ERR/ERR405/ERR405776/ERR405776.sra
+	$ ~/ncbi-outdir/sra-tools/linux/gcc/x86_64/rel/bin/fastq-dump ERR405776.sra
+	$ wget ftp://ftp.ncbi.nlm.nih.gov/genomes/Capra_hircus/CHR_X/chi_ref_CHIR_1.0_chrX.fa.gz
+	$ gunzip chi_ref_CHIR_1.0_chrX.fa.gz
+	$ bwa index chi_ref_CHIR_1.0_chrX.fa
+	$ bwa mem chi_ref_CHIR_1.0_chrX.fa ERR405776.fastq > goat_chrX_test.sam
+	
+	# I got impatient and terminated the alignment
+	# I wrote a java program that should be able to take bed files as input and compare them to a sam/bam file
+	# Damn, I have to remap the probes!
+	$ perl -lane '$F[1] =~ /(^.+)\[(.)\/.\](.+$)/; $c = length($1); $c += length($2); $c += length($3); $q = "I" x $c; print "\@$F[0]\n$1$2$3\n+\n$q";' < not_found_snpprobe_names.tab > not_found_snpprobes.fq
+	$ bwa mem chi_ref_CHIR_1.0_chrX.fa not_found_snpprobes.fq > not_found_snpprobes.sam
+	$ perl -lane 'if($F[0] =~ /^@/ || $F[2] =~ /\*/){next;}else{$e = $F[3] + length($F[9]); print "$F[2]\t$F[3]\t$e\t$F[0]";}' < not_found_snpprobes.sam | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > not_found_snpprobes.bed
+	$ samtools view -bS goat_chrX_test.sam | samtools sort - goat_chrX_test.sorted
+	$ samtools index goat_chrX_test.sorted.bam
+	
+	$ ~/jdk1.8.0_25/bin/java -jar ~/CheckBamLocs/store/CheckBamLocs.jar -i not_found_snpprobes.bed -o bgi_chrX_check.bed -b goat_chrX_test.sorted.bam
+	# There's read depth here, but lots of hard clipped bases!
+	# I wrote a script to estimate the hard clipping
+	$ perl ~/perl_toolchain/sequence_data_scripts/checkHardClipping.pl -i not_found_snpprobes.bed -b goat_chrX_test.sorted.bam -o bgi_chrX_hardclip.coords
+	
+	# OK, so a large proportion of the probe sequence is subject to hard clipping/soft clipping
+	# Here's an example region:
+		$ samtools view goat_chrX_test.sorted.bam 'gi|541128535|ref|NW_005101004.1|:264281-264402'
+		ERR405776.14218716      2048    gi|541128535|ref|NW_005101004.1|        264190  60      101H101M        *       0       0       CCCATACTTACGGAACACAGGAACCAAAAAATTGACACAAGCTATAATGGTAAAGATTTAGATTAGTTCCAAAGAAGAGCATGTACGCTATGAGGGCCAGG     @C@DFDFFHHHHHEGIIHIJIJJJIGIJHGGGGGIJGIGIIGEIIJIIGGG@FHHGHEHIIIHGEHHHHFFDEFFEECEEDDDDEFDDBDDDDDDDBDDDB     NM:i:0  MD:Z:101        AS:i:101        XS:i:0  SA:Z:gi|541128535|ref|NW_005101004.1|,264442,-,101S101M,60,0;
+		ERR405776.46553301      2064    gi|541128535|ref|NW_005101004.1|        264198  60      100H102M        *       0       0       TACGGAACACAGGAACCAAAAAATTGACACAAGCTATAATGGTAAAGATTTAGATTAGTTCCAAAGAAGAGCATGTACGCTATGAGGGCCAGGAAGCACCGT    CCDDDDDCDDDDDBBBBDFFFFFFFHHHHHIJGG@HHIGGJJIIIJJJJIIJJJJJJJJHIIIJJJJIJJJJIGHFAIJGJIIJJJJJIHHHHHFFFDFCCB    NM:i:0  MD:Z:102        AS:i:102        XS:i:0  SA:Z:gi|541128535|ref|NW_005101004.1|,263993,+,99S103M,60,0;
+		ERR405776.20916293      2064    gi|541128535|ref|NW_005101004.1|        264225  60      101M101H        *       0       0       CACAAGCTATAATGGTAAAGATTTAGATTAGTTCCAAAGAAGAGCATGTACGCTATGAGGGCCAGGAAGCACCGTGGAGGGTGAACAAGTTGATGAAAGAA     3BC@>>;;@@C>5;5(>;;6;>@A;C@C@@D?>>C==;CHAEIHGF;@<-AFB8D?8;GB?9DDGGBC?8:8EGHFGBG<BEBFEIIGFDHDHDDDDB@@?     NM:i:0  MD:Z:101        AS:i:101        XS:i:0  SA:Z:gi|541128535|ref|NW_005101004.1|,264027,+,101M101S,60,0;
+		ERR405776.45532948      2048    gi|541128535|ref|NW_005101004.1|        264228  60      101H101M        *       0       0       AAGCTATAATGGTAAAGATTTAGATTAGTTCCAAAGAAGAGCATGTACGCTATGAGGGCCAGGAAGCACCGTGGAGGGTGAACAAGTTGATGAAAGAAACA     CCCFFFFFHHHHDHIJJIJJJIIJJJIJHJJJJJJIJJJJJJJJJIGIIJHGIHJJJJJJIJJIJJJIJHHGFFFDDD?BDDDDDDDDDDDDEDDDDDCDD     NM:i:0  MD:Z:101        AS:i:101        XS:i:0  SA:Z:gi|541128535|ref|NW_005101004.1|,264434,-,99S103M,60,0;
+		ERR405776.38720850      16      gi|541128535|ref|NW_005101004.1|        264236  60      101M101S        *       0       0       ATGGTAAAGATTTAGATTAGTTCCAAAGAAGAGCATGTACGCTATGAGGGCCAGGAAGCACCGTGGAGGGTGAACAAGTTGATGAAAGAAACATGATGTGTCTGGCTGCTTCTTACTAGATGTTTGTCCTTGGGCCTGTCACTAAACCTCATTGAATCTTCATTCTCACCTCTATCCCCCCACCACTGTAAACCAGGGCTGA  DDDDDDDDCDDCDDDDDDEEDC@DFFFFFFHHHHHHIJIJJJIHEIFJIIIJJJIIIHGBJIHCIJIGIJIJJIIJJJJJJJJJJJJJHHHHHFFFFFCCCDDDDDDCDDDDDDEDDDCCDBCDCBA@BBDDDDDDDDEDDCDDBDDDDCEEDCCCA>>8CCC@<88+DCCC?6-DIIIGC<GEHJIIIHGHHHFFFFFCCC        NM:i:0  MD:Z:101        AS:i:101        XS:i:0    SA:Z:gi|541128535|ref|NW_005101004.1|,263996,+,101M101S,60,0;
+		ERR405776.49719057      2064    gi|541128535|ref|NW_005101004.1|        264240  60      101H101M        *       0       0       TAAAGATTTAGATTAGTTCCAAAGAAGAGCATGTACGCTATGAGGGCCAGGAAGCACCGTGGAGGGTGAACAAGTTGATGAAAGAAACATGATGTGTGGTC     CDDDDDDCDDDDDCDDDDDDEEEEEEEFFFFFGHHJJJJJJJJJJJJJJJJJIJJIJJJJJJJJJJJJJJJJJJJJJJJJJJJJJJIJHHHHHFFFFFCCC     NM:i:0  MD:Z:101        AS:i:101        XS:i:0  SA:Z:gi|541128535|ref|NW_005101004.1|,264032,+,100S102M,60,0;
+		ERR405776.28876295      2064    gi|541128535|ref|NW_005101004.1|        264268  60      102M100H        *       0       0       GCATGTACGCTATGAGGGCCAGGAAGCACCGTGGAGGGTGAACAAGTTGATGAAAGAAACATGATGTGTGGTCTTTTTAGAAGTCAAGGTGGCATTCTGTGA    DDEDB?@DDDDDDDDDDEECEEFFFEE?HIJJJJJIIJJJJJJJJJIJIIHGJJJJJJIJJJJJJJJJIIIIJJJJJJJJJJJJJJJJHHHHHFFFFFCCCC    NM:i:1  MD:Z:73C28      AS:i:97 XS:i:0  SA:Z:gi|541128535|ref|NW_005101004.1|,264045,+,101M101S,60,0;
+		ERR405776.37766634      2064    gi|541128535|ref|NW_005101004.1|        264368  60      102M100H        *       0       0       GAGGGATTGTTTCAGAACAGTTTAGCTTTGAAGCCAATATAGTGATTGATGTGATTGATGTTTGATTTTATAATGAGCATTTTTATTCTAAAAGTTTTGCTT    =;;=>ACCCEEB;B>=)?EHEFHGEIIHEC=ADHCBHCIIIHHDBG@DGBBD?B?GC?@?GIIIHIHFCHHHGIGIIIGEIIBFCDBBC?AHFBDDDB8<@A    NM:i:0  MD:Z:102        AS:i:102        XS:i:0  SA:Z:gi|541128535|ref|NW_005101004.1|,264111,+,108M94S,60,1;
+		ERR405776.18344404      2064    gi|541128535|ref|NW_005101004.1|        264383  60      101H101M        *       0       0       AACAGTTTAGCTTTGAAGCCAATATAGTGATTGATGTGATTGATGTTTGATTTTATAATGAGCATTTTTATTCTAAAAGTTTTGCTTTTAATTTGACTCAT     C@CCCECCCEFFFFEFHEGFIEA@>>EGGIIIJIHDFBHEIIGGHHGB9?9HFHHICD<BIHEGEG@HGFCCHEGGHEEGHFHGGF@D>HFHHDDDDB@@@     NM:i:0  MD:Z:101        AS:i:101        XS:i:0  SA:Z:gi|541128535|ref|NW_005101004.1|,264123,+,101S101M,60,0;
+		
+	# I wonder what would happen if we aligned these real reads to the Koren assembly...
+	$ samtools view goat_chrX_test.sorted.bam 'gi|541128535|ref|NW_005101004.1|:264281-264402' | perl -lane 'print "\@$F[0]\n$F[9]\n\+\n$F[10]";' > snp57465-scaffold919-264341.fq
+	
+	pwd: /home/dbickhart/share/goat_assembly_paper/snp_probes
+	$ bwa mem ../working.koren.goat.assembly.fasta snp57465-scaffold919-264341.fq > snp57465-scaffold919-264341.sam
+	# nothing
+	
+	
+	# OK, I'd like to test this out on another dataset, but we'll see...
+	$ wget ftp://ftp.ncbi.nih.gov/sra/sra-instant/reads/ByRun/sra/ERR/ERR315/ERR315510/ERR315510.sra
+	$ ~/ncbi-outdir/sra-tools/linux/gcc/x86_64/rel/bin/fastq-dump ERR315510.sra
+	$ bwa mem -t 20 chi_ref_CHIR_1.0_chrX.fa ERR315510.fastq > goat_2_chrX_test.sam
+	$ samtools view -bS goat_2_chrX_test.sam | samtools sort - goat_2_chrX_test.sorted
+	
+	# Let's make these more human readable
+	$ echo -e "SNP1\tSNP2\tBGIchr1\tBGIpos1\tBGIchr2\tBGIpos2\tASMchr1\tASMpos1\tASMchr2\tASMpos2" > different_scaffold_probes.tab
+	$ perl -lane '@b = split(/;/, $F[5]); print "$F[0]\t$b[1]\t$F[2]\t$F[3]\t$F[7]\t$F[8]\t$F[4]\t$b[0]\t$F[9]\t$F[10]";' < initial_test_problems.diffnewchr >> different_scaffold_probes.tab
+	$ echo -e "SNP1\tSNP2\tBGIchr1\tBGIpos1\tBGIchr2\tBGIpos2\tASMchr1\tASMpos1\tASMchr2\tASMpos2" > longer_distance_probes.tab
+	$ perl -lane '@b = split(/;/, $F[5]); print "$F[0]\t$b[1]\t$F[2]\t$F[3]\t$F[7]\t$F[8]\t$F[4]\t$b[0]\t$F[9]\t$F[10]";' < initial_test_problems.toolarge >> longer_distance_probes.tab
+	
+# Tad gave me a list of Goat SNPs that were actually placed on the chip. Let's grep them to see if they're in there
+pwd: /home/dbickhart/share/goat_assembly_paper/snp_probes
+	$ wc -l not_found_snpprobe_names.lst
+		215 not_found_snpprobe_names.lst
+	$ for i in `cat not_found_snpprobe_names.lst`; do grep $i TSS_annotated\ Goat\ SNP\ Table_06032014.txt ; done | wc -l
+		187		<- not good, so about 187 of the probes are on the chip. Let's check the annotation for them
+		
+	# About 13 of them were clear failures from Tad's file. Almost all of them had MAF's close to 1
+	# Whoops! That's call frequencies not MAF's
+	

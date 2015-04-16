@@ -1,0 +1,67 @@
+03/24/2011
+# So, I need to extract the IGF2 sequence, identify CpG islands and then ask Jessica and Reuben to design primers for them
+
+# Some background reading:
+	From Development 1993:
+	
+	Parental imprinting is an important genetic mechanism by
+	which some genes are repressed or expressed depending exclusively
+	on their inheritance from mother or father. Such
+	imprinted genes have crucial roles in mammalian development,
+	in particular in the control of fetal growth and viability
+	(Cattanach and Beechey, 1990; Surani et al., 1993). An
+	imbalance of parental chromosomes in the embryo, or aberrant
+	imprinting of these genes is implicated in an increasing number
+	of genetic disorders (Reik, 1989; Nicholls, 1993) and may be
+	involved in carcinogenesis (Feinberg, 1993). A number of
+	imprinted genes have been identified in the mouse. These
+	include the gene for the major fetal growth factor insulin-like
+	growth factor 2 (Igf2) (DeChiara et al., 1991), the Snrpn (Small
+	nuclear ribonucleoprotein particle n) gene (Leff et al 1992;
+	Cattanach et al., 1992), the U2afbp-rs gene (Hatada et al.,
+	1993; Hayashisaki et al., 1994) and the insulin genes (Giddings
+	et al., 1994), all of which are maternally imprinted (repressed),
+	and those for the Igf2 /mannose-6-phosphate receptor and H19,
+	which are paternally imprinted (Barlow et al., 1991; Bartolomei
+	et al., 1991). The IGF2 and H19 genes are also
+	imprinted in the human (Rainier et al., 1993; Zhang and Tycko,
+	1992) whereas imprinting of the IGF2-receptor gene might not
+	be conserved (Kalscheuer et al., 1993).
+	
+	
+
+# First, I will get the sequence from UCSC and extend it about 10 - 20kb upstream of the gene. 
+
+# OK, got the DNA for this subsequence: 
+	>bosTau4_dna range=chr29:51250246-51276718 5'pad=0 3'pad=0 strand=+ repeatMasking=N
+	
+# Now, I'm going to map the locations of BstUI sites using the restriction enzyme webtool found at http://tools.neb.com/NEBcutter2/
+# Done: they're in the file: BstUI_sites.txt
+$ perl -lane '$e = $F[1] + 3; print "chr29\t$F[1]\t$e";' < BstUI_sites.txt > igf2_bstui_sites.bed
+# This conversion is necessary
+
+# Found a perl script online that calculates the cpg islands
+$ perl cpgi130.pl igf2_sequence.txt LENGTH=200 > cpgi_output.txt
+
+# Now to convert the format:
+$ perl -lane 'if($F[4] =~/start/){ ($s) = $F[4] =~ /start\=(\d+)/; ($e) = $F[5] =~ /end\=(\d+)/; print "chr29\t$s\t$e";}' < cpgi_output.txt > cpg_islands_igf2.bed
+
+
+# And finally, I need to intersect the loci to get the positions that we will design primers for:
+$ echo "cpg\t\tbstui\n" > cpg_bstui_igf2.bed; ../../BEDTools-Version-2.10.1/bin/intersectBed -a cpg_islands_igf2.bed -b igf2_bstui_sites.bed -wa -wb >> cpg_bstui_igf2.bed
+
+# Now, I'm going to get Jessica and Reuben 4 1.0 kb regions to design the primers within:
+	# start: 1699 - 700 = 999; end: 1699 + 300 = 1999; include 1696 - 1699  or 696 - 700;
+	$ perl -e 'while(<>){if ($_ =~ />/){next;}else{@t = split(//, $_); push(@a, @t);}} print "\>sequenceA_999_1999\n"; for ($x = 0; $x < scalar(@a); $x++){ if($x < 2019 && $x >= 999){print $a[$x];}} print "\n";' < igf2_sequence.txt > primer_design_region.txt
+	
+	# start: 1820 - 300 = 1520; end: 1820 + 700 = 2520; include 296 - 300;
+	$ perl -e 'while(<>){if ($_ =~ />/){next;}else{@t = split(//, $_); push(@a, @t);}} print "\>sequenceB_1520_2520\n"; for ($x = 0; $x < scalar(@a); $x++){ if($x < 2540 && $x >= 1520){print $a[$x];}} print "\n";' < igf2_sequence.txt >> primer_design_region.txt
+	
+	# start: 4728 - 300 = 4428; end: 4728 + 700 = 5428; include 296 - 300;
+	$ perl -e 'while(<>){if ($_ =~ />/){next;}else{@t = split(//, $_); push(@a, @t);}} print "\>sequenceC_4428_5428\n"; for ($x = 0; $x < scalar(@a); $x++){ if($x < 4428 && $x >= 5448){print $a[$x];}} print "\n";' < igf2_sequence.txt >> primer_design_region.txt
+	
+	# start: 12063 - 800 = 11263; end: 12063 + 200 = 12263; include 796-800;
+	$ perl -e 'while(<>){if ($_ =~ />/){next;}else{@t = split(//, $_); push(@a, @t);}} print "\>sequenceD_11263_12263\n"; for ($x = 0; $x < scalar(@a); $x++){ if($x < 11263 && $x >= 12283){print $a[$x];}} print "\n";' < igf2_sequence.txt >> primer_design_region.txt
+	
+	# OK, so there's a major glitch with this script. Going to have to design it.
+	

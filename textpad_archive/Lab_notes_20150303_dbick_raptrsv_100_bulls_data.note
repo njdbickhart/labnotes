@@ -1,0 +1,119 @@
+03/03/2015
+# These are my commands and notes on the processing of the 100 bulls data using RAPTR-sv
+
+Blade14:/mnt/iscsi/vnx_gliu_7/100_base_run/
+# First, let's proprocess the files into a separate directory
+$ mkdir raptr-sv
+$ for i in B?????; do echo $i; ~/jdk1.8.0/bin/java -jar ~/RAPTR-SV/store/RAPTR-SV.jar preprocess -i $i/$i.rg.rd.sorted.merged.bam -o raptr-sv/$i.preprocess -r ../reference/umd3_kary_nmask_hgap.fa; done
+
+# Now, for clustering
+$ cd raptr-sv
+$ for i in *.flat; do echo $i; name=`echo $i | cut -d'.' -f1`; ~/jdk1.8.0/bin/java -jar ~/RAPTR-SV/store/RAPTR-SV.jar cluster -s $i -g ../../reference/umd3_ftp_gaps.bed -o $name.cluster; done
+
+$ cd ../
+# Initial filtering based on the bam read depth
+$ for i in B?????; do echo $i; for d in raptr-sv/$i.cluster.raptr.*; do type=`echo $d | cut -d'.' -f4`; echo $type; perl ~/perl_toolchain/sequence_data_scripts/filterRAPTRSVFiles.pl -b $i/$i.rg.rd.full.sorted.merged.bam -i $d -o raptr-sv/$i.filter.raptr.$type.bed -c 0.50; done; done
+
+# Because the read depth filter was based on low X coverage, some of the reads were not properly filtered away
+# I used a simple filter to remove all clusters that had less than 2 supporting reads and stored the events in the "finalfilter" folder
+
+# Now to check for Lingyang's region of interest
+Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/raptr-sv/finalfilter
+$ for i in *.deletions.bed; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<>){chomp; @s = split(/\t/); if($s[0] eq "chr2" && $s[1] < 61975814 && $s[2] > 61807080){print join("\t", @s);  print "\t$ARGV[0]\n";}} close IN;' $i $i; done | grep '.bed'
+	chr2    61839154        61839295        DELETION        3.0     BIBR05.finalfilter.raptr.deletions.bed
+	chr2    61839139        61839552        DELETION        3.0     BIGI01.finalfilter.raptr.deletions.bed
+	chr2    61839083        61839588        DELETION        3.0     BIGI02.finalfilter.raptr.deletions.bed
+	chr2    61839115        61839521        DELETION        3.0     BINE01.finalfilter.raptr.deletions.bed
+	chr2    61839001        61839526        DELETION        4.0     BINE09.finalfilter.raptr.deletions.bed
+	chr2    61824814        61825036        DELETION        3.0     BTHO04.finalfilter.raptr.deletions.bed
+	chr2    61810242        61810418        DELETION        3.0     BTHO42.finalfilter.raptr.deletions.bed
+	chr2    61820285        61820472        DELETION        3.0     BTHO48.finalfilter.raptr.deletions.bed
+	chr2    61833823        61833942        DELETION        3.0     BTHO49.finalfilter.raptr.deletions.bed
+	chr2    61854945        61855056        DELETION        3.0     BTHO53.finalfilter.raptr.deletions.bed
+	chr2    61963997        61964258        DELETION        3.0     BTHO53.finalfilter.raptr.deletions.bed
+	chr2    61840352        61841195        DELETION        4.0     BTJE01.finalfilter.raptr.deletions.bed
+	chr2    61840324        61841185        DELETION        3.0     BTJE02.finalfilter.raptr.deletions.bed
+	chr2    61840345        61841208        DELETION        3.0     BTJE03.finalfilter.raptr.deletions.bed
+	chr2    61840378        61841207        DELETION        4.0     BTJE04.finalfilter.raptr.deletions.bed
+	chr2    61840358        61841189        DELETION        5.0     BTJE08.finalfilter.raptr.deletions.bed
+
+# The Jersey's have a good, consistent deletion in the region. Not so much for the Holsteins
+
+# Now to test the unfiltered data to see if there is anything else that pops up
+Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/raptr-sv/firstfilter
+$ for i in *.deletions.bed; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<>){chomp; @s = split(/\t/); if($s[0] eq "chr2" && $s[1] < 61975814 && $s[2] > 61807080){print join("\t", @s);  print "\t$ARGV[0]\n";}} close IN;' $i $i; done | grep '.bed'
+# There were 48 deletions. Let's try to narrow it down to the Holsteins
+$ for i in *.deletions.bed; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<>){chomp; @s = split(/\t/); if($s[0] eq "chr2" && $s[1] < 61975814 && $s[2] > 61807080){print join("\t", @s);  print "\t$ARGV[0]\n";}} close IN;' $i $i; done | grep 'BTHO' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | mergeBed -i stdin -n
+# These were the highest overlaps:
+	chr2    61833823        61833986        3
+	chr2    61853131        61853468        2
+	chr2    61854019        61854234        2
+
+# Here are the animals that had the highest overlap event from that last run:
+$ for i in *.deletions.bed; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<>){chomp; @s = split(/\t/); if($s[0] eq "chr2" && $s[1] < 61833986 && $s[2] > 61833823){print join("\t", @s);  print "\t$ARGV[0]\n";}} close IN;' $i $i; done | grep 'BTHO'
+	chr2    61833823        61833909        DELETION        2.0     BTHO02.filter.raptr.deletions.bed
+	chr2    61833827        61833986        DELETION        2.0     BTHO47.filter.raptr.deletions.bed
+	chr2    61833823        61833942        DELETION        3.0     BTHO49.filter.raptr.deletions.bed
+# It could be a real one
+
+
+# Just to be thorough, let's run through the unfiltered cluster data
+$ for i in *.deletions; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<>){chomp; @s = split(/\t/); if($s[0] eq "chr2" && $s[2] < 61975814 && $s[3] > 61807080){print join("\t", @s);  print "\t$ARGV[0]\n";}} close IN;' $i $i; done | grep '.deletions' | wc -l
+64
+# Just a few extra deletions supported by split reads here
+
+# OK, so there are two gaps in the middle of Lingyang's gene region, so I am guessing that even if there was a large event, it would be filtered out by RAPTR-SV before calling
+# I will try parsing the raw divet files for information here; if there are ANY discordant reads that support the deletion, they would be here
+$ for i in BTHO*.divet; do name=`echo $i | cut -d'.' -f1`; echo $name; grep 'deletion' $i | perl -lane 'if($F[1] eq "chr2" && $F[5] eq "chr2"){$s = ($F[2] < $F[6])? $F[2] : $F[6]; $e = ($F[2] < $F[6])? $F[6] : $F[2]; if($s < 61965814 && $e > 61817080){$l = $e - $s; if($l > 10000){ print join("\t", @F);}}}'; done
+	BTHO02
+	BTHO04
+	20VQ5P1:104:D09KFACXX:8:1103:12455:131278:0     chr2    62227171        62227221        F       chr2    61348849        61348899        F       deletion      0.0      36.059999999999995      0.0     0
+	20VQ5P1:104:D09KFACXX:8:2308:13716:140698:0     chr2    61348849        61348899        R       chr2    62227221        62227271        R       deletion      0.0      37.39   0.0     0
+	20VQ5P1:107:D0FC0ACXX:2:2202:1737:81415:0       chr2    61931665        61931715        R       chr2    61028979        61029029        R       deletion      0.0      35.63   0.9998004737685031      0
+	20VQ5P1:108:C09PEACXX:2:1111:8254:60472:0       chr2    61348807        61348857        F       chr2    62227213        62227263        F       deletion      0.0      12.760000000000002      0.0     0
+	20VQ5P1:108:C09PEACXX:2:1313:2237:44515:0       chr2    61348850        61348900        R       chr2    62227220        62227270        R       deletion      0.0      30.240000000000002      0.0     0
+	BTHO07
+	BTHO08
+	BTHO09
+	BTHO10
+	BTHO19
+	BTHO20
+	BTHO22
+	20VQ5P1:132:C0NC8ACXX:7:2212:8273:66847:0       chr2    62227252        62227302        R       chr2    61348793        61348843        F       deletion      0.0      31.509999999999998      0.0     0
+	BTHO25
+	BTHO29
+	20VQ5P1:132:C0NC8ACXX:8:2204:21259:50821        chr2    61348823        61348923        R       chr2    62227197        62227297        R       deletion      0.0      21.755  0.0     0
+	BTHO32
+	BTHO42
+	BTHO44
+	BTHO46
+	BTHO47
+	BTHO48
+	20VQ5P1:132:C0NC8ACXX:2:2209:17434:70608:0      chr2    61941979        61942029        R       chr2    61038213        61038263        R       deletion      0.0      37.09   0.9998004737685031      0
+	BTHO49
+	BTHO50
+	BTHO51
+	BTHO52
+	BTHO53
+	20VQ5P1:132:C0NC8ACXX:4:1211:19210:67965:0      chr2    62007781        62007831        F       chr2    61030663        61030713        F       deletion      0.0      38.61   0.9998004737685031      0
+	BTHO54
+	20VQ5P1:132:C0NC8ACXX:4:2310:2000:70486:0       chr2    61348798        61348848        F       chr2    62227222        62227272        F       deletion      0.0      26.55   0.0     0
+	BTHO56
+	BTHO57
+	20VQ5P1:132:C0NC8ACXX:6:2104:9116:64912:0       chr2    61654163        61654213        F       chr2    62534711        62534761        R       deletion      0.0      39.18   0.0     0
+
+# NOTE: chr2:61348807-61348900 is a repeat and so is chr2:62227213-62227271
+# So, nothing above 10kb in terms of deletions. 
+
+
+# Let's check that Jersey deletion just to see if RAPTR-SV is biased:
+Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/BTJE01
+$ samtools view BTJE01.rg.rd.full.sorted.merged.bam chr2:61840378-61841207
+	20VQ5P1:97:D0FDMACXX:6:2302:3516:136801:0_2	147	chr2	61840333	29	2S47M1S	=	61840145	-235	CCTTTTTTTCCACAAATTATGAATCATATGTCTCCCTATATCTTCCTGTG	?DB=DCCCDDC@EDEFFEDCFFDA=.))CCAGGGGF@B8F@9JHJJJIIH	MD:Z:20G4T21	PG:Z:MarkDuplicates	RG:Z:BTJE01	XG:i:0	AM:i:29	NM:i:2SM:i:29	XM:i:2	XO:i:0	XT:A:M
+	20VQ5P1:107:D0FC0ACXX:6:1215:19913:15188:0_1	83	chr2	61840359	29	21M29S	=	61840250	-130	TGTCTCCCTATATCTTCCTGTGTATCTCTACATTTTTTCTATACCATTTG	IIHJIJJJJJJJIJJIJIJJJIIHIHHIIHJJJIJJJHHHDFAFFFFC@B	MD:Z:21	PG:Z:MarkDuplicates	RG:Z:BTJE01	XG:i:0	AM:i:29	NM:i:0	SM:i:29XM:i:0	XO:i:0	XT:A:M
+	20VQ5P1:97:D0FDMACXX:6:2108:11883:169863:0_1	83	chr2	61840359	29	21M29S	=	61840250	-130	TGTCTCCCTATATCTTCCTGTGTATCTCTACATTTTTTCTATACCATTTG	IIGIGJJJJJJJJJJIJJJJJJJJIJJIIHJJJJJJJHHHHHDFDDFCCB	MD:Z:21	PG:Z:MarkDuplicates	RG:Z:BTJE01	XG:i:0	AM:i:29	NM:i:0	SM:i:29XM:i:0	XO:i:0	XT:A:M
+	20VQ5P1:104:D09KFACXX:4:1203:18090:69772:0_1	99	chr2	61841174	29	12S38M	=	61841328	204	CCCTATATCTTCCTGTGTATCTCTACATTTTTTCTATACCATTTGAGAGT	@@@FDFFFHHHHHGIGHJEGIGGIIHIIHIHIGGGIJJIGGIGIGGECH9	MD:Z:38	PG:Z:MarkDuplicates	RG:Z:BTJE01	XG:i:0	AM:i:29	NM:i:0	SM:i:29XM:i:0	XO:i:0	XT:A:M
+	20VQ5P1:107:D0FC0ACXX:6:2213:5834:84794:0_1	81	chr2	61841195	37	50M	=	61840185	-1060	CTATACCATTTGAGAGTAAATTGCATATTTTTACTATGATTTTATTCAAT	JJHHDJJIJJJJJJJJJJJJJJJJJIJJIHJI<2JJIHHHHHFFFFFCCC	X0:i:1	X1:i:0	MD:Z:33G16	PG:Z:MarkDuplicates	RG:Z:BTJE01	XG:i:0AM:i:37	NM:i:1	SM:i:37	XM:i:1	XO:i:0	XT:A:U
+
+# No reads in the middle, and the flanking reads are "softclipped." That's really good evidence that this is a true positive, homozygous deletion. I checked it in BTJE04 and it had the same results.
+# UCSC shows this as being intronic to MCM4 with the right hand read being within a repetitive element.

@@ -1,0 +1,121 @@
+11/07/2011
+# This lab note file contains the commands I used to analyze Tad's signature selection data, as well as John Garbe's gene intersections.
+# My goal for both is to determine the copy number of the genes and see if any of them intersect with my flat CNV calls
+# First, I need to work with the strange file format that Tad sent me. Here is the output style (from his email):
+	Attached is the file with flagged genes in each of the breeds in the European only signature analyses.
+	
+	It is a tab delimited file with a few different information as follows:
+	
+	One breed per column.
+	
+	Each column:
+	
+	1) Breed name
+	2) From Top 1% FST SNP how many SNP could be mapped to "map*txt" file (this is my file with SNP name, position, distance to the closest gene and closest gene id),
+	3) How many Far from genes (>2500bp)
+	4) How many Close to genes (<=2500bp)
+	5) How many Close to genes (<=2500bp)/ per category (upstream, overlap, downstream)
+	6) How many different genes(refseq) ( this is because some genes are flagged more than once).
+	7) Start list GeneID
+
+
+# My strategy: upload my cnv list (with cn estimates) to a mysql database as well as a gene cn list and a window cn list
+# That will be alot of tables, but it will be worth it later due to the indexing style and easy access (I don't have to hunt for files)
+
+	
+
+	# Read depth table
+	mysql> create table hd_an_read_depth (chr VARCHAR(5) NOT NULL, start INT unsigned NOT NULL, end INT unsigned NOT NULL, value FLOAT, animal VARCHAR(15)) engine = InnoDB;
+	mysql> load data local infile '/home/dbickhart/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/bine12.rd_files.bed' into table hd_an_read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	mysql> load data local infile '/home/dbickhart/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btho11.rd_files.bed' into table hd_an_read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	mysql> load data local infile '/home/dbickhart/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan02.rd_files.bed' into table hd_an_read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	mysql> load data local infile '/home/dbickhart/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan09.rd_files.bed' into table hd_an_read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	mysql> load data local infile '/home/dbickhart/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/btan10.rd_files.bed' into table hd_an_read_depth fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	
+	# 1kb CN table
+	mysql> create table hd_an_1kb_cn (chr VARCHAR(5) NOT NULL, start INT unsigned NOT NULL, end INT unsigned NOT NULL, value FLOAT, animal VARCHAR(15)) engine = InnoDB;
+	mysql> load data local infile '/home/dbickhart/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/1kb_cn_files.bed' into table hd_an_1kb_cn fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	
+	# 1kb CN CNV list table
+	pwd: /home/dbickhart/share/backup/
+	$ for i in *cnv_cn.bed; do prefix=`echo $i | cut -f1 -d'_'`; echo $prefix; perl -e '$f = $ARGV[1]; $p = $ARGV[0]; chomp $p; chomp $f; open(IN, "< $f"); while(<IN>){chomp; print "$_\t$p\n";}' $prefix $i >> /home/dbickhart/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/hd_animals_cnv_cn_files.tab; done
+	mysql> create table hd_an_cnv_cn (chr VARCHAR(5) NOT NULL, start INT unsigned NOT NULL, end INT unsigned NOT NULL, value FLOAT, animal VARCHAR(15)) engine = InnoDB;
+	mysql> load data local infile '/home/dbickhart/share/cow4_doc/hd_an_trace_art/raw_files/mysql_tabs/hd_animals_cnv_cn_files.tab' into table hd_an_cnv_cn fields terminated by "\t" lines terminated by "\n" (chr, start, end, value, animal);
+	
+	
+	# Yali just sent me the HDSNP CNV calls that she made
+	mysql> create table hd_snp_yali_cnvs (num INT unsigned NOT NULL, chr VARCHAR(15) NOT NULL, start INT unsigned NOT NULL, end INT unsigned NOT NULL, type VARCHAR(6), sample_id VARCHAR(100) NOT NULL, breed VARCHAR(100) NOT NULL, cnvstart INT unsigned NOT NULL, cnvend INT unsigned NOT NULL, cn INT unsigned NOT NULL);
+	mysql> load data local infile '/home/dbickhart/share/cow4_doc/tad_european/cnvforderek' into table hd_snp_yali_cnvs fields terminated by "\t" lines terminated by "\n" ignore 1 lines (num, chr, start, end, type, sample_id, breed, cnvstart, cnvend, cn);
+	
+	# alright, so I have the tables and animals all uploaded to mysql. Now it is a "simple" matter of just writing a script to compare the lists 
+	
+	pwd: /home/dbickhart/share/cow4_doc/tad_european/
+	$ perl ../../backup/cross_reference_refseq_snp_sql_tables.pl EuropeanTop001_Gene.txt
+	
+	# Juca did an update on the signature of selection data, so now I will try to rerun the pipeline:
+	# OK, so Juca included the geneids and the refseq names
+	# However, the refseq accessions include the XM tag which is a huge pain to find on UCSC and NCBI
+	# Using some of yali's files, I created a bed file with more refseq IDS to create Juca's table
+		pwd: /home/dbickhart/share/cow4_doc/tad_european/
+		$ perl convert_full_refseq_to_bed_coords.pl
+		Output: ens_ref_coords.bed
+		
+	# Using the ens_ref_coords.bed file as a refseq file for my tad table script
+	$ perl ../../backup/cross_reference_refseq_snp_sql_tables2.pl European10b_Top001_GeneRefseq.txt
+	
+# John Garbe's data
+	# Since John's data is completely different from Tad's, I'm going to have to rewrite large portions of the scripts.
+	# Also, John's coordinates are based on UMD3.1. I will have to see if I can liftover my CNV coordinates to UMD3
+	pwd: /home/dbickhart/share/cow4_doc/liftover
+	$ ./liftOver -multiple ../hd_an_trace_art/named_beds/bine12_all_chr_both_named.bed bosTau4ToBosTauMd3.over.chain bine12_umd3_liftover.bed bine12_umd3_unmapped.bed
+		$ wc bine12_umd3_liftover.bed bine12_umd3_unmapped.bed
+			  4549  22745 190544 bine12_umd3_liftover.bed
+			    46    165   1268 bine12_umd3_unmapped.bed
+			  4595  22910 191812 total
+		$ ./liftOverMerge bine12_umd3_liftover.bed bine12_umd3_liftover_merged.bed
+		$ wc bine12_umd3_liftover_merged.bed
+		  4230  21150 186446 bine12_umd3_liftover_merged.bed
+		# OK, so this is not a suitable solution.
+		# Let's try lifting over his gene coordinates
+		$ perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); $s[2] =~ s/C/c/; print "$s[2]\t$s[3]\t$s[4]\t$s[1]\n";}' < garbe_second_gene-nsSNP-density2.txt > garbe_bed_format.bed
+		$ ./liftOver -multiple garbe_bed_format.bed bosTauMd3ToBosTau4.over.chain garbe_btau4_liftover.bed garbe_btau4_unmapped.bed
+		$ wc garbe_btau4_liftover.bed garbe_btau4_unmapped.bed
+			  2638  13190 105344 garbe_btau4_liftover.bed
+			    90    347   2715 garbe_btau4_unmapped.bed
+ 			  2728  13537 108059 total
+ 		# Even more attrocious
+ 		# Wait...
+ 		$ ./liftOver garbe_bed_format.bed bosTauMd3ToBosTau4.over.chain garbe_btau4_liftover.bed garbe_btau4_unmapped.bed
+ 			$ wc garbe_btau4_liftover.bed garbe_btau4_unmapped.bed 
+ 			 15649  62596 586948 garbe_btau4_liftover.bed
+			  5920  21303 158805 garbe_btau4_unmapped.bed   <- not the best, but not too bad
+			 21569  83899 745753 total
+		$ ./liftOver -minMatch=0.8 garbe_bed_format.bed bosTauMd3ToBosTau4.over.chain garbe_btau4_liftover.bed garbe_btau4_unmapped.bed
+			$ wc garbe_btau4_liftover.bed garbe_btau4_unmapped.bed
+			 17091  68364 640889 garbe_btau4_liftover.bed
+			  3036  10755  79408 garbe_btau4_unmapped.bed
+			 20127  79119 720297 total
+			 # much better. Lets go with this instead
+	# I have written a script that will produce an excel spreadsheet for me and I am testing out a formula similar to the RPKM formula
+	# Script name: cross_reference_garbe_annotation_cnvs.pl
+	# It goes like this:
+		(# non-syn SNPs * # SNPs per bp) / (# cnvs * length gene bp)
+	# The equation failed since I did not realize that the SNPs per bp is equal to the nsSNP / gene length (which cancels the ratio out in the equation)
+	# Instead I reported just the # of cnvs per non-syn SNPs
+	
+	# I talked with George about what to release to John. 
+	# I think that he just wants an intersection list, though I will also give him the number of nsnps that were intersected by CNVS just to be sure
+	# Calculating coverage values:
+		pwd: /share/cow4_doc/tad_european
+		$ perl -lane 'if($F[0] =~ /no/){next;}else{print "$F[1]\t$F[2]\t$F[3]\t$F[4]";}' < cnvforderek > yali_hdsnp.bed
+		$ mergeBed -i yali_hdsnp.bed | wc
+		   3346   10038   78198
+		$ mergeBed -i yali_hdsnp.bed > yali_hdsnp_merged.bed
+		$ cat ../hd_an_trace_art/named_beds/*all_chr_both_named.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' | mergeBed -i stdin > merged_ngs_cnvr.bed
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < yali_hdsnp_merged.bed 
+			142714761	<- yali's CNV bases
+		$ cat yali_hdsnp_merged.bed merged_ngs_cnvr.bed | mergeBed -i stdin | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+			185071589	<- both snp and cnv base coverage
+	# Running the script for output
+		pwd: /home/dbickhart/share/cow4_doc/liftover
+		$ perl ../../backup/cross_reference_garbe_annotation_cnvs.pl garbe_second_gene-nsSNP-density2.txt

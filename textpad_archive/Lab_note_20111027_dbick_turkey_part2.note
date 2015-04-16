@@ -1,0 +1,8 @@
+10/27/2011
+# This is a revisitation of the turkey CR1 and avian CR1 analysis
+
+# Here is the location of the AluCode files on Server 2:
+	- Original:
+		/mnt/data6/gliu/Alu/original/
+	- Updated:
+		/mnt/data6/gliu/CR1/current _version/

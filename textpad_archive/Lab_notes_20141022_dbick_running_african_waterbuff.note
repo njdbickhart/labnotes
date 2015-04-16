@@ -1,0 +1,61 @@
+10/22/2014
+# These are my commands and notes on processing the African cattle and Waterbuffalo sequence 
+# I am rerunning Water buffalo on different genome assemblies (like Yak)
+
+# The data is located here:
+	Blade14: /mnt/cifs/bickhart-qnap/AfricanCattle/
+# The processing directory is located here:
+	Blade14: /mnt/iscsi/vnx_gliu_7/african_cattle
+	
+# Let's get started on the African Cattle
+# Arranging the files in a text document
+	$ ls /mnt/cifs/bickhart-qnap/AfricanCattle/Project_African-Cattle_C0N7AACXX/*/*.fastq.gz > C0N7AACXX_flowcell_fastqlist.txt
+	$ perl ~/bin/convert_steve_fq_to_spreadsheet.pl C0N7AACXX_flowcell_fastqlist.txt
+	# I modified a script to process these files quickly using BWA mem
+	$ perl bin/bwaFQFork.pl -r reference/umd3_kary_unmask_ngap.fa -o african_cattle -i african_cattle/spreadsheet_starter.txt -n 10
+	
+	
+____________________
+Buffalo
+____________________
+# I need to align Buffalo to the Yak, Sheep and Goat genome to buffalo
+# Let's get the reference assemblies prepared
+Blade14: /mnt/iscsi/vnx_gliu_7/reference/yak
+	$ wget http://me.lzu.edu.cn/yak/download/yak_genome_v1.1.tar.gz
+	$ bwa index yak_genome_v1.1.fa
+	
+# Aligning reads to the Yak genome
+Blade14: /mnt/iscsi/vnx_gliu_7/
+	$ ls /mnt/cifs/bickhart-qnap/buffalo_sequence/Sample_*/*.fastq.gz > buffalo_project/itwb_fastq_list.txt
+	$ perl ~/bin/convert_steve_fq_to_spreadsheet.pl buffalo_project/itwb_fastq_list.txt
+	$ mv temp_test_starter.txt buffalo_project/itwb_spreadsheet_starter.txt
+	$ sleep 2h; perl ./bin/bwaFQFork.pl -r ./reference/yak/yak_genome_v1.1.fa -i ./buffalo_project/itwb_spreadsheet_starter.txt -o buffalo_project -n 10
+	
+# Now I need to go through the train-wreck that is the Yak gene annotation
+Blade14: /home/dbickhart/vnx_gliu_7/reference/yak
+	$ wget http://www.mevolab.net/yak/download/yak_gene_v1.1.cds.tar.gz
+	$ grep '>ENSBTAP' yak_gene_v1.1.cds | wc -l
+		11508
+	# Ok, so I'm working with 11508 genes that were mapped from Taurus
+	$ grep '>' yak_gene_v1.1.cds | grep -v '>ENSBTAP' | grep '>ENS' | wc -l
+		10105
+	# These are protein domains from human mapped to Yak
+	
+	# I'm really hamstrung by how crappy the annotation is here. Let's work on the annotated bovine ensgenes instead
+	$ grep '>ENSBTAP' yak_gene_v1.1.cds | perl -ne '$_ =~ />(\S+)\s+\[mRNA\]\s+locus=(.+):(\d+):(\d+):[+-]/; print "$2\t$3\t$4\t$1\n";' > yak_gene_bovine_enstranscript.bed
+	
+	
+# Now, time to try the population DOC program to see if it will work on this crap
+# I made a modification to skip scaffolds that are shorter than the window size
+Blade14: /home/dbickhart/vnx_gliu_7/buffalo_project/
+	$ ~/jdk1.8.0_05/bin/java -jar ~/PopRDSW/store/PopRDSW.jar -I ITWB1 -I ITWB10 -I ITBW11 -I ITWB12 -I ITWB13 -I ITWB14 -I ITWB15 -I ITWB2 -I ITWB3 -I ITWB4 -I ITWB5 -I ITWB6 -I ITWB7 -I ITWB9 -I PC1 -S '*sorted.merged.bam' -O doc_wins/population_buff_yak_wins -R ../reference/yak/yak_genome_v1.1.fa -n 10 -w 5000 -rl 100 -g ../reference/yak/yak_genome_v1.1.fa.fai -ng
+	
+	
+# I've given up on Yak and I've instead worked on MGE and RP+SR identification
+
+
+# Buffalo RAPTR-SV
+Blade14: /home/dbickhart/vnx_gliu_7/buffalo_project/cow4_align/merged
+# Filtering processed data. I want a minimum of 3 supporting reads for each event and at least 50% of the expected X coverage
+$ for i in IT*cluster.*; do name=`echo $i | cut -d '.' -f1`; type=`echo $i | cut -d'.' -f4`; echo $name; perl ~/perl_toolchain/sequence_data_scripts/filterRAPTRSVFiles.pl -b ${name}.merged.sorted.bam -i $i -o ${name}.raptr.filtered.${type}.bed -r 3 -c 0.5; done
+

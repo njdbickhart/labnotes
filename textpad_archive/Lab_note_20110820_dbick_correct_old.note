@@ -1,0 +1,10 @@
+08/20/2011
+# This note file contains my steps and procedures for correcting aCGH calls on the data.
+# So, I'm actually at a little bit of a loss as to how to proceed here
+# Here are my thoughts:
+	1. Get the older CNVs from the korean and danish papers
+	2. Get the WSSD predictions and WGAC
+	3. Find locations where my data intersects with the intervals, and redefine the boundaries
+	
+# This might be a waste of time.
+# I am going to focus on the figures and tables and return here only if I need to.

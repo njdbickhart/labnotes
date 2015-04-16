@@ -1,0 +1,209 @@
+2010_10_22
+# I will be using this notebook entry to try to list all of the necessary programs, tools and protocols for our CNV analysis 
+
+# Software versions of compilers and interpreters:
+	- C++ compiler: g++ (GCC) 4.1.2 20070925 (Red Hat 4.1.2-27)
+	- Perl interpreter: perl, v5.8.8 built for x86_64-linux-thread-multi
+	- Python interpreter: Python 2.5 
+	- R: version.string R version 2.10.1 (2009-12-14)
+	
+	
+# Software versions used for analysis
+	(for depth of coverage analysis)
+	- BWA: version 0.5.8a
+	- Samtools: version 0.1.8
+	- CNV-seq: downloaded September 2010 (last update listed in the change log was in January 2010)
+	- R packages: ggplot2 version 0.8.8 (and dependancies) [recommendation: download ggplot2 using the R install.packages('') command]
+	
+	(for paired end analysis)
+	- BWA: version 0.5.8a
+	- Samtools: version 0.1.8
+	- Novoalign: version 2.07.00
+	- BEDtools: version 2.10.00
+	- Hydra-sv: version 0.5.3
+	
+	
+# Depth of Coverage analysis #
+###############################################
+#                                             #
+#		Procedure		      #
+#                                             #
+###############################################
+
+(<>) Main procedure for generating .hits files for CNV-seq:
+
+	$ ../bwa-0.5.8a/bwa aln ../blackstar/small/bwa_cow4_index hmgu_080902_HWI-EAS186_307H5AAXX_2.1.fastq > 080802_2_1.sai
+	$ ../bwa-0.5.8a/bwa aln ../blackstar/small/bwa_cow4_index hmgu_080902_HWI-EAS186_307H5AAXX_2.2.fastq > 080802_2_2.sai
+	$ ../bwa-0.5.8a/bwa samse -n 10 ../blackstar/small/bwa_cow4_index 080802_2_1.sai hmgu_080902_HWI-EAS186_307H5AAXX_2.1.fastq > 080902_2_1_se.sam
+	$ ../bwa-0.5.8a/bwa samse -n 10 ../blackstar/small/bwa_cow4_index 080802_2_2.sai hmgu_080902_HWI-EAS186_307H5AAXX_2.2.fastq > 080902_2_2_se.sam
+	$ ../samtools-0.1.8/samtools view -bS -o 080902_2_1_se.bam 080902_2_1_se.sam
+	$ ../samtools-0.1.8/samtools view -bS -o 080902_2_2_se.bam 080902_2_2_se.sam
+	$ ../samtools-0.1.8/samtools sort 080902_2_2_se.bam 080902_2_2_sorted
+	$ ../samtools-0.1.8/samtools sort 080902_2_1_se.bam 080902_2_1_sorted
+	$ ../samtools-0.1.8/samtools merge out.bam in.bam ...
+	$ ../samtools-0.1.8/samtools view cow4_simulation_sorted.bam | perl -lane 'if($F[2] =~ /\*/){next;}else{print "$F[2]\t$F[3]"}' > cow4_simulation_full.hits
+
+(<>) If there are multiple .hits files that need to be merged for CNV-seq processing:
+	
+	$ cat 080902_*_crop.hits > 080902_2_m.hits
+	$ perl -e '@a; $x=0; while(<>){$a[$x]=$_;$x+=1;}@s = sort {$a cmp $b} @a; foreach (@a){print $_;}' < 080902_2_m.hits > 080902_2_m_s.hits
+	
+(<>) Prior to running CNV-seq, you must ensure that the chromosome names are identical in both spelling and number (ie. count and labels must be identical in the test hits and ref hits files)
+
+	# If the same reference genome is used in the alignment of the ref hits and test hits files, then there is likely to be no difference.
+	
+	# To test this:
+	$ grep 'chr' reference_genome.fa
+	$ grep 'chr' other_reference_genome.fa
+	
+	# Or, if you are testing on hit files:
+	$ perl -e '%h; while(<>){@a=split(/\t/, $_);$h{$a[0]} += 1;} foreach(%h){print "$_\n"};' < UMD3_simulation_nu.hits
+	$ perl -e '%h; while(<>){@a=split(/\t/, $_);$h{$a[0]} += 1;} foreach(%h){print "$_\n"};' < 080902_2_m_s_c.hits
+	
+(<>) Final run of hits files through CNV-seq and generating output:
+	
+	$ perl cnv-seq.pl --test 080902_2_m_s_c.hits --ref test.hits --genome-size 2500000000
+	
+	(<>) This is a good point to transition to a GUI-based OS, simply so that you can view the R plot data as you generate it
+	$ R
+	> library(cnv)
+	> data <- read.delim("merged_Chr1.hits-vs-UMD3_Chr1.hits.log2-0.6.pvalue-0.001.minw-4.cnv")
+	> cnv.print(data)											# This just checks to see if the data loaded properly
+	> plot.cnv(data, CNV=4, upstream=4e+6, downstream=4e+6)
+	> plot.cnv.all(data, ylim=c(-4,4))
+	> dev.copy(pdf,'cnv_umd3_blackstar.pdf')
+	> dev.off()
+	
+	
+# Paired End Discordancy analysis using novoalign #
+###############################################
+#                                             #
+#		Procedure		      #
+#                                             #
+###############################################
+
+(<>) Main procedure for generating a .bedpe file for hydra-sv input
+	
+	# First tier alignment
+	$ ./bwa aln B_tau_chr5 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq > novo_081211_1_1.sai
+	$ ./bwa aln B_tau_chr5 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq > novo_081211_1_2.sai
+	$ ./bwa sampe B_tau_chr5 novo_081211_1_1.sai novo_081211_1_2.sai /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq > ../blackstar/chr5test/novo_1_081211_1.sam
+	
+	# Samtools convert and sort
+	$ ../../samtools-0.1.8/samtools view -bS -o novo_1_081211_1.bam novo_1_081211_1.sam
+	$ ../../samtools-0.1.8/samtools sort -n novo_1_081211_1.bam novo_1_081211_1_sort
+	$ ../../samtools-0.1.8/samtools view -bF 0x2 novo_1_081211_1_sort.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 novo_1_081211_1_1.fq -fq2 novo_1_081211_1_2.fq
+	
+	# Calculate MAD for dataset
+	$ ../../samtools-0.1.8/samtools view <sorted bam> | perl -lane 'print "$F[3]\t$F[7]"' > <position file>
+	$ perl calculateMAD.pl <position file>
+
+	# Second tier alignment
+	$ ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/novocraft/B_tau_chr5 -f novo_1_081211_1_1.fq novo_1_081211_1_2.fq -o SAM -r R > novo_2_081211_1.sam
+	$ ../../samtools-0.1.8/samtools view -bS -o novo_2_081211_1.bam novo_2_081211_1.sam
+	$ ../../samtools-0.1.8/samtools sort -n novo_2_081211_1.bam novo_2_081211_1_sort
+	
+	# Optional third tier alignment (omitted simply due to the complications of attempting to map reads in repetative regions)
+	
+	# Read filtering (to remove concordant reads and reads mapped to repetative regions)
+	$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i novo_3_081211_1_sort.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > novo_3_081211_1.bedpe
+	$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_3_081211_1.bedpe -b /mnt/gliu1_usb/dbickhart/chr5SSRs.bed  -type notboth | cut -f 1-14 > novo_3_ded_081211_1.bedpe
+	
+	# Bedpe processing and hydra run
+	$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i novo_3_ded_081211_1.bedpe > novo_3_discded_081211_1.bedpe
+	$ ../../Hydra-Version-0.5.3/bin/hydra -in novo_3_discded_081211_1.bedpe -out novo_081211_1_breaks -mld 300 -mno 807 -is -li
+	
+(<>) Some important steps and stages
+	
+	# Calculations of the Median Absolute Deviation (MAD) are required inputs for the hydra program.
+	
+	# A perl script (calculateMAD.pl) was developed to calculate the MAD
+	
+	# Hydra command line options that are dependant on the MAD are: -mld (10 x MAD value) -mno (median + (20 x MAD))
+	
+	# Samtools sorting should use the "-n" option to sort by read name (instead of chromosome position) if files are to be parsed through hydra
+	
+	# The dedupDiscordants.py python script is a necessary filtering and sorting step in the protocol. 
+	
+(<>) Output files and processing for viewing
+
+	# Hydra outputs three files:
+		- .details (lists all information about discordant reads used in determining breakpoints)
+		- .all (lists breakpoint locations and reads that support that breakpoint (detailed))
+		- .final (only lists the breakpoint start and end positions, does not reference reads used to call the breakpoint)
+		
+	# The developer-provided python script (bedpeToBed12.py) can convert the .all or .final file into a .bed file suitable for viewing on the UCSC genome browser
+	
+	# Since output files are printed in tab-delimited format, manipulation for plotting in R should be minimal
+	
+	
+# Paired end Discordancy Analysis using Mosaik	
+###############################################
+#                                             #
+#		Procedure		      #
+#                                             #
+###############################################
+
+(<>) Generation of Mosaik jump file (can reuse jump file per alignment)
+	
+	$ ./MosaikBuild -fr /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4_noUn.fa.gz -oa /mnt/gliu1_usb/dbickhart/mosaik-aligner/mos_cow4_ref.dat
+	$ ./MosaikJump -ia ../mos_cow4_ref.dat -out ../mos_cow4_ref_14 -hs 14
+
+(<>) Main procedure for generating a .bedpe file for hydra-sv input
+
+	# First tier alignment
+	$ ./bwa aln B_tau_chr5 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq > novo_081211_1_1.sai
+	$ ./bwa aln B_tau_chr5 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq > novo_081211_1_2.sai
+	$ ./bwa sampe B_tau_chr5 novo_081211_1_1.sai novo_081211_1_2.sai /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq > ../blackstar/chr5test/novo_1_081211_1.sam
+	
+	# Samtools convert and sort
+	$ ../../samtools-0.1.8/samtools view -bS -o novo_1_081211_1.bam novo_1_081211_1.sam
+	$ ../../samtools-0.1.8/samtools sort -n novo_1_081211_1.bam novo_1_081211_1_sort
+	$ ../../samtools-0.1.8/samtools view -bF 0x2 novo_1_081211_1_sort.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 novo_1_081211_1_1.fq -fq2 novo_1_081211_1_2.fq
+	
+	# Mosaik requires that you convert the paired end files into a merged .dat file before processing
+	$ ./MosaikBuild -q /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_1_tier2.fq -q2 /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_2_tier2.fq -out /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_tier2.dat -st illumina
+	$ ./bin/MosaikAligner -in /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_tier2.dat -out /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_align.dat -ia mos_cow4_ref.dat -hs 14 -mm 4 -mhp 100 -act 20 -j mos_cow4_ref_14 -p 4
+	
+	# Conversion of .dat file to .bam
+	$ ./bin/MosaikText -in ../holstein_7x/080902_2_align.dat -bam 080902_2_mos.bam
+	
+	# Samtools sort and bedtools processing
+	$ ../samtools-0.1.8/samtools sort -n 080902_2_mos.bam  080902_2_mos_sort.bam
+	$ ../BEDTools-Version-2.10.0/bin/bamToBed -i 080902_2_mos_sort.bam.bam -tag NM | ../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > 080902_2_tier2_m.bedpe
+	$ ../BEDTools-Version-2.10.0/bin/pairToBed -a 080902_2_tier2_m.bedpe -b ../cow4_repeats_c.bed -type neither | cut -f 1-14 > 080902_2_tier2_m_nor.bedpe
+	
+	# Bedpe processing and hydra run
+	$ ../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i 080902_2_tier2_m_nor.bedpe > 080902_2_m_nor_ded.bedpe
+	$ ../Hydra-Version-0.5.3/bin/hydra -in 080902_2_m_nor_ded.bedpe -out 080902_2_m_breaks -mld 100 -mno 288 -is -li
+
+(<>) Mosaik Idiosyncracies
+	# MosaicBuild might not process a whole genome fasta without some manipulation. 
+	# In order to process the cow4 genome, I had to remove chrUN contigs and gzip the fasta file before I could generate the index
+	
+	# Mosaic outputs everything to /tmp/ unless you tell it otherwise
+	# In order to avoid issues, create a temp directory on your hard drive prior to running Mosaik indexing programs/alignment tools using:
+		$ export MOSAIK_TMP=/mnt/gliu1_usb/dbickhart/mosaik-aligner/tmp
+	
+(<>) Some important steps and stages
+	
+	# Calculations of the Median Absolute Deviation (MAD) are required inputs for the hydra program.
+	
+	# A perl script (calculateMAD.pl) was developed to calculate the MAD
+	
+	# Hydra command line options that are dependant on the MAD are: -mld (10 x MAD value) -mno (median + (20 x MAD))
+	
+	# Samtools sorting should use the "-n" option to sort by read name (instead of chromosome position) if files are to be parsed through hydra
+	
+	# The dedupDiscordants.py python script is a necessary filtering and sorting step in the protocol.
+	
+(<>) Output files and processing for viewing
+
+	# Hydra outputs three files:
+		- .details (lists all information about discordant reads used in determining breakpoints)
+		- .all (lists breakpoint locations and reads that support that breakpoint (detailed))
+		- .final (only lists the breakpoint start and end positions, does not reference reads used to call the breakpoint)
+		
+	# The developer-provided python script (bedpeToBed12.py) can convert the .all or .final file into a .bed file suitable for viewing on the UCSC genome browser
+	
+	# Since output files are printed in tab-delimited format, manipulation for plotting in R should be minimal	

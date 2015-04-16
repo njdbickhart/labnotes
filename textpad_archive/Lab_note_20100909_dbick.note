@@ -1,0 +1,55 @@
+#I want to extract existing methods for repeatmasker and determine file locations
+	1. $ locate Lab_Note
+	
+	2. $ cd /home/gliu/Lab_Note
+	
+	3. $ grep -i 'repeat' *.txt > /home/dbickhart/repeatmasker/repeatnotes.txt
+		cp Lab_note_20050405.txt /home/dbickhart/repeatmasker
+		cp Lab_note_20080702_LuJiang.txt /home/dbickhart/repeatmasker
+		cp Lab_note_20080810.txt /home/dbickhart/repeatmasker
+		cp Lab_note_20090122.txt /home/dbickhart/repeatmasker
+		cp Lab_note_20090211.txt /home/dbickhart/repeatmasker
+		cp Lab_note_20090418.txt /home/dbickhart/repeatmasker
+   		cp Lab_note_20100503.txt /home/dbickhart/repeatmasker
+   		
+   	4. All files moved to /home/dbickhart/repeatmasker/notes	
+   		
+#I started to set up repeatmasker on my directory
+#I need to include the prerequisite search engine
+
+2010_09_10
+#I just installed repeatmasker, some notes:
+	1. Always unzip tarballs in the unix command line; copy-pasting from windows ruins file structure
+	
+	2. Cross_match installed as the default search program
+	
+	3. No other configurations so far
+	
+	4. Latest Repbase libraries included
+	
+#I wanted to test out repeatmasker on the smallest chromosome (ChrW) just to see how the analysis goes and the output
+	
+	1. $ RepeatMasker -s -no_is -dir /home/dbickhart/RepeatMasker/turkey -species chicken /home/gliu/data6/turkey2.01/fasta/ChrW.fa
+		#-s = slow option
+		#-no_is = no bacterial IS search
+		#-dir = directory to output files
+		#-species = use Repbase libraries for that species
+		#-lib = use custom libraries (fasta format)
+	
+	2. #It works, but I must construct a consensus library in order to perform the analysis
+	
+# OK, so the whole purpose is to identify 3' truncated CR1 elements using a cropped consensus library
+	1. Custom libraries can be loaded into RepeatMasker using the -lib option
+	
+	2. I'm looking to crop the sequences down to 465bp from the 3' end. 
+	
+	3. Or should I do an initial analysis, determine average size of CR1 in a table, then crop the consensus?
+	
+#Strategy
+	1. Align 22 CR1 sequences from turkey2.01 folder and crop 3' ends for custom repeatmasker library
+	
+	2. use repeatmasker batch script from George's bin folder to run the repeatmasker command line on turkey
+	
+	3. estimate Kimura distances for all repeats identified (actually repeatmasker calculates % divergence from consensus)
+	
+	4. Tell George about the progress, but work on MrFast in the meantime

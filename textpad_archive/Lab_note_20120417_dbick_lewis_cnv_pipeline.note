@@ -1,0 +1,907 @@
+04/17/2012
+# This note file details my commands and details of my pipelines on the lewis cluster
+# Server information:
+	#url: lewis.rnet.missouri.edu
+	#user: dbickhar
+	#pass: H@f40
+	
+# Bob's array structure:
+	# asg2 and asg0
+	
+# Testing data on AN0544
+	# Locations: /ibfs7/asg2/rschnabe/FASTQ
+	# AN0544P.01.1.fastq
+	# AN0544P.01.2.fastq
+	Lewis: /ibfs7/asg2/bickhartd
+	$ mkdir run_spreadsheets
+	$ cd run_spreadsheets
+	
+	# I used emacs to make this first spreadsheet file
+	# Here goes everything...
+	
+	Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+	$ bsub -J AN0544_t -o AN0544_t.OUT -e AN0544_t.ERR -q normal /ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s AN0544_test_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus -m . -r /ibfs7/asg2/bickhartd/reference/ucsc_unmasked_umd3.fa
+	
+	
+	# Some problems:
+		# Forks super did not do what I expected it to do. It queued up everything without a hard cap on processes.
+		# I forgot to include the opts{r} call in the getopt portion of the module, so none of the output worked
+		# There were alot of "core." files in the spreadsheet directory.
+		# The number of files that I generate is a bit excessive. I need to create a process that merges several of the flat file variants and bams
+			# Instead of merging them all at once, merge 10-20 at a time
+			# This way I reduce the number of files and still use a ton of processors to speed things up
+			
+		# I think that if I run bsub with the -K option, it will pause until I am ready to return
+		# Let's try it this way with a test run
+		$ bsub -J P_AN0544P_01.1453 -K -o /ibfs7/asg0/bickhartd/commands/out/P_AN0544P_01.out -e /ibfs7/asg0/bickhartd/commands/err/P_AN0544P_01.err -R "rusage[mem=1000]" -q normal "perl /ibfs7/asg2/bickhartd/bin/run_split_read_pipeline.pl -i /ibfs7/asg0/bickhartd/temp_fqs/AN0544P.01.1.fastq.tmp_1453 -o /ibfs7/asg0/bickhartd/angus -r /ibfs7/asg2/bickhartd/reference/ucsc_unmasked_umd3.fa -e 2 -l 35 -m 10000000 -u 400 -x 35 -n 1453"
+		$ sh P_AN0544P_01.1453.sh
+			Job <99258> is submitted to queue <normal>.
+			<<Waiting for dispatch ...>>  <- yup. I think this is the way to go
+			
+			# The sam file was 146 gbs after only 10 chrs!
+			# This is an absurd disk space overhead for this pipeline. Not only does it lengthen alignment time, but it will lengthen downstream analysis as well
+			# I am just going to do a light masking to ensure that I do not get such a huge sam file; mobile element insertions be damned!
+			# Or wait... maybe I can just align the OEAs to the unmasked fasta using the alternative fasta strategy that they have in the pipeline?
+			# I am going to have to use a lightly masked reference at first (perhaps by hard masking the ucsc reference I already have?)
+			
+			Lewis: /ibfs7/asg2/bickhartd/reference
+			$ bsub -J maskcheck -oo unmasked_base_check.out perl /ibfs7/asg2/bickhartd/bin/calculate_base_composition_fasta.pl ucsc_unmasked_umd3.fa			
+				Total Counts:
+				A:      400743601
+				C:      282001828
+				G:      282278363
+				T:      401582531
+				X:      0
+				N:      20284134
+				total autosomal:        1366606323      total repetitive:       20284134        perc auto:       98.5374379138871
+				
+			$ bsub -J masking -oo masking_umd3.out perl -e 'open (OUT, "> ucsc_light_masked.fa"); while(<>){if($_ =~ />/){print OUT $_; next;} $_ =~ tr/acgt/NNNN/; print OUT $_;} close OUT;' < ucsc_unmasked_umd3.fa
+			# That didn't work. Trying the shell script input instead
+			$ emacs light_masking.sh
+			$ bsub < light_masking.sh
+			
+			$ bsub -J maskcheck -oo lightmasked_base_check.out perl /ibfs7/asg2/bickhartd/bin/calculate_base_composition_fasta.pl ucsc_light_masked.fa
+				Total Counts:
+				A:      400743601
+				C:      282001828
+				G:      282278363
+				T:      401582531
+				X:      0
+				N:      1293843986
+				total autosomal:        1366606323      total repetitive:       1293843986      perc auto:       51.3674816017772
+				
+			$ bsub -J mrsfast -oo mrsfast_index.out /ibfs7/asg2/bickhartd/bin/mrsfast --index ucsc_light_masked.fa
+			$ bsub -J samtools -oo samtools_faidx.out samtools faidx ucsc_light_masked.fa
+			
+		# Now, I'm going to try to run the pipeline on one fastq using the alternative reference strategy (masked reference) vs (unmasked reference for oeas).
+		Lewis: /ibfs7/asg0/bickhartd/commands
+		$ emacs P_AN0544P_01.1453.sh
+		$ sh P_AN0544P_01.1453.sh
+			STDERR
+			[sam_header_read2] 30 sequences loaded.
+			Line 74032, sequence length 33 vs 35 from CIGAR
+			Parse error at line 74032: CIGAR and sequence length are inconsistent\
+			# So my fastqs are popping out less than 35 bp sequences. I will have to change the splitfq algorithm to throw these out.
+			
+			# Also, the split read alignment using the alternative reference sequence is still too non-specific! In fact, the program splits the fqs into half-sized fragments and uses them
+			# This increases the mapping locations significantly!
+			# I think I should drop the "naked" fasta as a target for split read. It is just too time consuming and disk space intensive.
+			
+			# OK, one more thing: my split script was producing double the ouput per fastq (because of my linecount iterator being outside of a necessary loop
+			# Going to test output on a small test fastq before loosing the dogs of war again.
+			
+		Lewis: /ibfs7/asg0/bickhartd/angus
+		$ sh P_AN0544P_01.318.sh
+		# Now split_match_sam is taking up alot of memory (probably because the split read output is still 100 times higher than the number of mapped reads
+		# I will try using my heavily masked umd3 genome as the alternative reference. I think that might be better. It defeats the purpose a little, but the nodes on Lewis are really low mem
+		
+		# the heavily masked genome did not work
+		# Two options:
+			# Use longer split sequence (50bp and greater)
+			# Rewrite split_match_sam in java and read read segments one pair at a time to make comparisons (<- brute force and last resort).
+			
+			# Let's try option one first
+			Lewis: /ibfs7/asg0/bickhartd/angus
+			$ sh create_test_fq_50.sh
+			$ bsub -J test_angus -o test_angus.OUT -e test_angus.ERR -R "rusage[mem=1000]" -q normal "perl /ibfs7/asg2/bickhartd/bin/run_split_read_pipeline.pl -i /ibfs7/asg0/bickhartd/angus/test_angus.01.01.50bp.fq -o /ibfs7/asg0/bickhartd/angus -r /ibfs7/asg2/bickhartd/reference/ucsc_light_masked.fa -e 2 -l 35 -m 10000000 -u 400 -x 35 -n 318 -a /ibfs7/asg2/bickhartd/reference/umd3_full_cryptic_gap_a.fa"
+				
+				Total Time:                       251.82
+				Total No. of Reads:                 9893
+				Total No. of Mappings:            356782
+				Avg No. of locations verified:      6277
+				
+				500009
+				Input done.
+				nseq: 250005
+				Matching pairs; matching OEAs: Secs from start: 655
+				200000
+				Input done.
+				nseq: 100000
+				500009
+				Input done.
+				nseq: 250005
+				Finalizing output to bams: Secs from start: 658
+				Finished with pipeline: Secs from start: 660
+				
+				# Yup, that did it. 25 bp sequences were large enough to avoid hitting almost everything in the genome!
+				# Let's try it without the heavily masked reference just for kicks... Not expecting this to go well, but hey!
+				
+			$ bsub -J test_angus -o test_angus.OUT -e test_angus.ERR -R "rusage[mem=1000]" -q normal "perl /ibfs7/asg2/bickhartd/bin/run_split_read_pipeline.pl -i /ibfs7/asg0/bickhartd/angus/test_angus.01.01.50bp.fq -o /ibfs7/asg0/bickhartd/angus -r /ibfs7/asg2/bickhartd/reference/ucsc_light_masked.fa -e 2 -l 35 -m 10000000 -u 400 -x 35 -n 318 -a /ibfs7/asg2/bickhartd/reference/ucsc_light_masked.fa"
+				Total Time:                       254.06
+				Total No. of Reads:                 9893
+				Total No. of Mappings:             53746
+				Avg No. of locations verified:      5515
+				
+				500009
+				Input done.
+				nseq: 250005
+				Matching pairs; matching OEAs: Secs from start: 561
+				200000
+				Input done.
+				nseq: 100000
+				500009
+				# There's something wrong here with my fastas.
+				# Same number of input sequences, but the fastas are different.
+				# 50bp seems to be the way to go, and I'll use the light masked UCSC reference from now on.
+				
+	# A rerun with some new additions (merging) and an improved fq split algorithm (50 bp, no reads less than 50bp in length)
+	Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+	$ bsub -J AN0544_t -o AN0544_t.OUT -e AN0544_t.ERR -q normal /ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s AN0544_test_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus -m . -r /ibfs7/asg2/bickhartd/reference/ucsc_light_masked.fa -a /ibfs7/asg2/bickhartd/reference/ucsc_light_masked.fa
+	
+	# OK, it worked, but the merge algorithm is messing up the names. I will work on it later.
+	# Now, I am removing the .sr files (they are paired end files and I do not need them necessarily)
+	Lewis: /ibfs7/asg0/bickhartd/angus/AN0544P/
+	$ bsub -J rm 'for i in *.sr; do echo $i; rm $i; done'
+	
+	# My initial test for the DOC mapping will use my crude tools to try to extract all of the hits into one file, then use my combine_bed_hits_lowmem.pl script to try to merge them into windows
+	# I will instead use a java based solution to make it run faster on the pipeline (synchronized threads).
+	$ emacs simple_bam_hits.pl
+	$ bsub -J bed_hits -oo bed_hits_log.OUT 'for i in *.bam; do echo $i; perl simple_bam_hits.pl $i >> an0544P_hits.bed; done'
+	$ bsub -J combinebed -oo bed_combine_log.OUT perl /ibfs7/asg2/bickhartd/bin/combine_bed_hits_lowmem.pl an0544P_hits.bed doc_wins /ibfs7/asg2/bickhartd/Umd3_windows/umd3_template_file1.bed /ibfs7/asg2/bickhartd/Umd3_windows/umd3_template_file2.bed /ibfs7/asg2/bickhartd/Umd3_windows/umd3_template_file3.bed
+	
+	# I just created a new java merge tool to create the gc win intersections right off the bat (thereby bypassing the GC window creation of the alkan pipeline)
+	# Testing it out in the same directory.
+	# Note: the "Path" class is only present in java version 1.7 and later, so my program only works with a jdk 1.7 and above.
+	$ bsub -J mergeTest -oo bed_merge_java_test.OUT -n 8 /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -cp /ibfs7/asg2/bickhartd/bin/sam-1.67.jar -jar /ibfs7/asg2/bickhartd/bin/mergeDocWindows.jar -I /ibfs7/asg0/bickhartd/angus/AN0544P/ -O java_merge_test -R /ibfs7/asg2/bickhartd/reference/umd3_full_cryptic_gap_a.fa	
+	
+	# Another note: since netbeans does not open a jar file to package necessary classes, it instead creates a "lib" folder that must follow the distributable jar
+	# I had to copy the lib folder to the cluster (either placing it in the JDK lib folder or in a "lib" folder in the same directory as the jar (not sure which worked)) and it finally ran my samtools stuff
+	
+	# As opposed to the bedtools implementation (5 hours), my java program runs in about 60 minutes per fq pair. 
+	# I Should return to it to make a better "binning" style for the chromosome coordinates (look at the bedtools method; very clever). 
+	
+	$cd doc_wins
+	$ chmod -R 777 /ibfs7/asg2/bickhartd/bin/
+	$ bsub -J alkantest -oo java_alkan_test.OUT -R "rusage[mem=2000]" /ibfs7/asg2/bickhartd/bin/alkan_pipeline_no_controls_placeholder.pl --File1 java_merge_test.file1.bed --File2 java_merge_test.file2.bed --File3 java_merge_test.file3.bed
+	
+	# This is giving me goofy results; I believe it is because of the different masked fastas I am using (light_masked for the mapping and heavy_cryptic for the analysis)
+	# I am checking the base content of both fastas for accurracy
+		# It turns out that the UCSC genome browser version must have patched certain segments of the UMD3 assembly
+		# My umd3_full_cryptic fasta matches the basepair lengths given on the umd3 page, whereas the ucsc fasta is 30,000 bp (on average) shorter than my heavily masked genome
+		# I think I will use the heavily masked genome for now. 
+		# This will keep my focus away from the MEI's but it cannot be helped if I want to get this thing operational
+		# Later, I can return with a better masked fasta and try it out.
+		
+		# Trying out a new version of my doc pipeline that will run on a single command:
+			$ bsub -J fullalkanp -oo full_alkan_pipeline_test.OUT -n 8 -R "rusage[mem=4000] span[hosts=1]" -q normal "/ibfs7/asg2/bickhartd/bin/alkan_pipeline_no_controls_placeholder.pl --File1 /ibfs7/asg0/bickhartd/angus/AN0544P/doc_wins/AN0544P_doc.file1.bed --File2 /ibfs7/asg0/bickhartd/angus/AN0544P/doc_wins/AN0544P_doc.file2.bed --File3 /ibfs7/asg0/bickhartd/angus/AN0544P/doc_wins/AN0544P_doc.file3.bed --bed AN0544P_doc --hits /ibfs7/asg0/bickhartd/angus/AN0544P/ --ref /ibfs7/asg2/bickhartd/reference/umd3_full_cryptic_gap_a.fa"
+			
+			$ diff  doc_wins/AN0544P_doc.file1.bed.final.wssd previous_docwins/java_merge_test.file1.bed.final.wssd
+			# did not give me different results, so this was a success
+	
+	# In the meantime I will work to incorporate the last part of the split read pipeline into this pipeline and work on getting variation hunter into the pipeline as well
+	# Split read
+		Lewis: /ibfs7/asg0/bickhartd/angus/AN0544P/split_read
+		# The base pipeline outputs TONS of files, most of which I do not need.
+		# I need to determine which files to remove and which to cat together and keep
+		# Here is an example:
+			AN0544P.01.318.sr.all.oea.match                   # Mapping of unbalanced splits				KEEP
+			AN0544P.01.318.sr.all.oea.match.discordand.txt    # Should keep deletion/insertion calls (all calls here)	KEEP		
+			AN0544P.01.318.sr.all.oea.match.maxevert.txt      # Should keep everted, delinv, insinv and inversions	(none)	
+			AN0544P.01.318.sr.all.oea.match.trans.txt         # Should keep transchromosomal calls (none)
+			AN0544P.01.318.sr.inv.evert.sorted.bam            # All possible mappings of inverted and everted reads		
+			AN0544P.01.318.sr.pair                            # Split reads used for event detection			KEEP
+			AN0544P.01.318.sr.pair.concordand.txt             # Empty file							REMOVE
+			AN0544P.01.318.sr.pair.discordand.txt             # Inverted splits with proper pairing
+			AN0544P.01.318.sr.pair.maxevert.txt               # Everted splits with proper pairing
+			AN0544P.01.318.sr.pair.trans.txt                  # Translocated splits with proper pairing
+			AN0544P.01.318.sr.single.sorted.bam               # Mappings of the OEAs
+			AN0544P.01.318.sr.split.fq                        # OEA reads							REMOVE
+			AN0544P.01.318.sr.split.match.single.sorted.bam   # Discordant split reads with proper pairing
+			AN0544P.01.318.sr.split.match.sorted.bam          # Split reads that were OEA's
+			AN0544P.01.318.sr.transchr.sorted.bam		  # Full reads that were transchromosomal			KEEP
+			
+		# Removing some obvious files
+		$ rm *.sr.split.fq
+		$ rm *sr.pair.concordand.txt
+		# These two files are empty for now (bug in the c program?) but I do not think I should automatically remove them in the future
+		$ rm *sr.all.oea.match.maxevert.txt
+		$ rm *.sr.all.oea.match.trans.txt
+		
+		# Now, I will try running their shell script on the cat files
+		$ bsub -J cat1 -oo cat_pair.out 'cat AN0544P*.sr.pair > total.AN0544P.sr.pair'
+		$ bsub -J cat2 -oo cat_oea.out 'cat AN0544P*.sr.all.oea.match > total.AN0544P.sr.all.oea.match'
+		
+		$ bsub -J sc_format -oo sc_format.out 'sh /ibfs7/asg2/bickhartd/bin/pairToSC.sh total.AN0544P.sr.pair total.AN0544P.sr.pair.format total.AN0544P.sr.all.oea.match total.AN0544P.sr.all.oea.match.format'
+		$ bsub -J events -oo events5.out -R "rusage[mem=5000]" '/ibfs7/asg2/bickhartd/bin/events5 total.AN0544P.sr.pair.format total.AN0544P.sr.all.oea.match.format total.AN0544P.sr.events 50'
+		# The "events" program takes a while (to organize all of the deletions) and takes up about 2.5 GB's of memory for this load
+		# The "events" program is also hanging right here:
+			The events are being selected using set cover and eliminate the redundancy
+		# Actually, it ended after 4 days of runtime!
+			Successfully completed.
+			
+			Resource usage summary:
+			
+			    CPU time   : 304918.44 sec.		84 hours
+			    Max Memory :      2816 MB
+			    Max Swap   :      2894 MB
+			
+			    Max Processes  :         3
+			    Max Threads    :         4
+			
+			The output (if any) follows:
+			
+			Reading the input split file
+			Split file is loaded
+			Reading the input OEA file
+			OEA input is loaded
+			OEA reads are ordered based on the chromosome name
+			OEA reads are ordered
+			The deletions are clustered by tweaking the alignments for match
+			The deletions are aligned correctly and clustered
+			The unbalanced reads are started to be assigned the perfect split deletions
+			The unbalanced reads are added
+			The events are being selected using set cover and eliminate the redundancy
+			The events are written to the outputfile
+			
+		# Here is the output:
+			$ ls -al total*
+			-rw-rw----+ 1 dbickhar outside 1080793068 Apr 27 13:38 total.AN0544P.sr.all.oea.match				<- preformatted match
+			-rw-rw----+ 1 dbickhar outside  375006287 Apr 27 13:43 total.AN0544P.sr.all.oea.match.format			<- formatted using shell script, match input
+			-rw-rw----+ 1 dbickhar outside   25878455 May  1 03:01 total.AN0544P.sr.events					<- final, unformatted output
+			-rw-rw----+ 1 dbickhar outside 3006541650 May  1 03:01 total.AN0544P.sr.events.cluster				<- reads (in unconventional sam style) that support the call
+			-rw-rw----+ 1 dbickhar outside 1421280765 May  1 03:01 total.AN0544P.sr.events.fasta				<- the actual sequence supporting the call
+			-rw-rw----+ 1 dbickhar outside  137645473 Apr 27 13:36 total.AN0544P.sr.pair					<- preformated pair data
+			-rw-rw----+ 1 dbickhar outside   71546433 Apr 27 13:42 total.AN0544P.sr.pair.format				<- formatted using shell script, pair input
+			
+			-rw-rw----+ 1 dbickhar outside 5508989 May  1 08:39 total.AN0544P.sr.events.final				<- final event output after using the following shell script
+			
+		# Now I just need to run their getFinalEvents.sh script
+		$ bsub -J getfinal -oo getfinal.OUT 'sh /ibfs7/asg2/bickhartd/bin/getFinalevents.sh total.AN0544P.sr.events total.AN0544P.sr.events.final'
+		
+		# there are some absurd calls made in the program, such as this:
+		chr	start		end		size	type		bsupp	usupp	an.edit	sp.edit	anchor data (do not need after this column)
+		chr27   23726266        26371835        2645569 D2645569        758     37      1       0       23726067	23726236        23726143        26371777
+		
+		# I am guessing that it is a mobile element insertion or duplicated sequence insertion. I could check this later.
+		# Possible strategy: only accept events that are subsequently confirmed by variation hunter (two methods of support)
+		
+	# Lets work on variationHunter next, just to see if there is any overlap with this output
+		# VariationHunter is an absolute mess of a package. It relies on everything running in its own directory (because of native files). I will need to create a gaps file and a chr length file
+		# I made a modification to createSetsDelAsInsNoGapInvRLProb.alpha to take a "gapsfile" for the last argument
+		Lewis: /ibfs7/asg0/bickhartd/angus
+		$ bsub -J calcchr -oo calcchrlens.OUT perl /ibfs7/asg2/bickhartd/bin/calculate_chr_lengths_from_fasta.pl /ibfs7/asg2/bickhartd/reference/umd3_full_cryptic_gap_a.fa
+		
+		# Gaps file is here: /ibfs7/asg2/bickhartd/Umd3_windows/UMD3_gaps.bed
+		# Length file is here: /ibfs7/asg2/bickhartd/reference/umd3_full_cryptic_gap_a.fa.lens
+		
+		# So, nothing left to do but try to run the pipeline.
+		Lewis: /ibfs7/asg0/bickhartd/angus/AN0544P
+		$ bsub -J vhrun -oo variation_hunter.OUT -R "rusage[mem=5000]" 'perl /ibfs7/asg2/bickhartd/bin/run_variation_hunter_pipeline.pl -i ./divet -n AN0544P -m 250 -M 400 -p 0.001 -t 3 -c /ibfs7/asg2/bickhartd/reference/umd3_full_cryptic_gap_a.fa.lens -g /ibfs7/asg2/bickhartd/Umd3_windows/UMD3_gaps.bed'
+		# Got nothing back from that run. Going to try to run the program without removing files to see what's going on.
+		# I fixed the bug in the script
+			Inside_Start:74748414 Inside_End:74748440 OutSide_Start:74778433 Oustide_End:74778438 chro:chr8 SVtype:4 sup:61 Avg_Span:3000 2 sumProb:28.000162
+			# SVType 1 = insertion
+			# SVType 2 = deletion
+			# SVType 3 = FF inversion
+			# SVType 4 = RR inversion
+		
+			
+	# Just to be safe, I am going to repeatmask the UMD3 genome again, mask the gaps and create a "heavy mask" and a "light mask" version. 
+	# The "heavy mask" will have 6 bp extensions on reads (the edit distance of my reads)
+	# The "light mask" will not have this extension.
+	# Both will be repeatmasked (adelson libraries) and have trf masking
+		Server 2: /mnt/data6/gliu/dbickhart/bovine
+		$ for i in *.fa; do ../RepeatMasker/RepeatMasker -pa 4 -s -lib /mnt/data6/gliu/dbickhart/RepeatMasker/Libraries/bovine_custom_repeat_lib.fasta -no_is -dir . $i ; done
+		
+		# It looks like repeatmasker is operational on Lewis, so I will try masking my libraries there.
+		Lewis: /ibfs7/asg2/bickhartd/umd3_rmask
+		$ bsub -J change -oo umd3_chr_change.OUT 'for i in *.fa; do perl change_chr_header_umd3.pl $i; done'
+		$ for i in *.fa; do bsub -J $i.r -oo $i.mask.OUT -n 4 "RepeatMasker -pa 4 -s -lib /ibfs7/asg2/bickhartd/umd3_rmask/bovine_custom_repeat_lib.fasta -no_is -dir . $i"; done
+		
+		# This is not working out well. It appears that they have old libraries and a version of repeatmasker that is 2 versions behind the times!
+		# Trying it again using the cow species library
+		$ for i in *.fa; do bsub -J $i.r -oo $i.mask.OUT -n 4 "RepeatMasker -pa 4 -species cow -no_is -dir . $i"; done
+
+		# My version of repeatmasker on server 2 is also old, so I need to reinstall it.
+		# Rerunning it using david adelson's library
+		Server 2: /mnt/data6/gliu/dbickhart/bovine
+		$ for i in *.fa; do ../RepeatMasker/RepeatMasker -pa 4 -s -lib /mnt/data6/gliu/dbickhart/RepeatMasker/Libraries/bovine_custom_repeat_lib.fasta -no_is -dir . $i ; done
+		
+		# I broke down and installed RepeatMasker on Lewis using my own versions of the sofware. Everything is located on ibfs7/asg2/bickhartd/RepeatMasker and it is setup to use wublast
+		Lewis: /ibfs7/asg2/bickhartd/umd3_rmask
+		$ for i in *.fa; do echo $i; perl -pi -e 's/\r//g' $i; done
+		$ for i in *.fa; do bsub -J $i.r -oo $i.mask.OUT -n 4 "/ibfs7/asg2/bickhartd/RepeatMasker/RepeatMasker -pa 4 -s -lib /ibfs7/asg2/bickhartd/umd3_rmask/bovine_custom_repeat_lib.fasta -no_is -dir . $i"; done
+		# Several jobs failed to finish. Running them again
+		$ for i in Chr10.fa Chr11.fa Chr12.fa Chr13.fa Chr14.fa Chr15.fa Chr16.fa Chr17.fa Chr1.fa Chr2.fa; do bsub -J $i.r -oo $i.mask.OUT -n 4 -R "span[hosts=1]" "/ibfs7/asg2/bickhartd/RepeatMasker/RepeatMasker -pa 4 -s -lib /ibfs7/asg2/bickhartd/umd3_rmask/bovine_custom_repeat_lib.fasta -no_is -dir . $i"; done
+		$ bsub -J cat -oo cat.out "cat *.fa.out > total_repeat_mask_out.tab"
+		
+		# Testing out the lewis cluster's newly updated version of repeatmasker
+		$ bsub -J repeat -oo Chr10.test.OUT -n4 -R "span[hosts=1]" "/share/apps/test/repeatmasker/RepeatMasker -pa 4 -s -lib /ibfs7/asg2/bickhartd/umd3_rmask/bovine_custom_repeat_lib.fasta -no_is -dir . Chr10.fa"
+		$ bsub -J diff -oo diff_10.out diff Chr10.fa.out sample_chr10.fa.out
+		# Produced no output, so the files are the same.
+		
+		# Now it is time to generate my reference fasta
+		Lewis: /ibfs7/asg2/bickhartd/umd3_rmask
+		$ bsub -J catchr -oo catchr.OUT /ibfs7/asg2/bickhartd/bin/karyotype_cat_chrs.pl umd3_karyotype_unmasked.fa
+		$ bsub -J catout -oo RMout_cat.OUT "cat Chr*.fa.out > repeatmasker.cat.out"
+		$ bsub -J trf -oo trfmasking.OUT "../RepeatMasker/trf umd3_karyotype_unmasked.fa 2 7 7 80 10 50 500 -m"
+		$ bsub -J rmtobed -oo rmtobed perl /ibfs7/asg2/bickhartd/bin/repeatmasker_output_to_beds.pl repeatmasker.cat.out umd3_repeatmasker_out
+		
+		# There was a segmentation fault with the trf run on the concatenated fasta
+		# Trying it on individual chromosomes
+		$ bsub -J trfindiv -oo trfindiv.OUT 'for i in Chr*.fa; do ../RepeatMasker/trf $i 2 7 7 80 10 50 500 -m ; done'
+		$ bsub -J trfcat -oo trfcatchr.OUT perl /ibfs7/asg2/bickhartd/bin/karyotype_cat_chrs.pl umd3_karyotype_trfmask.fa
+		
+		# Now to mask the references (remember, I'm creating two references: one extended masked and one without extensions)
+		$ bsub -J normmask -oo normmask.OUT /ibfs7/asg2/bickhartd/bin/bedtools maskfasta -fi umd3_karyotype_trfmask.fa -bed umd3_repeatmasker_out.merged.bed -fo umd3_karyotype_trfmask_nmask.fa
+		$ bsub -J extmask -oo extmask.OUT /ibfs7/asg2/bickhartd/bin/bedtools maskfasta -fi umd3_karyotype_trfmask.fa -bed umd3_repeatmasker_out.merged.extend -fo umd3_karyotype_trfmask_extendmask.fa
+		
+		# Preparing a gaps file
+		pwd: /home/dbickhart/share/bob_missou_data/umd3_folder/
+		$ perl -lane 'if($F[4] eq "U" || $F[4] eq "N"){$F[0] =~ s/C/c/; print "$F[0]\t$F[1]\t$F[2]";}' < bos_taurus.agp > umd3_gaps_ftp.bed
+		
+		# Now to softmask the gaps and then transform them into "X's"
+		Lewis: /ibfs7/asg2/bickhartd/umd3_rmask
+		$ bsub -J normmask -oo normmaskgap.OUT /ibfs7/asg2/bickhartd/bin/bedtools maskfasta -fi umd3_karyotype_trfmask_nmask.fa -bed umd3_gaps_ftp.bed -fo umd3_karyotype_trfmask_nmask_gapsoft.fa -soft
+		$ bsub -J extendmask -oo extendmaskgap.OUT /ibfs7/asg2/bickhartd/bin/bedtools maskfasta -fi umd3_karyotype_trfmask_extendmask.fa -bed umd3_gaps_ftp.bed -fo umd3_karyotype_trfmask_extendmask_gapsoft.fa -soft
+		
+		$ bsub -J nmaskconvert -oo nmaskconvert.OUT /ibfs7/asg2/bickhartd/bin/convert_ns_to_xs.pl umd3_karyotype_trfmask_nmask_gapsoft.fa umd3_karyotype_trfmask_nmask_gapshard.fa
+		$ bsub -J exmaskconvert -oo exmaskconvert.OUT /ibfs7/asg2/bickhartd/bin/convert_ns_to_xs.pl umd3_karyotype_trfmask_extendmask_gapsoft.fa umd3_karyotype_trfmask_extendmask_gapshard.fa
+		
+		$ bsub -J basecomp1 -oo extendmaskgaphard_basecomp.OUT /ibfs7/asg2/bickhartd/bin/calculate_base_composition_fasta.pl umd3_karyotype_trfmask_extendmask_gapshard.fa
+			total autosomal:        1317605107      total repetitive:       1343301284      perc auto:       49.5171536832917
+		$ bsub -J basecomp2 -oo nmaskgaphard_basecomp.OUT /ibfs7/asg2/bickhartd/bin/calculate_base_composition_fasta.pl umd3_karyotype_trfmask_nmask_gapshard.fa
+			total autosomal:        1335120500      total repetitive:       1325785822      perc auto:       50.1754041080444
+		
+		$ tail ../reference/umd3_full_cryptic_gap_a_base_check.out
+			total autosomal:        1195664867      total repetitive:       1465241961      perc auto:       44.934488288667
+		
+		
+		# I am a little hesitant after seeing that my cryptic gap file has more bases masked than my newly masked UMD3 genome. I am going to extract the repeat regions into bed files
+		# Then I will use bedtools to do an intersect -v to identify novel masked regions in my newly masked references
+		$ bsub -J getrepeats1 -oo grepextend -R "rusage[mem=4000]" /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /ibfs7/asg2/bickhartd/bin/getRepeatMaskfromFasta.jar umd3_karyotype_trfmask_extendmask_gapshard.fa
+		$ bsub -J getrepeats2 -oo grepnmask -R "rusage[mem=2000]" /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /ibfs7/asg2/bickhartd/bin/getRepeatMaskfromFasta.jar umd3_karyotype_trfmask_nmask_gapshard.fa
+		$ bsub -J getrepeats3 -oo crypticmask -R "rusage[mem=2000]" /ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /ibfs7/asg2/bickhartd/bin/getRepeatMaskfromFasta.jar ../reference/umd3_full_cryptic_gap_a.fa
+		
+		# Now to count the number of bases in each repeat file to compare. Then I will use bedtools
+		$ bsub -J check1 -oo umd3_karyotype_trfmask_extendmask_gapshard.fa.repeat.lens "cat umd3_karyotype_trfmask_extendmask_gapshard.fa.repeat | /ibfs7/asg2/bickhartd/bin/count_bases_bed.pl"
+		$ bsub -J check1 -oo umd3_karyotype_trfmask_nmask_gapshard.fa.repeat.lens "cat umd3_karyotype_trfmask_nmask_gapshard.fa.repeat | /ibfs7/asg2/bickhartd/bin/count_bases_bed.pl"
+		$ bsub -J check2 -oo umd3_full_cryptic_gap_a.fa.repeat.lens "cat umd3_full_cryptic_gap_a.fa.repeat | /ibfs7/asg2/bickhartd/bin/count_bases_bed.pl"
+		
+		# Line counts
+		$ bsub -J intersect1 -oo intersectbed.OUT "/ibfs7/asg2/bickhartd/bin/bedtools intersect -a umd3_karyotype_trfmask_nmask_gapshard.fa.repeat -b umd3_full_cryptic_gap_a.fa.repeat -v | wc -l"
+			344727
+		$ bsub -J intersect1 -oo intersectbed.OUT "/ibfs7/asg2/bickhartd/bin/bedtools intersect -b umd3_karyotype_trfmask_nmask_gapshard.fa.repeat -a umd3_full_cryptic_gap_a.fa.repeat -v | wc -l"
+			248022
+			
+		# base counts
+		$ bsub -J intersect1 -oo intersectbed.OUT "/ibfs7/asg2/bickhartd/bin/bedtools intersect -a umd3_karyotype_trfmask_nmask_gapshard.fa.repeat -b umd3_full_cryptic_gap_a.fa.repeat -v | /ibfs7/asg2/bickhartd/bin/count_bases_bed.pl"
+			Total: 24529335 Average: 71.1558276549269       Stdev: 103.966932521249 Min: 4  Max: 6133
+		$ bsub -J intersect1 -oo intersectbed.OUT "/ibfs7/asg2/bickhartd/bin/bedtools intersect -b umd3_karyotype_trfmask_nmask_gapshard.fa.repeat -a umd3_full_cryptic_gap_a.fa.repeat -v | /ibfs7/asg2/bickhartd/bin/count_bases_bed.pl"
+			Total: 52622257 Average: 212.167698833168       Stdev: 94.9871479035459 Min: 92 Max: 2112
+			
+		# So, there is a substantial difference. I am interested to see if this results in more mapping or fewer mappings. 
+		
+	
+# Checking to see if I can sort and merge all of the bams I have created in a reasonable amount of time and with minimal memory footprints
+	Lewis: /ibfs7/asg0/bickhartd/angus/AN0544P
+	$ bsub -J sammerge -oo bam_merge.OUT -R "rusage[mem=4000]" /ibfs7/asg2/bickhartd/bin/samtools merge AN0544P.01.total_sorted_merged.bam *sorted.bam
+		open: Too many open files
+		[bam_merge_core] fail to open file AN0544P.01.559.sorted.bam
+		# Damn, I'll have to have multiple sort and merge commands
+		
+# Rerunning the pipeline to see if all other incorporated scripts will be correctly automated (ie. the doc, vh and sr based scripts)
+# This will also test out my newly masked UMD3 fastas
+	Lewis: /ibfs7/asg2/bickhartd/reference
+	$ bsub -J extindex "/ibfs7/asg2/bickhartd/bin/mrsfast --index umd3_karyotype_trfmask_extendmask_gapshard.fa"
+	$ bsub -J nindex "/ibfs7/asg2/bickhartd/bin/mrsfast --index umd3_karyotype_trfmask_nmask_gapshard.fa"
+	$ bsub -J bwaindex1 "/ibfs7/asg2/bickhartd/bin/bwa -a bwtsw umd3_karyotype_trfmask_extendmask_gapshard.fa"
+	$ bsub -J bwaindex2 "/ibfs7/asg2/bickhartd/bin/bwa index -a bwtsw umd3_karyotype_trfmask_nmask_gapshard.fa"
+	$ bsub -J samindex1 "/ibfs7/asg2/bickhartd/bin/samtools faidx umd3_karyotype_trfmask_extendmask_gapshard.fa"
+	$ bsub -J samindex2 "/ibfs7/asg2/bickhartd/bin/samtools faidx umd3_karyotype_trfmask_nmask_gapshard.fa"
+	
+	Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+	$ bsub -J AN0544_t -o AN0544_t.OUT -e AN0544_t.ERR -q normal /ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s AN0544_test_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus -m . -r /ibfs7/asg2/bickhartd/reference/umd3_karyotype_trfmask_extendmask_gapshard.fa -a /ibfs7/asg2/bickhartd/reference/umd3_karyotype_trfmask_nmask_gapshard.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed
+	# Note: uploade lewis_pipeline_utils.pm to /ibfs7/asg2/bickhartd/perl_lib/ in the future.
+	# I also goofed on the file output naming convention in the split read pipeline. I need to fix this in the main script as well
+	
+	# This is a problem:
+		Total Time:                       429.34
+		Total No. of Reads:               199368
+		Total No. of Mappings:           4293798
+		Avg No. of locations verified:      2044
+	# I am going to check to see if this is a problem with repeat masking (most likely)
+		Lewis: /ibfs7/asg0/bickhartd/angus/AN0544P
+		$ bsub -J repeatcheck -oo repeatcheck.OUT -R "rusage[mem=4000] span[hosts=1]" -n 2 "/ibfs7/asg2/bickhartd/bin/print_locations_non_unique_reads.pl AN0544P.01.1453.sorted.bam nonunique_read_locations.bed"
+		
+		$ /ibfs7/asg2/bickhartd/bin/bedtools intersect -a nonunique_read_locations.bed -b /ibfs7/asg2/bickhartd/umd3_rmask/umd3_repeatmasker_out.merged.bed | wc -l
+			0   <- most of these entries do map to repeats on the UCSC genome browser, so there is a flaw in the repeatmasking. David Adelson's libraries probably superceded the -species cow libraries that I needed
+			
+		# I am going to re-repeatmask the chromosomes using the -species cow option to see if that covers these missed repetitive regions
+		$ for i in *.fa.2.7.7.80.10.50.500.mask; do bsub -J $i.r -oo $i.mask.OUT -n 4 -R "rusage[mem=2000] span[hosts=1]" "/share/apps/test/repeatmasker/RepeatMasker -pa 4 -s -species cow -dir . $i"; done 
+		$ bsub -J cat "cat *500.mask.out > species_cow_repeat_mask_out.tab"
+		$ perl ../reference_utils/repeatmasker_output_to_beds.pl species_cow_repeat_mask_out.tab umd3_species_cow_repeatmasker_out
+		
+		$ bsub -J extendmask -oo extendmask.OUT /ibfs7/asg2/bickhartd/bin/bedtools maskfasta -fi umd3_karyotype_trfmask_extendmask_gapshard.fa -bed umd3_species_cow_repeatmasker_out.extend -fo extendmask.tmp.fa
+		$ bsub -J normmask -oo normmask.OUT /ibfs7/asg2/bickhartd/bin/bedtools maskfasta -fi umd3_karyotype_trfmask_nmask_gapshard.fa -bed umd3_species_cow_repeatmasker_out.bed -fo nmask.tmp.fa
+		
+		# Now to check this out to see if I need to remask the gaps
+		$ bsub -J basecomp1 -oo extendmaskgaphard_basecomp.new.OUT /ibfs7/asg2/bickhartd/bin/calculate_base_composition_fasta.pl extendmask.tmp.fa
+			Total Counts:
+			A:      352483607
+			C:      251105655
+			G:      251430940
+			T:      353182172
+			X:      20401159
+			N:      1432302863
+			total autosomal:        1208202374      total repetitive:       1452704022      perc auto:       45.4056698806176
+		$ bsub -J basecomp2 -oo nmaskgaphard_basecomp.new.OUT /ibfs7/asg2/bickhartd/bin/calculate_base_composition_fasta.pl normmask.tmp.fa
+		
+		
+		# Yeah, so I do have to resoftmask and then rehardmask the X's
+		$ bsub -J extendmask -oo extendmask.OUT /ibfs7/asg2/bickhartd/bin/bedtools maskfasta -fi extendmask.tmp.fa -bed umd3_gaps_ftp.bed -fo extendmask.tmp.soft.fa -soft
+		$ bsub -J normmask -oo normmask.OUT /ibfs7/asg2/bickhartd/bin/bedtools maskfasta -fi normmask.tmp.fa -bed umd3_gaps_ftp.bed -fo normmask.tmp.soft.fa -soft
+		
+		$ bsub -J convertn -oo normmask.OUT perl /ibfs7/asg2/bickhartd/bin/convert_ns_to_xs.pl normmask.tmp.soft.fa umd3_kary_extend_hgap.fa
+		$ mv umd3_kary_extend_hgap.fa umd3_kary_nmask_hgap.fa
+		$ bsub -J converte -oo extendmask.OUT perl /ibfs7/asg2/bickhartd/bin/convert_ns_to_xs.pl extendmask.tmp.soft.fa umd3_kary_extend_hgap.fa
+		
+		$ bsub -J eindex -oo eindex.OUT /ibfs7/asg2/bickhartd/bin/mrsfast --index umd3_kary_extend_hgap.fa
+		$ bsub -J nindex -oo nindex.OUT /ibfs7/asg2/bickhartd/bin/mrsfast --index umd3_kary_nmask_hgap.fa
+		
+		# Now to do a test
+		# The original check
+		$ sh /ibfs7/asg0/bickhartd/commands/P_AN0544P_01.0.sh
+		$ bsub -J bamtest -oo bamtest.an0544p.01.0.wc "/ibfs7/asg2/bickhartd/bin/samtools view /ibfs7/asg0/bickhartd/angus/AN0544P | wc -l"
+			4606280
+		
+		# updated
+		$ emacs /ibfs7/asg0/bickhartd/commands/P_AN0544P_01.0.sh
+		$ sh /ibfs7/asg0/bickhartd/commands/P_AN0544P_01.0.sh
+		$ bsub -J bamtest -oo bamtest.an0544p.01.0.wc "/ibfs7/asg2/bickhartd/bin/samtools view /ibfs7/asg0/bickhartd/angus/AN0544P/AN0544P.01.0.sorted.bam | wc -l"
+			89009
+		# Yes, this was a much more thorough repeatmasking
+	# Now to rerun the whole pipeline to see if I have solved some of the issues
+	# NOTE: bob has removed the original fastqs and replaced them with filtered fastqs. I need to update the file locations and names in my spreadsheets
+	# I just updated AN0544_test_spreadsheet.tab with the new file locations
+	# Cleaning up existing folders before running...
+	Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+	$ bsub -J AN0544_t -oo AN0544_t.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s AN0544_test_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"
+	
+	# One thing: even though the pipeline works very well, huge split read calls persist. I need to distinguish these as putative MEIs
+	# I am now calling events larger than 10kb in split read as putative MEIs ("ins") and not merging them with DOC calls)
+	# Now to test it out on the full angus individual 
+	$ bsub -J AN0544_t -oo AN0544_fr.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s AN0544_full_run_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_indiv -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"
+	
+	# It was taking way too long on the splitread step (the final events program) so I rewrote it in Java to handle multiple threads
+	# Testing out the new java event merger algorithm:
+		Lewis: /ibfs7/asg0/bickhartd/angus/AN0544P/split_read
+		$ bsub -J eventtest -oo JavaEventTest.OUT -n 8 -R "rusage[mem=10000] span[hosts=1]" "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /ibfs7/asg2/bickhartd/bin/splitReadFinalEvents.jar AN0544P.sr.pair.format AN0544P.sr.all.oea.match.format test_events.events 50 8"
+		
+		
+# Now, I want to generate figures for complex CNVs to see if I can identify artifacts or problem zones 
+# My strategy for merging and resolving CNV events:
+	# For the same animal:
+		1. Simple bp overlap among the three datasets (split read, read pair, read depth)
+		2. If all three call a deletion, then it is a confirmed deletion.
+		3. If RD calls it as a duplication or the CN number is not consistent with a deletion, it is complex
+		4. If only RD calls it as a duplication and no other method overlaps, it is a duplication
+	# I created a pipeline script that generates very crude images for this purpose. 
+	# here is a testrun of the pipeline
+	pwd: /home/dbickhart/share/bob_missou_data
+	$ perl draw_complex_cnv.pl 10000 99000 ./testdata/read_depth_test.bed ./testdata/read_pair_test.bed  ./testdata/split_read_test.bed ./testdata/gene_test.bed ./testdata/gap_test.bed ./testdata/repeat_test.bed ./testdata/larger_test.png
+	
+	# Because of the possibility for overly complex events to slip in, I created less strict criteria.
+	# I have made some major progress with the pipeline, and I will want to take the individual scripts through the process separately before I rerelease the pipeline as a whole
+	# Here are the scripts that I should test individually:
+		- merge_doc_output.pl
+		- merge_split_read_output.pl
+		- merge_vh_output.pl
+		- merge_final_cnv_calls.pl
+		
+		# the final script last, obviously
+		Lewis: /ibfs7/asg0/bickhartd/angus/AN0544P
+		$ cd doc_wins/
+		$ bsub -J docmerge -oo docmerge.OUT -R "rusage[mem=5000]" perl /ibfs7/asg2/bickhartd/bin/merge_doc_output.pl -i java_merge_test.file1.bed.final.wssd -d java_merge_test.file1.bed.final.deletions.tab -x java_merge_test.file1.bed.X.final.wssd -y java_merge_test.file1.bed.final.X.deletions.tab -c java_merge_test.file3.bed.gc.depth.normalized.CN -o /ibfs7/asg0/bickhartd/angus/AN0544P/merge/doc_merge_output.bed
+		
+		$ cd ../split_read/
+		$ bsub -J mergesplit -oo mergesplit.OUT -R "rusage[mem=5000]" perl /ibfs7/asg2/bickhartd/bin/merge_split_read_output.pl total.AN0544P.sr.events.final /ibfs7/asg0/bickhartd/angus/AN0544P/merge/split_read_out.bed
+		
+		$ cd ../divet/
+		$ bsub -J vh_merge -oo vhmerge.OUT -R "rusage[mem=5000]" perl /ibfs7/asg2/bickhartd/bin/merge_vh_output.pl AN0544P.final.SV /ibfs7/asg0/bickhartd/angus/AN0544P/merge/vh_merger_out.bed
+		
+		$ cd ../merge/
+		$ bsub -J finalmerge -oo finalmerge.OUT -R "rusage[mem=5000]" perl /ibfs7/asg2/bickhartd/bin/merge_final_cnv_calls.pl -d doc_merge_output.bed -p vh_merger_out.bed -s split_read_out.bed -o final_merged_calls
+		
+		
+		# There was a problem with the split read merger output. 
+		# Basically, the split read program was suggesting that we had deletions that were longer than a megabase! 
+		# I think that I need to fine-tune the split read program to prevent such huge deletions from impacting the pipeline
+		# As a safety net, I will alter the merger pipeline to ignore split read events that are greater than 500 kb long 
+		# I should also reduce the "max" value of the split read pipeline to 500kb as well (it was 10Mb before!)
+		# These are likely due to ambiguity of alignment rather than anything else.
+		
+		# Tested out the final merger script locally
+		pwd: /home/dbickhart/share/bob_missou_data
+		$ wc -l testdata/localtest_merge_final.*
+		  51346 testdata/localtest_merge_final.bed
+		    842 testdata/localtest_merge_final.problem
+		  51346 testdata/localtest_merge_final.tab
+		  51346 testdata/localtest_merge_final.tmp
+		 154880 total
+ 		 
+ 		$ perl -e 'while(<>){chomp; @s = split(/\t/); if ($s[8] == 1){$c++;}elsif($s[8] == 0){$i++;}else{}} print "cons: $c\tinconsis: $i\n";' < testdata/localtest_merge_final.tab
+ 			cons: 3578	inconsis: 47768		Not a good sign so far, but this might have to do with the reference genome I used in the initial alignment
+			
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); if ($s[8] == 1){@v = split(/_/, $s[5]); @l = split(//, $v[1]); foreach $u (@l){$c{$u} += 1;}}elsif($s[8] == 0){@v = split(/_/, $s[5]); @l = split(//, $v[1]); foreach $u (@l){$i{$u} += 1;}}else{}} foreach $v (keys(%c)){if ($v eq "d"){next;} print "cons: $v $c{$v}\n"; }foreach $v (keys(%i)){if ($v eq "d"){next;} print "incons: $v $i{$v}\n";}' < testdata/localtest_merge_final.tab
+			cons: v 21
+			incons: v 2339
+			incons: s 46776		# So, this DOC run had pretty poor consistency. Particularly with the rampant split read runs
+			
+# Creation of an inclusive spreadsheet generation algorithm
+	# So, I have written a script that produces both gene intersections and CNV statistics (CNVR intersections and CN intersections as well)
+	# I need to get gene database files for the UMD3 assembly
+	# I will have to get the UCSC genome browser tables and create the flatfiles that I need
+		mysql> create database umd3_1;
+		
+		# Maybe I can make the flat files without mysql database searching
+		pwd: /home/dbickhart/share/bob_missou_data/umd3_folder
+		$ perl -lane 'print "$F[2]\t$F[4]\t$F[5]\t$F[1]";' < ensGene.txt > ensGene_umd3_coords.bed
+		$ perl -lane 'print "$F[2]\t$F[4]\t$F[5]\t$F[1]";' < refGene.txt > refGeneNum_umd3_coords.bed
+		$ perl -lane 'print "$F[2]\t$F[4]\t$F[5]\t$F[12]";' < refGene.txt > refGeneName_umd3_coords.bed
+		
+		# These will do for the time being
+	# Now I need to make flat files that have the paths to the files I will intersect
+	# the pipeline script needs three such files:
+		- merged cnv call list
+		- cn file list
+		- gene db list
+		
+	# Making them for the trial run
+		Lewis: /ibfs7/asg2/bickhartd/database_files
+		$ for i in *.bed; do echo "/ibfs7/asg2/bickhartd/database_files/"$i; done > umd3_genedb_list.txt
+		
+		Lewis: /ibfs7/asg0/bickhartd/angus/AN0544P/merger
+		$ echo "/ibfs7/asg0/bickhartd/angus/AN0544P/merger/final_dsv_total_merge_AN0544P.tab" > merge_file_loc.txt
+		$ echo "/ibfs7/asg0/bickhartd/angus/AN0544P/doc_wins/AN0544P.doc.file3.bed.gc.depth.normalized.CN" > cn_file_loc.txt
+		
+		# Ok so the flat file locations are:
+		/ibfs7/asg2/bickhartd/database_files/umd3_genedb_list.txt
+		/ibfs7/asg0/bickhartd/angus/AN0544P/merger/merge_file_loc.txt
+		/ibfs7/asg0/bickhartd/angus/AN0544P/merger/cn_file_loc.txt
+		
+		# So, this will just be a dry run on the previous angus intersection that I did before in a test run:
+		$ bsub -J spreadsheet -oo spreadsheettest.OUT -R "rusage[mem=10000]" "perl /ibfs7/asg2/bickhartd/bin/intersect_beds_into_spreadsheet.pl -m merge_file_loc.txt -c cn_file_loc.txt -d /ibfs7/asg2/bickhartd/database_files/umd3_genedb_list.txt -o merged_spreadsheet.xls"
+		
+		# OK, it looks like it works fairly well, all things considered
+		# I might have to separate the CNVRs from the three different methods (since, combined, they create a huge overlap over sections of the chromosomes
+		
+# Now to run all of the angus through the pipeline
+	Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+	$ bsub -J ANGMaster -oo ANGMaster.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s all_angus_run_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"
+	
+	# Because of errors on the cluster, my main job keeps hanging every so often. To combat this, I have created a script to restart the analysis when the script hangs on a specific part
+	# Script name: lewis_pipeline_recovery.pl
+	# Going to test it out on a subset of the data that is currently hanging at the end of the alignment stage of the pipeline
+	$ bsub -J recovery -oo recovery_test.OUT -q normal "/ibfs7/asg2/bickhartd/bin/lewis_pipeline_recovery.pl -s subset_angus_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed -p calling"
+	
+	# Going to use George's login to start running the pipeline on a subset of files
+	$ bsub -J GANGmas -oo GANGmas.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s g_subset_angus_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"
+		# Ran into an issue with Bob's fastqs and the fastqDelOea C program
+		# Ended up rewriting the program in Java to basically accomplish the same thing (except neater and with better error checking)
+		
+		$ /ibfs7/asg2/bickhartd/bin/fastqdeloea -i ../../temp_fqs/AN0828P.01.1_Unique.fastq.ptmp_140 -r ./split_read/*.oea.name  */
+		
+	# Running my subset
+	$ bsub -J DANGmas -oo DANGmas.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s d_subset_angus_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"  
+	
+	# OK, I had ANOTHER problem with the splitread package. There must be something wrong with the environment or program binaries. 
+	# Running a test
+	$ bsub -J test_split -R "rusage[mem=1000]" -oo test_split.OUT -e test_split.err /ibfs7/asg2/bickhartd/bin/run_split_read_pipeline.pl -i /ibfs7/asg0/bickhartd/temp_fqs/AN0828P.01.1_Unique.fastq.ptmp_130 -o TEST -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -e 2 -l 100 -m 50000 -u 500 -x 50 -n 129 -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -c TEST
+	
+	# OK, here is the problem: Bob is mixing and matching Illumina format reads from different templates. Some of them already have a "1" or '2' in the read name, so I need to strip that out to make the rest of the read name unique
+	# I have updated the lewis_pipeline_utils.pm module to try to do this automatically with reads with a non-standard header format
+	
+	# Saving what I had from the other run
+		$ perl -e 'while(<>){chomp; @s =split(/\t/); $h{$s[-1]} = 1;} foreach $k (keys(%h)){print "$k\n";}' < /ibfs7/asg2/bickhartd/run_spreadsheets/d_subset_angus_spreadsheet.tab
+			AN0458
+			AN0626
+			AN0728
+			AN0544
+			
+		$ mkdir old_merge
+		$ cp AN0458/merger/* ./old_merge/	*/
+		$ cp AN0626/merger/* ./old_merge/	*/
+		$ cp AN0728/merger/* ./old_merge/	*/
+		$ cp AN0544/merger/* ./old_merge/	*/
+		
+	# Retrying the pipeline
+	Lewis: /ibfs7/asg2/bickhartd/run_spreadsheets
+	$ bsub -J DANGmas -oo DANGmas.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s d_subset_angus_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"  
+	
+	# there were problems with the Lewis cluster. Trying to restart the process with my recovery script
+	$ bsub -J recovery -oo DANGmas_recovery.OUT "/ibfs7/asg2/bickhartd/bin/lewis_pipeline_recovery.pl -s d_subset_angus_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed -p alignment"
+	# There are still some file server problems, I think. I will have to restart the pipeline from the beginning.
+	# Now, redoing George's subset under my username
+	$ bsub -J GANGmas -oo GANGmas.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s g_subset_angus_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"
+	
+	# there was a problem with the split file finalization, I think. Now I need to rerun it to see what's going on.
+	$ bsub -J recovery -oo GANGmas_recovery.OUT "/ibfs7/asg2/bickhartd/bin/lewis_pipeline_recovery.pl -s g_subset_angus_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed -p calling"
+	# I found the problem: my finalize_split_command function was missing a space after the "-n" option input. This caused the job not to be submitted.
+	
+	# I downloaded all of the files and tried to create the spreadsheet locally on my unix box
+	
+	pwd: /home/dbickhart/share/bob_missou_data/angus_finished
+	$ perl ../intersect_beds_into_spreadsheet.pl -m final_tab_file_fix_list.txt -c cn_file_list.txt -d gene_db_file_list.txt -o final_spreadsheet_angus.xls
+	
+	# It finished after a full day. I need to implement a faster algorithm or rewrite the program in java
+	
+	# Bob also wants me to run the DT data. Shouldn't be too bad with the current pipeline
+	$ bsub -J DTmas -oo DTmas.OUT -q normal "/ibfs7/asg2/bickhartd/bin/run_alignment_lewis_cluster_lsf.pl -s dt_subset_angus_spreadsheet.tab -o /ibfs7/asg0/bickhartd/angus_full -m . -r /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -a /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa -g /ibfs7/asg2/bickhartd/reference/umd3_gaps_ftp.bed"
+	
+	
+	# there are some problems with gene regions:
+		$ perl -lane 'if($F[0] eq "chr8" && $F[2] > 83223282 && $F[1] < 83263558){print $_;}' < AN0219.doc.file3.bed.gc.depth.normalized.CN 
+		chr8	83218063	83227537	1.23321
+		chr8	83227538	83228537	1.8974
+		chr8	83233335	83236111	391.222
+		chr8	83236112	83237111	507.897
+		chr8	83237112	83238530	316.696
+		chr8	83238531	83241708	355.567
+		chr8	83241709	83244107	411.999
+		chr8	83244108	83245193	500.144
+		chr8	83245194	83246249	256.579
+		chr8	83246250	83247249	426.341
+		chr8	83247250	83249237	413.664
+		chr8	83249238	83250237	380.879
+		chr8	83250238	83251304	422.735
+		chr8	83251305	83252304	446.724
+		chr8	83252305	83253718	293.514
+		chr8	83253719	83254718	419.825
+		chr8	83254719	83256956	428.793
+		chr8	83256957	83257956	369.456
+		chr8	83258892	83261585	1.77716
+		chr8	83261586	83263712	2.23591
+		
+		$ perl -lane 'if($F[0] eq "chr4" && $F[2] > 103634500 && $F[1] < 103669157){print $_;}' < AN0219.doc.file3.bed.gc.depth.normalized.CN 
+		chr4	103634257	103635467	1.57598
+		chr4	103635468	103637130	1.85424
+		chr4	103643426	103644656	8934.35
+		chr4	103647613	103649311	9827.76
+		chr4	103653505	103654752	5894.41
+		chr4	103655574	103656632	8672.17
+		chr4	103657240	103658268	7992.3
+		chr4	103658975	103660764	7341.89
+		chr4	103661095	103662248	7978.23
+		chr4	103664483	103665590	2.03774
+		chr4	103665591	103666941	2.30359
+		chr4	103666942	103668593	2.41643
+		chr4	103668594	103669871	1.72973
+		
+		$ perl -lane 'if($F[0] eq "chr27" && $F[2] > 26335889 && $F[1] < 26379735){print $_;}' < AN0219.doc.file3.bed.gc.depth.normalized.CN 
+		chr27	26335889	26337187	15817.5
+		chr27	26339313	26340540	10893.6
+		chr27	26345519	26346755	11717.3
+		chr27	26350200	26351462	7597.93
+		chr27	26352151	26353444	5185.83
+		chr27	26354282	26355549	5858.04
+		chr27	26357628	26358942	6262.31
+		chr27	26361786	26363064	7358.8
+		chr27	26363839	26365117	6819.73
+		chr27	26371997	26373640	9554.93
+		chr27	26375982	26377786	10878.7
+		chr27	26378114	26379735	13142.7
+		
+	# Well, only one way to know for sure
+	pwd: /media/sf_SharedFolders/bob_missou_data/testdata/AN0828_test
+	$ samtools faidx umd3_kary_extend_hgap.fa chr8:83233335-83257956 > chr8_83233335_83257956_extend.fa
+	$ samtools faidx umd3_kary_extend_hgap.fa chr4:103643426-103662248 > chr4_103643426_103662248_extend.fa
+	$ samtools faidx umd3_kary_extend_hgap.fa chr27:26335889-26379735 > chr27_26335889_26379735_extend.fa
+	
+	$ ~/share/RepeatMasker/RepeatMasker -s -species cow -pa 4 chr4_103643426_103662248_extend.fa
+		No repetitive sequences were detected in chr4_103643426_103662248_extend.fa
+	# Hmmm... tried this with several settings, such as "mammalia" or "human" repeat libraries
+	
+	$ ~/share/RepeatMasker/RepeatMasker -s -species mammal -pa 4 chr27_26335889_26379735_extend.fa
+		processing output: 
+		cycle 1 
+		cycle 2 
+		cycle 3 
+		cycle 4 
+		cycle 5 
+		cycle 6 
+		cycle 7 
+		cycle 8 
+		cycle 9 
+		cycle 10 
+		Generating output... 
+		masking
+		done
+	# This run found something
+		 SW   perc perc perc  query                    position in query     matching       repeat       position in repeat
+		score   div. del. ins.  sequence                 begin end    (left)   repeat         class/family begin  end    (left)  ID
+		
+		  255   29.0 10.7  1.2  chr27:26335889-26379735   7729  7878 (35969) + ERV54-EC_I-int LTR/ERV1     4288   4451 (2812)   1  
+  		  256   21.6  8.7  4.2  chr27:26335889-26379735  37622 37713  (6134) C MER57A-int     LTR/ERV1   (3192)   2995   2900   2
+  	# These regions do not fully explain the abundance of reads though...
+  		  
+  	
+  	$ ~/share/RepeatMasker/RepeatMasker -s -species mammal -pa 4 chr8_83233335_83257956_extend.fa
+  		No repetitive sequences were detected in chr8_83233335_83257956_extend.fa
+  	# Nothing again. I think I did a good job on the repeatmasking
+  	# These might just be artifact regions or contaminated regions
+  	# I might have to dig throught the bams to see what reads are overrepresented
+  	
+  	# Actually, George and I took a look at the regions in question and we both noticed that the UNQ2 and WRP genes had a series of gaps with unrepeatmasked sequence between them
+  	# Some of them are just slightly big enough to make a 1kb window through, and these windows are likely assembly artifacts
+  	# I am just going to remove them from the windows
+  		chr4	103643426	103662248
+  		chr27	26335889	26379735
+  		
+  	pwd: /home/dbickhart/share/bob_missou_data/angus_finished	
+  	$ for i in AN*.CN; do prefix=`echo $i | cut -d'.' -f1`; outfile=`echo $prefix"_filtered_file3_normalized.CN"`; echo $outfile; intersectBed -a $i -b removal.bed -v > $outfile; done
+  	$ wc -l *normalized.CN
+	  1178936 AN0219.doc.file3.bed.gc.depth.normalized.CN
+	  1178917 AN0219_filtered_file3_normalized.CN
+	  ...
+	  
+	# OK, so I think I can continue now and remake the gene and figure tables
+	
+		
+# Creating figures and tables from the DOC data
+	# George would like some figures from the splitread and variationhunter data before he goes ahead with the rest of the pipeline
+	$ R
+	> setwd(dir="/home/dbickhart/share/bob_missou_data/angus_finished/")
+	> AN0219 <- read.delim(file="final_split_merge_AN0219.bed", header=FALSE, sep="\t")
+	> AN0219
+	> head(AN0219)
+	> AN0342 <- read.delim(file="final_split_merge_AN0342.bed", header=FALSE, sep="\t")
+	> AN0447 <- read.delim(file="final_split_merge_AN0447.bed", header=FALSE, sep="\t")
+	> AN0458 <- read.delim(file="final_split_merge_AN0458.bed", header=FALSE, sep="\t")
+	> AN0544 <- read.delim(file="final_split_merge_AN0544.bed", header=FALSE, sep="\t")
+	> AN0626 <- read.delim(file="final_split_merge_AN0626.bed", header=FALSE, sep="\t")
+	> AN0728 <- read.delim(file="final_split_merge_AN0728.bed", header=FALSE, sep="\t")
+	> AN0828 <- read.delim(file="final_split_merge_AN0828.bed", header=FALSE, sep="\t")
+	> AN1717 <- read.delim(file="final_split_merge_AN1717.bed", header=FALSE, sep="\t")
+	> AN1776 <- read.delim(file="final_split_merge_AN1776.bed", header=FALSE, sep="\t")
+	> AN4517 <- read.delim(file="final_split_merge_AN4517.bed", header=FALSE, sep="\t")
+	> ls()
+	
+	# This should give me the histogram of the dataset lengths
+	> x = AN0219[,3]-AN0219[,2]
+	> plot(unlist(lapply(split(x,f=x),length)), ylim=c(0,400))
+	> dev.copy2pdf(file="AN0219_splitread_size_distribution.pdf")
+	# Repeating with the rest using this style:
+	
+	> plot(unlist(lapply(split(AN0342[,3] - AN0342[,2], f=AN0342[,3] - AN0342[,2]), length)), xlim=c(0,400))
+	> dev.copy2pdf(file="AN0342_splitread_size_distribution.pdf")
+	...
+	
+	# Now to do the same with the variation hunter size distributions
+	> AN0219 <- read.delim(file="final_vh_merge_AN0219.bed", header=FALSE, sep="\t")
+	> AN0342 <- read.delim(file="final_vh_merge_AN0342.bed", header=FALSE, sep="\t")
+	> AN0447 <- read.delim(file="final_vh_merge_AN0447.bed", header=FALSE, sep="\t")
+	> AN0458 <- read.delim(file="final_vh_merge_AN0458.bed", header=FALSE, sep="\t")
+	> AN0544 <- read.delim(file="final_vh_merge_AN0544.bed", header=FALSE, sep="\t")
+	> AN0626 <- read.delim(file="final_vh_merge_AN0626.bed", header=FALSE, sep="\t")
+	> AN0728 <- read.delim(file="final_vh_merge_AN0728.bed", header=FALSE, sep="\t")
+	> AN0828 <- read.delim(file="final_vh_merge_AN0828.bed", header=FALSE, sep="\t")
+	> AN1717 <- read.delim(file="final_vh_merge_AN1717.bed", header=FALSE, sep="\t")
+	> AN1776 <- read.delim(file="final_vh_merge_AN1776.bed", header=FALSE, sep="\t")
+	> AN4517 <- read.delim(file="final_vh_merge_AN4517.bed", header=FALSE, sep="\t")
+
+	
+	# This plotting is far better
+	> x<- unlist(lapply(split(AN0219[,3] - AN0219[,2], f=AN0219[,3] - AN0219[,2]), length)); plot(x,axes=FALSE); axis(1, at=0:(length(x)-1),lab=names(x)); axis(2, at=0:(max(x)), lab=0:max(x))
+	
+	# I used this method and redid the splitread graphs as well
+	# Now to create a table to go along with this data so that George can make better sense of it
+	# Using this perl one-liner and then cutting and pasting to excel:
+	$ perl -lane 'print $F[2]-$F[1];' < final_split_merge_AN0219.bed | statStd.pl
+	
+	# Decided to automate the whole thing with the following one-liner:
+	$ for i in final_split_merge_AN*; do prefix=`echo $i | cut -d'_' -f4 | cut -d'.' -f1`; echo $prefix; perl -lane 'print $F[2]-$F[1];' < $i | statStd.pl ; done | perl -e 'while($nam = <STDIN>){$tot = <STDIN>; $min = <STDIN>; $max = <STDIN>; $avg = <STDIN>; $med = <STDIN>; $sd = <STDIN>; $mode = <STDIN>; $space = <STDIN>; chomp($nam, $tot, $min, $max, $avg, $med, $sd, $mode); ($t) = $tot =~ /total\s+(\d+)/; ($i) = $min =~ /Minimum\s+(\d+)/; ($m) = $max =~ /Maximum\s+(\d+)/; ($a) = $avg =~ /Average\s+(\d+)/; ($e) = $med =~ /Median\s+(\d+)/; $h{$nam} = [($t, $i, $m, $a, $e)];} foreach $k (sort {$a cmp $b} keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n"};'
+	$ for i in final_vh_merge_AN*; do prefix=`echo $i | cut -d'_' -f4 | cut -d'.' -f1`; echo $prefix; perl -lane 'print $F[2]-$F[1];' < $i | statStd.pl ; done | perl -e 'while($nam = <STDIN>){$tot = <STDIN>; $min = <STDIN>; $max = <STDIN>; $avg = <STDIN>; $med = <STDIN>; $sd = <STDIN>; $mode = <STDIN>; $space = <STDIN>; chomp($nam, $tot, $min, $max, $avg, $med, $sd, $mode); ($t) = $tot =~ /total\s+(\d+)/; ($i) = $min =~ /Minimum\s+(\d+)/; ($m) = $max =~ /Maximum\s+(\d+)/; ($a) = $avg =~ /Average\s+(\d+)/; ($e) = $med =~ /Median\s+(\d+)/; $h{$nam} = [($t, $i, $m, $a, $e)];} foreach $k (sort {$a cmp $b} keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n"};'
+	
+	
+	# I am going to create the necessary parasight files to create a global view image of CNV locations
+	# I think that there are too many animals to create separate tracklines for each
+	# Instead, I will create a CNVR type structure and color code it based on the number of animals
+	# Track lines:
+		1. Chromosome (with SD and gaps)
+		2. deletion CNVR
+		3. duplication CNVR
+		4. Average copynumber (total CNVR)
+		
+	# Initially, George wants individual chromosomes with separate tracks for each animal color coded based on their copy number
+		
+	# Necessary files for UMD3 conversion:
+		-extra gap5k.extra		I will replace this with a new formatted UMD3 gap file
+		-extra 1867_ge_5k_SD.extra	I will replace this with the DTTRACE UMD3 CNV calls
+		-align intra.xw.al_01 		This can be a text file with just one line per chromosome. Important parts are the chromosome lengths
+		-template globalview10k.pst	This is the template variable file. Just a long list of variables and it will be a pain to sift through
+		
+	# converting the gaps and alignment file
+		Lewis: /ibfs7/asg2/bickhartd/reference
+		$ perl -lane 'print "$F[0]\t1\t$F[1]\t$F[1]\t$F[0]\t1\t$F[1]\t$F[1]\t$F[1]\t1.0000000\t2";' < umd3_kary_nmask_hgap.fa.lens > umd3_align_parasight.al
+		$ perl -e 'print "seqName\tbegin\tend\tcolor\toffset\twidth\ttype\n"; while(<>){chomp; @F= split(/\t/); if($F[2]-$F[1] >= 1000){print "$F[0]\t$F[1]\t$F[2]\tlightGrey\t0\t2\tNGAP\n";}}' < umd3_gaps_ftp.bed > umd3_1k_gaps.extra
+		
+	# Creating the cnvr and extra files
+		pwd: /home/dbickhart/share/bob_missou_data/angus_finished
+		$ cat final_doc_merge_AN* | mergeBed -i stdin > angus_doc_cnvr_simple.bed
+		
+		pwd: /home/dbickhart/share/bob_missou_data/angus_finished/parasight_images
+		# The width and offset numbers are found in the /home/dbickhart/share/bob_missou_data/angus_final/vh_split_summary_data.xls second tab
+		$ perl ../create_parasight_format_file.pl -c brown -i ../angus_doc_cnvr_simple.bed -o angus_cnvr.extra -w 4 -f 8 -t CNVR
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN0219.bed -o AN0219_cnv.extra -w 4 -f 14 -t AN0219
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN0342.bed -o AN0342_cnv.extra -w 4 -f 20 -t AN0342
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN0447.bed -o AN0447_cnv.extra -w 4 -f 26 -t AN0447
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN0458.bed -o AN0458_cnv.extra -w 4 -f 32 -t AN0458
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN0544.bed -o AN0544_cnv.extra -w 4 -f 38 -t AN0544
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN0626.bed -o AN0626_cnv.extra -w 4 -f 44 -t AN0626
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN0728.bed -o AN0728_cnv.extra -w 4 -f 50 -t AN0728
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN0828.bed -o AN0828_cnv.extra -w 4 -f 56 -t AN0828
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN1717.bed -o AN1717_cnv.extra -w 4 -f 62 -t AN1717
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN1776.bed -o AN1776_cnv.extra -w 4 -f 68 -t AN1776
+		$ perl ../create_parasight_format_file.pl -i ../final_doc_merge_AN4517.bed -o AN4517_cnv.extra -w 4 -f 74 -t AN4517
+		
+	# OK, now all that remains is to get the template and DTTRACE CNV calls prepared and then I can run the program
+		pwd: /home/dbickhart/share/bob_missou_data/angus_finished/parasight_images
+		$ cat umd3_dttrace_hits_umd3_template_file1.bed.final.wssd umd3_dttrace_hits_umd3_template_file1.bed.X.final.wssd > dttrace_umd3_full_wssd.bed
+		$ perl intersect_cnv_cn.pl dttrace_umd3_full_wssd.bed umd3_dttrace_hits_umd3_template_file3.bed.gc.depth.normalized.CN > dttrace_cnv_cn.bed
+		
+		$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tgain\t$F[3]";' < dttrace_cnv_cn.bed > dttrace_cnv_cn_final.bed
+		$ perl ../create_parasight_format_file.pl -i dttrace_cnv_cn_final.bed -o DTTRACE_cnv.extra -w 4 -f 2 -t DTTRACE
+		
+		# OK, so all the extra files are prepared. I'm going to try to just run the template as is and adjust if necessary later.
+		# Had trouble loading TK on my linux VM, so transitioning to server 3
+		Server 3: /mnt/data8/dbickhart/major_tables/parasight/bob_angus
+		$ perl ../parasight751.pl -showseq chr1,158337067,1,158337067: -extra AN0219_cnv.extra:AN0342_cnv.extra:AN0447_cnv.extra:AN0458_cnv.extra:AN0544_cnv.extra:AN0626_cnv.extra:AN0728_cnv.extra:AN0828_cnv.extra:AN1717_cnv.extra:AN1776_cnv.extra:AN4517_cnv.extra:angus_cnvr.extra:DTTRACE_cnv.extra:umd3_1k_gaps.extra -align umd3_align_parasight.al -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		
+		# Like most things about parasight, loading a whole chromosome is a pain. I need to input the exact coordinates for the chromosome on the command line
+		# Also, I need to redo the DTTRACE plot to make the lines bigger
+		$ mv allout.01.01.ps angus_chr1_cnvr.ps
+		
+		# I think they look good, but the problem is with the DTTRACE estimation. I think that I need to redo dttrace with the short reads on Lewis since my previous UMD3 run was with a faulty ref fasta.
+		
+		# The rest of the chromosomes
+		$ perl ../parasight751.pl -showseq chr2,137060424,1,137060424: -extra AN0219_cnv.extra:AN0342_cnv.extra:AN0447_cnv.extra:AN0458_cnv.extra:AN0544_cnv.extra:AN0626_cnv.extra:AN0728_cnv.extra:AN0828_cnv.extra:AN1717_cnv.extra:AN1776_cnv.extra:AN4517_cnv.extra:angus_cnvr.extra:DTTRACE_cnv.extra:umd3_1k_gaps.extra -align umd3_align_parasight.al -template globalview10k.pst -option '-filterpre2_min=>5000, -filter2_col=>16, -filter2_min=>0.90, -extra_label_on=>0, -seq_tick_label_fontsize => 10, -seq_label_fontsize => 10, -canvas_bpwidth=>700000'
+		...
+		
+		
+	# Now I want to take the DOC calls and create primers from them. First I'll have to intersect the calls with gene databases and work from there
+	# My primer design location criteria will be simple: Novel regions that do not intersect with the previous CNV results and intersect with genes
+		pwd: /home/dbickhart/share/bob_missou_data/angus_finished
+		$ for i in final_doc_merge_AN*; do prefix=`echo $i | cut -d'.' -f1 | cut -d'_' -f4`; echo $prefix; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]_$s[3]\n";}' $i $prefix > $prefix.doc.name.type.bed; done
+		$ cat *.doc.name.type.bed | mergeBed -i stdin -nms > angus_doc_name_type_merge.bed
+		
+		$ perl -lane '@segs = split(/\./, $F[0]); print "$F[0]\t$segs[0]";' < cn_file_list.txt >cn_name_file_list.txt
+		$ perl ../../bed_cnv_fig_table_pipeline/create_copynumber_gene_intersect_table.pl -i ../../lingyang_projects/genedb_list.txt -c cn_name_file_list.txt -v angus_doc_name_type_merge.bed
+		
+		# Filtered the excel output by 100% gene coverage and printed the refgene name list out to a tab delimited form called: angus_full_doc_genes_100_cov.txt
+		# Now to interect it with previous CNV results on UMD3
+		
+		# Yali's supplemental table 5 from BMC genomics says that it is UMD3 coordinates
+		# Lifting over my GR CNV calls to umd3 from cow4 coords.
+		$ cat ../../cow4_doc/hd_an_trace_art/*autosome_cnvs_both.bed | mergeBed -i stdin > derek_gr_ngs_cnvs_autosomes.bed   */
+		$ /media/sf_SharedFolders/tfbs_project/liftOver.txt derek_gr_ngs_cnvs_autosomes.bed ../../tfbs_project/bosTau4ToBosTau6.over.chain derek_gr_ngs_cnvs_autosomes_umd3.bed derek_gr_cnvs_unmapped.bed
+		$ wc -l derek_gr_ngs_cnvs_autosomes_umd3.bed derek_gr_cnvs_unmapped.bed
+			  741 derek_gr_ngs_cnvs_autosomes_umd3.bed
+			  698 derek_gr_cnvs_unmapped.bed
+ 			 1439 total
+ 			 
+ 		# combining with Yalis
+ 		$ cat yali_bmc_2012_cnvs_simple.txt > already_identified_cnvs_other_pubs.bed
+ 		$ perl -ne 'chomp; print "$_\tderek\n";' < derek_gr_cnvs_unmapped.bed >> already_identified_cnvs_other_pubs.bed
+ 			 
+		$ perl -lane 'print "$F[1]\t$F[2]\t$F[3]\t$F[0]\t$F[7]\t$F[19]";' < angus_full_doc_genes_100_cov.txt | intersectBed -a stdin -b already_identified_cnvs_other_pubs.bed -v  > genes_not_found_in_other_pubs.bed

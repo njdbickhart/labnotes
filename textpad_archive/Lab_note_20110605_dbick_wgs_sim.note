@@ -1,0 +1,329 @@
+06/05/2011
+# This labnote contains the steps I used to download and prepare the wgs reads from Dominette to use in a simulation (sanger)
+
+# I downloaded the custom script from the ncb trace archives and now I'm read to run it.
+$ perl query_tracedb usage
+	Queries can be performed to obtain either a TI or a set of TIs.
+	The list of TIs resulting from a query can be used to obtain the data
+	(trace, fasta, quality score) corresponding to the list of TIs.
+	
+	The result of queries can be either in text or binary mode.
+	
+	If any statement contains more then one word it must be double quoted.
+	All symbolic names must be single quoted.
+	
+	The 'query_tracedb' script takes query text from concatenated command line
+	arguments or, if no arguments provided, from standard input.
+	
+	The resulting output of queries or retrievals goes to stdout.
+	
+	To optimize the loading of the server all result sets are limited to 40000 
+	records. Please use page qualifiers if you need to obtain query results chunk
+	by chunk by cycling through pages (page_number allows to skip previous pages)
+	
+	Some queries might take a while until the data starts coming out.
+	
+	1. Query TI(s)
+	
+	   a. search by trace_name:
+	   query_tracedb "query text trace_name in ('jea17d09.b1','jeb67f06.b1',
+	                                             'jdy11d11.g1')"
+	
+	   b. narrow the search by center_name, trace_type_code, and load_date:
+	   query_tracedb "query text center_name='GSC' and trace_type_code='CLONEEND'
+	                  and load_date>'Jan 18 2002'"
+	
+	   c. using page qualifiers:
+	   query_tracedb "query page_size 40000 page_number 10 text species_code='mus musculus'"
+	   NOTE: Page size (number of returned items) cannot exceed 40000
+	         Pages numbered in C style: 0 - is the fisrt page, 1 - second, etc.
+	
+	   d. counting the data
+	   query_tracedb "query count species_code='mus musculus'"
+	   This will return the number of records complying to the query
+	
+	2. Retrieve data
+	   Retrieval of the data requires format specification(s) and TI numbers.
+	   TI numbers can be delimited by comma, or dash if applied as a range.
+	   Data can be retrieved in one of the following forms:
+	
+	   a. plain form:
+	   query_tracedb "retrieve fasta 5728631,5728633,5728634"
+	   query_tracedb "retrieve quality 5728631-5728634"
+	
+	   b. gzip(ed) form:
+	   query_tracedb "retrieve_gz xml_info 5728631,5728633,5728634" > myfile.gz
+	   query_tracedb "retrieve_gz fasta 5728631-5728634" > myfile.gz
+	
+	   c. tar(ed) submission form:
+	   query_tracedb "retrieve_tar xml fasta 5728631,5728633,5728634" > myfile.tar
+	   query_tracedb "retrieve_tar fasta quality scf 5728631-5728634" > myfile.tar
+	
+	   d. tar(ed) and then gzip(ed) submission form:
+	   query_tracedb "retrieve_tar_gz scf fasta quality xml 5728631,5728633,5728634"
+	                  > myfile.tgz
+	   query_tracedb "retrieve_tgz fasta quality 5728631-5728634" > myfile.tgz
+	
+	3. Other useful features:
+	
+	   a. use stdin.
+	   echo retrieve_tgz scf 1-10 > myquery.txt; query_tracedb < myquery.txt > my.tgz
+	
+	   b. use in a pipeline.
+	   echo retrieve_tgz scf 1-10 | query_tracedb | gzip -dc | tar xfv -
+	
+	Output forms:
+	   fasta       - retrieve sequence in fasta format
+	   quality     - retrieve quality scores
+	   single      - retrieve into a single fasta/quality file
+	   peak        - retrieve peak indecies
+	   [xml_]info  - retrieve ancillary data
+	   xml         - retrieve ancillary submission file in xml form
+	   scf         - retrieve as scf file
+	   rcf         - retrieve data in compressed form as it exists in the archive
+	   mate_pair   - retrieve mate pair(s) for requested ti(s)
+	   all         - retrieve fasta, quality, scf, mate pair(s), and xml for requested ti(s)
+	   sid=N       - retrieve either data for a whole submission
+	
+	4. Tracking submissions by name or submission IDs:
+	
+	   query_tracedb "track sid  in (1,2,3,4,5,6)"
+	   query_tracedb "track name in ('GBF_EC_CH241-149_ass.0_060926_1241_trc.tar.gz')"
+	   
+	
+# This tells us how many records we need to download.
+$ perl query_tracedb "query count trace_type_code ='wgs' and center_name =  'bcm' and strain = 'hereford'" 
+    9354523
+    
+# So, that's about 94 pages at 100,000 records per page. 
+$ for i in `seq 0 93`; do command="query page_size 100000 page_number $i binary trace_type_code ='wgs' and center_name =  'bcm' and strain = 'hereford'"; echo $command; perl query_tracedb $command > cattle_list_$i.bin; done
+
+$ for i in *.bin;  do (echo -n "retrieve_tgz fasta 0b"; cat $i) | perl query_tracedb  > $i.tgz; done
+
+# So this is downloading all of the fastas to my sharedfolders in tar gzipped form. 
+$ for i in *.tgz; do tar -xzvf $i; done
+
+# This was too slow on my ubuntu virtualbox
+# Instead, I am going to run it on Server 3
+	pwd: /mnt/data8/dbickhart/trace_reads
+	$ for i in *.tgz; do tar -xzvf $i > f_list.temp; echo "done with $i"; perl -ne 'chomp; system("cat $_ >> trace_wgs.fa");' < f_list.temp; perl -ne 'chomp; system("rm -r $_");' < f_list.temp; rm f_list.temp; done
+	
+	# Now to do the same commands for the newer downloads
+	for i in *.tgz; do tar -xzvf $i > f_list.temp; echo "done with $i"; perl -ne 'chomp; system("cat $_ >> new_trace_wgs.fa");' < f_list.temp; perl -ne 'chomp; system("rm -r $_");' < f_list.temp; rm f_list.temp; done
+
+# OK, I knew that I was missing some reads, apparently the reads were so old that they used a depreciated mysql column for accession.
+	# Here is the query to get the remaining reads:
+	species_code="BOS TAURUS"  and trace_type_code = "WGS" and center_name = "BCM" and strain = NULL
+	
+	# Now to go through the pipeline to download the reads again:
+	$ perl query_tracedb "query count species_code='BOS TAURUS'  and trace_type_code = 'WGS' and center_name = 'BCM' and strain = NULL"
+	   14616691  <- so we need 147 pages (at 100000 per page)
+	
+	# Getting the list numbers:
+	$ for i in `seq 0 146`; do command="query page_size 100000 page_number $i binary species_code='BOS TAURUS'  and trace_type_code = 'WGS' and center_name = 'BCM' and strain = NULL"; echo $command; perl query_tracedb $command > older_list_$i.bin; done
+	
+	# Now to download the trace tarballs
+	$ for i in *.bin; do (echo -n "retrieve_tgz fasta 0b"; cat $i) | perl query_tracedb  > $i.tgz; done
+	
+	# Splitting the previous trace fasta:
+	$ perl split_long_read_fasta.pl trace_wgs.fa
+	
+	# Now, I'm going to test my "chunk" script to see if it works. I'll use it on the smallest split file first:
+	$ perl chunk_trace_wgs_36bp.pl trace_wgs_10.fa
+	# Well, that was fast, and it looks like it worked. I just need to cut down on the number of times that a period is printed as a diagnostic.
+	
+	# This is to test to see if all the names were unique in the fastq file. Looks like they were!
+	$ perl -e 'while(<>){chomp; $h{$_} += 1; $s = <>; $p = <>; $q = <>;} foreach $v (sort {$b <=> $a} (values(%h))){print "$v\n"; last;}' < trace_wgs_10.fa.fq
+		1
+	# I also did a spot check on the sequence of the first trace fasta against my fastq file. Looks like the sequences are matching up.
+	
+	$ for i in $(seq 9); do perl chunk_trace_wgs_36bp.pl trace_wgs_$i.fa; done
+	
+# While I wait for the newer downloads to finish extraction, I will run these fastqs through my pipeline.
+	$ for i in `seq 1 5`; do echo "trace_wgs_$i.fa.fq" >> trace_list_1.txt; done
+	$ for i in `seq 5 10`; do echo "trace_wgs_$i.fa.fq" >> trace_list_2.txt; done
+	
+	$ perl mrsfast_cow4_letter_wrapper.pl trace_list_1.txt a trace_bams
+	$ perl mrsfast_cow4_letter_wrapper.pl trace_list_2.txt b trace_bams
+	
+	# Now to process the newer (or old_list) entries:
+	$ perl split_long_read_fasta.pl new_trace_wgs.fa
+	# Renaming files
+	$ for i in `seq 1 15`; do echo $i; mv trace_wgs_$i.fa older_trace_$i.fa; done
+	
+	$ for i in `seq 1 7`; do echo $i; perl chunk_trace_wgs_36bp.pl older_trace_$i.fa; done &
+	$ for i in `seq 8 15`; do echo $i; perl chunk_trace_wgs_36bp.pl older_trace_$i.fa; done
+	
+	$ mv new_trace_wgs.fa ./older_list/
+	$ rm *.fa
+	
+	$ for i in `seq 1 7`; do echo older_trace_$i.fa.fq >> older_trace_list_1.txt; done
+	$ for i in `seq 8 15`; do echo older_trace_$i.fa.fq >> older_trace_list_2.txt; done
+	
+	$ perl mrsfast_cow4_letter_wrapper.pl older_trace_list_1.txt a trace_bams
+	$ perl mrsfast_cow4_letter_wrapper.pl older_trace_list_2.txt b trace_bams
+	
+# It all completed, now I need to make the bed files, intersect them with the windows for the pipeline, then I'm good to go.
+	$ for i in older*.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> older_trace.bed; done &
+	$ for i in trace*.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> newer_trace.bed; done
+	$ cat newer_trace.bed older_trace.bed > full_trace.bed
+	
+	# Now for the intersection.
+	$ perl combine_bed_hits.pl full_trace.bed trace_windows
+	
+	# Finally, it is time to run the pipeline:
+	$ run_alkan_pipeline.pl --File1 full_trace_file1.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File1_c full_trace_file1_c.bed --File3_c full_trace_file3_c.bed
+	
+	# I removed the comment from the #ARTIFACT_FILE=/mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/blank.txt line in the /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/cattle_separate_pipeline.sh file
+	# I added a comment to the ARTIFACT_FILE=/mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/artifact/cropped_sim_artifact.bed line instead. This stopped the pipeline from artifact masking.
+	# I swapped the comment symbol each time I wanted to artifact mask (or stop the artifact masking).
+	
+# Comparing my wssd calls to George's
+	pwd: /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows
+	
+	$ wc full_trace_file1.bed.final.wssd
+	  864  2592 20029 full_trace_file1.bed.final.wssd
+	$ wc full_trace_file1.bed.final.deletions.tab
+	  0 0 0 full_trace_file1.bed.final.deletions.tab
+	$ perl -e 'while(<>){chomp; @F=split(/\t/); $t += $F[2] - $F[1];} print "$t\n";' < full_trace_file1.bed.final.wssd
+		37,056,828  <- number of bases identified in alkan's pipeline call.
+	  
+	$ cat /mnt/gliu1_usb/dbickhart/alkan_files/george_wssd_wgac/WSSD_crop.bed | grep -v chrX | grep -v chrUn | wc
+	   1603    4809   37248
+	  
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/george_wssd_wgac/WSSD_crop.bed -b full_trace_file1.bed.final.wssd -c | grep -v chrX | grep -v chrUn > autosomal_intersection_w_WSSD.bed
+	$ perl -lane 'if($F[3]){print $_;}' < autosomal_intersection_w_WSSD.bed | wc
+	    759    3036   19048	<- intersection positive (WSSD side)
+	$ perl -lane 'unless($F[3]){print $_;}' < autosomal_intersection_w_WSSD.bed | wc
+	    844    3376   21406 <- intersection negative (WSSD side)
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a autosomal_intersection_w_WSSD.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/george_wssd_wgac/WSSD_crop.bed -v | wc
+	      0       0       0 <- number of false negatives from alkan's pipeline (so all intervals in my pipeline are accounted for).
+	      # The above was false.
+	  
+	# Stats for the 844 intersection negative values
+	$ perl -lane 'unless($F[3]){print $_;}' < autosomal_intersection_w_WSSD.bed | perl -lane '$s = $F[2] - $F[1]; print "$s";' | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		total   844
+		Minimum 27
+		Maximum 53288
+		Average 10078.045024
+		Median  8248.5
+		Standard Deviation      8317.085833
+		Mode(Highest Distributed Value) 16000
+		
+	# Stats for the 759 intersection positive values
+	$ perl -lane 'if($F[3]){print $_;}' < autosomal_intersection_w_WSSD.bed | perl -lane '$s = $F[2] - $F[1]; print "$s";' | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		total   759
+		Minimum 921
+		Maximum 265819
+		Average 30226.442688
+		Median  22446
+		Standard Deviation      29154.851127
+		Mode(Highest Distributed Value) 15000
+	
+	# I think that Alkan's pipeline might just be missing the smaller values (or might be "busting up" larger wssds into smaller ones)
+	# Going to run the pipeline without the 10kb filter to check this:
+		$ mv full_trace_file1.bed.final.wssd filtered_trace_alkan_wssd.bed
+		$ run_alkan_pipeline.pl --File1 full_trace_file1.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File1_c full_trace_file1_c.bed --File3_c full_trace_file3_c.bed
+		$ wc full_trace_file1.bed.final.wssd
+		  865  2595 20052 full_trace_file1.bed.final.wssd
+		  
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/george_wssd_wgac/WSSD_crop.bed -b full_trace_file1.bed.final.wssd -c | grep -v chrX | grep -v chrUn > autosomal_no_filter_w_trace.bed
+		$ perl -lane 'if($F[3]){print $_;}' < autosomal_no_filter_w_trace.bed | wc
+		    759    3036   19048	<- same as before
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a autosomal_no_filter_w_trace.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/george_wssd_wgac/WSSD_crop.bed -v | wc
+		      0       0       0 <- still no false negatives
+		      # false again
+		
+	# Now to try the pipeline with the artifact masking on.
+	$ run_alkan_pipeline.pl --File1 full_trace_file1.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File1_c full_trace_file1_c.bed --File3_c full_trace_file3_c.bed
+		$ wc full_trace_file1.bed.final.wssd
+		  750  2250 17386 full_trace_file1.bed.final.wssd
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a filtered_trace_alkan_wssd.bed -b full_trace_file1.bed.final.wssd -v | wc
+		    122     366    2833
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/george_wssd_wgac/WSSD_crop.bed -b full_trace_file1.bed.final.wssd -c | grep -v chrX | grep -v chrUn | perl -lane 'if($F[3]){print $_;}' | wc
+		    759    3036   19048 <- exactly the same as before
+		    
+	# Now to generate comparison tables for George
+		$ perl -pi -lane 'print "$F[0]\t$F[1]\$F[2]\torig_wssd";' george_wssd_autosome.wssd
+		$ perl -pi -lane 'print "$F[0]\t$F[1]\$F[2]\ttrace_cnvs";' filtered_trace_alkan_wssd.bed
+		# I messed up. Here are my corrections:
+		$ perl -lane 'if ($F[1] =~ /F/){next;}else{print"$F[0]\t$F[1]\t$F[2]\torig_wssd";}' < george_wssd_autosome.wssd > george_wssd_autosome.wssd.true
+		$ mv george_wssd_autosome.wssd.true george_wssd_autosome.wssd
+		
+		$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\ttrace_wssd";' < full_trace_file1.bed.final.wssd > filtered_trace_calls.wssd
+		
+		$ compare_named_bed_vary_coverage.pl george_wssd_autosome.wssd filtered_trace_calls.wssd wssd_trace_filter_noart_comparison.tab
+		
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a filtered_trace_calls.wssd -b george_wssd_autosome.wssd -v | wc
+	    510    2040   17447	<- non-artifact masked calls
+	
+	# Now, trying some artifact masking
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\ttrace_art";' < full_trace_file1.bed.final.wssd > artmask_trace_calls.wssd
+	$ compare_named_bed_vary_coverage.pl george_wssd_autosome.wssd artmask_trace_calls.wssd wssd_trace_filter_artmask_comparison.tab
+	
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\twssd_wgac";' < /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed | grep -v chrX > george_wssd_wgac_autosome.wssd
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a filtered_trace_calls.wssd -b george_wssd_wgac_autosome.wssd -v | wc
+	    258    1032    8813  <- false positives against wssd and wgac calls
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a artmask_trace_calls.wssd -b george_wssd_wgac_autosome.wssd -v | wc
+	    136     544    4502  <- false positives of artifact masked trace vs wssd and wgac calls    
+	$ compare_named_bed_vary_coverage.pl george_wssd_wgac_autosome.wssd artmask_trace_calls.wssd wssd_wgac_trace_artmask_comparison.tab
+	
+	
+	# Still strange... time to eyeball the intervals that show up but are not found in the wssd calls:
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a filtered_trace_calls.wssd -b george_wssd_wgac_autosome.wssd -v > non_intersected.bed
+	# Nothing out of the "eyeballing"... looks like alot of indeterminate areas and a few rare possibilities for false calls.
+	
+	
+	# Going to try a harsher threshold for detection: 5 stdevs
+	$ run_alkan_pipeline.pl --File1 full_trace_file1.bed --File2 full_trace_file2.bed --File3 full_trace_file3.bed --File1_c full_trace_file1_c.bed --File3_c full_trace_file3_c.bed
+	
+	
+_________________________________
+Some Dataset stats
+_________________________________
+
+# Total number of chunked reads:
+	$ perl -e 'while(<>){chomp; @F = split(/\t/); $t += $F[1];} print "$t\n";' < trace.log
+		307909731  <- ~4.4X coverage of the b_tau4 genome
+		
+# Total number of mapped reads:
+	$ perl -e 'while(<>){$t++;} print "$t\n";' < newer_trace.bed
+		28549697
+	$ perl -e 'while(<>){$t++;} print "$t\n";' < older_trace.bed
+		43967857
+		
+	# 72,517,554 mapped reads or 2.9 X coverage of the non-masked b_tau4 genome.
+	# So, it's not the best ratio, but it's pretty good considering the starting X coverage.
+	
+# George wants VENN diagrams and unique/shared bed lists from all the files that I've created from the comparisons so far. 
+# I will use my script "convert_bed_to_venn.pl" to do the Venn diagram
+	$ cat filtered_trace_calls.wssd george_wssd_autosome.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > venn/filtered_wssd.merge
+	$ cat artmask_trace_calls.wssd george_wssd_autosome.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > venn/artmask_wssd.merge
+	$ cat 2_1_trace.wssd george_wssd_autosome.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > venn/2_1_wssd.merge
+	$ cat 2_5_1_5_trace.wssd george_wssd_autosome.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > venn/2_5_1_5_wssd.merge
+	$ cat 3_2_trace.wssd george_wssd_autosome.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > venn/3_2_wssd.merge
+	
+	$ cat filtered_trace_calls.wssd artmask_trace_calls.wssd george_wssd_autosome.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > venn/filter_art_wssd.merge
+	$ cat 3_2_trace.wssd george_wssd_autosome.wssd 2_1_trace.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > venn/32_21_wssd.merge
+	$ cat 3_2_trace.wssd 2_5_1_5_trace.wssd george_wssd_autosome.wssd | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > venn/32_2515_wssd.merge
+	
+	$ convert_bed_to_venn.pl artmask_wssd.merge > artmask_wssd_merge.venn
+	$ convert_bed_to_venn.pl filtered_wssd.merge > filtered_wssd_merge.venn
+	$ convert_bed_to_venn.pl 3_2_wssd.merge > 3_2_wssd_merge.venn
+	$ convert_bed_to_venn.pl 2_5_1_5_wssd.merge > 2_5_1_5_wssd_merge.venn
+	$ convert_bed_to_venn.pl 2_1_wssd.merge > 2_1_wssd_merge.venn
+	
+# Creating venns for the files using my bed_create_tables_2_4.pl script
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tdt_gain_george";' < george_wssd_autosome.wssd > george_wssd_comp.bed
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tdt_gain_artmask";' < artmask_trace_calls.wssd > george_wssd_art.bed
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tdt_gain_noart";' < filtered_trace_calls.wssd > george_wssd_noart.bed
+	
+	# I noticed that george's wssd file had very small cnvs. I filtered them out and redid the comparison
+	$ perl -lane '$e =  $F[2] - $F[1]; if ($e < 10000){next;}else{print $_;}' < george_wssd_comp.bed > george_wssd_filter.bed
+	
+	$ bed_create_tables_2_4.pl 'george*.bed'
+	
+	# About a 62% overlap with george's dataset and a ~70% overlap with mine
+	# Now to do the compare_named_bed_vary_coverage.pl script run
+	$ compare_named_bed_vary_coverage.pl george_wssd_filter.bed george_wssd_art.bed george_wssd_noart.bed trace_reads_comp_original_wssd.tab
+	

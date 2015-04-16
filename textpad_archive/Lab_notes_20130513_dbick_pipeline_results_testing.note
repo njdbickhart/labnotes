@@ -1,0 +1,146 @@
+05/13/2013
+# This note file contains my commands and tests for the CNV and SNP data that I produced for the 100 bulls project files
+
+# First, Jana was having trouble with GenomeStrip. I think that she was doing everything correct, but there might be another problem with my alignment files
+# GenomeStrip is super picky, and a slight mistake could cause everything to crash without warning.
+
+# Testing GenomeStrip on one animal at a time
+	Blade14:/mnt/iscsi/vnx_gliu_7/100_base_run/
+	$ ../jdk.1.7.0/bin/java -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -Xmx10g -Djava.io.tmpdir=../tmp/ org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVPreprocess.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -configFile ${SV_DIR}/conf/genstrip_parameters.txt -tempDir ../tmp/ -R /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -genomeMaskFile /mnt/iscsi/vnx_gliu_7/reference/svmask_umd3_concat.fa -runDirectory ./ -md ./GenomeStripTest/metadata -jobLogDir ./GenomeStripTest/log -I BIBR02/BIBR02.rg.rd.full.sorted.merged.bam -run
+		ERROR 14:48:29,913 FunctionEdge - Contents of /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/log/SVPreprocess-6.out:
+		INFO  14:41:34,563 HelpFormatter - ---------------------------------------------------------------
+		INFO  14:41:34,565 HelpFormatter - Program Name: org.broadinstitute.sv.apps.MergeReadDepthCoverage
+		INFO  14:41:34,568 HelpFormatter - Program Args: -I /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth/BIBR02.rg.rd.full.sorted.merged.depth.txt -O /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth.dat
+		INFO  14:41:34,569 HelpFormatter - Date/Time: 2013/05/13 14:41:34
+		INFO  14:41:34,569 HelpFormatter - ---------------------------------------------------------------
+		INFO  14:41:34,569 HelpFormatter - ---------------------------------------------------------------
+		INFO  14:41:34,571 CommandLineProgram - Program completed.
+		INFO  14:48:29,915 FunctionEdge - Done:  'java'  '-Xmx4096m'  '-XX:+UseParallelOldGC'  '-XX:ParallelGCThreads=4'  '-XX:GCTimeLimit=50'  '-XX:GCHeapFreeLimit=10'  '-Djava.io.tmpdir=/mnt/iscsi/vnx_gliu_7/100_base_run/../tmp'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar' org.broadinstitute.sting.gatk.CommandLineGATK '-T' 'ComputeReadSpanCoverageWalker'  '-R' '/mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa'  '-I' '/mnt/iscsi/vnx_gliu_7/100_base_run/BIBR02/BIBR02.rg.rd.full.sorted.merged.bam'  '-O' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/spans/BIBR02.rg.rd.full.sorted.merged.spans.txt'  '-md' './GenomeStripTest/metadata'  '-maxInsertSizeStandardDeviations' '3'
+		INFO  14:48:29,915 QGraph - Writing incremental jobs reports...
+		INFO  14:48:29,915 QJobsReporter - Writing JobLogging GATKReport to file /mnt/iscsi/vnx_gliu_7/100_base_run/SVPreprocess.jobreport.txt
+		INFO  14:48:29,926 FunctionEdge - Starting:  'java'  '-Xmx4096m'  '-XX:+UseParallelOldGC'  '-XX:ParallelGCThreads=4'  '-XX:GCTimeLimit=50'  '-XX:GCHeapFreeLimit=10'  '-Djava.io.tmpdir=/mnt/iscsi/vnx_gliu_7/100_base_run/../tmp'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar'  'org.broadinstitute.sv.apps.MergeReadSpanCoverage'  '-I' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/spans/BIBR02.rg.rd.full.sorted.merged.spans.txt'  '-O' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/spans.dat'
+		INFO  14:48:29,926 FunctionEdge - Output written to /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/log/SVPreprocess-8.out
+		INFO  14:48:35,016 QGraph - 0 Pend, 1 Run, 1 Fail, 6 Done
+		INFO  14:48:59,904 FunctionEdge - Done:  'java'  '-Xmx4096m'  '-XX:+UseParallelOldGC'  '-XX:ParallelGCThreads=4'  '-XX:GCTimeLimit=50'  '-XX:GCHeapFreeLimit=10'  '-Djava.io.tmpdir=/mnt/iscsi/vnx_gliu_7/100_base_run/../tmp'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar'  'org.broadinstitute.sv.apps.MergeReadSpanCoverage'  '-I' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/spans/BIBR02.rg.rd.full.sorted.merged.spans.txt'  '-O' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/spans.dat'
+		INFO  14:48:59,904 QGraph - Writing incremental jobs reports...
+		INFO  14:48:59,904 QJobsReporter - Writing JobLogging GATKReport to file /mnt/iscsi/vnx_gliu_7/100_base_run/SVPreprocess.jobreport.txt
+		INFO  14:48:59,926 QGraph - 0 Pend, 0 Run, 1 Fail, 7 Done
+		INFO  14:48:59,927 QCommandLine - Script failed with 8 total jobs
+		INFO  14:48:59,928 QCommandLine - Writing final jobs report...
+		INFO  14:48:59,928 QJobsReporter - Writing JobLogging GATKReport to file /mnt/iscsi/vnx_gliu_7/100_base_run/SVPreprocess.jobreport.txt
+		INFO  14:48:59,948 QJobsReporter - Plotting JobLogging GATKReport to file /mnt/iscsi/vnx_gliu_7/100_base_run/SVPreprocess.jobreport.pdf
+		WARN  14:49:00,811 RScriptExecutor - RScript exited with 1. Run with -l DEBUG for more info.
+		INFO  14:49:00,813 QCommandLine - Done with errors
+		INFO  14:49:00,815 QGraph - -------
+		INFO  14:49:00,817 QGraph - Failed:   'java'  '-Xmx4096m'  '-XX:+UseParallelOldGC'  '-XX:ParallelGCThreads=4'  '-XX:GCTimeLimit=50'  '-XX:GCHeapFreeLimit=10'  '-Djava.io.tmpdir=/mnt/iscsi/vnx_gliu_7/100_base_run/../tmp'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar'  'org.broadinstitute.sv.apps.MergeReadDepthCoverage'  '-I' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth/BIBR02.rg.rd.full.sorted.merged.depth.txt'  '-O' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth.dat'
+		INFO  14:49:00,817 QGraph - Log:     /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/log/SVPreprocess-6.out
+		
+	# That failed with the last step, let's try another time with another bam
+	# I think that it just failed with the "merge read depth" walker so another bam might be the solution here
+	$ ../jdk.1.7.0/bin/java -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -Xmx10g -Djava.io.tmpdir=../tmp/ org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVPreprocess.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -configFile ${SV_DIR}/conf/genstrip_parameters.txt -tempDir ../tmp/ -R /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -genomeMaskFile /mnt/iscsi/vnx_gliu_7/reference/svmask_umd3_concat.fa -runDirectory ./ -md ./GenomeStripTest/metadata -jobLogDir ./GenomeStripTest/log -I BIBR02/BIBR02.rg.rd.full.sorted.merged.bam -I BIBR03/BIBR03.rg.rd.full.sorted.merged.bam -run
+		# Another error
+		ERROR 15:54:26,545 FunctionEdge - Error:  'java'  '-Xmx4096m'  '-XX:+UseParallelOldGC'  '-XX:ParallelGCThreads=4'  '-XX:GCTimeLimit=50'  '-XX:GCHeapFreeLimit=10'  '-Djava.io.tmpdir=/mnt/iscsi/vnx_gliu_7/100_base_run/../tmp'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar'  '-cp' '/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/SVToolkit.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/GenomeAnalysisTK.jar:/mnt/iscsi/vnx_gliu_7/svtoolkit/lib/gatk/Queue.jar'  'org.broadinstitute.sv.apps.MergeReadDepthCoverage'  '-I' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth/BIBR02.rg.rd.full.sorted.merged.depth.txt' '-I' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth/BIBR03.rg.rd.full.sorted.merged.depth.txt'  '-O' '/mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth.dat'
+		ERROR 15:54:26,549 FunctionEdge - Contents of /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/log/SVPreprocess-8.out:
+		INFO  15:47:46,849 HelpFormatter - ---------------------------------------------------------------
+		INFO  15:47:46,850 HelpFormatter - Program Name: org.broadinstitute.sv.apps.MergeReadDepthCoverage
+		INFO  15:47:46,854 HelpFormatter - Program Args: -I /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth/BIBR02.rg.rd.full.sorted.merged.depth.txt -I /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth/BIBR03.rg.rd.full.sorted.merged.depth.txt -O /mnt/iscsi/vnx_gliu_7/100_base_run/GenomeStripTest/metadata/depth.dat
+		INFO  15:47:46,854 HelpFormatter - Date/Time: 2013/05/13 15:47:46
+		INFO  15:47:46,854 HelpFormatter - ---------------------------------------------------------------
+		INFO  15:47:46,854 HelpFormatter - ---------------------------------------------------------------
+		INFO  15:47:46,857 CommandLineProgram - Program completed.
+
+	# I noticed that chrM was in my genomemask file, but not in the bam file headers. Removing it (probably not the answer to the problem, but still...);
+	$ perl -e 'my $stop = 0; while(<>){if($_ =~ />chrM/){$stop = 1;} if($stop){last;}else{print $_;}}' < svmask_umd3_concat.fa > svmask_umd3_concat_nochrm.fa
+	
+	# Trying again
+	$ ../jdk.1.7.0/bin/java -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -Xmx10g -Djava.io.tmpdir=../tmp/ org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVPreprocess.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -configFile ${SV_DIR}/conf/genstrip_parameters.txt -tempDir ../tmp/ -R /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -genomeMaskFile /mnt/iscsi/vnx_gliu_7/reference/svmask_umd3_concat_nochrm.fa -runDirectory ./ -md ./GenomeStripTest/metadata -jobLogDir ./GenomeStripTest/log -I BIBR02/BIBR02.rg.rd.full.sorted.merged.bam -I BIBR03/BIBR03.rg.rd.full.sorted.merged.bam -run
+
+	# Still received an error for the MergeReadDepthCoverage module but the data was still printed out
+	# Going to try the discovery step now
+	$ /mnt/iscsi/vnx_gliu_7/jdk.1.7.0/bin/java -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_dir}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -Xmx10g org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVDiscovery.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_dir}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -configFile ${SV_DIR}/conf/genstrip_parameters.txt -tempDir /mnt/iscsi/vnx_gliu_7/tmp -R /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -genomeMaskFile /mnt/iscsi/vnx_gliu_7/reference/svmask_umd3_concat_nochrm.fa -runDirectory ./ -md GenomeStripTest/metadata/ -jobLogDir GenomeStripTest/log/ -L 1 -minimumSize 100 -maximumSize 1000000 -I BIBR03/BIBR03.rg.rd.full.sorted.merged.bam -I BIBR02/BIBR02.rg.rd.full.sorted.merged.bam -O GenomeStripTest/BIBR_discovery_sites.vcf -run
+		##### ERROR ------------------------------------------------------------------------------------------
+		##### ERROR stack trace
+		org.broadinstitute.sting.utils.exceptions.UserException$CannotExecuteQScript: Unable to execute QScript: SVDiscovery.script() threw the following exception: org.broadinstitute.sv.commandline.ArgumentException: Invalid -L argument - chromosome/contig name not found in reference genome: 1
+		       at org.broadinstitute.sting.queue.QCommandLine$$anonfun$execute$5.apply(QCommandLine.scala:157)
+		       at org.broadinstitute.sting.queue.QCommandLine$$anonfun$execute$5.apply(QCommandLine.scala:145)
+		       at scala.collection.Iterator$class.foreach(Iterator.scala:772)
+		       at scala.collection.JavaConversions$JIteratorWrapper.foreach(JavaConversions.scala:573)
+		       at scala.collection.IterableLike$class.foreach(IterableLike.scala:73)
+		       at scala.collection.JavaConversions$JListWrapper.foreach(JavaConversions.scala:615)
+		       at org.broadinstitute.sting.queue.QCommandLine.execute(QCommandLine.scala:145)
+		       at org.broadinstitute.sting.commandline.CommandLineProgram.start(CommandLineProgram.java:237)
+		       at org.broadinstitute.sting.commandline.CommandLineProgram.start(CommandLineProgram.java:147)
+		       at org.broadinstitute.sting.queue.QCommandLine$.main(QCommandLine.scala:61)
+		       at org.broadinstitute.sting.queue.QCommandLine.main(QCommandLine.scala)
+		Caused by: org.broadinstitute.sv.commandline.ArgumentException: Invalid -L argument - chromosome/contig name not found in reference genome: 1
+		       at org.broadinstitute.sv.queue.ComputeDiscoveryPartitions.computePartitions(ComputeDiscoveryPartitions.java:97)
+		       at org.broadinstitute.sv.qscript.SVQScript.computeDiscoveryPartitions(SVQScript.q:219)
+		       at SVDiscovery.script(SVDiscovery.q:19)
+		       at org.broadinstitute.sting.queue.QCommandLine$$anonfun$execute$5.apply(QCommandLine.scala:154)
+		       ... 10 more
+		##### ERROR ------------------------------------------------------------------------------------------
+		##### ERROR A GATK RUNTIME ERROR has occurred (version 2.3-0-g28e02c2):
+		##### ERROR
+		##### ERROR Please visit the wiki to see if this is a known problem
+		##### ERROR If not, please post the error, with stack trace, to the GATK forum
+		##### ERROR Visit our website and forum for extensive documentation and answers to
+		##### ERROR commonly asked questions http://www.broadinstitute.org/gatk
+		##### ERROR
+		##### ERROR MESSAGE: Unable to execute QScript: SVDiscovery.script() threw the following exception: org.broadinstitute.sv.commandline.ArgumentException: Invalid -L argument - chromosome/contig name not found in reference genome: 1
+
+	# OK, so this happened before. Let's try an individual chromosome
+	$ /mnt/iscsi/vnx_gliu_7/jdk.1.7.0/bin/java -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_dir}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -Xmx10g org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVDiscovery.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_dir}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -configFile ${SV_DIR}/conf/genstrip_parameters.txt -tempDir /mnt/iscsi/vnx_gliu_7/tmp -R /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -genomeMaskFile /mnt/iscsi/vnx_gliu_7/reference/svmask_umd3_concat_nochrm.fa -runDirectory ./ -md GenomeStripTest/metadata/ -jobLogDir GenomeStripTest/log/ -L chr1 -minimumSize 100 -maximumSize 1000000 -I BIBR03/BIBR03.rg.rd.full.sorted.merged.bam -I BIBR02/BIBR02.rg.rd.full.sorted.merged.bam -O GenomeStripTest/BIBR_discovery_sites.vcf -run
+		INFO  15:13:39,152 GATKRunReport - Uploaded run statistics report to AWS S3
+		##### ERROR ------------------------------------------------------------------------------------------
+		##### ERROR stack trace
+		java.lang.RuntimeException: Cannot locate R script: compute_depth_pvalue.R (the SV_DIR enviroment variable is not set)
+		       at org.broadinstitute.sv.discovery.DiscoveryModule.findRScript(DiscoveryModule.java:158)
+		       at org.broadinstitute.sv.discovery.ClusterDepthModule.init(ClusterDepthModule.java:338)
+		       at org.broadinstitute.sv.discovery.DeletionDiscoveryAlgorithm.createDepthModule(DeletionDiscoveryAlgorithm.java:1086)
+		       at org.broadinstitute.sv.discovery.DeletionDiscoveryAlgorithm.initClusterModules(DeletionDiscoveryAlgorithm.java:1019)
+		       at org.broadinstitute.sv.discovery.DeletionDiscoveryAlgorithm.processClusters(DeletionDiscoveryAlgorithm.java:326)
+		       at org.broadinstitute.sv.discovery.DeletionDiscoveryAlgorithm.runDiscovery(DeletionDiscoveryAlgorithm.java:193)
+		       at org.broadinstitute.sv.discovery.SVDiscoveryWalker.onTraversalDone(SVDiscoveryWalker.java:178)
+		       at org.broadinstitute.sv.discovery.SVDiscoveryWalker.onTraversalDone(SVDiscoveryWalker.java:48)
+		       at org.broadinstitute.sting.gatk.executive.Accumulator$StandardAccumulator.finishTraversal(Accumulator.java:129)
+		       at org.broadinstitute.sting.gatk.executive.LinearMicroScheduler.execute(LinearMicroScheduler.java:97)
+		       at org.broadinstitute.sting.gatk.GenomeAnalysisEngine.execute(GenomeAnalysisEngine.java:281)
+		       at org.broadinstitute.sting.gatk.CommandLineExecutable.execute(CommandLineExecutable.java:113)
+		       at org.broadinstitute.sv.main.SVCommandLine.execute(SVCommandLine.java:112)
+		       at org.broadinstitute.sting.commandline.CommandLineProgram.start(CommandLineProgram.java:237)
+		       at org.broadinstitute.sting.commandline.CommandLineProgram.start(CommandLineProgram.java:147)
+		       at org.broadinstitute.sv.main.SVCommandLine.main(SVCommandLine.java:70)
+		       at org.broadinstitute.sv.main.SVDiscovery.main(SVDiscovery.java:21)
+		##### ERROR ------------------------------------------------------------------------------------------
+		##### ERROR A GATK RUNTIME ERROR has occurred (version 2.3-0-g28e02c2):
+		##### ERROR
+		##### ERROR Please visit the wiki to see if this is a known problem
+		##### ERROR If not, please post the error, with stack trace, to the GATK forum
+		##### ERROR Visit our website and forum for extensive documentation and answers to
+		##### ERROR commonly asked questions http://www.broadinstitute.org/gatk
+		##### ERROR
+		##### ERROR MESSAGE: Cannot locate R script: compute_depth_pvalue.R (the SV_DIR enviroment variable is not set)
+
+	# OK, so I am making "progress" Let's see where that file is
+	# ONE THING: You need to delete the .(output vcf file).done hidden file in both the working and output directories to try again
+	
+	# This time, trying it with a specified search area (as opposed to just the chromosome)
+	$ /mnt/iscsi/vnx_gliu_7/jdk.1.7.0/bin/java -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_dir}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -Xmx10g org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVDiscovery.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_dir}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -configFile ${SV_DIR}/conf/genstrip_parameters.txt -tempDir /mnt/iscsi/vnx_gliu_7/tmp -R /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -genomeMaskFile /mnt/iscsi/vnx_gliu_7/reference/svmask_umd3_concat_nochrm.fa -runDirectory /home/dbickhart/vnx_gliu_7/100_base_run -md GenomeStripTest/metadata/ -jobLogDir GenomeStripTest/log/ -L chr1:1-158000000 -minimumSize 100 -maximumSize 1000000 -I BIBR03/BIBR03.rg.rd.full.sorted.merged.bam -I BIBR02/BIBR02.rg.rd.full.sorted.merged.bam -O GenomeStripTest/BIBR_discovery_sites.vcf -run
+	# NOPE!
+# Going to make a gendermap file and try again
+	$ ../jdk.1.7.0/bin/java -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -Xmx10g -Djava.io.tmpdir=../tmp/ org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVPreprocess.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -configFile ${SV_DIR}/conf/genstrip_parameters.txt -tempDir ../tmp/ -R /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -genomeMaskFile /mnt/iscsi/vnx_gliu_7/reference/svmask_umd3_concat_nochrm.fa -runDirectory ./ -md ./GenomeStripTest/metadata -jobLogDir ./GenomeStripTest/log -I BIBR02/BIBR02.rg.rd.full.sorted.merged.bam -I BIBR03/BIBR03.rg.rd.full.sorted.merged.bam -genderMapFile BIBR_gender_map.txt -run
+	
+	# Still failed at the MergeReadDepthCoverage portion but produced the needed output
+	# Yup, I'm going to try to pretend like it worked and change the "lock file"
+	$ mv GenomeStripTest/metadata/.depth.dat.fail GenomeStripTest/metadata/.depth.dat.done
+	
+	# Going to try it again
+	$ /mnt/iscsi/vnx_gliu_7/jdk.1.7.0/bin/java -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_dir}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -Xmx10g org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVDiscovery.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${SV_DIR}/lib/SVToolkit.jar:${SV_dir}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar -configFile ${SV_DIR}/conf/genstrip_parameters.txt -tempDir /mnt/iscsi/vnx_gliu_7/tmp -R /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -genomeMaskFile /mnt/iscsi/vnx_gliu_7/reference/svmask_umd3_concat_nochrm.fa -runDirectory /home/dbickhart/vnx_gliu_7/100_base_run -md GenomeStripTest/metadata/ -jobLogDir GenomeStripTest/log/ -L chr1:1-158000000 -minimumSize 100 -maximumSize 1000000 -I BIBR03/BIBR03.rg.rd.full.sorted.merged.bam -I BIBR02/BIBR02.rg.rd.full.sorted.merged.bam -O GenomeStripTest/BIBR_chr1_discovery_sites.vcf -genderMapFile BIBR_gender_map.txt -run
+	
+	
+# OK, so downgrading CNVnator to a previous version seemed to have helped me previously. I think that I'll try my luck with an older version of GenomeStrip as well
+	# I've uploaded an old SVmask file that I previously used on Buffalo as well (/mnt/iscsi/vnx_gliu_7/reference/uscs_umd3_karyotype_gatk_mask.fasta )
+	
+	Blade14: /home/dbickhart/svtoolkit/installtest
+	$ export SV_DIR=/home/dbickhart/svtoolkit
+	$ sh BIBR_test_discovery.sh

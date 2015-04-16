@@ -1,0 +1,636 @@
+08/09/2011
+# George wants me to try to do the digital aCGH comparison of my NGS data against the custom and whole genome array
+# I will try to make things simple (do simple subtraction at first) but I may need to do control probe normalization
+
+# Here are my goals: 
+	- Intersect probe locations from one array with my CN windows from each animal
+	- Subtract the dt CN value from the CN value of the animal, then log2 it.
+	- Print the values side-by-side for R plotting.
+
+# Created a script that works on the CN and r.plot files	
+pwd: /mnt/data8/dbickhart/major_tables/d_acgh
+$ perl create_d_acgh_comparison.pl
+# Now to remove all the NA values
+	$ perl -lane 'if($F[1] eq "NA" && $F[3] eq "NA" && $F[5] eq "NA" && $F[7] eq "NA"){ next;} else{ print $_;}' < ngs_vs_custom_array_data.tab > ngs_vs_custom_array_data_nona.tab
+	$ perl -lane 'if($F[1] eq "NA" && $F[3] eq "NA" && $F[5] eq "NA" && $F[7] eq "NA"){ next;} else{ print $_;}'< ngs_vs_whole_array_data.tab > ngs_vs_whole_array_data_nona.tab
+	
+	
+# Now to check them in R
+	> setwd("/home/derek/share/cow4_doc/r_plots/d_acgh_comp/")
+	> custom <- read.delim("ngs_vs_custom_array_data_nona.tab", header = TRUE, sep ="\t")
+	> attach(custom)
+	> cor.test(btho11_ngs, btho11_custom)
+	> plot(btho11_ngs, btho11_custom)
+	
+	# this was the best one and it had an r^2 value of 0.10
+	# I think that Alkan took only the CNV regions to calculate the values in his paper rather than every single interval. 
+	# He also did two similar individuals (by comparison to my data)
+	# I think that I should take the two angus and try running them through the script instead of doing everyone
+	
+	$ cp ../BTAN02_cnv_cn.bed btan02_cnv_cn.bed
+	$ cp ../BTAN09_cnv_cn.bed btan09_cnv_cn.bed
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a btan02_ngs.CN -b btan02_cnv_cn.bed > btan02_cnv_int_ngs.CN
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a btan09_ngs.CN -b btan09_cnv_cn.bed > btan09_cnv_int_ngs.CN
+	
+	# I realize that the angus comparisons must still be compared against dttrace, so I used dttrace as a calibrator (still)
+	$ perl create_d_acgh_comparison_ang.pl
+	$ mv ngs_vs_custom_array_data.tab ngs_vs_custom_angus_dup_data.tab
+	$ mv ngs_vs_whole_array_data.tab ngs_vs_whole_angus_dup_data.tab
+
+	> setwd("/home/derek/share/cow4_doc/r_plots/d_acgh_comp/")
+	> custom <- read.delim("ngs_vs_custom_angus_dup_data.tab", header = TRUE, sep ="\t")
+	> attach(custom)
+	> cor.test(btan02_ngs, btan02_custom)
+	
+		Pearson's product-moment correlation
+	
+	data:  btan02_ngs and btan02_custom 
+	t = -15.4389, df = 14815, p-value < 2.2e-16
+	alternative hypothesis: true correlation is not equal to 0 
+	95 percent confidence interval:
+	 -0.1416494 -0.1099556 
+	sample estimates:
+	       cor 
+	-0.1258346
+	
+	# Not very good...
+	> cor.test(btan09_ngs, btan09_custom)
+	
+		Pearson's product-moment correlation
+	
+	data:  btan09_ngs and btan09_custom 
+	t = -4.7179, df = 12109, p-value = 2.409e-06
+	alternative hypothesis: true correlation is not equal to 0 
+	95 percent confidence interval:
+	 -0.06059892 -0.02504409 
+	sample estimates:
+	        cor 
+	-0.04283506
+	
+	# Even worse
+	
+	> whole <- read.delim("ngs_vs_whole_angus_dup_data.tab", header = TRUE, sep ="\t")
+	> attach(whole)
+	> cor.test(btan02_ngs, btan02_whole)
+	
+		Pearson's product-moment correlation
+	
+	data:  btan02_ngs and btan02_whole 
+	t = 13.0066, df = 803, p-value < 2.2e-16
+	alternative hypothesis: true correlation is not equal to 0 
+	95 percent confidence interval:
+	 0.3583826 0.4726261 
+	sample estimates:
+	      cor 
+	0.4171508
+	
+	# Much better!
+	
+	> cor.test(btan09_ngs, btan09_whole)
+	
+		Pearson's product-moment correlation
+	
+	data:  btan09_ngs and btan09_whole 
+	t = 15.3838, df = 705, p-value < 2.2e-16
+	alternative hypothesis: true correlation is not equal to 0 
+	95 percent confidence interval:
+	 0.4439995 0.5545576 
+	sample estimates:
+	      cor 
+	0.5013219
+	
+	# Even better!
+
+# Alkan only used intervals > 20kb in length and with < 80% repeat content; I will try to subset my dataset to see if I can get a better correlation
+	pwd: /mnt/data8/dbickhart/major_tables/
+	$ perl identify_80_percent_repeat_cnvs.pl btan02_all_chr.bed
+		Found 487 out of 797 entries
+	$ perl identify_80_percent_repeat_cnvs.pl btan09_all_chr.bed
+		Found 499 out of 806 entries
+	$ perl identify_80_percent_repeat_cnvs.pl btho11_all_chr.bed
+		Found 469 out of 754 entries
+		
+	
+	
+	
+	# Now, in the d_acgh folder...
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a btan02_ngs.CN -b btan02_all_chr.bed.passed > btan02_cnv_filt_ngs.CN
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a btan09_ngs.CN -b btan09_all_chr.bed.passed > btan09_cnv_filt_ngs.CN
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a bine12_ngs.CN -b bine12_all_chr.bed.passed > bine12_cnv_filt_ngs.CN
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a btho11_ngs.CN -b btho11_all_chr.bed.passed > btho11_cnv_filt_ngs.CN
+	
+	# Changed the create_d_acgh_comparison_ang.pl script to take the filtered angus CN files
+	$ perl create_d_acgh_comparison_ang.pl
+	
+	> setwd("/home/derek/share/cow4_doc/r_plots/d_acgh_comp/")
+	> custom <- read.delim("ngs_vs_custom_angus_data_filt.tab", header = TRUE, sep = "\t")
+	> attach(custom)
+	> cor.test(btan02_ngs, btan02_custom)
+		sample estimates:
+		       cor 
+		-0.1394817
+		
+	> cor.test(btan09_ngs, btan09_custom)
+		sample estimates:
+		        cor 
+		-0.04964578
+		
+	> whole <- read.delim("ngs_vs_whole_angus_data_filt.tab", header = TRUE, sep = "\t")
+	> attach(whole)
+	> cor.test(btan02_ngs, btan02_whole)
+		sample estimates:
+		      cor 
+		0.4388101
+	> cor.test(btan09_ngs, btan09_whole)
+		sample estimates:
+		      cor 
+		0.5242633
+	
+	> plot(btan02_ngs, btan02_whole)
+	> abline(lm(btan02_ngs ~ 0 + btan02_whole))
+	> mtext("R^2 = 0.4388", side = 3)
+	> dev.copy2pdf(file = "dacgh_btan02_filter_whole_array.pdf")
+	
+	> plot(btan09_ngs, btan09_whole)
+	> abline(lm(btan09_whole ~ btan09_ngs))		<- I had switched up the x and y values, and this is why I was getting bad correlation lines!
+	> dev.copy2pdf(file = "dacgh_btan09_filter_whole_array.pdf")
+	
+# Now doing the remainder of the animals
+	$ perl create_d_acgh_comparison_filt.pl
+	
+	> whole <- read.delim("ngs_vs_whole_array_data_filt.tab", header = TRUE, sep = "\t")
+	> attach(whole)
+	> cor.test(btho11_ngs, btho11_whole)
+		sample estimates:
+		      cor 
+		0.4286641
+	> plot(btho11_ngs, btho11_whole)
+	> abline(lm(btho11_whole ~ btho11_ngs))
+	> mtext("R^2 = 0.4286", side = 3)
+	> dev.copy2pdf(file = "dacgh_btho11_filter_whole_array.pdf")
+	
+	> cor.test(bine12_ngs, bine12_whole)
+		sample estimates:
+		      cor 
+		0.2639019 
+	> plot(bine12_ngs, bine12_whole)
+	> abline(lm(bine12_whole ~ bine12_ngs))
+	> mtext("R^2 = 0.2639", side = 3)
+	> dev.copy2pdf(file = "dacgh_bine12_filter_whole_array.pdf")
+	
+__________________________________
+WGAC WSSD Intersection comparison
+__________________________________
+
+# I need to get the intersection between the WGAC and WSSD from George's paper, then intersect it with my own intervals, then plot the lengths of each one
+# This will generate a plot similar to Alkan's plot in Figure 1
+	pwd: /mnt/data110/gliu/mrfast/CommonFiles/cattleSD_web
+	$ perl -lane 'if($F[0] =~ /chrom/ || $F[0] =~ /chrUn/){next;}print "$F[0]\t$F[1]\t$F[2]";' < WGAC.tab > /mnt/data8/dbickhart/major_tables/WGAC_no_chrun.bed
+	$ perl -lane 'if($F[0] =~ /chrom/ || $F[0] =~ /chrUn/){next;} print "$_";' < WSSD_DOC.tab > /mnt/data8/dbickhart/major_tables/WSSD_no_chrun.bed
+	pwd: /mnt/data8/dbickhart/major_tables
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a WGAC_no_chrun.bed -b WSSD_no_chrun.bed > WGAC_WSSD_intersected_intervals.bed
+	
+	# Testing it on dttrace
+	$ perl calculate_cnv_length_table_comp.pl WGAC_WSSD_intersected_intervals.bed dttrace_all_chr_both_named.bed wgac_wssd dttrace
+	# It failed because I did not merge and sort the WGAC and WSSD
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i WGAC_WSSD_intersected_intervals.bed |  sort -k1,1 -k2,2g > WGAC_WSSD_intersect_merged_sort.bed
+	
+	# I also had to merge obvious overlapping intervals to get a more accurate picture (used splice)
+	$ perl calculate_cnv_length_table_comp.pl dttrace_all_chr_both_named.bed WGAC_WSSD_intersect_msort_filter.bed dttrace wgac_wssd
+
+	# Now, I need to plot this in R
+	> cnv <- read.delim("cnv_length_comp_table.tab", header = TRUE, sep ="\t")
+	> attach(cnv)
+	> cor.test(dttrace, wgac_wssd)
+	
+		Pearson's product-moment correlation
+	
+	data:  dttrace and wgac_wssd 
+	t = 25.8892, df = 295, p-value < 2.2e-16
+	alternative hypothesis: true correlation is not equal to 0 
+	95 percent confidence interval:
+	 0.7948674 0.8650652 
+	sample estimates:
+	      cor 
+	0.8332951
+	
+	# Not amazing, but not bad! 
+	
+	> pdf(file = "dttrace_vs_wgac_wssd_10k_filter.pdf")
+	> plot(dttrace, wgac_wssd)
+	> abline(lm(x~y))
+	> mtext("r^2 = 0.83329", side = 3)
+	
+__________________________________
+Variable Gene dot plot
+__________________________________
+# I am interested in creating a dotplot to represent the variable genes rather than a straight table. 
+# I want to separate the high scale variable points (the first two hypothetical genes) then plot the remainder
+	> library(lattice)
+	> setwd("/home/derek/share/cow4_doc/r_plots/")
+	> top_gene <- read.delim("top_variable_gene_list.txt", header = TRUE, sep = "\t")
+	> crop_gene <- data.frame(gene = top_gene$gene.ID, BINE12 = top_gene$BINE12, BTAN02 = top_gene$BTAN02, BTAN09 = top_gene$BTAN09, BTAN10 = top_gene$BTAN10, BTHO11 = top_gene$BTHO11, DTTRACE = top_gene$DTTRACE)
+	> library(reshape2)
+	> reformat_gene <- melt(crop_gene)
+	> names(reformat_gene)
+		[1] "gene"     "variable" "value"
+	> two_gene <- reformat_gene[reformat_gene$gene == "MGC134093",]
+	> two_gene$gene <- rep(c("MGC134093_a", "MGC134093_b"))
+	> two_plot <- dotplot(gene ~ value, data = two_gene, groups = variable, auto.key = TRUE)
+	> further_crop <- crop_gene[3:25,]
+	> melt_twofive <- melt(further_crop)
+	> melt_twofive <- melt_twofive[order(melt_twofive$value),]
+	> melt_twofive$gene <- ordered(melt_twofive$gene, levels = melt_twofive$gene)
+	> two_fiveplot <- dotplot(gene ~ value, data = melt_twofive, groups = variable, auto.key = TRUE)
+	
+	# Now to get rid of the autokey and make my own
+	> k <- simpleKey(c ("BINE12", "BTAN02", "BTAN09", "BTAN10", "BTHO11", "DTTRACE"))
+	> k$points$fill <- c("lightblue", "lightgreen", "red", "yellow", "purple", "orange")
+	> k$points$pch <- 21
+	> k$points$col <- "black"
+	> k$points$cex <- 1.6
+
+	> two_plot <- dotplot(gene ~ value, data = two_gene, groups = variable, xlab = NULL, par.settings = list(superpose.symbol = list(pch = 21, fill = c("lightblue", "lightgreen", "red", "yellow", "purple", "orange"), cex = 1, col = "black", alpha = 0.65)))
+	> two_fiveplot <- dotplot(gene ~ value, data = melt_twofive, groups = variable, xlab = "Copy Number", par.settings = list(superpose.symbol = list(pch = 21, fill = c("lightblue", "lightgreen", "red", "yellow", "purple", "orange"), cex = 1, col = "black", alpha = 0.65)))
+	
+	> print(two_plot, position=c(0, 0.80, 1,1), more = TRUE)
+	> print(two_fiveplot, position=c(0, 0, 1,0.88))
+	> dev.copy2pdf(file = "twenty_five_variable_genes.pdf")
+	
+	# I need to print out the key separately, since I could not figure out how to generate it next to the plot
+	> two_fiveplot <- dotplot(gene ~ value, data = melt_twofive, groups = variable, xlab = "Copy Number", key = k, par.settings = list(superpose.symbol = list(pch = 21, fill = c("lightblue", "lightgreen", "red", "yellow", "purple", "orange"), cex = 1, col = "black", alpha = 0.65)))
+	> two_fiveplot
+	> dev.copy2pdf(file = "twenty_five_key_plot.pdf")
+	
+	# In the future, I should do the following:
+		1. separate the two BNBD10 genes
+		2. add the stdev column and order the listing by the stdev instead of the gene
+		
+	# Inkscape and "q's". It turns out that Inkscape converts R fonts into "q's" if the filetype is a pdf
+	# I found a workaround: print as a postscript
+	> postscript(file = "twenty_five_variable_genes.eps")
+	# Oh, great, postscript doesn't allow transparency!
+	# Maybe this option will work:
+	> pdf(file = "twenty_five_test_font.pdf", useDingbats = FALSE)
+	
+	# Yes! That did it. 
+	
+________________________________
+Raw data and parasight
+________________________________
+
+# George wants the raw data tables from my R files as well as a redo of the 173 BACS without the dacgh
+# I am going to try to output the data into a tab delimited table so he can read it
+	> library(GenomeGraphs)
+	# This is for ULBP7
+	> c <- 9
+	> minBase <- 90251002
+	> maxBase <- 90582846
+	> setwd("/home/derek/share/cow4_doc/r_plots/")
+	> source("create_alkan_plot_cn.R")
+	# Biomart is having difficulties so my script is failing, disabling the genetrack until it comes back online
+	
+	> table_dat <- data.frame(list("chr" = btho11_1$chr, "pos" = btho11_1$location, "btho11" = btho11_1$counts, "btan02" = btan02$counts, "btan09" = btan09$counts, "btan10" = btan10$counts, "bine12" = bine12$counts, "dttrace" = bthe$counts))
+	> write.table(table_dat, file = "ulbp7_cn_positions.tab", sep = "\t", row.names = F, quote = FALSE)
+	# This works, and it creates a decent format table!
+	# I just need to make this table and export it after each separate track's creation
+	# It does not appear to ruin the final plot, either
+	
+	# Variables for table output:
+		> prefix
+		# turns out that R has an sprintf function, so I can use the gene prefix to generate filenames on the fly
+
+
+_________________________________
+DACGH validation methods
+_________________________________
+
+# This is going to suck! 
+# I need to determine thresholds for significance for my dacgh experiments and for the custom / whole genome arrays in order to validate my calls
+# Here is how I'm going to do it:
+	# I'm going to take the control intervals from my custom array, and subset them with the dacgh, custom and whole genome arrays
+	# Then I'm going to determine the average and stdev for each dataset
+	# From there, I'm going to determine validation limits based on the stdev
+	
+# What I actually did:
+	# Copied the control_recrop_50kb_crop.bed file from my acgh design folder to the following directory:
+	pwd: /home/derek/share/cow4_doc/hd_an_trace_art/raw_files
+	# Then I ran it as a named bed file against my raw-file-extraction script
+	$ perl generate_raw_files_from_bed.pl -b control_recrop_50kb_crop.bed
+	
+	# This was a bit of overkill, but the good news is that it will generate ALL the raw data that I need to do the normalization
+	pwd: /home/derek/share/cow4_doc/hd_an_trace_art/raw_files/custom_controls
+	$ cp ./*/*dacgh* ./
+	
+	
+________________________________
+Simulation validation
+________________________________
+
+# So, I need to redo part of my simulation in order to estimate an FDR
+# I need to redo the 1-8x simulated coverage and then check the 2 copy regions 
+# I will determine the 2 copy regions by taking the two copy regions from nelore, then subtracting the cnv intervals found in other animals
+# After I have these 2 copy regions, I will determine the percent concordance at varying levels of coverage.
+
+# First, rerunning the pipeline:
+	pwd: /mnt/gliu1_usb/dbickhart/nelore_30x/fastqs/simulation/
+	$ for i in nelore_sim_*x_rem.bed; do echo $i; perl auto_full_alkan_pipeline.pl --in $i; done
+	$ cp nelore_sim_*x_rem/*.CN ./final_output/
+	$ for i in *.CN; do echo _______________________  >> cn_averages_nelore_sim.txt; echo $i >> cn_averages_nelore_sim.txt; echo _______________________ >> cn_averages_nelore_sim.txt; cut -f4 $i | statStd.pl >> cn_averages_nelore_sim.txt; done
+	$ cp ../../../doc/total_nelore_doc_r/total_nelore_doc_r_file3.bed.gc.depth.normalized.CN ./
+	
+	# Now to extract the intervals that have CN values that are between 1.6 and 2.4
+	$ perl -lane 'if($F[3] > 1.6 && $F[3] < 2.4){ print $_;}' < total_nelore_doc_r_file3.bed.gc.depth.normalized.CN > bine12_first_round_two_copy_int.bed
+	
+	$ wc bine12_first_round_two_copy_int.bed total_nelore_doc_r_file3.bed.gc.depth.normalized.CN
+		  415255  1661020 13032888 bine12_first_round_two_copy_int.bed
+		  881586  3526344 27751792 total_nelore_doc_r_file3.bed.gc.depth.normalized.CN
+		 1296841  5187364 40784680 total
+	# Now to remove all of the intervals that are in regions of known CNVs
+	$ cat /mnt/data8/dbickhart/doc_files/*named.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a bine12_first_round_two_copy_int.bed -b stdin -v > bine12_second_round_two_copy_int.bed
+	$ wc bine12*
+		  415255  1661020 13032888 bine12_first_round_two_copy_int.bed
+		  412123  1648492 12934775 bine12_second_round_two_copy_int.bed
+		  827378  3309512 25967663 total
+	# Didn't remove too much!
+	# Lets get the stats of the last round
+	$ cut -f4 bine12_second_round_two_copy_int.bed | statStd.pl
+		total   412123
+		Minimum 1.60009
+		Maximum 2.39999
+		Average 1.967173
+		Median  1.95085
+		Standard Deviation      0.214908
+		Mode(Highest Distributed Value) 1.80099
+		
+# My goal now is to get the same regions in dominette, then calculate the dacgh ratio
+# Finally, I will compare them against the whole genome array
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/full_trace_file3.bed.gc.depth.normalized.CN -b bine12_second_round_two_copy_int.bed > dttrace_first_round_two_copy_regions.bed
+	$ cut -f4 dttrace_first_round_two_copy_regions.bed | statStd.pl
+		total   412123
+		Minimum 0
+		Maximum 31.3292
+		Average 2.013393
+		Median  1.93915
+		Standard Deviation      0.740832
+		Mode(Highest Distributed Value) 1.98636
+	# Now I need to remove these high CN regions (found in the DT regions) from the nelore cn file
+	$ perl -lane 'if($F[3] > 2.4 || $F[3] < 1.6){print $_;}' < dttrace_first_round_two_copy_regions.bed > dttrace_entries_tobe_removed.bed
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a bine12_second_round_two_copy_int.bed -b dttrace_entries_tobe_removed.bed -v > bine12_third_round_two_copy_int.bed
+	
+	# Finally, I need to do a dacgh calculation, then compare the results to the whole genome array for Nelore. Then I can set the threshold for detection to account for only 1% FDR
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a dttrace_first_round_two_copy_regions.bed -b dttrace_entries_tobe_removed.bed -v > dttrace_second_round_two_copy_regions.bed
+	# I rewrote the dacgh script to work on just the files in this directory.
+	$ perl create_d_acgh_comparison_sim.pl
+	
+	$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_custom_array_data.tab > bine12_control_dacgh_comp_custom.tab
+	$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_whole_array_data.tab > bine12_control_dacgh_comp_whole.tab
+	$ perl -lane 'if($F[0] eq "ucsc"){next;}else{print $F[1];}' < bine12_control_dacgh_comp_whole.tab | statStd.pl
+		total   9345
+		Minimum -0.578828250799833
+		Maximum 0.580506806355952
+		Average -0.011837
+		Median  -0.0128820665187596
+		Standard Deviation      0.221476
+		Mode(Highest Distributed Value) -0.0815105310337667
+	$ perl -lane 'if($F[0] eq "ucsc"){next;}else{print $F[2];}' < bine12_control_dacgh_comp_whole.tab | statStd.pl
+		total   9353
+		Minimum -4.197
+		Maximum 1.667
+		Average 0.022569
+		Median  0.0405
+		Standard Deviation      0.265296
+		Mode(Highest Distributed Value) -0.015
+
+# FDR discovery in diploid regions	
+	# OK, so assuming that these are the two copy regions in the genome (from the NGS side), lets see if we can't adjust a significance threshold to get a 1% FDR
+	# I am going to use 3 x the stdev to start (ngs: 0.66  whole: 0.81)
+	$ perl -lane 'if($F[0] eq "ucsc"){next;}else{if($F[1] < 0.66 && $F[1] > -0.66 && $F[2] < 0.81 && $F[2] > -0.81){} else{ print 1;}}' < bine12_control_dacgh_comp_whole.tab | statStd.pl
+		total   111 / 9354 = 0.01186658114175753688261706221937
+		# So, mission accomplished already! 
+		# Looks like a threshold of 0.81 is good for the whole genome array within nelore sim, at least!
+		# I will stick with the 0.66 threshold for the ngs data for the time being
+		
+	# Now to calculate the false discovery rate in the NGS data
+		$ for i in nelore_sim_*x_rem*; do prefix=`echo $i | cut -d'_' -f3`; output=`echo $prefix"_bine12_sim_two_copy_regions.bed"`; echo $output; /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a $i -b bine12_third_round_two_copy_int.bed > $output; done
+		# This script was modified to work on the 1x-8x simulation datasets
+		$ perl create_nelore_sim_two_copy_comp.pl
+		
+		$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_custom_array_data.tab > sim_xcov_custom_array_data.tab
+		$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_whole_array_data.tab > sim_xcov_whole_array_data.tab
+		
+		$ perl -lane 'if($F[0] =~ /ucsc/){next;}else{for($x = 1; $x < scalar(@F); $x += 2){ if(abs($F[$x]) - abs($F[$x + 1]) > 0.66 || abs($F[$x]) - abs($F[$x + 1]) < -0.66){ $val = ($x + 1) / 2; $str .= "$val;";}}} if(length($str) > 0){print "$str";}else{print "none";} $str = "";' < sim_xcov_whole_array_data.tab > sim_two_copy_whole_genome_conflicts.list
+		$ perl -lane 'if($F[0] =~ /none/){print 1;}' < sim_two_copy_whole_genome_conflicts.list | wc
+		   8855    8855   17710		<- looking pretty good!
+		   
+		$ perl -e 'while(<>){chomp; @s = split(/\;/); foreach $a (@s){$h{$a} += 1;}} foreach $k (keys(%h)){ print "$k\t$h{$k}\n";}' < sim_two_copy_whole_genome_conflicts.list
+			6       113
+			none    8855
+			3       127
+			7       115
+			2       157
+			8       114
+			4       123
+			1       329
+			5       119
+		
+		# 2 stdev data
+		$ perl -lane 'if($F[0] eq "ucsc"){next;}else{if($F[1] < 0.44 && $F[1] > -0.44 && $F[2] < 0.54 && $F[2] > -0.54){} else{ print 1;}}' < bine12_control_dacgh_comp_whole.tab | statStd.pl
+			total   794 / 9354 = 0.08488347231131066923241394056019
+
+		$ perl -lane 'if($F[0] =~ /ucsc/){next;}else{for($x = 1; $x < scalar(@F); $x += 2){ if($F[$x] < 0.44 && $F[$x] > -0.44 && $F[$x + 1] > -0.54 && $F[$x + 1] < 0.54){ }else{$val = ($x + 1) / 2; $str .= "$val;";}}} if(length($str) > 0){print "$str";}else{print "none";} $str = "";' < sim_xcov_whole_array_data.tab | perl -e 'while(<STDIN>){chomp; @s = split(/\;/); foreach $a (@s){$h{$a} += 1;}} foreach $k (keys(%h)){ print "$k\t$h{$k}\n";}'
+			6       891	0.09525336754329698524695317511225
+			none    6049	
+			3       1253	0.13395338892452426769296557622408
+			7       852	0.09108402822322001282873636946761
+			2       1476	0.15779345734445157152020525978191
+			8       811	0.08670087663031858028650844558478
+			1       2060	0.22022664100919392773145178533248
+			4       1085	0.11599315800726961727603164421638
+			5       978	0.10455420141116100064143681847338
+			
+		# 1 stdev data (just for kicks
+			total   4721 / 9354 = 50%
+		# I believe 1 stdev is too stringent, 60% of the data should be within that threshold by chance
+		
+		# Plotting in R
+		> x <- c("1","2","3","4","5","6","7","8","total")
+		> y <- c(0.220, 0.157, 0.133, 0.115, 0.104, 0.095, 0.091, 0.086, 0.084);
+		> barplot(y, names.arg=x, ylim = c(0,0.3), main = "BINE12 Simulation X Coverage False Positive rate", xlab = "X coverage simulations", ylab = "False Positive percentage")
+		> dev.copy2pdf(file = "BINE12_simulation_FPR_two_copy.pdf", useDingbats = FALSE)
+		
+		
+##############################################		
+	# Now lets graduate to the whole genome CN windows
+		$ cp /mnt/data8/dbickhart/trace_reads/trace_bams/trace_windows/full_trace_file3.bed.gc.depth.normalized.CN ./
+		$ mv full_trace_file3.bed.gc.depth.normalized.CN dttrace_file3.bed.gc.depth.normalized.CN
+		$ cp ../../../doc/total_nelore_doc_r/total_nelore_doc_r_file3.bed.gc.depth.normalized.CN ./
+		$ mv total_nelore_doc_r_file3.bed.gc.depth.normalized.CN bine12_doc_r_file3.bed.gc.depth.normalized.CN
+		# Altered the create_d_acgh_comparison_sim.pl script to just take the full nelore data into account
+		$ perl create_d_acgh_comparison_sim.pl
+		$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_custom_array_data.tab > bine12_vs_custom_array_whole_data.tab
+		$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_whole_array_data.tab > bine12_vs_whole_array_whole_data.tab
+		
+		# Now to count how many intervals differ from the arraycgh
+		$ perl -lane 'if($F[0] =~ /ucsc/){next;}else{for($x = 1; $x < scalar(@F); $x += 2){ if(abs($F[$x]) - abs($F[$x + 1]) > 0.66 || abs($F[$x]) - abs($F[$x + 1]) < -0.66){ $val = ($x + 1) / 2; $str .= "$val;";}}} if(length($str) > 0){print "$str";}else{print "none";} $str = "";' < bine12_vs_whole_array_whole_data.tab > bine12_whole_array_whole_inconsistent.list
+		$ wc bine12_whole_array_whole_inconsistent.list
+ 			52016  52016 230722 bine12_whole_array_whole_inconsistent.list
+		$ perl -e 'while(<>){chomp; @s = split(/\;/); foreach $a (@s){$h{$a} += 1;}} foreach $k (keys(%h)){ print "$k\t$h{$k}\n";}' < bine12_whole_array_whole_inconsistent.list
+			1       14679	<- about 28% were inconsistent; not too shabby!
+			none    37337
+		
+		# Created a script called create_nelore_sim_full_data_comp.pl to process the files for the whole genome 1kb cn windows
+		$ perl create_nelore_sim_full_data_comp.pl
+		
+		$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_custom_array_data.tab > sim_xcov_custom_array_wholegenome.tab
+		$ perl -lane 'if($F[1] eq "NA" || $F[7] eq "NA"){next;}else{print $_;}' < ngs_vs_custom_array_data.tab > sim_xcov_custom_array_wholegenome.tab
+		
+		$ perl -lane 'if($F[0] =~ /ucsc/){next;}else{for($x = 1; $x < scalar(@F); $x += 2){ if(abs($F[$x]) - abs($F[$x + 1]) > 0.66 || abs($F[$x]) - abs($F[$x + 1]) < -0.66){ $val = ($x + 1) / 2; $str .= "$val;";}}} if(length($str) > 0){print "$str";}else{print "none";} $str = "";' < sim_xcov_whole_array_wholegenome.tab > sim_whole_genome_whole_array_conflicts.list
+		$ perl -e 'while(<>){chomp; @s = split(/\;/); foreach $a (@s){$h{$a} += 1;}} foreach $k (keys(%h)){ print "$k\t$h{$k}\n";}' < sim_whole_genome_whole_array_conflicts.list
+			6       13192
+			none    29995
+			3       13296
+			7       13193
+			2       13570
+			8       13167
+			1       15801
+			4       13330
+			5       13349
+			
+		$ wc sim_whole_genome_whole_array_conflicts.list
+			 52016  52016 389792 sim_whole_genome_whole_array_conflicts.list
+		# So, about 58% of the simulation datasets conflict with the whole genome array data in a significant way
+		
+# Now, lets just do the CNV intervals
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a bine12_doc_r_file3.bed.gc.depth.normalized.CN -b ../../../doc/total_nelore_doc_r/total_nelore_doc_r_file1.bed.final.wssd > bine12_cn_intervals_in_gains.bed
+	$ wc bine12_cn_intervals_in_gains.bed
+ 		10600  42400 329366 bine12_cn_intervals_in_gains.bed
+ 	# Again, I just altered the create_d_acgh_comparison_sim.pl script to take this file and process it
+ 	$ perl create_d_acgh_comparison_sim.pl
+ 	$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_custom_array_data.tab > bine12_in_gains_vs_custom_data.tab
+ 	$ perl -lane 'if($F[1] eq "NA"){next;}else{print $_;}' < ngs_vs_whole_array_data.tab > bine12_in_gains_vs_whole_data.tab
+ 	
+ 	$ perl -lane 'if($F[0] =~ /ucsc/){next;}else{for($x = 1; $x < scalar(@F); $x += 2){ if(abs($F[$x]) - abs($F[$x + 1]) > 0.66 || abs($F[$x]) - abs($F[$x + 1]) < -0.66){ $val = ($x + 1) / 2; $str .= "$val;";}}} if(length($str) > 0){print "$str";}else{print "none";} $str = "";' < bine12_in_gains_vs_whole_data.tab > bine12_in_gains_vs_whole_conflicts.list
+ 	$ perl -e 'while(<>){chomp; @s = split(/\;/); foreach $a (@s){$h{$a} += 1;}} foreach $k (keys(%h)){ print "$k\t$h{$k}\n";}' < bine12_in_gains_vs_whole_conflicts.list
+		none    280
+		1       332
+		
+	# I need a more refined way of determining this.
+	
+# Lets try the >20kb <80% repeat intervals
+	$ cp /mnt/data8/dbickhart/major_tables/d_acgh/bine12_cnv_filt_ngs.CN ./
+	$ cp /mnt/data8/dbickhart/major_tables/bine12_all_chr.bed.passed ./
+	# That did not work well
+	
+
+# Maybe I'm approaching this from the wrong direction, perhaps I should take the CNV intervals that are unique to that animal (compared to DT) then calculate a ratio for them and finally compare the aCGH ratios in that region
+	pwd /mnt/data8/dbickhart/doc_files
+	$ perl compare_unique_intervals_custom.pl
+	$ perl -lane 'if($F[0] eq "ucsc" || $F[2] eq "NA"){next;}else{($c, $s, $e) = $F[1] =~ /(chr.+)\:(\d+)\-(\d+)/; $len = $e - $s; $clen = $len * $F[2]; print "$F[0]\t$F[1]\t$len\t$clen";}' < ngs_vs_custom_array_data.tab > unique_intervals_confirmation.tab 
+	$ perl -e 'while(<>){chomp; @s = split(/\t/); $tlen += $s[2]; $i = int($s[3]); $clent += $i;} print "$tlen\t$clent\n";' < unique_intervals_confirmation.tab
+		5119140 948527
+	$ perl -lane 'if($F[2] > 0.25){ print 1;} else{print 0;}' < ngs_vs_custom_array_data.tab | statStd.pl
+		total   389
+		Minimum 0
+		Maximum 1
+		Average 0.159383		<- 15% confirmation rate
+		Median  0
+		Standard Deviation      0.366504
+		Mode(Highest Distributed Value) 0
+		
+	# Trying again with the whole genome array
+	# Still pretty bad, even with a 0.10 threshold detection limit
+	$ perl -lane 'if($F[2] > 0.25){ print 1;} else{print 0;}' < ngs_vs_custom_array_data.tab | statStd.pl
+		total   389
+		Minimum 0
+		Maximum 1
+		Average 0.419023
+		Median  0
+		Standard Deviation      0.494035
+		Mode(Highest Distributed Value) 0
+		
+______________________________________
+HMMseq
+______________________________________
+
+# I am going to try to run HMMseg on the custom arrays to confirm the cnvr. 
+# I need to convert the custom array files into a single artificial chromosome with 100 intervals in between large segments/chromosome discontinuities to reset the HMM. 
+# In order to do this, I created a script called hmm_even_segment_prepare.pl
+	pwd: /home/derek/share/Hmm_seq
+	$ perl hmm_even_segment_prepare.pl bine12_carray_ratiocorrected.r.tab bine12_carray_hmm_art.bed
+	# Worked well, going to do the remainder of the custom array files
+	$ perl hmm_even_segment_prepare.pl btan02_carray_ratiocorrected.r.tab btan02_carray_hmm_art.bed
+	$ perl hmm_even_segment_prepare.pl btan09_carray_ratiocorrected.r.tab btan09_carray_hmm_art.bed
+	$ perl hmm_even_segment_prepare.pl btho11_carray_ratiocorrected.r.tab btho11_carray_hmm_art.bed
+	
+	# The script generated indicies so that I can convert the intervals back to the initial chromosome coordinates.
+	$ ls *.bed > hmm_list.list
+	$ java -jar HMMSeg.jar --input-bed --column 4 --log hmm_run1.log hmm_list.list
+	# And, it ran out of memory!
+	# going to try it on server 3
+	
+	pwd: /mnt/data8/dbickhart/major_tables/hmm
+	$ java -jar HMMSeg.jar --input-bed --column 4 --log hmm_run1.log hmm_list.list
+	# Great, it doesn't work.
+	# Maybe I should try the files one at a time?
+	
+	pwd: /home/derek/share/Hmm_seq
+	$ java -jar HMMSeg.jar --input-bed --column 4 --log hmm_run1.log hmm_list.list
+	# hmm_list.list only contained bine12
+	# The resulting wiggle file contained viterbi plots that alternated by 0 and 1 on every other interval (not useful)
+	# Going to try this with the full genome array:
+	
+	$ perl hmm_even_segment_prepare.pl bine12_farray_ratiocorrected.r.tab bine12_farray_hmm_art.bed
+	$ java -jar HMMSeg.jar --input-bed --column 4 --log hmm_run1.log hmm_list.list
+	
+_____________________________________
+The Excel way
+_____________________________________
+
+# George wants to get a good estimate of the FDR and gene confirmation
+# I think I'll try to work through it using the excel method that Tomas mentioned
+# I will take my custom region control files and compare them to the full genome array to look for which parameters to use to balance them out
+	pwd: /home/derek/share/cow4_doc/hd_an_trace_art/raw_files
+	$ perl generate_raw_dacgh_from_bed.pl -b control_recrop_50kb_crop.bed
+	# My generate_raw_dacgh_from_bed.pl script uses the mysql databases to pull out values
+	# Sooo much faster than perl file reading!
+	# That was the average, now for the median
+	# Approximately 56% for nelore, 83, 70 and 77 for btan02, btan09 and btho11 respectively using three times the stdev of the average (.35 deviation cutoff)
+	
+# I am going to try the nelore 20kb, < 80% common repeats intervals
+	$ perl generate_raw_dacgh_from_bed.pl -b bine12_all_chr.bed.passed
+	# About a 50% confirmation rate
+	$ perl generate_raw_dacgh_from_bed.pl -b btan02_all_chr.bed.passed
+	
+	# My final values are located in the table: gene_dacgh_farray_comp_values.xlsx in the same folder
+	
+______________________________________
+Correcting the qpcr
+______________________________________
+
+# I am going to try to use the dacgh values to correct my qPCR assumptions
+# I can do this in an extensive fashion or just use the individual dacgh values themselves
+	# The extensive fashion would involve calculating the average CN values for BTF3 and the gene of interest in DT and the animal, then doing the dCT method
+	# It would be almost like a "virtual qPCR"
+	# I'm intrigued, let's test it out.
+	
+	mysql> use upload_script_tables
+	mysql> select * from 1kb_cn_files where chr = "chr20" and start < "1519950" and end > "1520081";
+	+-------+---------+---------+----------+---------+
+	| chr   | start   | end     | value    | animal  |
+	+-------+---------+---------+----------+---------+
+	| chr20 | 1516863 | 1520331 |  2.24697 | BINE12  |
+	| chr20 | 1516863 | 1520331 |   1.7513 | BTAN02  |
+	| chr20 | 1516863 | 1520331 |  1.88668 | BTAN09  |
+	| chr20 | 1516863 | 1520331 |  1.75367 | BTAN10  |
+	| chr20 | 1516863 | 1520331 |  1.74483 | BTHO11  |
+	| chr20 | 1516863 | 1520331 | 0.500623 | DTTRACE |
+	+-------+---------+---------+----------+---------+
+	6 rows in set (2.03 sec)
+	
+	# I don't trust that. Let's use the gene table information (gene_list_cn_hd_animals.xls)
+	
+	# BTF3	chr20	8480504	8487056	6552	0	0		2.162588167	2.172284333	2.146088667	2.059444	1.713082167	2.161018333
+	# That did not work very well
+	# Tried the ddct approach and it didn't work
+	

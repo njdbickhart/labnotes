@@ -1,0 +1,157 @@
+2010_10_25
+_______________________________________
+Reducing CNV-Seq data from holstein 7x
+_______________________________________
+
+# The holstein 7x dataset returned approximately 14k cnv locations with respect to the Cow4 genome. 
+# This number is likely inflated due to repeat clusters
+# I am unsure that if I remove repeat locii from the test hits if that would increase or decrease the CNV hits.
+# Perhaps there is a way of removing repeat-based CNVs post-analysis using the bed tools suite?
+# Here is the data format of the tab delimited "CNV" file from the CNV-seq analysis
+	"chromosome"    "start" "end"   "test"  "ref"   "position"      "log2"  "p.value"       "cnv"   "cnv.size"      "cnv.log2"      "cnv.p.value"
+	"chr7"  1       4962    1256    136     2482    -0.191676910210186      0.0640178206252414      0       NA      NA      NA
+	"chr7"  2482    7443    1122    141     4962    -0.406529209641475      0.000311315824486898    0       NA      NA      NA
+	"chr7"  4963    9924    1225    122     7444    -0.0710061215244273     0.292881726522069       0       NA      NA      NA
+	"chr7"  7444    12405   1117    125     9924    -0.239205632030246      0.0271520011117031      0       NA      NA      NA
+	"chr7"  9925    14886   1038    132     12406   -0.423638208852047      0.000170716384584599    0       NA      NA      NA
+	"chr7"  12406   17367   974     116     14886   -0.329037850896704      0.00333692928306331     0       NA      NA      NA
+	"chr7"  14887   19848   898     121     17368   -0.507126420384922      5.90043860574727e-06    0       NA      NA      NA
+	"chr7"  17368   22329   1141    140     19848   -0.372034758507759      0.000958737565890038    0       NA      NA      NA
+	"chr7"  19849   24810   1408    136     22330   -0.026866040464516      0.419322432591884       0       NA      NA      NA
+	"chr7"  22330   27291   1396    128     24810   0.0482484083581782      0.360210954687298       0       NA      NA      NA
+	"chr7"  24811   29772   1119    133     27292   -0.326122932376269      0.00360969942374265     0       NA      NA      NA
+	"chr7"  27292   32253   861     141     29772   -0.788516742853423      1.54363161694925e-13    0       NA      NA      NA
+	"chr7"  29773   34734   532     89      32254   -0.819285813316682      1.19931837940179e-14    0       NA      NA      NA
+	"chr7"  32254   37215   140     22      34734   -0.728983419543805      1.47641574603313e-11    0       NA      NA      NA
+	"chr7"  34735   39696   0       0       37216   NA      NA      0       NA      NA      NA
+	"chr7"  37216   42177   0       0       39696   NA      NA      0       NA      NA      NA
+	"chr7"  39697   44658   0       0       42178   NA      NA      0       NA      NA      NA
+	"chr7"  42178   47139   0       0       44658   NA      NA      0       NA      NA      NA
+	"chr7"  44659   49620   0       0       47140   NA      NA      0       NA      NA      NA
+	"chr7"  47140   52101   0       0       49620   NA      NA      0       NA      NA      NA
+	"chr7"  49621   54582   0       0       52102   NA      NA      0       NA      NA      NA
+	"chr7"  52102   57063   0       0       54582   NA      NA      0       NA      NA      NA
+	"chr7"  54583   59544   0       0       57064   NA      NA      0       NA      NA      NA
+	"chr7"  57064   62025   0       0       59544   NA      NA      0       NA      NA      NA
+
+
+# Here is the data format of the tab delimited "Count" file from the CNV-seq analysis
+	chromosome      start   end     test    ref
+	chr7    1       4962    1256    136
+	chr7    2482    7443    1122    141
+	chr7    4963    9924    1225    122
+	chr7    7444    12405   1117    125
+	chr7    9925    14886   1038    132
+	chr7    12406   17367   974     116
+	chr7    14887   19848   898     121
+	chr7    17368   22329   1141    140
+	chr7    19849   24810   1408    136
+	chr7    22330   27291   1396    128
+	chr7    24811   29772   1119    133
+	chr7    27292   32253   861     141
+	chr7    29773   34734   532     89
+	chr7    32254   37215   140     22
+	chr7    34735   39696   0       0
+	chr7    37216   42177   0       0
+	chr7    39697   44658   0       0
+	chr7    42178   47139   0       0
+	chr7    44659   49620   0       0
+	chr7    47140   52101   0       0
+	chr7    49621   54582   0       0
+	chr7    52102   57063   0       0
+	chr7    54583   59544   0       0
+	chr7    57064   62025   0       0
+	chr7    59545   64506   0       0
+
+# I am going to count the number of lines that have zero hits in both the "test" and "ref" columns of the files
+	$ perl -lane 'if(($F[3] == 0) && ($F[4] == 0)){$a += 1; print $a;}' < merged.hits-vs-cow4_simulation_full.hits.log2-0.6.pvalue-0.001.minw-4.cnv
+		Final count = 81391
+		# this is out of 1223974 lines
+		# I am unsure if CNV-seq counts these blank entries...
+		# It likely does not, since there are 14940 cnvs printed on the status report of the CNV-seq STDOUT run
+		# So I will likely have to find a way to print their positions in R, filter out the reads that do not fall within repeats using bedtools, then manually check those reads later
+		
+	$ R
+		> library(cnv)
+		> data <- read.delim("merged.hits-vs-cow4_simulation_full.hits.log2-0.6.pvalue-0.001.minw-4.cnv")
+		> cnv.print(data)
+			# This might be the best place to scan and select data
+			# It outputs every CNV call with the chromosome positions and statistics
+			# If I can redirect the ouput into a text file, convert it into a bed file and then parse it through the BEDTools suite, I can get rid of the repeat calls!
+		> sink("merged_cnv.txt", append = FALSE, "output", split=FALSE)
+			# This command redirects the output on the screen to a file
+			# Text appears to be tab-delimited, so I can reformat it as necessary
+			
+			
+# I have created a cow4 bed file containing all of the UCSC repeat loci from bosTau4.fa.out using my extract_SSRs.pl script
+# Name of file: cow4_repeats_c.bed
+# It contains NO chrUn or chrM chromosome names!
+	
+# Now I am formatting the R output into a .bed file for use in the BEDTools subtract function:	
+	$ perl -n -e '@a = split(/\t/, $_); $c = substr($a[1], 3, (length($a[1])-3)); print "$c\t$a[2]\t$a[3]\t$a[0]\n";' < merged_cnv.txt > merged_cnv.bed
+	$ ./intersectBed -a ../../../merged_cnv.bed -b ../../cow4_repeats_c.bed -wa > regions_overlapped.bed
+	$ ./subtractBed -a ../../../merged_cnv.bed -b regions_overlapped.bed
+		chrX	16931586	16943990	CNVR_11866
+		chrX	85694982	85704904	CNVR_12854
+	
+		> plot.cnv(data, CNV=11866, upstream=6e+4, downstream=6e+4)
+		# Produced less than stellar results
+		# I might have to tweak the window size
+		
+		
+		# or maybe I should just subtract the reads present in repeat regions from the hits file!
+		
+		$ perl -lane '$a = $F[1] + 36; print"$F[0]\t$F[1]\t$a"' < cow4_simulation_full.hits > cow4_simulation.bed <- should only be 2 nucleotides in distance to avoid proliferation of reads that span repeats then I can just do a bedsubtract
+		$ perl -lane '$a = $F[1] + 36; print"$F[0]\t$F[1]\t$a"' < ../holstein_7x/hits/merged.hits > merged_hits.bed
+
+		$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_simulation.bed -b ../cow4_repeats_c.bed -wa > cow4_sim_overlap.bed
+		$ ../BEDTools-Version-2.10.0/bin/intersectBed -a merged_hits.bed -b ../cow4_repeats_c.bed -wa > merged_overlap.bed
+		$ ../BEDTools-Version-2.10.0/bin/subtractBed -a cow4_sim_overlap.bed -b ../cow4_repeats_c.bed > cow4_sim_norepeats.bed
+		$ ../BEDTools-Version-2.10.0/bin/subtractBed -a merged_overlap.bed -b ../cow4_repeats_c.bed > merged_norepeats.bed
+		
+		$ perl -lane 'print "$F[0]\t$F[1]";' < merged_norepeats.bed > merged_norepeats.hits
+		$ perl -lane 'print "$F[0]\t$F[1]";' < cow4_sim_norepeats.bed >cow4_sim_norepeats.hits
+		
+		$ perl cnv-seq.pl --test merged_norepeats.hits --ref cow4_sim_norepeats.hits --genome-size 2500000000 --global-normalization
+		# That reduced the number of potential CNVs by greater than 10 fold!
+		
+	$ R
+		> library(cnv)
+		> data <- read.delim("merged_norepeats.hits-vs-cow4_sim_norepeats.hits.log2-0.6.pvalue-0.001.minw-4.cnv")
+		> plot.cnv(data, CNV=3, upstream=1e+5, downstream= 1e+6)	<- interesting deletion
+		> plot.cnv(data, CNV=5, upstream=1e+6, downstream= 1e+5)	<- another interesting deletion
+		> plot.cnv.chr(data, chromosome="chr1", from=1, to=100000000)	<- large chromosome scan, but perhaps too large. Limit of 1e+07 windows perhaps?
+		> plot.cnv.chr(data, chromosome="chr1", from=1, to=1e+07)	<- this is a much better scale to check cnv distributions
+		
+		> sink("merged_norepeats_cnv.txt", append=FALSE, "output", split=FALSE)	<- text based scan
+		> cnv.print(data)
+
+		> plot.cnv(data, CNV=47, upstream=1e+06, downstream=4e+05, ylim=c(-6,6)) <- really cool duplication call for chromosome 26
+		> plot.cnv(data, CNV=129, upstream=1e+06, downstream=1e+06, ylim=c(-6,6)) <- two duplications on chromosome 6
+		
+	$ perl cnv-seq.pl --test merged_norepeats.hits --ref cow4_sim_norepeats.hits --genome-size 2500000000
+	# The lowest resolution size for cnv detection was 81kb using cnv-seq with the dataset... this is fairly low!	It is probably because of the window size...
+	$ perl cnv-seq.pl --test merged_norepeats.hits --ref cow4_sim_norepeats.hits --genome-size 2500000000 --window-size 5000
+	# This will likely take a while...
+		# Window generation appears to be contingent on the minimum log 0.6 detection stats
+		genome size used for calculation is 2500000000
+		merged_norepeats.hits: 80530708 reads
+		cow4_sim_norepeats.hits: 8951236 reads
+		The minimum window size for detecting log2>= 0.6 should be 27385.5401012282
+		The minimum window size for detecting log2<=-0.6 should be 14273.6455451049
+		window size to use is 27385.5401012282 x 1.5 = 41078
+		window size to be used: 41078
+
+		# If the 5kb window generates too many cnvs, perhaps I could use a window size closer to the minimum for detecting a log2 < - 0.6 ?
+		# It generated ~14k cnvs; that is simply way too many! Perhaps a chromosome by chromosome smaller window analysis might be in order, but that scale is far too many
+	
+	$ perl cnv-seq.pl --test merged_norepeats.hits --ref cow4_sim_norepeats.hits --genome-size 2500000000 --window-size 14273
+		# This generated 2656 cnvs
+		# perhaps I can't increase the resolution without a ton of false positives?
+		
+	$ perl cnv-seq.pl --test merged_norepeats.hits --ref cow4_sim_norepeats.hits --genome-size 2500000000 --bigger-window 1
+		The minimum window size for detecting log2>= 0.6 should be 27385.5401012282
+		The minimum window size for detecting log2<=-0.6 should be 14273.6455451049
+		window size to use is 27385.5401012282 x 1 = 27386
+		window size to be used: 27386
+		# That generated 968 cnvs

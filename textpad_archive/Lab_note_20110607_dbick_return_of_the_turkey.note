@@ -1,0 +1,59 @@
+06/07/2011
+# While I wait for some of the files to process, I will return to the Turkey CR1 alignment and comparision with other avian species.
+
+# Here are some sections from my previous notes that mention what I've done so far:
+	______________________________________________
+	Progressing from here
+	______________________________________________
+	
+	# Some observations of my dataset:
+		# I did not remove the CR1 sequences with less than (or more than) 98% of the length of the 465bp consensus sequences.
+		# I did not extract the %divergence of the sequences from the consensus
+		
+	# Both of these flaws can be corrected quickly with some perl scripting
+	
+	# My first goal is to re-extract the %divergence from the repeat files (modify extract_repeat_information.pl)
+	
+	# Next, incorporate the %divergence into the fasta header for the repeats (modify extract_repeat_fasta.pl) and simultaneously crop out the reads shorter than 455bp or longer than 465bp.
+	
+	#Actually, I found out that I did extract the consensus divergence; however, I did not screen for smaller repeats. The Remotely stored perl scripts (extract_repeat_fasta.pl and extract_repeat_information.pl are up to date.
+	
+	# convert_RM_out_tab.pl (script that removes the whitespace from the repeatmasker out files) has been modified to use threads
+		# Server 2's perl interpreter was not built with threads active! I can't use this script on server2!
+		# moving the chr_fa.out files to my shared folder; I'll run this script locally
+		# It is taking a long time to run locally, but I believe that it will finish before the end of today.
+		# I will have to run the other scripts on server 2 to make sure that they run over night (I will just split the number of files into four batches (make sure to split mega chromosomes among all four))
+	
+	# Scratch all that: made some modifications that sped up the process significantly
+		$ perl convert_RM_out_tab.pl
+		
+		$ perl extract_repeat_information.pl batch1.txt 1
+		$ perl extract_repeat_information.pl batch2.txt 2
+		$ perl extract_repeat_information.pl batch3.txt 3
+		$ perl extract_repeat_information.pl batch4.txt 4
+	
+		# I didn't need to batch out the files; they completed within a few seconds!
+		
+		# The Turkey chromosome fastas had an extraneous newline at the top of the file; removed it with several of these commands:
+			awk ' NR>1 ' Chr2.fa > Chr2.sm; mv Chr2.sm Chr2.fa
+			
+		$ perl extract_repeat_fasta.pl
+			# produce about 10678 repeats spread amongst multiple families
+		# The extract script was modified to include the divergence percentage in the fasta header (it is the second number after the chromosome number in the header)
+		
+	##################################################
+
+# So, George had told me that I should use Mega to process the reads. This will require some manual labor in order to get the files into the proper formats for mega (including file extension editing)
+# I also need to normalize the divergence percentages by the CpG content (this is because of the heightened mutation rate of CpGs (due to cytosine deamination)). 
+# Here is the equation used in George's manuscript: corrected_divergence = divergence / (1 + 9 frequency_cpg)
+
+# Some note files to look at (all in George's home folder on Server 2):
+	# Lab_note_20080702_LuJiang.txt
+	# Lab_note_20080811.txt
+	# Lab_note_20080813.txt
+	# Lab_note_20090404.txt
+	# Lab_note_20090405.txt
+	# Lab_note_20090407.txt
+	# Lab_note_20100831.txt
+	
+# OK, I found my repeatmasker out files, so I can now use the percent divergence from those files (row 2 or 1 (zero based)) 

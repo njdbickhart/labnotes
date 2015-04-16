@@ -1,0 +1,138 @@
+09/25/2013
+# These notes detail the commands and statistics for John's chr18 qtl project
+
+# Current status:
+	- John's data has been aligned on Blade14 and is just awaiting analysis
+	- I can start with the easy DOC analysis and then take it from there
+	- The primary focus will be on the chr18 QTL, but all variants can be used from these bulls
+	
+# Beginning the mrsfast DOC analysis:
+	Blade14: /mnt/iscsi/vnx_gliu_7/john_animals
+	$ mkdir doc_cnv
+	$ ~/jdk1.7.0/bin/java -Xmx45g -jar ~/bin/GeneratePopulationDocFragWindows.jar -I Arlinda-Chief -I Arlinda-Mellwood -I Arlinda-Rotate -I Cass-River -I CMV-Mica-ET -I Glen-Drummond-Dragon -I Juniper-Rotate-Jed -I Lystel-Leduc -I Maizefield-Bellwood -I Marathon-BW-Marshall-ET -I Pawnee-Farm-Arlinda -I Rackman-Ivanhoe -I Spearmint -I Sweet-Haven-Tradition -I Troubadour -I Wedgwood-Laramie -S 'mrsfast.bam' -O "doc_cnv" -R ../reference/umd3_kary_nmask_hgap.fa -n 10 -w 5000 -rl 100 -g ~/reference/gms/gms_simplified_list.txt -ng -bl ../reference/umd3_assembly_blacklist.bed
+	
+	$cd doc_cnv
+	$ for i in `ls Normalized.* | cut -d'.' -f2 | uniq`; do echo $i; ~/jdk1.7.0/bin/java -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o $i.calls -w 5000 -p -t 3; done
+	$ mkdir calls
+	$ mv *.calls* ./calls
+	
+# Preparing to migrate bams to the TACC
+	# Because of the shutdown, I want to expedite the analysis of John's data, so I am migrating everything over to the TACC
+	# I need to consolidate the BWA bams prior to transfer, just to simplify everything
+	
+	Blade14: /mnt/iscsi/vnx_gliu_7/john_animals
+	$ perl ../bin/merge_bams_sort_index.pl -l 500 -i Arlinda-Chief/ -b ../bin/ -o Arlinda-Chief/Arlinda-Chief.merged.sorted.bam -p 4 -f 1
+	
+	# That worked well, now to do the rest:
+	$ for i in Arlinda-Mellwood Arlinda-Rotate Cass-River CMV-Mica-ET Glen-Drummond-Dragon Juniper-Rotate-Jed Lystel-Leduc Maizefield-Bellwood Marathon-BW-Marshall-ET Pawnee-Farm-Arlinda Rackman-Ivanhoe Spearmint Sweet-Haven-Tradition Troubadour Wedgwood-Laramie; do echo $i; perl ../bin/merge_bams_sort_index.pl -l 500 -i $i/ -b ../bin/ -o $i/$i.merged.sorted.bam -p 8 -f 1; done
+	
+	
+	# Transferring bams to the TACC:
+	Blade14: /mnt/iscsi/vnx_gliu_7/john_animals
+	# Damn, Blade14 doesn't receive any packets but Blade 2 does. Well, I'm going to have to do this the hard way:
+	$ scp -p Arlinda-Chief/Arlinda-Chief.merged.sorted.bam dbickhart@172.16.0.102:/mnt/iscsi/md3200i_4/dbickhart/john_temp/Arlinda-Chief.merged.sorted.bam
+	
+	Blade2: /mnt/iscsi/md3200i_4/dbickhart/john_temp
+	# Nope, doesn't work! I can't seem to connect to the TACC using any method. I'll have to do this the hard way.
+	
+	# I want to time how long it takes to run through the full GATK pipeline, so let's do this on Blade14 just to get a rough estimate
+	Blade14: /home/dbickhart/vnx_gliu_7/john_animals/Arlinda-Mellwood
+	$ time perl ../../bin/run_gatk_walkers.pl -i Arlinda-Mellwood.merged.sorted.bam -o Arlinda-Mellwood -b ../../bin -p 12 -r /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -f 1 -j ~/jdk1.7.0/bin/java -g ~/GenomeAnalysisTK-2.5-2-gf57256b/GenomeAnalysisTK.jar -t /mnt/iscsi/vnx_gliu_7/reference/umd3_training_set.txt -u temp -s -Xmx20g
+	# Dammit, I forgot to check the time output. I'll have to do it again in any case on the server
+	
+	
+	# In the meantime, I will condense John's mrsfast BAMS to make room for more sequence files
+	Blade14: /mnt/iscsi/vnx_gliu_7/john_animals/Arlinda-Chief
+	$ ~/jdk1.7.0/bin/java -jar ~/bin/CondenseDOCBamsHash.jar -I Arlinda-Chief -F '*mrsfast.bam' -O Arlinda-Chief/Arlinda-Chief.mrsfast.hits -X /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_nmask_hgap.fa.fai
+	# Now for the rest of them:
+	$ for i in Arlinda-Mellwood Arlinda-Rotate Cass-River CMV-Mica-ET Glen-Drummond-Dragon Juniper-Rotate-Jed Lystel-Leduc Maizefield-Bellwood Marathon-BW-Marshall-ET Pawnee-Farm-Arlinda Rackman-Ivanhoe Spearmint Sweet-Haven-Tradition Troubadour Wedgwood-Laramie; do echo $i; ~/jdk1.7.0/bin/java -jar ~/bin/CondenseDOCBamsHash.jar -I $i -F '*mrsfast.bam' -O $i/$i.mrsfast.hits -X /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_nmask_hgap.fa.fai; gzip $i/$i.mrsfast.hits; done
+	
+# Running the GATK on the TACC
+	# OK, so the TACC has alot of programs installed, but they need to be loaded by using a loader module command like the following:
+	$ module spider gatk/2.5.2
+	$ module load gatk/2.5.2
+	$ echo $TACC_GATK_DIR
+	
+	# That last module step filled the environmental variable for me to use the GATK jar
+	# I will need to specify that module every time that I need to run the GATK
+	
+# Running Samtools locally
+	# I need to call variants using samtools on all of my files locally (since I cannot transfer all of the bams to the TACC in a reasonable amount of time)
+	Blade14:/mnt/iscsi/vnx_gliu_7/john_animals
+	# Note: I downloaded Samtools 1.19 because Heng Li implemented a method to avoid misaligned indels in that version
+	$ samtools mpileup -DSguf ../reference/umd3_kary_unmask_ngap.fa ./Arlinda-Chief/Arlinda-Chief.merged.sorted.bam ./Arlinda-Mellwood/Arlinda-Mellwood.merged.sorted.bam ./Arlinda-Rotate/Arlinda-Rotate.merged.sorted.bam ./Cass-River/Cass-River.merged.sorted.bam ./CMV-Mica-ET/CMV-Mica-ET.merged.sorted.bam ./Glen-Drummond-Dragon/Glen-Drummond-Dragon.merged.sorted.bam ./Juniper-Rotate-Jed/Juniper-Rotate-Jed.merged.sorted.bam ./Lystel-Leduc/Lystel-Leduc.merged.sorted.bam ./Maizefield-Bellwood/Maizefield-Bellwood.merged.sorted.bam ./Marathon-BW-Marshall-ET/Marathon-BW-Marshall-ET.merged.sorted.bam ./Pawnee-Farm-Arlinda/Pawnee-Farm-Arlinda.merged.sorted.bam ./Rackman-Ivanhoe/Rackman-Ivanhoe.merged.sorted.bam ./Spearmint/Spearmint.merged.sorted.bam ./Sweet-Haven-Tradition/Sweet-Haven-Tradition.merged.sorted.bam ./Troubadour/Troubadour.merged.sorted.bam ./Wedgwood-Laramie/Wedgwood-Laramie.merged.sorted.bam | bcftools view -bvcg - > samtools_snp_calls/combined_16_animals.bcf
+	
+	# This is taking way too long. I'm going to try to multi-thread the process here by separating everything by chromosome
+	$ perl ~/bin/fork_samtools_mpileup_by_chromosome.pl -i ./Arlinda-Chief/Arlinda-Chief.merged.sorted.bam,./Arlinda-Mellwood/Arlinda-Mellwood.merged.sorted.bam,./Arlinda-Rotate/Arlinda-Rotate.merged.sorted.bam,./Cass-River/Cass-River.merged.sorted.bam,./CMV-Mica-ET/CMV-Mica-ET.merged.sorted.bam,./Glen-Drummond-Dragon/Glen-Drummond-Dragon.merged.sorted.bam,./Juniper-Rotate-Jed/Juniper-Rotate-Jed.merged.sorted.bam,./Lystel-Leduc/Lystel-Leduc.merged.sorted.bam,./Maizefield-Bellwood/Maizefield-Bellwood.merged.sorted.bam,./Marathon-BW-Marshall-ET/Marathon-BW-Marshall-ET.merged.sorted.bam,./Pawnee-Farm-Arlinda/Pawnee-Farm-Arlinda.merged.sorted.bam,./Rackman-Ivanhoe/Rackman-Ivanhoe.merged.sorted.bam,./Spearmint/Spearmint.merged.sorted.bam,./Sweet-Haven-Tradition/Sweet-Haven-Tradition.merged.sorted.bam,./Troubadour/Troubadour.merged.sorted.bam,./Wedgwood-Laramie/Wedgwood-Laramie.merged.sorted.bam -o samtools_snp_calls/john_16_animalchr18 -p 18 -r ../reference/umd3_kary_unmask_ngap.fa
+	
+	# Much faster this way! I am going to quickly snpeff John's chr18 vcf file, since that is the focus of the study
+	$ ~/jdk1.7.0/bin/java -jar ../snpEff/snpEff.jar eff -c ../snpEff/snpEff.config UMD3.1.69 samtools_snp_calls/john_16_animalchr18.chr18.vcf > john_16_animalchr18.chr18.stdout
+	
+	
+# Running the VHSR pipeline to detect chr18 variants:
+	Blade14: /mnt/iscsi/vnx_gliu_7/
+	$ for i in Arlinda-Chief Arlinda-Mellwood Arlinda-Rotate Cass-River CMV-Mica-ET Glen-Drummond-Dragon Juniper-Rotate-Jed Lystel-Leduc Maizefield-Bellwood Marathon-BW-Marshall-ET Pawnee-Farm-Arlinda Rackman-Ivanhoe Spearmint Sweet-Haven-Tradition Troubadour Wedgwood-Laramie; do echo $i; ~/jdk1.7.0/bin/java -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s john_animals/$i.vhsr.list -c chr18 -g reference/umd3_gaps_ftp.bed -o john_animals/pem_cnv/$i.chr18; done
+	
+	# I used a set of loose filters for the data before; I'll have to create a better filtering script to process the files this time.
+	# My filter criteria:
+		- Must be within a certain threshold determined by the xcoverage and xcoverage stdev of the sample
+		- Must have at least one balanced split read if there is split read support
+		- Must have at least one discordant PE read if larger than 200bp
+		- Must have a support to sum (disc PE, and split reads) ratio of greater than 0.25
+		
+	pwd:/	
+	$ for i in *.vhsr*; do name=`echo $i | cut -d'.' -f1`; perl ../../../programs_source/Perl/filter_vhsr_events.pl -i $i -o $name.chr18.vhsr.filtered -x 20 -s 5; done
+	
+# Running cnvnator on John's data
+	Blade14: /mnt/iscsi/vnx_gliu_7/
+	$ for i in Arlinda-Chief Arlinda-Mellwood Arlinda-Rotate Cass-River CMV-Mica-ET Glen-Drummond-Dragon Juniper-Rotate-Jed Lystel-Leduc Maizefield-Bellwood Marathon-BW-Marshall-ET Pawnee-Farm-Arlinda Rackman-Ivanhoe Spearmint Sweet-Haven-Tradition Troubadour Wedgwood-Laramie; do cnv=/home/dbickhart/CNVnator_v0.2.5/src/cnvnator; $cnv -root cnvnator_output/$i.root -genome ./reference/umd3_kary_nmask_hgap.fa -tree john_animals/$i/$i.merged.sorted.bam; $cnv -root cnvnator_output/$i.root -genome ./reference/umd3_kary_nmask_hgap.fa -his 500; $cnv -root cnvnator_output/$i.root -genome ./reference/umd3_kary_nmask_hgap.fa -stat 500; $cnv -root cnvnator_output/$i.root -genome ./reference/umd3_kary_nmask_hgap.fa -partition 500; $cnv -root cnvnator_output/$i.root -genome ./reference/umd3_kary_nmask_hgap.fa -call 500 > cnvnator_output/$i.calls; done
+	
+	# there are some inconsistencies with the CNVnator data in this region as well. I am starting to suspect a missassembly...
+	# Time to use other programs to get as much information as humanly possible
+	
+# Running the delly suite on John's data
+	Blade14: /mnt/iscsi/vnx_gliu_7/john_animals
+	$ ../delly_source_v0.0.9/pemgr/duppy/duppy -o delly_cnv/all_animals_duppy.txt -g ../reference/umd3_kary_unmask_ngap.fa -b delly_cnv/all_animals_duppy.breaks Arlinda-Chief/Arlinda-Chief.merged.sorted.bam Arlinda-Mellwood/Arlinda-Mellwood.merged.sorted.bam Arlinda-Rotate/Arlinda-Rotate.merged.sorted.bam Cass-River/Cass-River.merged.sorted.bam CMV-Mica-ET/CMV-Mica-ET.merged.sorted.bam Glen-Drummond-Dragon/Glen-Drummond-Dragon.merged.sorted.bam Juniper-Rotate-Jed/Juniper-Rotate-Jed.merged.sorted.bam Lystel-Leduc/Lystel-Leduc.merged.sorted.bam Maizefield-Bellwood/Maizefield-Bellwood.merged.sorted.bam Marathon-BW-Marshall-ET/Marathon-BW-Marshall-ET.merged.sorted.bam Pawnee-Farm-Arlinda/Pawnee-Farm-Arlinda.merged.sorted.bam Rackman-Ivanhoe/Rackman-Ivanhoe.merged.sorted.bam Spearmint/Spearmint.merged.sorted.bam Sweet-Haven-Tradition/Sweet-Haven-Tradition.merged.sorted.bam Troubadour/Troubadour.merged.sorted.bam Wedgwood-Laramie/Wedgwood-Laramie.merged.sorted.bam
+	
+	
+# Identifying potential causative variants in the dataset
+	# John has given me a coordinate for his high effect SNP:
+		chr18:57,589,121
+	
+	# I am going to collect all of the variants within a 20kb distance of this SNP to see what I find. 
+	
+	# Here are the CNVRs within the region for chr18 from my DOC analysis
+		CNVR#	chr	start	end	#animals	animals	#HumanBlast	HumanBlast	%ovlp-HumanBlast	#RefseqNum	RefseqNum	%ovlp-RefseqNum	#GeneDesc	GeneDesc	%ovlp-GeneDesc	#EnsGene	EnsGene	%ovlp-EnsGene	#RefseqName	RefseqName	%ovlp-RefseqName
+		734	chr18	57554488	57574118	4	Wedgwood-Laramie;CMV-Mica-ET;Sweet-Haven-Tradition;Rackman-Ivanhoe	10	NM_001772:CD33;NR_002804:SIGLECP3;NM_198846:SIGLEC6;NM_001177608:CD33;NM_198845:SIGLEC6;NM_014385:SIGLEC7;NM_001177549:SIGLEC6;NM_053003:SIGLEC12;NM_001245:SIGLEC6;NM_016543:SIGLEC7	0.44956227616394745;0.9276748761788453;0.4000893521965748;0.44956227616394745;0.4000893521965748;0.4742679523859984;0.4000893521965748;1.0;0.4000893521965748;1.0	1	NM_001191347	2.1006196828064278E-4	1	Uncharacterized protein [Source:UniProtKB/TrEMBL.Acc:E1B8E5]	1.050420168067227E-4	1	ENSBTAT00000052760	2.1006196828064278E-4	1	CD33	2.1006196828064278E-4
+		735	chr18	57599488	57722149	14	Glen-Drummond-Dragon;Maizefield-Bellwood;Wedgwood-Laramie;Pawnee-Farm-Arlinda;CMV-Mica-ET;Cass-River;Arlinda-Chief;Arlinda-Mellwood;Sweet-Haven-Tradition;Marathon-BW-Marshall-ET;Lystel-Leduc;Spearmint;Juniper-Rotate-Jed;Troubadour	60	NM_198846:SIGLEC6;NM_001202473:ZNF816-ZNF321P;NM_001242797:ZNF322;NM_001170905:ZNF736;NM_153363:ZNF679;NM_033329:SIGLEC12;NM_138330:ZNF675;NM_001098626:ZNF98;NR_003099:ZNF273;NM_001039127:ZNF718;NM_001171158:SIGLEC10;NM_173531:ZNF100;NM_003423:ZNF43;NM_001242798:ZNF322;NM_021148:ZNF273;NM_021148:ZNF273;NR_003099:ZNF273;NM_178558:ZNF680;NM_001037735:ZNF630;NM_006524:ZNF138;NR_027660:ZNF138;NM_001160183:ZNF138;NM_001199814:ZNF812;NM_006524:ZNF138;NR_027660:ZNF138;NR_027661:ZNF138;NR_003952:LOC643955;NR_023392:ZNF252;NM_001171157:SIGLEC10;NM_001099269:ZNF506;NM_001171161:SIGLEC10;NM_001171160:SIGLEC10;NM_014441:SIGLEC9;NM_021148:ZNF273;NM_001145404:ZNF506;NM_001177547:SIGLEC6;NM_001171159:SIGLEC10;NM_001159279:ZNF716;NM_001242799:ZNF322;NM_033130:SIGLEC10;NM_025189:ZNF430;NR_033730:ZNF630;NM_001177549:SIGLEC6;NM_007139:ZNF92;NR_028077:ZSCAN12;NM_021269:ZNF708;NM_033273:ZNF479;NM_024639:ZNF322;NM_001177548:SIGLEC6;NM_014385:SIGLEC7;NM_053003:SIGLEC12;NM_138367:ZNF251;NM_001171156:SIGLEC10;NM_001245:SIGLEC6;NM_198845:SIGLEC6;NM_021148:ZNF273;NM_001198558:SIGLEC9;NM_001172671:ZNF430;NM_138330:ZNF675;NM_001001415:ZNF429	0.27891065199892673;0.941801701654624;0.13749633306112094;0.9271331402788067;0.9276882127996496;0.27900517927290014;0.28271191094534764;0.899266263628378;0.8895846278858563;0.9273054870296621;0.2871923465947404;0.9029864984680307;0.15066742661958205;0.145435442217618;0.922598155423574;0.13910034343456992;0.1319376146927271;0.895323101483981;0.1844132791895173;0.9299126969384826;0.9299126969384826;0.36905348304968316;0.9271198141163793;0.89621063525108;0.89621063525108;0.89621063525108;0.8894860469272602;0.14249688094410243;0.2871923465947404;0.8821469502101108;0.2871923465947404;0.2871923465947404;0.2790896101059376;0.27131068149238696;0.8897781271213691;0.27891065199892673;0.2871923465947404;0.9273048749684264;0.145435442217618;0.2871923465947404;0.3692711528597721;0.11336520292287583;0.27891065199892673;0.8965396545689354;0.13268747962032781;0.8963378724324844;0.9317135896047645;0.145435442217618;0.27891065199892673;0.28897108192473053;0.2790711960194115;0.14867535040877172;0.2871923465947404;0.27891065199892673;0.27891065199892673;0.13740872477236923;0.2790896101059376;0.2994805920134041;1.0;0.895796107596465							1	ENSBTAT00000022417	1			
+
+	# Here is how I am filtering VHSR data within the region:
+		$ for i in *.vhsr.*; do name=`echo $i | cut -d'.' -f1`; echo $name; perl -lane 'if($F[1] < 57609121 && $F[4] > 57569121){print $_;}' < $i >> $name_chr18_57569121_57609121_filtered.vhsr; done
+		
+		
+# Generating figures
+
+	# Creating transcript id files for lookup in Gviz
+	pwd: /home/dbickhart
+	$ R
+		> library(GenomicFeatures)
+		> bosTau6 <- makeTranscriptDbFromUCSC(genome = "bosTau6", tablename = "knownGene")
+		# Didnt work! Gave an error
+		
+		> bosTau6 <- makeTranscriptDbFromUCSC(genome = "bosTau6", tablename = "refGene")
+		> saveDb(bosTau6, file="refGene.sqlite")
+		# That worked
+		
+		> bosTau6 <- makeTranscriptDbFromUCSC(genome = "bosTau6", tablename = "xenoRefGene")
+		> saveDb(bosTau6, file="otherRefGene.sqlite")
+		
+		> bosTau6 <- makeTranscriptDbFromUCSC(genome = "bosTau6", tablename = "ensGene")
+		> saveDb(bosTau6, file="ensGene.sqlite")
+		
+	# Now to generate the files for each animal so that I can create R plots from them
+	Blade14: /mnt/iscsi/vnx_gliu_7/john_animals
+	$ perl ../bin/create_plot_from_discordant_reads.pl -i Arlinda-Chief/split_read -f ../reference/umd3_kary_nmask_hgap.fa.fai -g ../reference/sqlite_dbs/sqlite_db.list -b Arlinda-Chief/Arlinda-Chief.merged.sorted.bam -c chr18 -s 57400000 -e 57600000 -o Arlinda-Chief.chr18.574.576
+	
+	# It will take some time, so I need to queue every animal in the script
+	$ for i in Arlinda-Chief Arlinda-Mellwood Arlinda-Rotate Cass-River CMV-Mica-ET Glen-Drummond-Dragon Juniper-Rotate-Jed Lystel-Leduc Maizefield-Bellwood Marathon-BW-Marshall-ET Pawnee-Farm-Arlinda Rackman-Ivanhoe Spearmint Sweet-Haven-Tradition Troubadour Wedgwood-Laramie; do echo $i; folder=$i/split_read; bam=$i/$i.merged.sorted.bam; perl ../bin/create_plot_from_discordant_reads.pl -i $folder -f ../reference/umd3_kary_nmask_hgap.fa.fai -g ../reference/sqlite_dbs/sqlite_db.list -b $bam -c chr18 -s 57400000 -e 57600000 -o $i.chr18.574.576; done
+	

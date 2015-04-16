@@ -1,0 +1,50 @@
+2010_10_13
+# While I wait for repeatmasker to finish, I have decided to return to the Turkey CR1 sequences to get that project back on track
+
+# I have found a method for developing consensus sequences from the CR1 fastas that I generated way back in September
+	- Align sequences using Muscle
+	- Process sequences using em_cons (emboss, consensus program)
+	# Both programs are installed on my Ubuntu virtualbox
+	- Next I will create a consensus tree using Neighbor-Joining methods
+	
+# Commands for doing this:
+	- muscle -in CR1-B.fn -out CR1-B.aln
+	- em_cons -sequence CR1-B.aln -outseq CR1-B.fa -name CR1-B
+
+# Created a script to automatically run those two commands for each file in a directory
+	# Script name is repeat_consensus.pl
+	$ find *.fn | xargs -n1 perl repeat_consensus.pl
+	
+	# Some of the repeat files were single copy, therefore, the consensus program generated an error and produced a zero byte file.
+	# I simply copied the .aln file of the single copy repeats and turned them into .fa files for easier concatenation
+	
+	$ muscle -in repeat_consensus.fa -out repeat_consensus.aln
+	# I need to convert the clustal format into phylip format for the rapidNJ program
+	# Tried to do so in clustal but...
+	$ ../../../rapidNJ/bin/nj -i pa repeat_consensus.alnphy
+		Phylip alignments cannot be read yet. Use stockholm format for alignments.
+
+	# Found a phylip to stockholm conversion webpage...
+	http://www.bugaco.com/converter/biology/sequences/phylip_to_stockholm.php
+	
+	$ ../../../rapidNJ/bin/nj -i sth repeat_consensus.sth 
+		((((('CR1-F2_con':0.41982,'CR1-X1_2_c':0.34514):0.1652, ...
+		
+	# Looks like it worked	
+	# Installed tree-puzzle to view it
+	# Did not load into tree-puzzle, so I will attempt to view it in tree-view X
+	# Nope. Maybe I should just try the NJ function of clustal?
+	
+	# Lots of error messages from clustal
+		
+		 WARNING: sequences 36 and 37 are non-overlapping
+		
+		 WARNING: sequences 36 and 57 are non-overlapping
+		
+		 WARNING: sequences 36 and 59 are non-overlapping
+		
+		 WARNING: sequences 6 and 36 are non-overlapping
+		
+		 WARNING: sequences 36 and 47 are non-overlapping
+
+	# Does not load in any of the tree programs that I have tried

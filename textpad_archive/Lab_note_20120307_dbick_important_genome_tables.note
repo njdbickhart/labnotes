@@ -1,0 +1,67 @@
+03/07/2012
+# I created this lab note file because I am sick and tired of the patchwork databases at NCBI and the steps I need to take to cross reference any meaningful data out of them
+# This will be a future note for new genome assemblies and tricks to create SQL databases for basic gene information
+
+* seq_gene.md
+ftp://ftp.ncbi.nih.gov/genomes/Bos_taurus/ARCHIVE/BUILD.4.1/mapview/seq_gene.md
+# Contains list of gene IDs and refseq transcripts
+# Used to cross reference gene IDs with refseq
+$ perl -lane 'if($F[0] =~ /#/){next;} @gene = split(/\:/, $F[10]); print "chr$F[1]\t$F[2]\t$F[3]\t$gene[1]";' < seq_gene.md | perl -e '@ints; while(<>){chomp; @s = split(/\t/); if (scalar(@ints) == 0){push(@ints, [@s]); next;} if($s[3] > 100000000){next;}if($ints[-1]->[3] == $s[3]){$ints[-1]->[2] = $s[2];}else{push(@ints, [@s]);}} foreach my $r (@ints){print join("\t", @{$r}) . "\n";}' > cow4_geneid_coordinates_all_chr.bed    */
+
+* geneensem.txt
+# I am not sure where I got this file. I will have to review my garbe note file to find out where I found it.
+# This file is a master reference for ensemble gene ids, refseq accessions and geneID
+
+*generefseq
+# I am also not sure where I got this file, though I suspect that it was made from the geneensem file or something similar
+$ uniq ../cow4_doc/tad_european/generefseq | perl -lane 'if($F[1] eq "-"){next;} else{print $_;}' > uniq_gene_refseq.txt
+
+* rna.gbk
+ftp://ftp.ncbi.nih.gov/genomes/Bos_taurus/ARCHIVE/BUILD.4.1/RNA/rna.gbk
+# Genbank file of all RNA transcript coordinates, descriptions, etc.
+# Used to generate gene descriptions
+$ perl -e 'while(<>){chomp; if($_ =~ m/^LOCUS\s+(.+_\d+)\s+/){$name = $1; $des = ""; while(<>){if($_ =~ m/^ACCESSION/){last;}else{chomp $_; $des .= $_;}} $des =~ s/DEFINITION\s+//g; $des =~ s/\s+/ /g; print "$name\t$des\n";}}' < rna.gbk > cow4_refseqid_description.txt
+
+
+mysql> select geneid_coords.chr, geneid_coords.start, geneid_coords.end, geneid_refseq.refseqid from geneid_coords, geneid_refseq where geneid_coords.geneid = geneid_refseq.geneid into outfile '/home/dbickhart/refseq_extended_cow4_coords.bed';
+
+____________________________
+Database and table creation
+____________________________
+# I will create a database for each genome assembly and try to make them all easily cross referenced by creating separate tables
+
+mysql> create database btau_4_0;
+
+mysql> create table refseq_desc (
+    -> refseqid varchar(25),
+    -> refseqdesc blob,
+    -> primary key(refseqid));
+    
+mysql> load data local infile '/home/dbickhart/share/bed_cnv_fig_table_pipeline/cow4_refseqid_description.txt' into table refseq_desc;
+
+mysql> create table geneid_coords (
+    -> chr varchar(10),
+    -> start int(20),
+    -> end int(20),
+    -> geneid int (20),
+    -> primary key(geneid));
+    
+mysql> load data local infile '/home/dbickhart/share/bed_cnv_fig_table_pipeline/cow4_geneid_coordinates_all_chr.bed' into table geneid_coords;
+
+mysql> create table gene_ensem_refseq_master(
+    -> tax_id int(5),
+    -> geneid int(20),
+    -> ensemble_gene varchar(25),
+    -> refseq_rna varchar(20),
+    -> ensemble_rna varchar(25),
+    -> refseq_protein varchar(20),
+    -> ensemble_protein varchar(25));
+    
+mysql> load data local infile '/home/dbickhart/share/bed_cnv_fig_table_pipeline/geneensem.txt' into table gene_ensem_refseq_master ignore 1 lines;
+
+mysql> create table geneid_refseq(
+    -> geneid int(20),
+    -> refseqid varchar(25),
+    -> primary key(geneid));
+
+mysql> load data local infile '/home/dbickhart/share/bed_cnv_fig_table_pipeline/uniq_gene_refseq.txt' into table geneid_refseq;

@@ -1,0 +1,40 @@
+02/11/2015
+# This is a collection of my notes on generating and processing Paul's simulation programs
+# I have given up running the scripts on the 3850 at this time because the Perl interpreter is a decade old
+# Instead, I will generate the fastqs on the 306 servers, package them and ship them to the 3850 for Paul's use
+
+Blade14: /mnt/iscsi/vnx_gliu_7/
+$ samtools faidx reference/umd3_kary_unmask_ngap.fa chr29:1-51505224 > side_projects/paul_alignment/umd3_chr29.fa
+
+# Now I need to create a repetitive bed list of locations from the UCSC genome browser data
+$ cd reference
+$ wget http://hgdownload.soe.ucsc.edu/goldenPath/bosTau6/database/rmsk.txt.gz
+$ wget http://hgdownload.soe.ucsc.edu/goldenPath/bosTau6/database/simpleRepeat.txt.gz
+$ gunzip rmsk.txt.gz simpleRepeat.txt.gz
+
+$ perl -lane 'if($F[5] =~ /chrUn/){next;}else{print "$F[5]\t$F[6]\t$F[7]";}' < rmsk.txt | sortBedFileSTDIN.pl | mergeBed -i stdin > umd3_repeatmasker.bed
+$ perl -lane 'if($F[1] =~ /chrUn/){next;}else{print "$F[1]\t$F[2]\t$F[3]";}' < simpleRepeat.txt | sortBedFileSTDIN.pl | mergeBed -i stdin > umd3_simplerepeat.bed
+$ cat umd3_repeatmasker.bed umd3_simplerepeat.bed | sortBedFileSTDIN.pl | mergeBed -i stdin > umd3_concat_repeats.bed
+$ rm simpleRepeat.txt rmsk.txt
+
+# OK, now I can begin on chromosome 29
+Blade14: /mnt/iscsi/vnx_gliu_7/side_projects/paul_alignment
+$ grep 'chr29' ../../reference/umd3_concat_repeats.bed > umd3_chr29_repeats.bed
+$ samtools faidx umd3_chr29.fa
+$ perl ~/perl_toolchain/simulations/generateKnownSNPLocs.pl umd3_chr29_repeats.bed umd3_chr29.fa test_chr29_locs.bed 50000
+
+# It takes about 2 hours to generate the list of known variant sites
+# Total number from this run: ~48,200
+
+# Preparing wgsim for use with my second script:
+Blade14: /home/dbickhart
+$ git clone https://github.com/lh3/wgsim.git
+$ cd wgsim/
+$ gcc -g -O2 -Wall -o wgsim wgsim.c -lz -lm
+$ cp wgsim ~/bin
+
+# OK, now to start generating the fastqs
+Blade14: /mnt/iscsi/vnx_gliu_7/side_projects/paul_alignment
+$ perl ~/perl_toolchain/simulations/createMockGenomeFastaWithVariants.pl -v test_chr29_locs.bed -g umd3_chr29.fa -d test1 -o chr29_10x_test1 -m 0.0001 -i 0.2 -n 10 -l 100 -e 0.01 -b
+
+# OK, the fastqs look good! I need to check to see if the wgsim incorporated variants are properly listed in the test truepos variant file, but it's looking promising!

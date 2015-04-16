@@ -1,0 +1,108 @@
+03/24/2011
+# This note file is meant to contain all of the ideas/projects that George and I discuss
+# Basically, an organized "scratchboard"
+
+#################################
+# 				#
+#	CNV Paper		#
+#				#
+#################################
+
+# OK, so here are the thoughts on the figures for the paper:
+	1. "power" graph based on nelore simulation
+	2. PCA analysis
+	3. Heatmap; cluster animals but not genomic regions (see sudemant)
+	4. Typical confirmed CNV call
+	
+# Tables:
+	1. Basic dataset stats
+	2. Breed vs animal CNV summary
+	3. One more
+	# We should keep the tables light here... 1000 genomes project did that
+	
+# Self-imposed deadline for figures/light tables: End of April
+	
+#################################
+# 				#
+#	Matt's project		#
+#				#
+#################################
+
+# Lower priority, but we can do the CNV calls/map reads if needed
+
+# Meeting during the week of April the 4th to discuss roles
+
+#################################
+# 				#
+#	Epigenetics		#
+#				#
+#################################
+
+# Start out first with the IGF2 locus
+	1. Identify restriction sites and CpG islands (should be similar if we use BstUI)
+	2. Extract sequences of about 1kb to 500bp around those sites
+	3. Have Jessica and Reuben design primers there
+	4. Show J & R how to do COBRA assay
+	5. Get Reuben some training on the Bioanalyzer
+	
+# See if the data can support a paper; if not, we proceed with the RRBS sequencing
+
+#################################
+# 				#
+#	Angus Nematode		#
+#				#
+#################################
+
+# George needs me to create a figure and table for the qPCR analysis. 
+
+# I think that what I'll do is create a double pie chart, a whisker plot (for a typical example) and a histogram of probes
+
+# Histogram and whisker plots
+	
+	    > error.bar <- function(x, y, upper, lower=upper, length=0.1,...){
+	    + if(length(x) != length(y) | length(y) !=length(lower) | length(lower) != length(upper))
+	    + stop("vectors must be same length")
+	    + arrows(x,y+upper, x, y-lower, angle=90, code=3, length=length, ...)
+	    + }
+	
+# Steps to create the whiskerplot for Yali's nematode paper:
+	max <- read.table("whisker_plot_data.txt", sep="\t", header=TRUE)
+	max
+	boxplot(max)
+	help(boxplot)
+	boxplot(max, ylim(c(0,25)))
+	help(boxplot)
+	boxplot(max, ylim = c(0,25), xlab = "Animal ID", ylab = "Copy Number")
+	help(boxplot)
+	boxplot(max, ylim = c(0,25), xlab = "Animal ID", ylab = "Copy Number", col = c("steelblue", "firebrick"))
+	boxplot(max, ylim = c(3,23), xlab = "Animal ID", ylab = "Copy Number", col = c("steelblue", "firebrick"))
+	boxplot(max, ylim = c(4,23), xlab = "Animal ID", ylab = "Copy Number", col = c("steelblue", "firebrick"))
+	png('trpm7_whisker.png')
+	boxplot(max, ylim = c(4,23), xlab = "Animal ID", ylab = "Copy Number", col = c("steelblue", "firebrick"))
+	dev.off()
+	history()
+	
+#################################
+# 				#
+#	Poster preparation	#
+#				#
+#################################
+
+# OK, so my first goal is to wait until George and I can talk to Steve about the dataset
+
+# If we find out that we've got all the data, then we can start on the figures and tables.\
+# I have installed cluster 3.0 and java treeview in my shared folder for my Ubuntu virtualbox in preparation of this event
+
+# For the poster, I need to condense data down to something simple yet powerful:
+	1. Heatmap (of course)
+	2. Goterm intersection
+	3. General figures on dataset quality/quantity
+	4. Circos diagram of a chromosome (pick a smaller, interesting one)
+	
+# For the paper, I want to include those as well as:
+	1. PCA analysis
+	2. Typical CNV event
+	3. Breed vs Animal CNV summary
+	4. Tons of supplemental tables (including the "major tables" that I can create through scripts)
+	
+# Note: I've discovered another GO analysis program (AgriGO) that I can use for GO analysis.

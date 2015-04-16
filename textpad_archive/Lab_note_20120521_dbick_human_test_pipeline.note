@@ -1,0 +1,12 @@
+05/21/2012
+# So I need to test my pipeline out on human data to ensure that I have good stringent criteria for CNV detection.
+# George and I have come to the conclusion that NA18506 (the YRI daughter) is a good test, since SV merge used it as its test state as well
+# I need to download the YRI data from the SRA and run my pipeline on the reads
+
+# I downloaded the GRCH7 assembly and repeatmasker output from the GR website
+	agps: ftp://ftp.ncbi.nlm.nih.gov/genbank/genomes/Eukaryotes/vertebrates_mammals/Homo_sapiens/GRCh37/Primary_Assembly/assembled_chromosomes/AGP/
+	fastas: ftp://ftp.ncbi.nlm.nih.gov/genbank/genomes/Eukaryotes/vertebrates_mammals/Homo_sapiens/GRCh37/Primary_Assembly/assembled_chromosomes/FASTA/
+	
+# Now, to prepare the assembly, I just need to mask the gaps with "X's" and hardmask the chromosome files with "N's" from the repeatmasker output
+
+# I need to download the NA18506 reads on the lewis cluster.

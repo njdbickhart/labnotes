@@ -1,0 +1,107 @@
+11/05/2013
+# These are my notes on calling SNPs, INDELs and variants for the SLICK animals
+
+# I aligned all of the new animals that Tad sent me and now I need to compress the files so that I can work on them later
+	Blade14: /mnt/iscsi/vnx_gliu_7/slick_animals
+	$ for i in `ls`; do perl ../bin/merge_bams_sort_index.pl -l 500 -i $i/ -b ../bin/ -o $i/$i.merged.sorted.bam -p 4 -f 1; done
+	$ for i in `ls`; do echo $i; perl ../bin/convert_mrsfast_sams_to_bam.pl -i $i -r ../reference/umd3_kary_nmask_hgap.fa.fai -b ../bin/ -c 1 & done
+	$ for i in `ls`; do echo $i; perl ../bin/convert_mrsfast_sams_to_bam.pl -i $i/split_read -r ../reference/umd3_kary_nmask_hgap.fa.fai -b ../bin/ -c 1 & done
+	
+# Working on the CNV calls
+	Blade14: /mnt/iscsi/vnx_gliu_7/slick_animals
+	$ ~/jdk1.7.0/bin/java -Xmx45g -jar ~/bin/GeneratePopulationDocFragWindows.jar -I El-pelon -I PRR6008n -I SAMUEL -I UVI-SE6720 -I RUSTY-SE0021 -S '*mrsfast.bam' -O doc_calls -R ../reference/umd3_kary_nmask_hgap.fa -n 5 -w 5000 -rl 100 -ng -bl ../reference/umd3_assembly_blacklist.bed -g ~/reference/gms/gms_simplified_list.txt
+	
+	$ cd doc_calls/
+	$ for i in El-pelon PRR6008n RUSTY-SE0021 SAMUEL UVI-SE6720; do echo $i; ~/jdk1.7.0/bin/java -Xmx25g -jar ~/bin/DocCNVCaller.jar -f1 Normalized.$i.file1.bed -f2 Normalized.$i.file2.bed -f3 Normalized.$i.file3.bed -s1 Normalized.$i.file1.control.bed.stats -s2 Normalized.$i.file2.control.bed.stats -s3 Normalized.$i.file3.control.bed.stats -o $i.calls -w 5000 -p -t 5; done
+	
+	
+# SNP and indel calling with samtools
+	Blade14: /mnt/iscsi/vnx_gliu_7/slick_animals
+	$ perl ~/bin/fork_samtools_mpileup_by_chromosome.pl -i ./El-pelon/El-pelon.merged.sorted.bam,./PRR6008n/PRR6008n.merged.sorted.bam,./RUSTY-SE0021/RUSTY-SE0021.merged.sorted.bam,./SAMUEL/SAMUEL.merged.sorted.bam,./UVI-SE6720/UVI-SE6720.merged.sorted.bam -o samtools_snp/tad_slick -p 18 -r ../reference/umd3_kary_unmask_ngap.fa
+	$ perl -lane 'if($F[0] =~ /^#/){print $_;}elsif($F[2] < 39000000 && $F[2] > 37000000){print $_;}' < samtools_snp/tad_slick.chr20.vcf > samtools_snp/chr20_37mb_39mb.vcf
+	$ ~/jdk1.7.0/bin/java -jar ../snpEff/snpEff.jar eff -c ../snpEff/snpEff.config UMD3.1.69 samtools_snp/chr20_37mb_39mb.vcf > samtools_snp/chr20_37mb_39mb.stdout
+	
+	# Next I need to combine the vcfs and filter the zygosity
+	# Let's combine everything together first
+	Blade14: /mnt/iscsi/vnx_gliu_7/slick_animals/samtools_snp
+	$ ~/tabix-0.2.6/bgzip chr20_37mb_39mb.vcf;  ~/tabix-0.2.6/tabix -p vcf chr20_37mb_39mb.vcf.gz
+	
+	# Damn, Steve used the original UMD3.1 chromosome names... I need to convert all of the "c's" to lowercase
+	$ for i in ../../TRANSFER/SLICK/old_data/*.bam; do echo $i; name=`basename $i`; samtools view -h $i | perl -ne '$_ =~ s/Chr/chr/g; print $_;' | samtools view -bS - > $name; done
+	$ for i in *.bam; do samtools index $i; done
+	$ samtools mpileup -DSguf ../../reference/umd3_kary_unmask_ngap.fa -r chr20 HO7130.bam HO8064.bam HO8174.bam SE0020.bam | bcftools view -bvcg - > previous_5_slick_chr20_37mb_39mb.bcf
+	$ bcftools view previous_5_slick_chr20_37mb_39mb.bcf | vcfutils.pl varFilter -D100 > previous_5_slick_chr20_37mb_39mb.vcf
+	$ ~/tabix-0.2.6/bgzip previous_5_slick_chr20_37mb_39mb.vcf;  ~/tabix-0.2.6/tabix -p vcf previous_5_slick_chr20_37mb_39mb.vcf.gz
+	
+	# Now to do the merger
+	$ ~/vcftools_0.1.11/bin/vcf-merge chr20_37mb_39mb.vcf.gz previous_5_slick_chr20_37mb_39mb.vcf.gz > all_animals_chr20_37mb_39mb.vcf
+	$ perl -lane 'if($F[0] =~ /^#/){print $_;}elsif($F[1] > 37000000 && $F[1] < 39000000){print $_;}' < all_animals_chr20_37mb_39mb.vcf > all_animals_filtered_chr20_37mb_39mb.vcf
+	$ ~/jdk1.7.0/bin/java -jar ../../snpEff/snpEff.jar eff -c ../../snpEff/snpEff.config UMD3.1.69 all_animals_filtered_chr20_37mb_39mb.vcf > all_animals_filtered_chr20_37mb_39mb.stdout
+	
+	
+	# Finally, the moment of truth:
+	$ perl identify_concordant_snps.pl all_animals_filtered_chr20_37mb_39mb.stdout zygosity.tab
+	
+	# I think that there was a problem with the SNP merger, and missing information was set to "unknown" by default by samtools
+	# I will try to call snps again on chr20 with samtools on the different bams.
+	Blade14: /mnt/iscsi/vnx_gliu_7/slick_animals
+	$ samtools view -h ../TRANSFER/SLICK/old_data/SE6720exome.bam | perl -ne '$_ =~ s/Chr/chr/; print $_;' | samtools view -bS - > samtools_snp/SE6720exome.bam;
+	$ samtools view -h ../TRANSFER/SLICK/old_data/SE0020exome.bam | perl -ne '$_ =~ s/Chr/chr/; print $_;' | samtools view -bS - > samtools_snp/SE0020exome.bam;
+	$ samtools mpileup -DSguf ../reference/umd3_kary_unmask_ngap.fa -r chr20 El-pelon/El-pelon.merged.sorted.bam PRR6008n/PRR6008n.merged.sorted.bam RUSTY-SE0021/RUSTY-SE0021.merged.sorted.bam SAMUEL/SAMUEL.merged.sorted.bam UVI-SE6720/UVI-SE6720.merged.sorted.bam samtools_snp/HO7130.bam samtools_snp/HO8064.bam samtools_snp/HO8174.bam samtools_snp/SE0020.bam samtools_snp/SE6720exome.bam samtools_snp/SE0020exome.bam | bcftools view -bvcg - > samtools_snp/all_nine_animals_combinedcall.bcf
+	
+	# Cancel that, let's add a few extra animals as a "screen" to filter out the SLICK calls
+	$ samtools mpileup -DSguf ../reference/umd3_kary_unmask_ngap.fa -r chr20 El-pelon/El-pelon.merged.sorted.bam PRR6008n/PRR6008n.merged.sorted.bam RUSTY-SE0021/RUSTY-SE0021.merged.sorted.bam SAMUEL/SAMUEL.merged.sorted.bam UVI-SE6720/UVI-SE6720.merged.sorted.bam samtools_snp/HO7130.bam samtools_snp/HO8064.bam samtools_snp/HO8174.bam samtools_snp/SE0020.bam samtools_snp/SE6720exome.bam samtools_snp/SE0020exome.bam ../100_base_run/BTHO08/BTHO08.rg.rd.full.sorted.merged.bam ../100_base_run/BTHO29/BTHO29.rg.rd.full.sorted.merged.bam ../100_base_run/BTHO32/BTHO32.rg.rd.full.sorted.merged.bam | bcftools view -bvcg - > samtools_snp/all_nine_animals_combinedcall.bcf
+	$ bcftools view all_nine_animals_combinedcall.bcf | vcfutils.pl varFilter -D100 > all_nine_animals_combinedcall.vcf
+	$ perl -lane 'if($F[0] =~ /^#/){print $_;}elsif($F[1] > 37500000 && $F[1] < 39500000){print $_;}' < all_nine_animals_combinedcall.vcf > all_nine_animals_combinedcall_chr20_37mb_39mb.vcf
+	
+	$ ~/jdk1.7.0/bin/java -jar ../../snpEff/snpEff.jar eff -c ../../snpEff/snpEff.config UMD3.1.69 all_nine_animals_combinedcall_chr20_37mb_39mb.vcf > all_nine_animals_combinedcall_chr20_37mb_39mb.stdout
+	$ perl identify_concordant_snps.pl all_nine_animals_combinedcall_chr20_37mb_39mb.stdout zygosity.tab
+	
+	# I think that the exome results goofed everything up. Going to try to change things so that the exome data isn't used in the calling
+	$ samtools mpileup -DSguf ../reference/umd3_kary_unmask_ngap.fa -r chr20 El-pelon/El-pelon.merged.sorted.bam PRR6008n/PRR6008n.merged.sorted.bam RUSTY-SE0021/RUSTY-SE0021.merged.sorted.bam SAMUEL/SAMUEL.merged.sorted.bam UVI-SE6720/UVI-SE6720.merged.sorted.bam samtools_snp/HO7130.bam samtools_snp/HO8064.bam samtools_snp/HO8174.bam samtools_snp/SE0020.bam ../100_base_run/BTHO08/BTHO08.rg.rd.full.sorted.merged.bam ../100_base_run/BTHO29/BTHO29.rg.rd.full.sorted.merged.bam ../100_base_run/BTHO32/BTHO32.rg.rd.full.sorted.merged.bam | bcftools view -bvcg - > samtools_snp/all_nine_animals_no_exome_combinedcall.bcf
+	$ bcftools view all_nine_animals_no_exome_combinedcall.bcf | vcfutils.pl varFilter -D100 > all_nine_animals_no_exome_combinedcall.vcf
+	$ perl -lane 'if($F[0] =~ /^#/){print $_;}elsif($F[1] > 37500000 && $F[1] < 39500000){print $_;}' < all_nine_animals_no_exome_combinedcall.vcf > all_nine_animals_no_exome_combinedcall_chr20_37mb_39mb.vcf
+	$ ~/jdk1.7.0/bin/java -jar ../../snpEff/snpEff.jar eff -c ../../snpEff/snpEff.config UMD3.1.69 all_nine_animals_no_exome_combinedcall_chr20_37mb_39mb.vcf > all_nine_animals_no_exome_combinedcall_chr20_37mb_39mb.stdout
+	$ perl identify_concordant_snps.pl all_nine_animals_no_exome_combinedcall_chr20_37mb_39mb.stdout zygosity.tab
+	
+	# One more time without the odd holstein and senepol
+	$ samtools mpileup -DSguf ../reference/umd3_kary_unmask_ngap.fa -r chr20 El-pelon/El-pelon.merged.sorted.bam PRR6008n/PRR6008n.merged.sorted.bam RUSTY-SE0021/RUSTY-SE0021.merged.sorted.bam SAMUEL/SAMUEL.merged.sorted.bam UVI-SE6720/UVI-SE6720.merged.sorted.bam samtools_snp/SE0020.bam ../100_base_run/BTHO08/BTHO08.rg.rd.full.sorted.merged.bam ../100_base_run/BTHO29/BTHO29.rg.rd.full.sorted.merged.bam ../100_base_run/BTHO32/BTHO32.rg.rd.full.sorted.merged.bam | bcftools view -bvcg - > samtools_snp/six_animals_no_exome_combinedcall.bcf
+	$ bcftools view samtools_snp/six_animals_no_exome_combinedcall.bcf | vcfutils.pl varFilter -D100 > samtools_snp/six_animals_no_exome_combinedcall.vcf
+	$ perl -lane 'if($F[0] =~ /^#/){print $_;}elsif($F[1] > 37500000 && $F[1] < 39500000){print $_;}' < six_animals_no_exome_combinedcall.vcf > six_animals_no_exome_combinedcall_chr20_37mb_39mb.vcf
+	$ ~/jdk1.7.0/bin/java -jar ../../snpEff/snpEff.jar eff -c ../../snpEff/snpEff.config UMD3.1.69 six_animals_no_exome_combinedcall_chr20_37mb_39mb.vcf > six_animals_no_exome_combinedcall_chr20_37mb_39mb.stdout
+	$ perl identify_concordant_snps.pl six_animals_no_exome_combinedcall_chr20_37mb_39mb.stdout zygosity.tab
+	
+# Doing the PEM calls
+	Blade14: /mnt/iscsi/vnx_gliu_7/slick_animals
+	$ mkdir pem_calls
+	$ for i in El-pelon PRR6008n RUSTY-SE0021 SAMUEL UVI-SE6720; do echo $i; perl ../bin/scan_directory_create_vhsr_lists.pl -i ../TRANSFER/SLICK/new_data/slick_alignment_run.conf -d $i -c ../TRANSFER/SLICK/new_data/slick_alignment_run_113_10_1_13_30.checkpoint -o $i.vhsr -j ./; done
+	$ for i in El-pelon PRR6008n RUSTY-SE0021 SAMUEL UVI-SE6720; do echo $i; ~/jdk1.7.0/bin/java -jar ~/bin/setWeightCoverVHSRDiscovery.jar -s $i.vhsr -c chr20 -g ../reference/umd3_gaps_ftp.bed -o pem_calls/$i.chr18; done
+	
+	# Filtering and annotating the calls
+	$ for i in *.deletions; do echo $i; perl -lane 'if($F[1] < 39500000 && $F[4] > 37500000 && $F[9] < 100 && $F[9] > 3 && $F[6] > 0){print $_;}' < $i  > $i.filtered; done
+	$ for i in *.insertions; do echo $i; perl -lane 'if($F[1] < 39500000 && $F[4] > 37500000 && $F[9] < 100 && $F[9] > 3 && $F[6] > 0){print $_;}' < $i  > $i.filtered; done
+	$ for i in *.tand; do echo $i; perl -lane 'if($F[1] < 39500000 && $F[4] > 37500000 && $F[9] < 100 && $F[9] > 3 && $F[6] > 0){print $_;}' < $i  > $i.filtered; done
+	
+	$ for i in *.tand.filtered; do name=`echo $i | cut -d'.' -f1`; echo -e "$i\t$name"; done > tandem_chr20_37mb_39mb.list
+	$ for i in *.deletions.filtered; do name=`echo $i | cut -d'.' -f1`; echo -e "$i\t$name"; done > deletions_chr20_37mb_39mb.list
+	
+	# Actually, transfered the whole thing over to my virtualbox to work on it
+	pwd: /home/dbickhart/share/side_projects/heather_slick
+	$ ~/jdk1.7.0/bin/java -jar ../../netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../umd3_data/genedb/genedb_list.txt -i tandem_chr20_37mb_39mb.list -o five_animal_pem -t
+	$ ~/jdk1.7.0/bin/java -jar ../../netbeans_workspace/AnnotateUsingGenomicInfo/dist/AnnotateUsingGenomicInfo.jar -d ../../umd3_data/genedb/genedb_list.txt -i deletions_chr20_37mb_39mb.list -o five_animal_pem -t
+	
+	
+	$ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %nums; while(<IN>){chomp; @s = split(/\s+/); $nums{$s[1]} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($nums{$s[1]})){ @b = split(/;/, $s[7]); @v = split(/[=,]/, $b[-1]); for($x = 1; $x < scalar(@v); $x++){@i = split(/[\(\|]/, $v[$x]); if($i[1] eq "MODIFIER"){$i[1] = "NONE";} print "$i[0]\t$i[1]-$i[2]-$i[3]-$i[6]\t"; } print "\n";}}' annotation_snps.txt six_animals_no_exome_combinedcall_chr20_37mb_39mb.stdout
+	$ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %nums; while(<IN>){chomp; @s = split(/\s+/); $nums{$s[1]} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($nums{$s[1]})){ print "$_\n";}}' annotation_snps.txt six_animals_no_exome_combinedcall_chr20_37mb_39mb.stdout > tads_200_snps.vcf
+	
+	$ perl -lane '$s = $F[1] - 100; $e = $F[1] + 100; open(IN, "samtools faidx ../../umd3_data/umd3_kary_extend_hgap.fa $F[0]:$s-$e |"); $h = <IN>; $s = <IN>; chomp $s; while(<IN>){chomp; $s .= $_;} print "$h$s";' < 200_snp_locs.bed > 200_snp_locs.fa
+	
+# Checking statistics real quick
+	$ R
+		> elpelon <- as.data.frame(subset(read.table("Normalized.El-pelon.file1.bed", sep="\t", header=FALSE, col.names = c("chr", "start", "end", "rnorm", "dnorm", "ctrl")), chr == "chr20" & start < 39000000 & end > 37000000))
+		> rusty <- as.data.frame(subset(read.table("Normalized.PRR6008n.file1.bed", sep="\t", header=FALSE, col.names = c("chr", "start", "end", "rnorm", "dnorm", "ctrl")), chr == "chr20" & start < 39000000 & end > 37000000))
+		> pdf(file="chr20_rd_plot_rusty_elpelon.pdf", useDingbats=FALSE)
+		> plot(elpelon$start, elpelon$rnorm, col="red", type="l")
+		> lines(rusty$start, rusty$rnorm, col="blue")
+		> dev.off()
+		

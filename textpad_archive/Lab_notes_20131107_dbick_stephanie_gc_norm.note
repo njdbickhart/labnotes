@@ -1,0 +1,14 @@
+11/7/2013
+# This note file contains my commands and notes on Stephanie's GC normalization data
+# I finally got the damn java program to work. Let's try to get all this data processed
+
+# I need to create an unmasked version of the UMD3 reference without chrUn
+	PWD: /home/dbickhart/share/umd3_data
+	$ perl -ne 'if($_ =~ /^>chrUn/){last;}else{print $_;}' < bosTau6.fa > temp.fa
+	$ perl -e '$start = 0; while(<>){if($_ =~ /^>chrX/){$start = 1; print $_;}elsif($start){print $_;}}' < bosTau6.fa > temp2.fa
+	$ cat temp.fa temp2.fa > umd3_unmasked_noUn.fa
+
+# Now to start the processing
+	PWD: /home/dbickhart/share/side_projects/stephanie_transcriptome/working
+	$ ~/jdk1.7.0/bin/java -jar ../../../netbeans_workspace/LowessSmoother/dist/LowessSmoother.jar -i MIRA_ReadCounts_LVR.txt -b mira_coords.txt -r /home/dbickhart/share/umd3_data/umd3_unmasked_noUn.fa -o MIRA_ReadCounts_LVR_norm.bed
+	

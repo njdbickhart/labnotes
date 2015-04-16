@@ -1,0 +1,120 @@
+12/21/2012
+# This is a collection of my notes on Harris lewin's data on the AIPL servers
+
+# I loaded everything on the POD mount using drag-and-drop samba transfer
+/POD1_1/users/bickhart
+
+# There was an issue with Juror's data so I might just have to skip him.
+
+# I need to develop a naming scheme for the reads in each folder as Harris Lewin just gave me the Illumina Bustard dumps
+# Naming scheme:
+	(animal name)_(type of reads)_(iterator)_(paired_end_type)_raw.fq
+	
+	pwd: /POD1_1/users/bickhart/Chief
+	$ for i in *.txt; do echo $i; it1=`echo $i | cut -d'_' -f2`; it2=`echo $i | cut -d'_' -f3`; fname=`echo "chief_p_"$it1"_"$it2"_raw.fq"`; echo $fname; mv $i $fname; gzip $i; done
+	
+	pwd: /POD1_1/users/bickhart/Elevation
+	$ for i in *.fastq.gz; do echo $i; it1=`echo $i | cut -d'_' -f2`; it2=`echo $i | cut -d'_' -f3`; fname=`echo "elevation_p_"$it1"_"$it2"_raw.fq.gz"`; echo $fname; mv $i $fname; done
+	
+	pwd: /POD1_1/users/bickhart/Ivanhoe
+	$ for i in *sequence.txt.gz; do echo $i; it1=`echo $i | cut -d'_' -f2`; it2=`echo $i | cut -d'_' -f3`; fname=`echo "ivanhoe_p_"$it1"_"$it2"_raw.fq.gz"`; echo $fname; mv $i $fname; done
+	
+	pwd: /POD1_1/users/bickhart/Starbuck
+	$ for i in *sequence.txt.gz; do echo $i; it1=`echo $i | cut -d'_' -f2`; it2=`echo $i | cut -d'_' -f3`; fname=`echo "starbuck_p_"$it1"_"$it2"_raw.fq.gz"`; echo $fname; mv $i $fname; done
+	
+	pwd: /POD1_1/users/bickhart/Valiant
+	$ for i in *sequence.txt.gz; do echo $i; it1=`echo $i | cut -d'_' -f2`; it2=`echo $i | cut -d'_' -f3`; fname=`echo "valiant_p_"$it1"_"$it2"_raw.fq.gz"`; echo $fname; mv $i $fname; done
+	$ for i in *SR.txt.gz; do echo $i; it1=`echo $i | cut -d'_' -f2`; fname=`echo "valiant_s_"$it1"_raw.fq.gz"`; echo $fname; mv $i $fname; done
+	
+# Next I need to set up my threaded (non-lsf) pipeline and then run the reads through it.
+# I setup the pipeline and ran it using a configuration file I created on the Lewin animals:
+	/POD1_1/users/bickhart/lewin_sample_config_file.txt
+	
+# Pipeline output should all go to the following directory:
+	/POD1_1/users/bickhart/lewin_out
+	
+# NOTE: for the sake of time (and the holidays) I did a fast job trying to get the pipeline operational with the Moose-based packages I created for the config file
+# I need to still modify the lewis_pipeline_utils.pm module to get them up to date with the new arguments to the module scripts.
+# I hope that I haven't inadvertently set little "landmines" for me to defuse when I transition this pipeline to new areas.
+
+# OK, I had to cut the run short because there will be a genomic evaluation run coming up shortly. I am just going to run the DOC and VH pipelines as fast as I can on the existing animals 
+# using different screens to run the process in parallel
+
+
+$ mkdir lewin_out/chairman/doc_wins
+$ ~/bin/alkan_pipeline_no_controls_placeholder.pl --File1 lewin_out/chairman/doc_wins/chairman.file1.bed --File2 lewin_out/chairman/doc_wins/chairman.file2.bed --File3 lewin_out/chairman/doc_wins/chairman.file3.bed --bed chairman --hits lewin_out/chairman --ref reference/umd3_kary_extend_hgap.fa --java ~/jdk1.7.0/bin/ --bin ~/bin/
+$ ~/bin/calculate_chr_lengths_from_fasta.pl reference/umd3_kary_extend_hgap.fa
+$ ~/bin/run_variation_hunter_pipeline.pl -i lewin_out/chairman/divet -n chairman -m 300 -M 500 -p 0.10 -t 3 -c reference/umd3_kary_extend_hgap.fa.lens -g reference/umd3_gaps_ftp.bed -I fq -b ~/bin
+
+$ mkdir lewin_out/chairman/merger
+$ ~/bin/finalize_split_read.pl -i lewin_out/chairman/split_read/ -o lewin_out/chairman/merger/ -b chairman -B ~/bin -j ~/jdk1.7.0/bin/
+# The split read pipeline failed:
+	Running the events5 program
+	Exception in thread "main" java.lang.NumberFormatException: For input string: "chr3"
+	        at java.lang.NumberFormatException.forInputString(NumberFormatException.java:65)
+	        at java.lang.Integer.parseInt(Integer.java:492)
+	        at java.lang.Integer.valueOf(Integer.java:582)
+	        at splitreadfinalevents.splitFile$split.<init>(splitFile.java:94)
+	        at splitreadfinalevents.splitFile.getSplits(splitFile.java:41)
+	        at splitreadfinalevents.splitFile.<init>(splitFile.java:29)
+	        at splitreadfinalevents.SplitReadFinalEvents.main(SplitReadFinalEvents.java:31)
+# Had a problem with bedtools so ran the following command:
+# NOTE: rewrite the driving script in order to point to the correct bedtools location
+$ sh /home/bickhart/bin//cattle_umd3_pipeline_bob_placeholder.sh lewin_out/chairman/doc_wins/chairman.file1_c.bed 2284.14927647929 8961.90021518141 1792.38004303628 lewin_out/chairman/doc_wins/chairman.file1.bed lewin_out/chairman/doc_wins/chairman.file2.bed -2167.68468265545 -433.536936531091 6735.98323561403 456.829855295858 lewin_out/chairman/doc_wins/chairman.file3_c.bed lewin_out/chairman/doc_wins/chairman.file3.bed
+
+
+# It's a long string, but I want to automate this for the remaining animals
+$ mkdir lewin_out/chief/doc_wins ; ~/bin/alkan_pipeline_no_controls_placeholder.pl --File1 lewin_out/chief/doc_wins/chief.file1.bed --File2 lewin_out/chief/doc_wins/chief.file2.bed --File3 lewin_out/chief/doc_wins/chief.file3.bed --bed chief --hits lewin_out/chief --ref reference/umd3_kary_extend_hgap.fa --java ~/jdk1.7.0/bin/ --bin ~/bin/; mkdir lewin_out/elevation/doc_wins ; ~/bin/alkan_pipeline_no_controls_placeholder.pl --File1 lewin_out/elevation/doc_wins/elevation.file1.bed --File2 lewin_out/elevation/doc_wins/elevation.file2.bed --File3 lewin_out/elevation/doc_wins/elevation.file3.bed --bed elevation --hits lewin_out/elevation --ref reference/umd3_kary_extend_hgap.fa --java ~/jdk1.7.0/bin/ --bin ~/bin/; mkdir lewin_out/ivanhoe/doc_wins ; ~/bin/alkan_pipeline_no_controls_placeholder.pl --File1 lewin_out/ivanhoe/doc_wins/ivanhoe.file1.bed --File2 lewin_out/ivanhoe/doc_wins/ivanhoe.file2.bed --File3 lewin_out/ivanhoe/doc_wins/ivanhoe.file3.bed --bed ivanhoe --hits lewin_out/ivanhoe --ref reference/umd3_kary_extend_hgap.fa --java ~/jdk1.7.0/bin/ --bin ~/bin/
+
+
+
+____________________________
+Bob's Angus slide prep
+____________________________
+# These are my notes on preparing data for my presentation at PAG
+# I wanted to find a good region to use for an illustration of PAM so I designed a script using the perl Class::Struct module
+	pwd:/home/dbickhart/share/100_bulls_project/bobs_angus
+	$ perl quick_merge_find_pam.pl final_data/final_vh_merge_AN0342.bed final_data/final_split_merge_AN0342.bed final_data/AN0342.doc.file3.bed.gc.depth.normalized.CN > chr11_region_to_search.txt
+	
+	# Here are the target regions I am interested in:
+	eventchr	regionstart	regionend	splitstart	splitend	splittype	splitbalanced	splitunbalanced	vhinstart	vhinsend	vhoutstart
+	chr11	47074403	47109815	47075364	47108412	ins	2	2	47075676	47108574	47075403	47108815	del	10	10.000000	5.69103,6.35568,6.98485,5.51638,4.36961,7.96452,5.74701,5.97208,3.79693,4.64808,3.89244,7.33095,4.06143,5.80561
+	chr15	81934253	81951103	81935477	81950016	ins	2	4	81935468	81950032	81935253	81950103	del
+	
+	# Created a java program to subset a bam file to get sam file reads out, but the Lewis cluster was down today so I will have to do this later.
+	# I am going to run the java program on the merged_sorted bam file in the AN0342 folder on the Lewis cluster to get the read depth.
+	# Then I am going to run a perl script on the split_read/AN0342.sr.pair file to get the split read alignments in the region
+	
+	Lewis:/home/dbickhar/asg0/angus_full/AN0342
+	$ bsub -J extract -oo extract_sr_pam.out 'perl ~/bin/extract_relevant_pair_lines_splitread.pl -c chr15 -s 81934253 -e 81951103 -i split_read/AN0342.sr.pair -o chr15_81934253_81951103.sr.pair'
+
+	# Now to run my bam subset program and hopefully extract all of the information from the main bam file
+	$ emacs input_chr15_subset.bed
+	$ bsub -J subset -oo subset_pam.out '~/asg2/jdk1.7.0/bin/java -jar ~/bin/subsetBamFileIntoSam.jar -I merged_sorted_full.bam -B input_chr15_subset.bed -O chr15_81934253_81951103 '
+	$ mv chr15_81934253_81951103_test_sv.out.fa chr15_81934253_81951103_test_sv.out.sam
+	
+	# Now subseting out the divet files
+	$ bsub -J divet -oo chr15_divet_subset 'perl ~/bin/extract_relevant_divet_lines_vh.pl -i divet/AN0342.01.full.cat.divet -c chr15 -s 81934253 -e 81951103 -o chr15_81934253_81951103.divet.vh'
+	
+	# Since I want to make the file quick, yet still display alot of genomic information, I am going to try to create quick bed files and load them onto the UCSC genome browser
+	# I will have to reset the size of the browser on my desktop and then change the font to be more viewer friendly
+	# I will also be able to color code the bed tracks
+	# I will use a bedgraph to display the DOC data. Window size will be 50bp non-overlapping (so about 337 windows out of 16850 bp of the event + 1kb upstream and downstream)
+	
+	pwd:/home/dbickhart/share/programs_source/Perl/cnv_visualization_scripts
+	$ perl create_bedgraph_from_sam.pl -i ../../../100_bulls_project/figures_tables/pam_example/chr15_81934253_81951103_test_sv.out.sam -c chr15 -s 81934253 -e 81951103 -w 50 -o chr15_81934253_81951103_50_bedgraph.bed
+	$ perl create_bed_from_divet.pl -i ../../../100_bulls_project/figures_tables/pam_example/chr15_81934253_81951103.divet.vh -c chr15 -s 81934253 -e 81951103 -o chr15_81934253_81951103_vh.bed
+	
+	
+	# Let's try the chr11 segment now that I have the chr15 region
+	Lewis:/home/dbickhar/asg0/angus_full/AN0342
+	$ bsub -J extract -oo extract_sr_pam.out 'perl ~/bin/extract_relevant_pair_lines_splitread.pl -c chr11 -s 47074403 -e 47109815 -i split_read/AN0342.sr.pair -o chr11_47074403_47109815.sr.pair'
+	$ bsub -J subset -oo subset_pam.out '~/asg2/jdk1.7.0/bin/java -jar ~/bin/subsetBamFileIntoSam.jar -I merged_sorted_full.bam -B input_chr11_subset.bed -O chr11_47074403_47109815 '
+	$ bsub -J divet -oo chr11_divet_subset 'perl ~/bin/extract_relevant_divet_lines_vh.pl -i divet/AN0342.01.full.cat.divet -c chr11 -s 47074403 -e 47109815 -o chr11_47074403_47109815.divet.vh'
+	
+	pwd:/home/dbickhart/share/programs_source/Perl/cnv_visualization_scripts
+	$ perl create_bedgraph_from_sam.pl -i chr11_47074403_47109815_test_sv.out.sam -c chr11 -s 47074403 -e 47109815 -w 100 -o chr11_47074403_47109815_100_bedgraph.bed
+	$ perl create_bed_from_divet.pl -i chr11_47074403_47109815.divet.vh -c chr11 -s 47074403 -e 47109815 -o chr11_47074403_47109815_vh.bed
+	# Not too many vh calls in this region after the filtering program. There must be something that I'm doing wrong here
+	
+	# Found it, I was not selecting for reads close to the breakpoints of the event

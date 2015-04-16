@@ -1,0 +1,139 @@
+06/30/2014
+# These notes contain my command line commands and thoughts on John's Chr18 reassembly project
+
+# Tim sent me some Quiver assembly output, so I need to trim it in two ways: 
+	- the first will be with quality scores
+	- the second will be to remove the vector sequence
+	
+# Lets start with the QS trimming
+	pwd: /home/dbickhart/share/side_projects/john_sequencing/assembled_contigs
+	$ perl ../../../programs_source/Perl/sequence_data_scripts/trimFastqToFasta.pl -i LIB3706_polished_assembly -s 33 -t 25 -o chr18_bac_contigs_qstrimmed.fa
+	Removed 106 bases from: >scf7180000000102|quiver
+	Removed 2 bases from: >scf7180000000104|quiver
+	Removed 293 bases from: >scf7180000000103|quiver
+	Removed 1 bases from: >scf7180000000105|quiver
+	Removed 11 bases from: >scf7180000000106|quiver
+	Removed 0 bases from: >scf7180000000107|quiver
+	Removed 0 bases from: >scf7180000000108|quiver
+	Removed 1 bases from: >scf7180000000109|quiver
+	Removed 1744 bases from: >scf7180000000110|quiver
+	Removed 862 bases from: >scf7180000000111|quiver
+	Removed 10570 bases from: >scf7180000000113|quiver	<- hmmm
+	Removed 468 bases from: >scf7180000000112|quiver
+	Removed 934 bases from: >scf7180000000114|quiver
+	Removed 5712 bases from: >scf7180000000115|quiver
+	Removed 1901 bases from: >scf7180000000116|quiver
+	Removed 2435 bases from: >scf7180000000117|quiver
+	Removed 1481 bases from: >scf7180000000118|quiver
+	Removed 3899 bases from: >scf7180000000119|quiver
+	Removed 301 bases from: >scf7180000000120|quiver
+	Removed 790 bases from: >scf7180000000121|quiver
+	Removed 797 bases from: >scf7180000000122|quiver
+	Removed 2134 bases from: >scf7180000000123|quiver
+	Removed 1490 bases from: >scf7180000000124|quiver
+	Removed 664 bases from: >scf7180000000125|quiver
+	Removed 6875 bases from: >scf7180000000126|quiver
+	Removed 864 bases from: >scf7180000000127|quiver
+	Removed 7262 bases from: >scf7180000000128|quiver
+	Removed 1260 bases from: >scf7180000000129|quiver
+	Removed 820 bases from: >scf7180000000130|quiver
+	Removed 1270 bases from: >scf7180000000131|quiver
+	Removed 3618 bases from: >scf7180000000132|quiver
+	Removed 2961 bases from: >scf7180000000133|quiver
+	Removed 1217 bases from: >scf7180000000134|quiver
+	Removed 1113 bases from: >scf7180000000135|quiver
+	Removed 10267 bases from: >scf7180000000138|quiver
+	Removed 931 bases from: >scf7180000000136|quiver
+	Removed 6248 bases from: >scf7180000000137|quiver
+	Removed 2059 bases from: >scf7180000000139|quiver
+	Removed 445 bases from: >scf7180000000140|quiver
+	Removed 924 bases from: >scf7180000000141|quiver
+	Removed 1940 bases from: >scf7180000000143|quiver
+	Removed 2127 bases from: >scf7180000000142|quiver
+	Removed 3 bases from: >scf7180000000145|quiver
+	Removed 370 bases from: >scf7180000000144|quiver
+	
+	# OK, the high number of trimmed bases had me worried, but it turns out that my program was designed properly and had removed the regions that were in terrible shape
+	
+# Blasting
+	# I'll use the NCBI blast program (even though its slow) to process these files
+	# Let's format the DB first
+	pwd: /home/dbickhart/share/umd3_data/
+	$ formatdb -i bosTau6.fa -p F
+	
+	# Now to run megablast
+	pwd: /home/dbickhart/share/side_projects/john_sequencing/assembled_contigs/
+	$ megablast -d /home/dbickhart/share/umd3_data/bosTau6.fa -i chr18_bac_contigs_qstrimmed.fa -m 9 -o chr18_bac_contigs_qstrimmed.blast -a 4
+	# Damn, that took up too much time and memory!
+	# I'll try BWA MEM instead and instruct it to output all alignments.
+	
+	$ bwa mem -t 3 ../../../umd3_data/umd3_kary_extend_hgap.fa chr18_bac_contigs_qstrimmed.fa > chr18_bac_contigs_qstrimmed.sam
+	
+	# This next one-liner deconvoluted the data nicely:
+	$ perl -lane '$F[5] =~ s/(\d+\D{1})?/$1 /g; print "$F[0]\t$F[2]\t$F[3]\t$F[4]\t$F[5]";' < chr18_bac_contigs_qstrimmed.sam | less
+	
+	# This one selected regions near the tag SNP
+	$ perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] ne "chr18" && $F[2] > 57890000){next;} $F[5] =~ s/(\d+\D{1})?/$1 /g; print "$F[0]\t$F[2]\t$F[3]\t$F[4]\t$F[5]";' < chr18_bac_contigs_qstrimmed.sam | less
+	
+	
+# Nucmer
+	# Unfortunately the BWA MEM output is difficult to discern with such large sequences.
+	# A nucmer graph would be much easier to interpret.
+	# First, let's limit the area that we're interpretting by taking a slice of chromosome 18
+	pwd: /home/dbickhart/share/umd3_data
+	$ samtools faidx bosTau6.fa chr18:57500000-59000000 > ../side_projects/john_sequencing/assembled_contigs/chr18_segment.fa
+	
+	# OK, now to try running nucmer on it
+	3850: /seq1/side_projects/john_chr18
+	$ ~/MUMmer3.23/nucmer chr18_segment_57_5_mb_to_59_mb.fa chr18_bac_contigs_qstrimmed.fa
+	$ ~/MUMmer3.23/show-coords -rl out.delta > chr18_57_5_mb_to_59_mb_nucmer.coords
+	
+	# Unfortunately, only the "fig" file format works for now. I need to use xfig locally to view this
+	$ ~/MUMmer3.23/mapview --format 'fig' -v -n 1 chr18_57_5_mb_to_59_mb_nucmer.coords
+	
+	# OK, let's try this on the whole chromosome to see if I can get absolute rather than relative coordinates
+	3850: /seq1/side_projects/john_chr18
+	$ samtools faidx /POD1_1/users/bickhart/reference/bosTau6.fa chr18:1-66004023 > umd3_chr18.fa
+	$ ~/MUMmer3.23/nucmer umd3_chr18.fa chr18_bac_contigs_qstrimmed.fa
+	$ ~/MUMmer3.23/show-coords -rl out.delta > chr18_whole_chr_nucmer.coords
+	
+	# Now, lets see where they stack up and get all contigs that directly overlap John's SNP
+	
+	
+# Mummer
+	# For my next trick, I'm going to generate mummer plots for every fasta file in the dataset
+	# Let's convert them into single fastas
+	3850: /seq1/side_projects/john_chr18
+	$ perl -e 'while($h = <>){$s = <>; chomp $h; $h =~ s/[>\|]//g; open(OUT, "> $h.fa"); print OUT ">$h\n$s"; close OUT;}' < chr18_bac_contigs_qstrimmed.fa //
+	$ mkdir subfastas
+	$ mv *quiver.fa ./subfastas/
+	
+	$ cd subfastas/
+	$ for i in *.fa; do name=`echo $i | cut -d'.' -f1`; echo $name; ~/MUMmer3.23/mummer -mum -b -c ../chr18_segment_57_5_mb_to_59_mb.fa $i > $name.mums; done
+	
+	# OK, I tested out the mummer dotplot image maker, and it was difficult to get running as we do not have gnuplot installed
+	# Why do things need to be so difficult?
+	# Here's what I ran on the 3850
+	$ ~/MUMmer3.23/mummerplot -postscript -p scf7180000000144quiver scf7180000000144quiver.mums
+	
+	# That generated a *.gp, *.rplot and *.fplot file
+	# I copied that over to my virtualbox, changed the following lines in the gp from this:
+		set terminal postscript color solid "Courier" 8
+		set output "scf7180000000144quiver.ps"
+		
+	# To this:
+		set terminal pdfcairo font "Courier,8"
+		set output "scf7180000000144quiver.pdf"
+		
+	# Then I ran gnuplot on the script
+	$ gnuplot scf7180000000144quiver.gp
+	
+	
+	# OK, the mummer plot has a reference genome segment that is far too big and scrunches the linear plot of the alignment
+	# Let's reduce the size of the reference genome segment so that the plot is less "scrunched"
+	# I wrote a script that should automate all of this
+	3850: /seq1/side_projects/john_chr18/automated
+	$ perl ../deconvolute_and_minbp_nucmer_coords.pl -i ../chr18_whole_chr_nucmer.coords -o chr18_bacs -m 1 -s 57300000 -e 57900000 -c chr18 -f ../chr18_bac_contigs_qstrimmed.fa -r /POD1_1/users/bickhart/reference/bosTau6.fa
+	
+	pwd: /home/dbickhart/share/side_projects/john_sequencing/assembled_contigs/automated
+	$ for i in *.gp; do echo $i; gnuplot $i; done

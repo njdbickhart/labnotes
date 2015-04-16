@@ -1,0 +1,658 @@
+12/13/2011
+# This note file contains my commands and notes on running genomic strip on a subset of the data that we will use
+# I will first use the Buffalo data, primarily so that i can give George a decent head start on his presentation, and also because it is already on Blade 2.
+# I will use BWA to align the reads against an unmasked cow4 genome
+
+# I need to run BWA alignment to incorporate the read group and sample tags in the order here:
+	@RG\tID:stuff\tSM:stuff
+	
+# I should use the ID for the breed and the sample for the animalID
+
+# I will also align the reads to the UMD3 genome, loosely masked by UCSC. Downloading it now.
+	Blade2: /home/dbickhart/iscsi_4/dbickhart/reference
+	$ gunzip ucsc_umd3_masked_fasta_a.fa.gz
+	$ bwa index -a bwtsw ucsc_umd3_masked_fasta_a.fa
+	$ samtools faidx ucsc_umd3_masked_fasta_a.fa
+	
+	Blade2: /mnt/iscsi/md3200i_4/schroeder/Project_WaterBuffalo/Sample_ITWB1
+	$ bwa_gstrip_fork_letter_wrapper.pl 'ls *.gz' /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/Sample_ITWB1 /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_fasta_a.fa '@RG\tID:Buffalo\tSM:ITWB1'
+	Blade2: /mnt/iscsi/md3200i_4/schroeder/Project_WaterBuffalo/
+	$ for i in Sample_ITWB*; do echo $i; postfix=`echo $i | cut -d'_' -f2`; echo $postfix; ~/bin/bwa_gstrip_fork_letter_wrapper.pl "ls $i/*.gz" "/mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/$i" /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_fasta_a.fa "@RG\tID:Buffalo\tSM:$postfix"; done	
+	
+	
+	# I think that I messed up the read group information.
+	$ java -jar ~/picard-tools-1.56/AddOrReplaceReadGroups.jar INPUT=ITWB1_0_sub_reads.bam OUTPUT=ITWB1_0_pic_reads.bam SORT_ORDER=coordinate RGID=BUFFITWB1 RGLB=hiseqitalian RGPL=ILLUMINA RGPU=ITWB1 RGSM=ITWB1
+	# Picard is returning errors since an "unmapped" read had a quality score greater than zero
+	# In order to ensure that the bam files are ok, I should just eat it and rerun BWA in order to ensure all of the read group information is up to snuff
+	# I will also remove the chrUn contigs just because they are too numerous
+	$ perl -e 'use Bio::SeqIO; $file = $ARGV[0]; chomp $file; $in = Bio::SeqIO->new(-file => "<$file", -format => q{fasta}); $out = Bio::SeqIO->new(-file => ">ucsc_umd3_masked_place_fasta_a.fa", -format => q{fasta}); while ($seq = $in->next_seq){print $seq->id . "\n"; if(!($seq->id =~ m/chrUn/i)){$out->write_seq($seq)}}' ucsc_umd3_masked_fasta_a.fa
+	
+	Blade2: /mnt/iscsi/md3200i_4/schroeder/Project_WaterBuffalo/
+	$ for i in Sample_ITWB*; do echo $i; postfix=`echo $i | cut -d'_' -f2`; echo $postfix; ~/bin/bwa_gstrip_fork_letter_wrapper.pl "ls $i/*.gz" "/mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/$i" /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_place_fasta_a.fa "@RG\tID:BUFF$postfix\tPL:ILLUMINA\tLB:$i\tDS:BUFF$postfix\tSM:$postfix\tCN:bfgl"; done
+	
+	#NOTE: for future reference, different read groups can correspond to different lanes of the sequencer as the GATK compensates for lane bias. So my read group classification should be based on flowcell and lane as well as the sample ID
+	
+#########################################
+#					#
+#	Processing Bams for GS		#
+#					#
+#########################################
+
+# Just for safe keeping, here are the notes that I have found from the GATK user Gavin.Oliver from the SeqAnswers forum.
+	/*
+		I am pretty sure my commands are very standard. Nonetheless, you are welcome to have a look!
+		
+		for file in *fastq; do bwa aln -e 50 -f ${file%%.fastq}.sai chr17hg19 ${file}; done
+		
+		for file in *sai; do bwa samse chr17hg19 ${file} ${file%%.sai}.fastq > ${file%%.sai}.sam; done
+		
+		for file in *bam; do java -Xmx3g -jar /home/goliver/ngs_software/picard-tools-1.53/SortSam.jar I=${file} O=${file%%.bam}_sorted.bam SO=coordinate; done
+		
+		for file in *_sorted.bam; do java -Xmx3g -jar /home/goliver/ngs_software/picard-tools-1.53/MarkDuplicates.jar I=${file} O=${file%%.bam}_ndup.bam M=metric TMP_DIR=./tmp REMOVE_DUPLICATES=TRUE VALIDATION_STRINGENCY=LENIENT; done
+		
+		for file in *ndup.bam; do java -jar /home/goliver/ngs_software/picard-tools-1.53/AddOrReplaceReadGroups.jar I=${file} O=${file%%.bam}_rg.bam SO=coordinate ID=1 LB=Z PL=illumina PU=Z SM=Z; done
+		
+		for file in *rg.bam; do java -Xmx3g -jar /home/goliver/ngs_software/picard-tools-1.53/BuildBamIndex.jar I=${file} O=${file}.bai; done
+		
+		for file in *rg.bam; do java -Xmx3g -jar /home/goliver/ngs_software/GenomeAnalysisTK-1.2-24-g6478681/GenomeAnalysisTK.jar -T RealignerTargetCreator -R ../ref_chr17.hg19.fa -o ${file%%.bam}.intervals -I ${file}; done
+		
+		for file in *rg.bam; do java -Xmx3g -jar /home/goliver/ngs_software/GenomeAnalysisTK-1.2-24-g6478681/GenomeAnalysisTK.jar -I ${file} -R ../ref_chr17.hg19.fa -T IndelRealigner -o ${file%%.bam}_2.bam -targetIntervals ${file%%.bam}.intervals --known ../GATK/dbsnp_132.b37.vcf; done
+		
+		for file in *_2.bam; do java -Xmx20g -jar /home/goliver/ngs_software/GenomeAnalysisTK-1.2-24-g6478681/GenomeAnalysisTK.jar -R ../ref_chr17.hg19.fa -knownSites ../GATK/dbsnp_132.b37.vcf -I ${file} -T CountCovariates -cov QualityScoreCovariate -cov DinucCovariate -cov ReadGroupCovariate -cov CycleCovariate -recalFile ${file%%.bam}.recal.csv --default_read_group 1 --default_platform illumina -nt 4; done
+		
+		for file in *_2.bam; do java -Xmx3g -jar /home/goliver/ngs_software/GenomeAnalysisTK-1.2-24-g6478681/GenomeAnalysisTK.jar -l INFO -R ../ref_chr17.hg19.fa -T TableRecalibration -I ${file} -o ${file%%.bam}.final.bam -recalFile ${file%%.bam}.recal.csv --default_read_group 1 --default_platform illumina; done
+		
+		for file in *final.bam; do java -Xmx3g -jar /home/goliver/ngs_software/GenomeAnalysisTK-1.2-24-g6478681/GenomeAnalysisTK.jar -T UnifiedGenotyper -glm BOTH -I ${file} -R ../ref_chr17.hg19.fa -o ${file%%.bam}.vcf; done 
+	*/
+	
+# Now to try to run Picard sort using Gavin's command
+	Blade 2: /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/Sample_ITWB1
+	$ for file in *bam; do java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/SortSam.jar I=${file} O=${file%%.bam}_sorted.bam SO=coordinate; done
+	# Some of the files failed (likely because of the bwa read mapping quality issue, where if a read partially overlapped with a repeat region, BWA gives it a zero mapping score and a location):
+		ITWB1tCN:bfgl_11_sub_reads_sorted.bam
+		ITWB1tCN:bfgl_13_sub_reads_sorted.bam
+		ITWB1tCN:bfgl_26_sub_reads_sorted.bam
+		ITWB1tCN:bfgl_27_sub_reads_sorted.bam
+	# Going to try it on one of these individuals to get the exact error message:
+		$ java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/SortSam.jar I=ITWB1tCN:bfgl_11_sub_reads.bam O=ITWB1tCN:bfgl_11_sub_reads_sorted.bam SO=coordinate
+			[Fri Jan 20 14:11:11 EST 2012] net.sf.picard.sam.SortSam INPUT=ITWB1tCN:bfgl_11_sub_reads.bam OUTPUT=ITWB1tCN:bfgl_11_sub_reads_sorted.bam SORT_ORDER=coordinate    VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false
+			[Fri Jan 20 14:11:11 EST 2012] Executing as dbickhart@bfgl-blade2.anri.ars.usda.gov on Linux 2.6.18-274.7.1.el5 amd64; OpenJDK 64-Bit Server VM 1.6.0_20-b20
+			[Fri Jan 20 14:12:10 EST 2012] net.sf.picard.sam.SortSam done. Elapsed time: 0.98 minutes.
+			Runtime.totalMemory()=1722286080
+			Exception in thread "main" net.sf.samtools.SAMFormatException: SAM validation error: ERROR: Record 5825939, Read name HWI-ST644:73:81LV3ABXX:1:1204:6662:79544, MAPQ should be 0 for unmapped read.
+			        at net.sf.samtools.SAMUtils.processValidationErrors(SAMUtils.java:448)
+			        at net.sf.samtools.BAMFileReader$BAMFileIterator.advance(BAMFileReader.java:497)
+			        at net.sf.samtools.BAMFileReader$BAMFileIterator.next(BAMFileReader.java:478)
+			        at net.sf.samtools.BAMFileReader$BAMFileIterator.next(BAMFileReader.java:444)
+			        at net.sf.samtools.SAMFileReader$AssertableIterator.next(SAMFileReader.java:641)
+			        at net.sf.samtools.SAMFileReader$AssertableIterator.next(SAMFileReader.java:619)
+			        at net.sf.picard.sam.SortSam.doWork(SortSam.java:67)
+			        at net.sf.picard.cmdline.CommandLineProgram.instanceMain(CommandLineProgram.java:175)
+			        at net.sf.picard.cmdline.CommandLineProgram.instanceMainWithExit(CommandLineProgram.java:118)
+        			at net.sf.picard.sam.SortSam.main(SortSam.java:79)
+        	# Yup! That was it!
+        	# Someone on SeqAnswers mentioned that there is a Picard utility to clean up these errors (CleanSam.jar)
+        	# Maybe I should incorporate that into the pipeline to process the reads? Let's try:
+        	
+        	$ for file in *bam; do java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/CleanSam.jar I=${file} O=${file%%.bam}_cleaned.bam; done
+        		# Here is one of the problematic bam files' error messages for this step:
+        		[Fri Jan 20 14:23:11 EST 2012] net.sf.picard.sam.CleanSam INPUT=ITWB1tCN:bfgl_11_sub_reads.bam OUTPUT=ITWB1tCN:bfgl_11_sub_reads_cleaned.bam    VERBOSITY=INFO QUIET=false VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false
+			[Fri Jan 20 14:23:11 EST 2012] Executing as dbickhart@bfgl-blade2.anri.ars.usda.gov on Linux 2.6.18-274.7.1.el5 amd64; OpenJDK 64-Bit Server VM 1.6.0_20-b20
+			Ignoring SAM validation error: ERROR: Record 5825939, Read name HWI-ST644:73:81LV3ABXX:1:1204:6662:79544, MAPQ should be 0 for unmapped read.
+			Ignoring SAM validation error: ERROR: Record 5976160, Read name HWI-ST644:73:81LV3ABXX:1:1204:5539:82863, MAPQ should be 0 for unmapped read.
+        		
+        	# It turns out that the cleansam.jar program does not remove these errors. I need to instead do the following as recommended in the Picard FAQ:
+        		Q: Why am I getting errors from Picard like "MAPQ should be 0 for unmapped read" or "CIGAR should have zero elements for unmapped read?"
+			
+			A: BWA can produce SAM records that are marked as unmapped but have non-zero MAPQ and/or non-"*" CIGAR. Typically this is because BWA found an alignment 
+				for the read that hangs off the end of the reference sequence. Picard considers such input to be invalid. In general, this error can be suppressed 
+				in Picard programs by passing VALIDATION_STRINGENCY=LENIENT or VALIDATION_STRINGENCY=SILENT. For ValidateSamFile, you can pass the arguments 
+				IGNORE=INVALID_MAPPING_QUALITY IGNORE=INVALID_CIGAR. 
+
+		# Still, the CleanSam.jar program does not take too much time (2.5 min per bam) and soft-clips alignments off of the reference sequence.
+		# I just need to incorporate the Ignore values to make the remaining parts of the putative pipeline work.
+		
+		$ for file in *_cleaned.bam; do java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/SortSam.jar I=${file} O=${file%%.bam}_sorted.bam SO=coordinate VALIDATION_STRINGENCY=LENIENT; done
+		# That worked! Now to remove the previous bams and continue with the pipeline.
+		$ for file in *_sorted.bam; do java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/MarkDuplicates.jar I=${file} O=${file%%.bam}_ndup.bam M=metric TMP_DIR=./tmp REMOVE_DUPLICATES=TRUE VALIDATION_STRINGENCY=LENIENT; done
+		# Still worked, removing the previous bams and continuing.
+		# NOTE: this last step produced a "metric" file that lists the number of duplicates
+		$ for file in *ndup.bam; do java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/BuildBamIndex.jar I=${file} O=${file}.bai VALIDATION_STRINGENCY=LENIENT; done
+		
+		# OK, so that worked very well. Now it's time to make a shell script that iterates through all the bams of a folder and does the above steps.
+		# Created a shell script to automate this process in each folder selected. Here is the first test of it:
+		Blade 2: /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/
+		$sh Prepare_BAMs_for_GS.sh Sample_ITWB10
+		# It worked well. Automating the rest
+		$ for i in Sample_ITWB11 Sample_ITWB12 Sample_ITWB13 Sample_ITWB14 Sample_ITWB15 Sample_ITWB2 Sample_ITWB3 Sample_ITWB4 Sample_ITWB5 Sample_ITWB6 Sample_ITWB7 Sample_ITWB8 Sample_ITWB9; do sh Prepare_BAMs_for_GS.sh $i; done
+		# I just realized something: I need to input each bam file individually into the Genome Strip queue.
+		# I need to merge the individual bam files and then start the processing
+		
+		$ for i in *.bam; do samtools view -H $i >> itwb1_rg_head.txt; done; sort -rk1 -k2 itwb1_rg_head.txt | uniq >> tmp; mv tmp itwb1_rg_head.txt
+		# The above might be unnecesary. Checking...
+		$ samtools merge ITWB1_bfgl_sub_merged.bam *.bam
+		# Good. It looks like it successfully kept the read group info
+		$ rm *_reads.bam
+		
+		# Now to merge all the files across the samples
+		$ for i in Sample_ITWB10 Sample_ITWB11 Sample_ITWB12 Sample_ITWB13 Sample_ITWB14 Sample_ITWB15 Sample_ITWB2 Sample_ITWB3 Sample_ITWB4 Sample_ITWB5 Sample_ITWB6 Sample_ITWB7 Sample_ITWB8 Sample_ITWB9; do prefix=`echo $i | cut -d'_' -f2`; echo $prefix; read=`echo $i"_bfgl_sub_merged.bam"`; echo $read; cd $i; samtools merge $read *.bam; cd ..; done
+		
+		# That worked. Now to redo the pipeline
+		$ for i in Sample_ITWB*; do sh Prepare_BAMs_for_GS.sh $i; done
+		# Problem: the larger files had issues with disk space apparently
+		# Going to try to swap out the sorting step for samtools
+		
+			Blade 2: /mnt/iscsi/md32001_4/dbickhart/Buff_GS_test/Sample_ITWB1/
+			$ java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/CleanSam.jar I=ITWB1_bfgl_sub_merged.bam O=$ITWB1_bfgl_sub_merged_cleaned.bam VALIDATION_STRINGENCY=LENIENT
+			$ mv .bam ITWB1_bfgl_sub_merged_clean.bam
+			$ samtools sort ITWB1_bfgl_sub_merged_clean.bam ITWB1_bfgl_sub_merged_clean_sort
+			$ java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/MarkDuplicates.jar I=ITWB1_bfgl_sub_merged_clean_sort.bam O=ITWB1_bfgl_sub_merged_clean_sort_ndup.bam M=metric TMP_DIR=./tmp REMOVE_DUPLICATES=TRUE VALIDATION_STRINGENCY=LENIENT
+				INFO    2012-01-25 21:30:20     MarkDuplicates  Start of doWork freeMemory: 499770904; totalMemory: 505413632; maxMemory: 2863333376
+				INFO    2012-01-25 21:30:20     MarkDuplicates  Reading input file and constructing read end information.
+				INFO    2012-01-25 21:30:20     MarkDuplicates  Will retain up to 11362434 data points before spilling to disk.
+				[Wed Jan 25 21:30:20 EST 2012] net.sf.picard.sam.MarkDuplicates done. Elapsed time: 0.01 minutes.
+				Runtime.totalMemory()=505413632
+				Exception in thread "main" net.sf.picard.PicardException: ITWB1_bfgl_sub_merged_clean_sort.bam is not coordinate sorted.
+				        at net.sf.picard.sam.MarkDuplicates.buildSortedReadEndLists(MarkDuplicates.java:273)
+				        at net.sf.picard.sam.MarkDuplicates.doWork(MarkDuplicates.java:117)
+				        at net.sf.picard.cmdline.CommandLineProgram.instanceMain(CommandLineProgram.java:175)
+        				at net.sf.picard.sam.MarkDuplicates.main(MarkDuplicates.java:101)
+        		# Samtools does not remove the "unsorted" flag from the header of the bam
+        	
+        		# Retrying picard entry to see what exactly went wrong
+        		$ java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/SortSam.jar I=ITWB1_bfgl_sub_merged_clean.bam O=ITWB1_bfgl_sub_merged_clean_sorted.bam SO=coordinate VALIDATION_STRINGENCY=LENIENT
+        		# Says it ran out of memory again. Going to try a new method
+        		
+        		$ java -Xmx3g -jar /home/dbickhart/picard-tools-1.56/MarkDuplicates.jar I=ITWB1_bfgl_sub_merged_clean_sort.bam O=ITWB1_bfgl_sub_merged_clean_sort_ndup.bam M=metric TMP_DIR=./tmp REMOVE_DUPLICATES=TRUE VALIDATION_STRINGENCY=LENIENT ASSUME_SORTED=true
+        		# this should get around the "file is not coordinate sorted" error. 
+        		# That worked. Now to take it through the last step of the pipeline
+        		$ java -Xmx3g -jar ~/picard-tools-1.56/BuildBamIndex.jar I=ITWB1_bfgl_sub_merged_clean_sort_ndup.bam O=ITWB1_bfgl_sub_merged_clean_sort_ndup.bam.bai VALIDATION_STRINGENCY=LENIENT
+			
+		# Ok, so I rewrote the script to incorporate samtools instead and with the "ASSUME_SORTED" flag set to true.
+		$ for i in Sample_ITWB10 Sample_ITWB11 Sample_ITWB12 Sample_ITWB13 Sample_ITWB14 Sample_ITWB15 Sample_ITWB2 Sample_ITWB3 Sample_ITWB4 Sample_ITWB5 Sample_ITWB6 Sample_ITWB7 Sample_ITWB8 Sample_ITWB9; do sh Prepare_BAMs_for_GS.sh $i; done
+		
+		# I think that I'm finished. Now to move the bams and their indicies to a new folder
+		$ perl -e '@files = `ls ./*/*_ndup.bam*`; chomp(@files); foreach $f (@files){chomp $f; @base = split(/\//, $f); print "$base[-1]\n"; system("mv $f ./processed_bams/$base[-1]");}'
+		*/
+# setting up Genome strip
+	# downloaded the files from the Broad Institute and ran their installTest scripts.
+	# Turns out that my installation is one more digit precise in the GSDEPTHRANKSUMPVALUE category in their benchmarks. I needed to add an extra digit on the end of the value to make the tests successfully conclude
+	# Setting SV_DIR environmental variable
+	Blade2
+	$ SV_DIR=/home/dbickhart/svtoolkit
+	# Setting path variables to the necessary jars
+	$ PATH=$PATH:/home/dbickhart/svtoolkit/lib/gatk
+	$ PATH=$PATH:/home/dbickhart/svtoolkit/lib
+	$ PATH=$PATH:/home/dbickhart/svtoolkit/qscript
+	$ export PATH
+	
+#########################################
+#					#
+#	Test run for GStrip		#
+#					#
+#########################################
+
+# OK, now to see if all that processing was worth it. Going to attempt a run
+
+_______________________
+SVPreprocess
+_______________________
+
+screen -r 83
+Blade2: /mnt/iscsi/md3200i_4/dbickhart/reference
+# Making a mask using the shell script provided by the SVToolkit website
+$ bash gatk_mask_file_auto.sh ucsc_umd3_masked_fasta_a.fa
+# Received the following exception:
+	Exception in thread "main" java.lang.NoClassDefFoundError: org/broadinstitute/sv/apps/IndexFastaFile
+	Caused by: java.lang.ClassNotFoundException: org.broadinstitute.sv.apps.IndexFastaFile
+	        at java.net.URLClassLoader$1.run(URLClassLoader.java:217)
+	        at java.security.AccessController.doPrivileged(Native Method)
+	        at java.net.URLClassLoader.findClass(URLClassLoader.java:205)
+	        at java.lang.ClassLoader.loadClass(ClassLoader.java:321)
+	        at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:294)
+	        at java.lang.ClassLoader.loadClass(ClassLoader.java:266)
+	Could not find the main class: org.broadinstitute.sv.apps.IndexFastaFile. Program will exit.
+# Before I modify the shell script, I am going to try to use a newer version of the svtoolkit package.
+# Nope, still the same exception. Going to modify the shell script to ignore the "indexfastafile" command and see if it works (I had already samtools indexed the fasta, so the .fai file is there)
+$ bash gatk_mask_file_auto.sh ucsc_umd3_masked_place_fasta_a.fa
+
+# Created a perl script to automate the process instead (works better and forks processes)
+# I had to move the process to the lewis cluster. It completed after 8 days (much faster than on our servers). Now I am going to have to arrange the masked fastas in the same order that they are in the original reference fasta
+	$ gunzip -c ../ucsc_umd3_masked_place_fasta_a.fa.gz | perl -ne 'if($_ =~ />/){ print $_;}'
+		>chr1
+		>chr10
+		>chr11
+		>chr12
+		>chr13
+		>chr14
+		>chr15
+		>chr16
+		>chr17
+		>chr18
+		>chr19
+		>chr2
+		>chr20
+		>chr21
+		>chr22
+		>chr23
+		>chr24
+		>chr25
+		>chr26
+		>chr27
+		>chr28
+		>chr29
+		>chr3
+		>chr4
+		>chr5
+		>chr6
+		>chr7
+		>chr8
+		>chr9
+		>chrX
+		>chrM
+	$ cat svmask_chr1.fasta svmask_chr10.fasta svmask_chr11.fasta svmask_chr12.fasta svmask_chr13.fasta svmask_chr14.fasta svmask_chr15.fasta svmask_chr16.fasta svmask_chr17.fasta svmask_chr18.fasta svmask_chr19.fasta svmask_chr2.fasta svmask_chr20.fasta svmask_chr21.fasta svmask_chr22.fasta svmask_chr23.fasta svmask_chr24.fasta svmask_chr25.fasta svmask_chr26.fasta svmask_chr27.fasta svmask_chr28.fasta svmask_chr29.fasta svmask_chr3.fasta svmask_chr4.fasta svmask_chr5.fasta svmask_chr6.fasta svmask_chr7.fasta svmask_chr8.fasta svmask_chr9.fasta svmask_chrX.fasta svmask_chrM.fasta > ucsc_place_gatk_mask.fasta
+	# So this should be a gatk mask fasta with the same order as the UCSC fasta.
+	
+# OK, after some fooling around, I got it to work by correcting the environmental variables
+# Unfortunately, since we don't have an LSF compute farm, there is no queue, so the program is processing each chromosome sequentially. I will have to speed up the process by running parallel processes on server 3
+Server3: /mnt/data110/dbickhart/reference/
+$ bwa index -a bwtsw ucsc_umd3_masked_place_fasta_a.fa
+$ mkdir gatk_masks/work
+$ LD_LIBRARY_PATH=/home/dbickhart/svtoolkit/bwa
+$ export LD_LIBRARY_PATH
+$ SV_DIR=/home/dbickhart/svtoolkit
+$ export SV_DIR
+
+Blade2: /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/processed_bams
+
+$ classpath="${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar"; ~/jdk1.6.0_26/bin/java -Xmx2g -cp ${classpath} org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVPreprocess.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${classpath} -configFile /home/dbickhart/svtoolkit/conf/conf/genstrip_parameters.txt -tempDir tmp -md metadata -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_fasta_a.fa -genomeMaskFile /mnt/iscsi/md3200i_4/dbickhart/reference/gatk_masks/ucsc_place_gatk_mask.fasta -I Sample_ITWB11_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB12_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB13_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB14_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB15_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB2_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB3_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB4_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB5_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB6_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB7_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB8_bfgl_sub_merged_cleaned_sorted_ndup.bam -I Sample_ITWB9_bfgl_sub_merged_cleaned_sorted_ndup.bam -run
+# It seems to be working so far!
+# NOTE: I did not add a "gender file" for the samples. I may need to do this later
+	# This occurred right after the traversal to chr9 (right before chrX)
+	##### ERROR ------------------------------------------------------------------------------------------
+	##### ERROR A USER ERROR has occurred (version 1.0-6121-g40e3165):
+	##### ERROR The invalid arguments or inputs must be corrected before the GATK can proceed
+	##### ERROR Please do not post this error to the GATK forum
+	##### ERROR
+	##### ERROR See the documentation (rerun with -h) for this tool to view allowable command-line arguments.
+	##### ERROR Visit our wiki for extensive documentation http://www.broadinstitute.org/gsa/wiki
+	##### ERROR Visit our forum to view answers to commonly asked questions http://getsatisfaction.com/gsa
+	##### ERROR
+	##### ERROR MESSAGE: Badly formed genome loc: Parameters to GenomeLocParser are incorrect:The stop position 1050 is less than start 120926
+	##### ERROR ------------------------------------------------------------------------------------------
+	
+	        at org.broadinstitute.sting.queue.util.ShellJob.run(ShellJob.scala:24)
+	        at org.broadinstitute.sting.queue.engine.shell.ShellJobRunner.start(ShellJobRunner.scala:54)
+	        at org.broadinstitute.sting.queue.engine.FunctionEdge.start(FunctionEdge.scala:56)
+	        at org.broadinstitute.sting.queue.engine.QGraph.runJobs(QGraph.scala:383)
+	        at org.broadinstitute.sting.queue.engine.QGraph.run(QGraph.scala:123)
+	        at org.broadinstitute.sting.queue.QCommandLine.execute(QCommandLine.scala:111)
+	        at org.broadinstitute.sting.commandline.CommandLineProgram.start(CommandLineProgram.java:221)
+	        at org.broadinstitute.sting.queue.QCommandLine$.main(QCommandLine.scala:57)
+	        at org.broadinstitute.sting.queue.QCommandLine.main(QCommandLine.scala)
+		INFO  10:23:07,166 QGraph - 42 Pend, 1 Run, 0 Fail, 0 Done
+	# Seq answers forum posters suggest that I need to do two things to try to solve this error:
+		1. Sort genome karyotypically (reference fasta and bam files)
+		2. Generate a picard .dict file for the reference using CreateSequenceDictionary.jar 
+
+# This was the trick:
+# Karyotypically reordering genome:
+	# Generating separate chrs from fasta
+	Blade2: /mnt/iscsi/md3200i_4/dbickhart/reference/
+	$ gunzip -c ucsc_umd3_masked_place_fasta_a.fa.gz | perl -e '$init = <STDIN>; chomp $init; $init =~ s/\>//g; open(OUT, "> $init"); print OUT ">$init\n"; while(<STDIN>){if($_ =~/>/){chomp $_; $_ =~ s/\>//g; close OUT; open(OUT, "> $_"); print OUT ">$_\n";}else{print OUT $_;}}'
+	$ cat chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chr23 chr24 chr25 chr26 chr27 chr28 chr29 chrX chrM > ucsc_umd3_masked_karyotype_gatk.fasta
+	$ samtools faidx ucsc_umd3_masked_karyotype_gatk.fasta
+	$ ~/jdk1.6.0_26/bin/java -jar ~/picard-tools-1.56/CreateSequenceDictionary.jar R=ucsc_umd3_masked_karyotype_gatk.fasta O=ucsc_umd3_masked_karyotype_gatk.dict
+	$ ~/svtoolkit/bwa/bwa index ucsc_umd3_masked_karyotype_gatk.fasta
+	
+	$ cd gatk_masks/
+	$ cat svmask_chr1.fasta svmask_chr2.fasta svmask_chr3.fasta svmask_chr4.fasta svmask_chr5.fasta svmask_chr6.fasta svmask_chr7.fasta svmask_chr8.fasta svmask_chr9.fasta svmask_chr10.fasta svmask_chr11.fasta svmask_chr12.fasta svmask_chr13.fasta svmask_chr14.fasta svmask_chr15.fasta svmask_chr16.fasta svmask_chr17.fasta svmask_chr18.fasta svmask_chr19.fasta svmask_chr20.fasta svmask_chr21.fasta svmask_chr22.fasta svmask_chr23.fasta svmask_chr24.fasta svmask_chr25.fasta svmask_chr26.fasta svmask_chr27.fasta svmask_chr28.fasta svmask_chr29.fasta svmask_chrX.fasta svmask_chrM.fasta > ucsc_umd3_karyotype_gatk_mask.fasta
+	$ samtools faidx ucsc_umd3_karyotype_gatk_mask.fasta
+	$ ~/jdk1.6.0_26/bin/java -jar ~/picard-tools-1.56/CreateSequenceDictionary.jar R=ucsc_umd3_karyotype_gatk_mask.fasta O=ucsc_umd3_karyotype_gatk_mask.dict
+	
+	# Reprocessing bams
+	Blade2: /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/
+	$ for i in Sample_ITWB*; do echo $i; echo "sh Prepare_BAMs_for_GS.sh $i" >> process_bam_command.txt; done
+	$ fork_unix_process.pl process_bam_command.txt 5
+	$ for i in ./Sample*/*ITWB*ndup.bam*; do echo $i; mv $i ./processed_bams/; done    */
+	$ classpath="${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar"; ~/jdk1.6.0_26/bin/java -Xmx2g -cp ${classpath} org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVPreprocess.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${classpath} -configFile /home/dbickhart/svtoolkit/conf/conf/genstrip_parameters.txt -tempDir tmp -md metadata -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_karyotype_gatk.fasta -genomeMaskFile /mnt/iscsi/md3200i_4/dbickhart/reference/gatk_masks/ucsc_umd3_karyotype_gatk_mask.fasta -I Sample_ITWB2_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I ITWB1_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB3_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB4_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB5_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB6_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB7_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB8_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB9_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB12_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB13_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB14_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB15_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -run
+		INFO  05:39:15,428 QGraph - 0 Pend, 0 Run, 0 Fail, 46 Done
+		INFO  05:39:15,429 QCommandLine - Done
+	
+_______________________
+SVDiscovery
+_______________________
+# I believe that the SVAltAlign step makes new bam files, so my memory requirement just doubled! 
+# I hate to do this, but I might have to delete the original bam files from the directories.
+# I still have the processed bams, so there's that...
+# Moving stderr output files to a separate directory for processing in the future
+	Blade2: /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/processed_bams
+	$ mkdir stderr_gstrip
+	$ mv *.out stderr_gstrip/
+
+# Attempting the run
+	$ classpath="${SV_DIR}/lib/SVToolkit.jar:${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar:${SV_DIR}/lib/gatk/Queue.jar"
+	# windowPadding is based on the maximum insert size from the alignments. I am going to try to quickly calculate that from one bam file
+	$ samtools view Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam | perl -e 'my %vals; while(<STDIN>){chomp; @segs = split(/\t/); $vals{$segs[8]} = 1;} @temp = sort {$b <=> $a} keys(%vals); print "$temp[0]\n";'
+		106741320   <- ok, this unfortunately failed miserably. Lets try the script again to make an average value.
+	$ samtools view Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam | ~/jdk1.6.0_26/bin/java -jar ~/bin/bamStats.jar
+		Calculating values
+		Average:        738
+		Median: 208
+		Stdev:  522.7618960865453  <- so lets go avg + 5 stdevs for the max insert size (anything larger is likely something screwy or unreliable) 3348
+	$ ~/jdk1.6.0_26/bin/java -Xmx2g -cp $classpath org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVDiscovery.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${classpath} -configFile /home/dbickhart/svtoolkit/conf/genstrip_parameters.txt -tempDir tmp -runDirectory discovery -md metadata -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_karyotype_gatk.fasta -genomeMaskFile /mnt/iscsi/md3200i_4/dbickhart/reference/gatk_masks/ucsc_umd3_karyotype_gatk_mask.fasta -I Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB12_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB13_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB14_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB15_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB2_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB3_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB4_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB5_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB6_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB7_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB8_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB9_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -O buffalo.sites_100_1000000.vcf -minimumSize 100 -maximumSize 1000000 -windowSize 10000000 -windowPadding 3348 -run
+		Error: Exception processing cluster: Cannot process chromosome chrX: no gender map supplied
+		15 processes failed.
+		# Note: It still gave me deletion calls! This is good! How about we just make a gender map file and run all the samples as female (since I did not use the tiny Y chromosome contig.
+	
+	$ ~/jdk1.6.0_26/bin/java -Xmx2g -cp $classpath org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVDiscovery.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${classpath} -configFile /home/dbickhart/svtoolkit/conf/genstrip_parameters.txt -tempDir tmp -runDirectory discovery -md metadata -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_karyotype_gatk.fasta -genomeMaskFile /mnt/iscsi/md3200i_4/dbickhart/reference/gatk_masks/ucsc_umd3_karyotype_gatk_mask.fasta -genderMapFile buff_gender_map.txt -I Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB12_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB13_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB14_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB15_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB2_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB3_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB4_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB5_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB6_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB7_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB8_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB9_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -O buffalo.sites_100_1000000.vcf -minimumSize 100 -maximumSize 1000000 -windowSize 10000000 -windowPadding 3348 -run
+		##### ERROR MESSAGE: Unrecognized gender for sample ITWB11: 0
+		# Man, the SVToolkit documentation is terrible!
+		# Reran the same command after inputing "F"'s where the zeros were.
+		# Output was in the /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/processed_bams/discovery folder with CNVRs placed in the buffalo.sites_100_100000.vcf file in the processed_bams folder
+		
+_______________________
+SVAltAlign
+_______________________
+# Now for the alternative alignment stage of the pipeline
+# I need to be conscious of the fact that I could accidentally overwrite the .vcf files so I need to name them differently or place them in new folders
+# At this stage, I have individual site loci, but I can progress through the pipeline further to genotype samples
+
+# Running the scala script
+	$ ~/jdk1.6.0_26/bin/java -Xmx2g -cp $classpath org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVAltAlign.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${classpath} -configFile /home/dbickhart/svtoolkit/conf/genstrip_parameters.txt -tempDir tmp -md metadata -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_karyotype_gatk.fasta -vcf buffalo.sites_100_1000000.vcf -genomeMaskFile /mnt/iscsi/md3200i_4/dbickhart/reference/gatk_masks/ucsc_umd3_karyotype_gatk_mask.fasta -I ITWB1_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB12_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB13_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB14_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB15_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB2_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB3_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB4_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB5_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB6_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB7_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB8_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB9_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -O buffalo_alt_align_all_samples.bam -run
+		# Ended with errors
+		# Errors originated from a command listed here: Q-11472@bfgl-blade2-1.out for running the org.broadinstitute.sv.apps.GenerateAltAlleleFasta tool
+		# Going to try to run that tool separately to see if I can replicate the error.
+	$ ~/jdk1.6.0_26/bin/java -Xmx2g -cp $classpath org.broadinstitute.sv.apps.GenerateAltAlleleFasta -I /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/processed_bams/buffalo.sites_100_1000000.vcf -O /mnt/iscsi/md3200i_4/dbickhart/Buff_GS_test/processed_bams/altalign/buffalo.sites_100_1000000.alt.fasta -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_karyotype_gatk.fasta -log generatealtallele.log	
+		# Reading through the wiki page for this tool, I see that it only processes precise breakpoint SVs. 
+		# Apparently the SVDiscovery step did not predict any precise breakpoints in my whole genome vcf file!
+	
+# So, at this point I could be content with this discovery or try to run the final script in the pipeline just to see if it can work without the AltAlign alleles
+# Let's try it anyways
+
+_______________________
+SVGenotyper
+_______________________
+# So, I believe that the only stage that I am missing out on is the loss of the split-read analysis that SVAltAlign would do
+# Theoretically, I should be able to run my VCF file through the pipeline
+	$ ~/jdk1.6.0_26/bin/java -Xmx2g -cp $classpath org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVGenotyper.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${classpath} -configFile /home/dbickhart/svtoolkit/conf/genstrip_parameters.txt -tempDir tmp -md metadata -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_karyotype_gatk.fasta -genomeMaskFile /mnt/iscsi/md3200i_4/dbickhart/reference/gatk_masks/ucsc_umd3_karyotype_gatk_mask.fasta -genderMapFile buff_gender_map.txt -I ITWB1_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB12_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB13_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB14_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB15_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB2_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB3_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB4_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB5_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB6_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB7_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB8_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB9_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -vcf buffalo.sites_100_1000000.vcf -O buffalo_genotypes_100_1000000.vcf -parallelJobs 8 -run
+	# it worked, but with an error on the last routine (probably for making the final .vcf file out of the altalign alleles
+	
+	$ mkdir genotypes
+	$ mv *.dat ./genotypes/
+	$ mv *.sam ./genotypes/
+	$ mv *P*.vcf* ./genotypes/
+	
+	# Made a script to process the genome strip output into a vcf file and noticed that the calls were only on chrX. There must be an error in my calling criteria on the discovery side.
+	# Perhaps because I failed to use the gender maps file in the preprocessing step? Going to test that.
+	# changed the gender map file to represent all animals as "M"
+	# Metadata folder will be metadata_gen
+		$ ~/jdk1.6.0_26/bin/java -Xmx2g -cp ${classpath} org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVPreprocess.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${classpath} -configFile /home/dbickhart/svtoolkit/conf/conf/genstrip_parameters.txt -tempDir tmp -md metadata_gen -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_karyotype_gatk.fasta -genomeMaskFile /mnt/iscsi/md3200i_4/dbickhart/reference/gatk_masks/ucsc_umd3_karyotype_gatk_mask.fasta -genderMapFile buff_gender_map.txt -I Sample_ITWB2_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I ITWB1_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB3_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB4_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB5_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB6_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB7_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB8_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB9_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB12_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB13_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB14_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB15_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -run
+		# Also changing window padding in the SVDiscovery pipeline to be 10000 instead of the number I calculated. Worth a shot.
+		$ ~/jdk1.6.0_26/bin/java -Xmx2g -cp $classpath org.broadinstitute.sting.queue.QCommandLine -S ${SV_DIR}/qscript/SVDiscovery.q -S ${SV_DIR}/qscript/SVQScript.q -gatk ${SV_DIR}/lib/gatk/GenomeAnalysisTK.jar -cp ${classpath} -configFile /home/dbickhart/svtoolkit/conf/genstrip_parameters.txt -tempDir tmp -runDirectory discovery_gen -md metadata_gen -R /mnt/iscsi/md3200i_4/dbickhart/reference/ucsc_umd3_masked_karyotype_gatk.fasta -genomeMaskFile /mnt/iscsi/md3200i_4/dbickhart/reference/gatk_masks/ucsc_umd3_karyotype_gatk_mask.fasta -genderMapFile buff_gender_map.txt -I Sample_ITWB11_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB12_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB13_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB14_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB15_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB2_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB3_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB4_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB5_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB6_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB7_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB8_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -I Sample_ITWB9_bfgl_sub_merged_cleaned_reorder_sorted_ndup.bam -O buffalo.sites_100_1000000.vcf -minimumSize 100 -maximumSize 1000000 -windowSize 10000000 -windowPadding 10000 -run
+		$ perl -e 'while(<>){if($_ =~/^#/){next;}chomp; @s = split(/\t/); $h{$s[0]} += 1; @d = split(/\;/, $s[-1]); $p{$d[-3]} += 1;} foreach $k (sort{$a cmp $b} keys(%h)){print "$k\t$h{$k}\n";}foreach $z (keys(%p)){print "$z\t$p{$z}\n";}' < buffalo.sites_100_1000000.vcf
+			chr1    613
+			chr10   602
+			chr11   322
+			chr12   539
+			chr13   316
+			chr14   324
+			chr15   592
+			chr16   363
+			chr17   262
+			chr18   582
+			chr19   230
+			chr2    494
+			chr20   252
+			chr21   264
+			chr22   185
+			chr23   602
+			chr24   224
+			chr25   100
+			chr26   185
+			chr27   181
+			chr28   174
+			chr29   567
+			chr3    647
+			chr4    560
+			chr5    882
+			chr6    534
+			chr7    684
+			chr8    588
+			chr9    409
+			chrX    1019
+			IMPRECISE       13296
+		# So it looks like they were all imprecise again. Still, not too shabby on the numbers and capabilities of the pipeline.
+		# If I were to do this on a taurus population with higher coverage and better 
+		# Wait.. I found out that the predicted CNVR sizes might be a bit large
+		$ perl -e 'while(<>){if($_ =~/^#/){next;}chomp; @s = split(/\t/); @d = split(/\;/, $s[-1]); $d[2] =~ s/END=//g; print "$s[0]\t$s[1]\t$d[2]\n";}' < buffalo.sites_100_1000000.vcf | mergeBed -i stdin | perl -e 'while(<>){chomp; @s = split(/\t/); $h{$s[0]} += $s[2] - $s[1]; $t += $s[2] - $s[1];} foreach $k (sort {$a cmp $b} keys(%h)){ print "$k\t$h{$k}\n";} print "Total:\t$t\n";'
+			chr1    3799579
+			chr10   6891990
+			chr11   2072635
+			chr12   7777694
+			chr13   3177863
+			chr14   2772621
+			chr15   7034070
+			chr16   3456471
+			chr17   1765951
+			chr18   6209214
+			chr19   3009912
+			chr2    1981527
+			chr20   661720
+			chr21   4871978
+			chr22   1672585
+			chr23   3668681
+			chr24   1010723
+			chr25   1198646
+			chr26   747240
+			chr27   3107840
+			chr28   1186548
+			chr29   4552742
+			chr3    5049264
+			chr4    3883056
+			chr5    7355916
+			chr6    3877508
+			chr7    6846983
+			chr8    3097680
+			chr9    2594363
+			chrX    20742759
+			Total:  126,075,759
+		# Well, its not too bad, all things considered. I originally thought it was predicting 
+		# Going to try to compare it with my dataset. Hopefully the overlap is small for the gains and larger for the deletions (not holding my breath).
+		$ cat ../../Buffalo/bams/indiv_buff_windows/Sample_ITWB*/*.final.deletions.tab | mergeBed -i stdin | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'      */
+			5,834,747	<- individual buffalo deletions
+		$ cat ../../Buffalo/bams/indiv_buff_windows/Sample_ITWB*/*.final.deletions.tab | mergeBed -i stdin > indiv_buffalo_wssd_mrsfast.bed          */
+		$ wc -l indiv_buffalo_wssd_mrsfast.bed
+			215 indiv_buffalo_wssd_mrsfast.bed
+		$ intersectBed -a indiv_buffalo_wssd_mrsfast.bed -b buffalo_cnvr_merged_gstrip.bed | wc
+    			31      93     712	<- ok, so not much!
+    		$ intersectBed -a indiv_buffalo_wssd_mrsfast.bed -b buffalo_cnvr_merged_gstrip.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+			338,553	<- not much at all
+			
+		# So the true test will be the comparison of the duplications with the deletions to check the overlap
+		$ cat ../../Buffalo/bams/indiv_buff_windows/Sample_ITWB*/*.final.wssd | mergeBed -i stdin > indiv_buffalo_gain_mrsfast.bed 	*/
+		$ perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";' < indiv_buffalo_gain_mrsfast.bed
+			130,768,325
+		$ intersectBed -a indiv_buffalo_gain_mrsfast.bed -b buffalo_cnvr_merged_gstrip.bed | wc
+		    629    1887   14447 <- Hmm... but lets see how many bases overlap
+		$ intersectBed -a indiv_buffalo_gain_mrsfast.bed -b buffalo_cnvr_merged_gstrip.bed | perl -e 'while(<>){chomp; @s = split(/\t/); $t += $s[2] - $s[1];} print "$t\n";'
+			19,994,440	<- Not too bad, but not too stellar either. This is 14% of the duplication bases from the MRSFast pipeline
+			
+		#NOTE these numbers are likely to be off, since MrsFAST was run on the Btau_4.0 assembly and GenomeStrip was run on the UMD3.1 assembly
+		
+		
+______________________________
+Buffalo MrsFAST calls on UMD3
+______________________________
+# Since the two datasets are not comparable, it is time to realign the data onto UMD3 and rerun my mrsfast pipeline
+$ for i in /mnt/iscsi/md3200i_4/schroeder/Project_WaterBuffalo/Sample_ITWB*; do echo $i; outfolder=`echo $i| cut -d'/' -f7`; echo $outfolder; mrsfast_fork_letter_wrapper_umd3_buffalo.pl "ls $i/*.gz" $outfolder /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa ; done 	*/
+$ for i in ../../schroeder/Project_WaterBuffalo/Sample_ITWB11 ../../schroeder/Project_WaterBuffalo/Sample_ITWB12 ../../schroeder/Project_WaterBuffalo/Sample_ITWB13 ../../schroeder/Project_WaterBuffalo/Sample_ITWB14 ../../schroeder/Project_WaterBuffalo/Sample_ITWB15 ../../schroeder/Project_WaterBuffalo/Sample_ITWB2 ../../schroeder/Project_WaterBuffalo/Sample_ITWB3 ../../schroeder/Project_WaterBuffalo/Sample_ITWB4 ../../schroeder/Project_WaterBuffalo/Sample_ITWB5 ../../schroeder/Project_WaterBuffalo/Sample_ITWB6 ../../schroeder/Project_WaterBuffalo/Sample_ITWB7 ../../schroeder/Project_WaterBuffalo/Sample_ITWB8; do echo $i; outfolder=`echo $i| cut -d'/' -f5`; echo $outfolder; mrsfast_fork_letter_wrapper_umd3_buffalo.pl "ls $i/*.gz" $outfolder /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa ; done		*/
+
+$ mrsfast_fork_letter_wrapper_umd3_buffalo.pl "ls ../../schroeder/Project_WaterBuffalo/Sample_PC1/*.gz" PC1_umd3 /mnt/iscsi/md3200i_4/dbickhart/reference/umd3_full_cryptic_gap_a.fa    */
+$ for i in PC1_umd3/*.bam; do echo $i; samtools view $i | perl -lane '$e = $F[3] + 50; print "$F[2]\t$F[3]\t$e";' >> PC1_umd3/hits.bed; done  */
+
+# They finally finished! Now to create bed files for each buffalo
+Blade 2: /mnt/iscsi/md3200i_4/dbickhart/Buffalo
+	$ for i in Sample_ITWB1 Sample_ITWB4 Sample_ITWB6 Sample_ITWB7 Sample_ITWB8 Sample_ITWB9; do echo $i; for b in $i/*.bam; do samtools view $b | perl -lane '$e = $F[3] + 50; print "$F[2]\t$F[3]\t$e";' >> $i/hits.bed; done & done; for i in Sample_ITWB10 Sample_ITWB11 Sample_ITWB12 Sample_ITWB13 Sample_ITWB14 Sample_ITWB15; do echo $i; for b in $i/*.bam; do samtools view $b | perl -lane '$e = $F[3] + 50; print "$F[2]\t$F[3]\t$e";' >> $i/hits.bed; done & done */
+	# Oops! I didn't design this one properly, and It is running all twelve processes simultaneously!
+	
+	# Also the beds did not turn out as expected
+	# Going to do this the long way just to make sure
+	
+	$ for i in Sample_ITWB*; do echo $i; for b in $i/*.bam; do echo $b; samtools view $b | perl -lane '$e = $F[3] + 50; print "$F[2]\t$F[3]\t$e";' >> $i/hits.bed; done; done       */
+	
+	$ mkdir umd3_calls
+	$ for i in ./*/hits.bed; do prefix=`echo $i | cut -d'/' -f2`; echo $prefix; combine_bed_hits_lowmem.pl $i umd3_calls/$prefix /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file1.bed /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file2.bed /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file3.bed; done   */
+	
+	# Something's fishy about the number of reads that mapped to PC1
+	# Checking things out with the bam_stats script
+	$ for i in ./PC1_umd3/*.bam; do echo $i; ~/bin/bam_stats.pl $i >> pc1_umd3_stats.txt; done    */
+	$ for i in ./bams/high_cov_buff/*.bam; do echo $i; ~/bin/bam_stats.pl $i >> pc1_cow4_stats.txt; done	*/
+	
+	$ perl -e 'while(<>){chomp; ($c, $e) = $_ =~ m/.+Rlen_ave:(\d+).+Uread_names:(\d+).+/; $t += ($c * $e);} print "$t\n";' < pc1_cow4_stats.txt
+		11651502060   About 4.6 x coverage
+	$ perl -e 'while(<>){chomp; ($c, $e) = $_ =~ m/.+Rlen_ave:(\d+).+Uread_names:(\d+).+/; $t += ($c * $e);} print "$t\n";' < pc1_umd3_stats.txt
+		5416576450	about 2 x coverage
+		
+	$ ~/FastQC/fastqc -o fastqcPC1 -t 5 -f fastq /mnt/iscsi/md3200i_4/schroeder/Project_WaterBuffalo/Sample_PC1/*.gz   */
+	# I believe that Steve might have more PC1 reads but does not know it. 
+	# The current crop of reads that I have is terrible.
+	
+	# I will forge ahead with the calling for now; I can always redo PC1 later.
+	$ cut -f4 umd3_calls/Sample_ITWB1/hits_umd3_template_file1.bed | statStd.pl
+		total   2146449
+		Minimum 0
+		Maximum 86887
+		Average 137.350277
+		Median  133
+		Standard Deviation      281.251473
+		Mode(Highest Distributed Value) 140
+	
+	$ cut -f4 umd3_calls/Sample_ITWB14/hits_umd3_template_file1.bed | statStd.pl
+		total   2146449
+		Minimum 0
+		Maximum 322656
+		Average 521.646704
+		Median  503
+		Standard Deviation      1040.528434
+		Mode(Highest Distributed Value) 537
+		
+	# Something else is strange here. Sample_ITWB1 should have higher read depth counts based on the number of lines in its bed file.
+		$ wc -l Sample_ITWB1/hits.bed
+			273121265 Sample_ITWB1/hits.bed
+		$ wc -l Sample_ITWB14/hits.bed
+			127973895 Sample_ITWB14/hits.bed
+	
+	$ combine_bed_hits_lowmem.pl Sample_ITWB1/hits.bed umd3_calls/Sample_ITWB1 /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file1.bed /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file2.bed /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file3.bed
+		It looks as though you have less than 3 columns at line: 69.  Are you sure your files are tab-delimited?
+		# So there are problems with the bed file. Going to check it and make sure that everything is ok.
+		
+		$ perl -lane 'if($F[2] < $F[1]){ print $_;}elsif (scalar(@F) != 3){print $_;}' < Sample_ITWB1/hits.bed
+			chr1434529
+			chr23   1305    44406915        44406965
+			chr15   55304624        5530444495      13044545
+			chr23   130674
+			chr15   43361444385     13044435
+			chr23   296328338       43361488
+			chr1    2963333
+			chr23   29084387        5       61635149        61635199
+			chr23   13044351        13262
+			chr15   378004044401
+			c30     37800480
+			chr15   55481143        5548123 29119219        29119269
+			chr23   130193
+			chr15   38173444368     13044418
+			c08     38173458
+			chr15   64392921        6439223 16307098        16307148
+			c971
+			chr15   549052hr23      4807185 4807235
+			chr1927 28368977
+			chr23   2325    51860695        51860745
+			chr15   61621373        6162114294      23214344
+			chr23   20038256        20423
+			chr15   628336038306
+			chr2363 62833713
+
+		# looks like the buffering on the file is goofy. Going to try to recreate the hits.bed file for Sample_ITWB1
+		
+		Blade 2: /mnt/iscsi/md3200_4/dbickhart/Buffalo/Sample_ITWB1
+		$ rm hits.bed
+		$ for i in *.bam; do echo $i; samtools view $i | perl -lane '$e = $F[3] + 50; print "$F[2]\t$F[3]\t$e";' >> hits.bed; done
+		$ perl -lane 'if($F[2] < $F[1]){ print $_;}elsif (scalar(@F) != 3){print $_;}' < hits.bed 
+			# Nothing this time, so I think that things worked out
+			
+		Blade 2: /mnt/iscsi/md3200_4/dbickhart/Buffalo
+		$ combine_bed_hits_lowmem.pl Sample_ITWB1/hits.bed umd3_calls/Sample_ITWB1 /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file1.bed /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file2.bed /mnt/iscsi/md3200i_4/dbickhart/Umd3_windows/umd3_template_file3.bed
+			$ cut -f4 umd3_calls/Sample_ITWB1/hits_umd3_template_file1.bed | statStd.pl
+			total   2146449
+			Minimum 0
+			Maximum 419626
+			Average 637.640403
+			Median  620
+			Standard Deviation      1334.114004
+			Mode(Highest Distributed Value) 654
+		# That's more like it.
+		
+		# Now to run the pipeline
+		$ for i in umd3_calls/*/; do echo $i; cd $i; alkan_pipeline_no_controls.pl --File1 hits_umd3_template_file1.bed --File2 hits_umd3_template_file2.bed --File3 hits_umd3_template_file3.bed; cd /mnt/iscsi/md3200i_4/dbickhart/Buffalo; done    */
+		
+		$ wc ./*/*.final.wssd	*/
+		   738   2214  16953 ./PC1_umd3/hits_umd3_template_file1.bed.final.wssd
+		   142    426   3360 ./PC1_umd3/hits_umd3_template_file1.bed.X.final.wssd
+		   715   2145  16396 ./Sample_ITWB10/hits_umd3_template_file1.bed.final.wssd
+		   142    426   3362 ./Sample_ITWB10/hits_umd3_template_file1.bed.X.final.wssd
+		   718   2154  16491 ./Sample_ITWB11/hits_umd3_template_file1.bed.final.wssd
+		   145    435   3425 ./Sample_ITWB11/hits_umd3_template_file1.bed.X.final.wssd
+		   706   2118  16179 ./Sample_ITWB12/hits_umd3_template_file1.bed.final.wssd
+		   142    426   3342 ./Sample_ITWB12/hits_umd3_template_file1.bed.X.final.wssd
+		   717   2151  16466 ./Sample_ITWB13/hits_umd3_template_file1.bed.final.wssd
+		   149    447   3521 ./Sample_ITWB13/hits_umd3_template_file1.bed.X.final.wssd
+		   736   2208  16904 ./Sample_ITWB14/hits_umd3_template_file1.bed.final.wssd
+		   142    426   3352 ./Sample_ITWB14/hits_umd3_template_file1.bed.X.final.wssd
+		   743   2229  17080 ./Sample_ITWB15/hits_umd3_template_file1.bed.final.wssd
+		   138    414   3264 ./Sample_ITWB15/hits_umd3_template_file1.bed.X.final.wssd
+		   719   2157  16520 ./Sample_ITWB1/hits_umd3_template_file1.bed.final.wssd
+		   140    420   3306 ./Sample_ITWB1/hits_umd3_template_file1.bed.X.final.wssd
+		   693   2079  15900 ./Sample_ITWB2/hits_umd3_template_file1.bed.final.wssd
+		   146    438   3448 ./Sample_ITWB2/hits_umd3_template_file1.bed.X.final.wssd
+		   722   2166  16554 ./Sample_ITWB3/hits_umd3_template_file1.bed.final.wssd
+		   140    420   3308 ./Sample_ITWB3/hits_umd3_template_file1.bed.X.final.wssd
+		   745   2235  17110 ./Sample_ITWB4/hits_umd3_template_file1.bed.final.wssd
+		   140    420   3314 ./Sample_ITWB4/hits_umd3_template_file1.bed.X.final.wssd
+		   729   2187  16706 ./Sample_ITWB5/hits_umd3_template_file1.bed.final.wssd
+		   132    396   3118 ./Sample_ITWB5/hits_umd3_template_file1.bed.X.final.wssd
+		   713   2139  16357 ./Sample_ITWB6/hits_umd3_template_file1.bed.final.wssd
+		   172    516   4058 ./Sample_ITWB6/hits_umd3_template_file1.bed.X.final.wssd
+		   753   2259  17294 ./Sample_ITWB7/hits_umd3_template_file1.bed.final.wssd
+		   147    441   3479 ./Sample_ITWB7/hits_umd3_template_file1.bed.X.final.wssd
+		   714   2142  16385 ./Sample_ITWB8/hits_umd3_template_file1.bed.final.wssd
+		   142    426   3352 ./Sample_ITWB8/hits_umd3_template_file1.bed.X.final.wssd
+ 		 13020  39060 300304 total
+ 		 
+ 		$ wc ./*/*.final.deletions.tab	*/
+		  158   474  3540 ./PC1_umd3/hits_umd3_template_file1.bed.final.deletions.tab
+		  157   471  3527 ./Sample_ITWB10/hits_umd3_template_file1.bed.final.deletions.tab
+		  151   453  3394 ./Sample_ITWB11/hits_umd3_template_file1.bed.final.deletions.tab
+		  128   384  2862 ./Sample_ITWB12/hits_umd3_template_file1.bed.final.deletions.tab
+		  145   435  3244 ./Sample_ITWB13/hits_umd3_template_file1.bed.final.deletions.tab
+		  116   348  2586 ./Sample_ITWB14/hits_umd3_template_file1.bed.final.deletions.tab
+		  158   474  3561 ./Sample_ITWB15/hits_umd3_template_file1.bed.final.deletions.tab
+		  137   411  3079 ./Sample_ITWB1/hits_umd3_template_file1.bed.final.deletions.tab
+		  123   369  2755 ./Sample_ITWB2/hits_umd3_template_file1.bed.final.deletions.tab
+		  127   381  2846 ./Sample_ITWB3/hits_umd3_template_file1.bed.final.deletions.tab
+		  162   486  3661 ./Sample_ITWB4/hits_umd3_template_file1.bed.final.deletions.tab
+		  143   429  3215 ./Sample_ITWB5/hits_umd3_template_file1.bed.final.deletions.tab
+		  273   819  6149 ./Sample_ITWB6/hits_umd3_template_file1.bed.final.deletions.tab
+		  144   432  3236 ./Sample_ITWB7/hits_umd3_template_file1.bed.final.deletions.tab
+		    0     0     0 ./Sample_ITWB8/hits_umd3_template_file1.bed.final.deletions.tab
+		 2122  6366 47655 total
+
+		# Something happened to sample 8.
+		$ head Sample_ITWB8/hits_umd3_template_file1.bed_gccorr.log
+		Avg:  994.283981  std:  332.807724  AutoCut:  2325.514877  AutoCut2:  1992.707153  Del:  -4.139191
+		SexA:  209.123732  std:  763.962015  AutoCut:  3264.971792  AutoCut2:  2501.009777  Del:  -2082.762313
+		
+		# That's the reason why. It has a negative number for the deletion threshold. I will try to set it to be zero by default.
+		# Sample 8 might just be junk anyways. 
+
+		

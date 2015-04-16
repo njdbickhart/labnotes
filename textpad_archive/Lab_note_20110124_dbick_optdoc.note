@@ -1,0 +1,662 @@
+2011_01_24
+# Optimizing the DoC and PEM pipelines
+
+# So, George thinks that we are close, but we need to firm up our cutoff values. Here's how I will do it:
+	1. Run alkan's DoC pipeline on the angus files (no ChrX) with variable settings
+	2. I will alternate between a stdev cutoff of 5, 4 and 3 for the duplication prediction
+	3. I will alternate between a stdev cutoff of 4, 3, and 2 for the deletion predictions
+	
+# For the sake of simplicity, I will run the pipeline 3 separate times:
+	1. ang_5_4 folder: duplication 5 stdev and deletion 4 stdevs
+	2. ang_4_3 folder: duplication 4 stdev and deletion 3 stdevs
+	3. ang_3_2 folder: duplication 3 stdev and deletion 2 stdevs
+	
+# Going to modify the cattle_separate.sh file each time
+*WARNING: the shell file will be set to 3 / 2 after I'm finished!!!*
+	[dbickhart@bfgl-svr3 angus_5_4]$ ./run_alkan_pipeline.pl --File1 angus_nochrun_hits_file1.bed --File1_c angus_nochrun_hits_file1_c.bed --File2 angus_nochrun_hits_file2.bed --File3 angus_nochrun_hits_file3.bed --File3_c angus_nochrun_hits_file3_c.bed
+	[dbickhart@bfgl-svr3 angus_4_3]$ ./run_alkan_pipeline.pl --File1 angus_nochrun_hits_file1.bed --File1_c angus_nochrun_hits_file1_c.bed --File2 angus_nochrun_hits_file2.bed --File3 angus_nochrun_hits_file3.bed --File3_c angus_nochrun_hits_file3_c.bed
+	[dbickhart@bfgl-svr3 angus_3_2]$ ./run_alkan_pipeline.pl --File1 angus_nochrun_hits_file1.bed --File1_c angus_nochrun_hits_file1_c.bed --File2 angus_nochrun_hits_file2.bed --File3 angus_nochrun_hits_file3.bed --File3_c angus_nochrun_hits_file3_c.bed
+	
+	# Results
+		$ wc angus_3_2/angus_nochrun_hits_file1.bed.final.wssd angus_3_2/angus_nochrun_hits_file1.bed.final.deletions.tab
+		  699  2097 16268 angus_3_2/angus_nochrun_hits_file1.bed.final.wssd
+		  562  1686 13186 angus_3_2/angus_nochrun_hits_file1.bed.final.deletions.tab
+		 1261  3783 29454 total
+		$ wc angus_5_4/angus_nochrun_hits_file1.bed.final.wssd angus_5_4/angus_nochrun_hits_file1.bed.final.deletions.tab
+		 357 1071 8265 angus_5_4/angus_nochrun_hits_file1.bed.final.wssd
+		   1    3   24 angus_5_4/angus_nochrun_hits_file1.bed.final.deletions.tab
+		 358 1074 8289 total
+		$ wc angus_4_3/angus_nochrun_hits_file1.bed.final.wssd angus_4_3/angus_nochrun_hits_file1.bed.final.deletions.tab
+		  463  1389 10751 angus_4_3/angus_nochrun_hits_file1.bed.final.wssd
+		   11    33   257 angus_4_3/angus_nochrun_hits_file1.bed.final.deletions.tab
+  		  474  1422 11008 total
+  		  
+  	# Renamed the files and copied to my shared directory.
+  	# So, reducing the deletion stdev to 2 increased the deletion calls by 5100%! 
+  	
+  	# Now to start combining files and determine what exactly happened
+  		(pwd /mnt/gliu1_usb/dbickhart/breed_doc/angus/mrsfast/angus_settings_combined)
+  		$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_5_4/angus_5_4.final.wssd -b ../angus_4_3/angus_4_3.final.wssd -f 0.50 -r > angus_common_dups_5_4.bed
+  		$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a angus_common_dups_5_4.bed -b ../angus_3_2/angus_3_2.final.wssd -f 0.50 -r > angus_common_dups_5_4_3.bed
+  		$ wc *
+  			279   837  6438 angus_common_dups_5_4_3.bed
+  			313   939  7241 angus_common_dups_5_4.bed
+		# But, alot of these are likely split from larger wssd's that were "padded" together.
+		# This one-liner checks to see how many of those intervals are likely due to split up intervals that lost padding from the bedtools intersect:
+		$ perl -e '$old = 0; $chr = "chr1"; while(<>){@a = split(/\t/); chomp $a[2]; if ($a[0] eq $chr && $a[1] < ($old + 10000)){print "$_\n";} $old = $a[2]; $chr = $a[0];}' < angus_common_dups_5_4_3.bed | wc
+     			52      78     626
+		# It isn't perfect, but it looks like there are ~227 (279 - 52) CNV's that were common to all three stringent settings.
+		
+	# Deletions are a little more straightforward... I just need to do a bedtools intersect with the 5_4 and 4_3 files and that should be sufficient
+		(pwd /mnt/gliu1_usb/dbickhart/breed_doc/angus/mrsfast/angus_settings_combined)
+		$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_5_4/angus_5_4.final.deletions.tab -b ../angus_4_3/angus_4_3.final.deletions.tab -f 0.50 -r > angus_common_dels_5_4.bed
+		$ wc angus_common_dels_5_4.bed
+			0 0 0 angus_common_dels_5_4.bed
+			
+		# The -f and -r options might have been too stringent... let's try it again without those options
+		$ wc angus_common_dels_5_4.bed
+ 			1  3 24 angus_common_dels_5_4.bed
+		# Yup, so there is a deletion common to those two sets, but the size of it is larger in the 4_3 dataset:
+			$ more angus_5_4/angus_5_4.final.deletions.tab
+				chr23   26199892        26227067
+			$ grep chr23 angus_4_3/angus_4_3.final.deletions.tab
+				chr23   26184892        26256205
+				
+	# So, my inter-database comparisons are complete, let's start comparing the calls to other databases like George asked me to do
+	
+# Yali's HD dataset (pwd /mnt/gliu1_usb/dbickhart/breed_doc/angus/mrsfast/angus_settings_combined )
+	# I received a spreadsheet from Yali (it's hosted in my folder on the S:/ drive
+	# I created two tab delimited files from Excel; one with the gain and "both" intervals and the other with the loss and "both" intervals.
+	# I need to remove carriage returns (Excel's newline delimiter) before running them through Bedtools.
+		$ sed 's/\r//' < yali_hd_gain_cnv.txt > yali_hd_gain_sed.txt
+		$ wc yali*
+		  1287   3861  31400 yali_hd_gain_cnv.txt
+		  1287   3861  30113 yali_hd_gain_sed.txt
+		  2204   6612  53662 yali_hd_loss_cnv.txt
+  		  4778  14334 115175 total
+  		  
+  	$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_5_4/angus_5_4.final.wssd -b yali_hd_gain_sed.txt -wa > angus_yali_5_4_comp.bed
+		$ wc angus_yali_5_4_comp.bed
+ 		  142  426 3300 angus_yali_5_4_comp.bed	(original numbers: angus_5_4 (357)   yali's (1287))
+ 		$ perl -ne '@a = split(/\t/); if ($a[0] eq $chr && $a[1] == $old){ print "$chr\t$old\t$_";} $old = $a[1]; $chr = $a[0];' < angus_yali_5_4_comp.bed | wc
+    		  4      20     148
+	
+ 	$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_4_3/angus_4_3.final.wssd -b yali_hd_gain_sed.txt -wa > angus_yali_4_3_comp.bed
+		$ wc angus_yali_4_3_comp.bed
+ 		  172  516 3994 angus_yali_4_3_comp.bed	(original numbers: angus_4_3 (463)    yali's (1287))
+		$ perl -ne '@a = split(/\t/); if ($a[0] eq $chr && $a[1] == $old){ print "$chr\t$old\t$_";} $old = $a[1]; $chr = $a[0];' < angus_yali_4_3_comp.bed | wc
+     		  6      30     222 
+ 
+ 	$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_3_2/angus_3_2.final.wssd -b yali_hd_gain_sed.txt -wa > angus_yali_3_2_comp.bed
+		$ wc angus_yali_3_2_comp.bed
+		  223  669 5184 angus_yali_3_2_comp.bed	(original numbers: angus_3_2 (699)    yali's (1287))
+		$ perl -ne '@a = split(/\t/); if ($a[0] eq $chr && $a[1] == $old){ print "$chr\t$old\t$_";} $old = $a[1]; $chr = $a[0];' < angus_yali_3_2_comp.bed | wc
+    		  7      35     261
+    		  
+	# Now for deletions (which should be pretty straightforward)
+	
+	$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_5_4/angus_5_4.final.deletions.tab -b yali_hd_loss_sed.txt -wa > angus_yali_5_4_loss.bed
+	$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_4_3/angus_4_3.final.deletions.tab -b yali_hd_loss_sed.txt -wa > angus_yali_4_3_loss.bed
+	$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_3_2/angus_3_2.final.deletions.tab -b yali_hd_loss_sed.txt -wa > angus_yali_3_2_loss.bed
+	
+	$ wc *loss.bed
+ 		31  93 718 angus_yali_3_2_loss.bed   	(original numbers: angus_3_2 (562)   yali's (2204))
+  		2   6  48 angus_yali_4_3_loss.bed	(original numbers: angus_4_3 (11)   yali's (2204))
+  		1   3  24 angus_yali_5_4_loss.bed	(original numbers: angus_5_4 (1)   yali's (2204))
+ 		34 102 790 total
+ 		
+# Other published results (pwd /mnt/gliu1_usb/dbickhart/breed_doc/angus/mrsfast/angus_settings_combined)
+	# I created bed files from the datasets (korean, danish, low density, acgh and 50ksnp deletions)
+	# Now, I want to automate the Bedtools intersection on all these files.
+	$ find *.bed > bed_list.txt
+	$ perl -e 'while(<>){chomp $_; push(@f, $_);} foreach $file (@f){ system("../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_5_4/angus_5_4.final.wssd -b $file -wa > $file\_angus_5_4.bed"); system("../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_4_3/angus_4_3.final.wssd -b $file -wa > $file\_angus_4_3.bed"); system("../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_3_2/angus_3_2.final.wssd -b $file -wa > $file\_angus_3_2.bed");}' < bed_list.txt
+		$ wc *_angus*
+		    0     0     0 bae_snp_korean_sed.bed_angus_3_2.bed
+		    0     0     0 bae_snp_korean_sed.bed_angus_4_3.bed
+		    0     0     0 bae_snp_korean_sed.bed_angus_5_4.bed
+		   70   210  1635 danish_acgh_sed.bed_angus_3_2.bed
+		   57   171  1333 danish_acgh_sed.bed_angus_4_3.bed
+		   44   132  1020 danish_acgh_sed.bed_angus_5_4.bed
+		  115   345  2666 george_acgh_gain.bed_angus_3_2.bed
+		  103   309  2388 george_acgh_gain.bed_angus_4_3.bed
+		   90   270  2091 george_acgh_gain.bed_angus_5_4.bed
+		  150   450  3489 yali_ld_snp_gain.bed_angus_3_2.bed
+		  126   378  2933 yali_ld_snp_gain.bed_angus_4_3.bed
+		  104   312  2424 yali_ld_snp_gain.bed_angus_5_4.bed
+		  
+	$ perl -e 'while(<>){chomp $_; push(@f, $_);} foreach $file (@f){ system("../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_5_4/angus_5_4.final.deletions.tab -b $file -wa > $file\_a_del_5_4.bed"); system("../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_4_3/angus_4_3.final.deletions.tab -b $file -wa > $file\_a_del_4_3.bed"); system("../../../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus_3_2/angus_3_2.final.deletions.tab -b $file -wa > $file\_a_del_3_2.bed");}' < bed_list.txt
+		$ wc *a_del_*
+		   0    0    0 bae_snp_korean_sed.bed_a_del_3_2.bed
+		   0    0    0 bae_snp_korean_sed.bed_a_del_4_3.bed
+		   0    0    0 bae_snp_korean_sed.bed_a_del_5_4.bed
+		  17   51  397 danish_acgh_sed.bed_a_del_3_2.bed
+		   0    0    0 danish_acgh_sed.bed_a_del_4_3.bed
+		   0    0    0 danish_acgh_sed.bed_a_del_5_4.bed
+		  20   60  467 george_acgh_loss.bed_a_del_3_2.bed
+		   2    6   46 george_acgh_loss.bed_a_del_4_3.bed
+		   1    3   24 george_acgh_loss.bed_a_del_5_4.bed
+		  20   60  458 lakshmi_snp_deletions.bed_a_del_3_2.bed
+		   2    6   46 lakshmi_snp_deletions.bed_a_del_4_3.bed
+		   0    0    0 lakshmi_snp_deletions.bed_a_del_5_4.bed
+		  21   63  495 yali_ld_snp_loss.bed_a_del_3_2.bed
+		   0    0    0 yali_ld_snp_loss.bed_a_del_4_3.bed
+		   0    0    0 yali_ld_snp_loss.bed_a_del_5_4.bed
+		   
+	# OK, I screwed up the korean bed file. I need to reformat it. 
+		$ perl -ne 'chomp $_; @a = split(/\t/); if($a[0] =~ /chr/){next;}else{ print "chr$a[0]\t$a[1]\t$a[2]\n";}' < bae_snp_korean_sed.bed > bae_reformat_snp.bed
+
+		# Reran the one-liner on the reformated bae file
+		$ wc bae*
+			  368  1104  8664 bae_reformat_snp.bed
+			   21    63   496 bae_reformat_snp.bed_a_del_3_2.bed
+			    0     0     0 bae_reformat_snp.bed_a_del_4_3.bed
+			    0     0     0 bae_reformat_snp.bed_a_del_5_4.bed
+			   20    60   468 bae_reformat_snp.bed_angus_3_2.bed
+			   16    48   374 bae_reformat_snp.bed_angus_4_3.bed
+			   12    36   278 bae_reformat_snp.bed_angus_5_4.bed
+			  369  1107  7943 bae_snp_korean_cnvr.txt
+  			  369  1107  7574 bae_snp_korean_sed.bed
+  			  
+# Big thing: I need to see if I can do individual animal DoC analyses.
+ 	# VERY good news! The sequence read names have the individual animals listed within the .bam file!
+ 	# So, all that I have to do is create a script that will generate individualized animal hits from the merged.bam file.
+ 	# Piece of cake
+ 	
+ 	# Wrote a script called "extract_animal_bed.pl" that should extract all of the read information and print them all out to separate animal "hits" files.
+ 	# Going to test it out on Angus:
+ 		$ pwd
+			/mnt/gliu1_usb/dbickhart/breed_doc/angus/mrsfast
+		$ mkdir sep_animal_bed
+		$ perl extract_animal_bed.pl merged.bam sep_animal_bed
+		
+		# OK, that was eating up too much memory... maybe I should script samtools to create a sam file, then read it line by line in the perl script instead?
+		# Now the script creates a sam file, then reads it into memory only one line at a time
+		# Will be slower, but will not eat up all of the memory of server 3! (hopefully)
+		$ perl extract_animal_bed.pl merged.bam sep_animal_bed
+			$ wc *
+			   8220507   24661521  193356090 BTAN01_temp.bed
+			   6414711   19244133  150905281 BTAN02_temp.bed
+			   6497758   19493274  152891659 BTAN03_temp.bed
+			   4413753   13241259  103962923 BTAN04_temp.bed
+			  11863637   35590911  278852978 BTAN05_temp.bed
+			  11784441   35353323  276904146 BTAN06_temp.bed
+			  11487897   34463691  269996843 BTAN07_temp.bed
+			  10008238   30024714  235291869 BTAN08_temp.bed
+			   4475115   13425345  105340581 BTAN09_temp.bed
+			   4160029   12480087   97962274 BTAN10_temp.bed
+			  79326086  237978258 1865464644 total
+			# It worked! The discrepancy between the original "hits" file and this file can be explained by my selective removal of chrUnall in the script
+			
+		# Still, I was left with temporary bed files.
+		# Used a shell script to change the temp files into autosome.bed files
+			$ for i in *.bed
+			> do
+			> prefix=`echo $i | cut -d'_' -f1`;
+			> name=$prefix"_auto.bed";
+			> grep -v 'chrX' $i | sort -k 1,1 > $name;
+			> done
+			
+		# Modifying the script to print out to the different files after each 1000000 reads and empty the hash file
+		# I will test that modification out later... I have not altered the original script on my virtualbox/perl directory
+		
+	# Now, to test this all out on Angus
+		# I want to create a script that will automate the creation of a directory for each bed file, then intersect the bedfile with the windows files and finally run Alkan's pipeline
+		# Done: script name is auto_full_alkan_pipeline.pl (accepts one input bed file and converts it into the necessary file formats for Alkan's pipeline)
+		# My use of the "_auto" prefix got me in trouble. The files that I created for the pipeline were immediately deleted by the shell script.
+		
+		# Rewrote everything, and it looks like it did an OK job of processing the files
+		$ wc *final*
+		  416  1248  9813 BTAN01_auto_file1.bed.final.deletions.tab
+		  649  1947 15137 BTAN01_auto_file1.bed.final.wssd
+		 1065  3195 24950 total
+		# Now to loop it to do all of the angus breeds:
+			$ for i in *_auto.bed
+			> do
+			> perl auto_full_alkan_pipeline.pl --in $i
+			> done
+	
+	# Running on Brahman:
+		$ perl extract_animal_bed.pl merged.bam sep_brahman_animals
+		# Still working out kinks in the program... It works, but there were a few problems:
+			1. I had to separate the unix commands into a separate, small shell script
+			2. STDOUT reporting was not "hot" so I tried to use the IO:Handle module
+			
+		# My unix commands didn't work, so I had to do the following quick shell script:
+		$ for i in *_temp.bed
+		> do
+		> prefix=`echo $i | cut -d'_' -f1`;
+		> name=$prefix"_auto.bed";
+		> grep -v 'chrX' $i | sort -k 1,1 > $name;
+		> done
+		
+		# Now to run the pipeline:
+		$ for i in *_auto.bed; do perl auto_full_alkan_pipeline.pl --in $i; done
+	
+	# Running on Holstein:
+		$ perl extract_animal_bed.pl merged.bam sep_holstein_animals
+		
+		# I forgot to "chomp" the filenames that I fed into the shell script, so I'm doing the shell script manually again
+		$ for i in *.bed
+		> do
+		> prefix=`echo $i | cut -d'_' -f1`;
+		> name=$prefix"_auto.bed";
+		> grep -v 'chrX' $i | sort -k 1,1 > $name;
+		> done
+		
+		$ for i in *_auto.bed
+		> do
+		> perl auto_full_alkan_pipeline.pl --in $i
+		> done
+
+	# Running on Limousin:
+		$ perl extract_animal_bed.pl merged.bam sep_limousin_animals
+		
+		$ for i in *_auto.bed; do perl auto_full_alkan_pipeline.pl --in $i; done
+		
+	# Running on Gir:
+		$ perl extract_animal_bed.pl merged.bam sep_gir_animals
+		
+		$ for i in *_auto.bed; do perl auto_full_alkan_pipeline.pl --in $i; done
+		
+	# Running on Jersey:
+		$ perl extract_animal_bed.pl merged.bam sep_jersey_animals
+		
+		$ for i in *_auto.bed; do perl auto_full_alkan_pipeline.pl --in $i; done
+		
+	# Running on Nelore:
+		$ perl extract_animal_bed.pl merged.bam sep_nelore_animals
+		
+		$ for i in *_auto.bed; do perl auto_full_alkan_pipeline.pl --in $i; done
+		
+	# Running on Romagnola:
+		$ perl extract_animal_bed.pl merged.bam sep_romagnola_animals
+		$ for i in *_auto.bed; do perl auto_full_alkan_pipeline.pl --in $i; done
+		
+	# Now I am going to copy all of those files to a directory in the breed_doc folder (ind_doc) for further manipulation
+	# I am using the find command: $ find brahman/mrsfast/sep_brahman_animals/ -name "*final*" | xargs -i cp '{}' ind_doc/
+	
+__________________________________
+Analysis of individual files
+__________________________________
+
+# Now to do the regular battery of Bedtools intersections, mergers and comparisons
+
+# Insertions
+	# Full dataset stats:
+		$ for i in *.wssd; do perl -e '$f = $ARGV[0]; chomp $f; @b = split(/\_/, $f); open (IN, "< $f"); open (OUT, "> $b[0].bed"); while(<IN>){chomp $_; print OUT "$_\t$b[0]\n";}' $i; done
+		$ cat *.bed | ../../../BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > ind_insert_merged.bed
+		$ wc ind_insert_merged.bed
+		 13541  54164 670513 ind_insert_merged.bed
+		 
+# Deletions:
+	# Full dataset stats:
+		$ for i in *.tab; do perl -e '$f = $ARGV[0]; chomp $f; @b = split(/\_/, $f); open (IN, "< $f"); open (OUT, "> $b[0].bed"); while(<IN>){chomp $_; print OUT "$_\t$b[0]\n";}' $i; done
+		$ cat *.bed | ../../../BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > ind_deletion_merged.bed
+		$ wc ind_deletion_merged.bed
+		 11308  45232 558413 ind_deletion_merged.bed
+		 
+# Merged dataset:
+	# I created a perl script that takes the "merged.bed" files and prints them out into a table
+	# It does not merge overlapping intervals (I should make a script that does this later...)
+	# there were 24,849 CNVR calls with 14,043 Unique calls, so I think that I need to increase the stringency of the settings on the pipeline
+	# I will run the pipeline with the insertions set at 4 stdevs and the deletions at 3 stdevs	
+	
+# OK, so George wants me to compare BOTH the 3 ins - 2 del individual animal files and the 4 ins - 3 del individual animal files with ALL published results
+	# I am going to try to automate the pipeline for each breed using a custom shell script
+	# The shell script's name is automate_indv_alkan_pipe.sh and it should jump to each folder and execute the auto_full_alkan_pipeline.pl script in each
+	# I also moved all of the former folders (for each animal) into the ind_doc folder in my breed_doc folder
+	# Here goes nothing!
+	
+	# OK, it's working
+	
+	# Now, I'm moving all of the files into my ind_doc folder
+	$ find brahman/mrsfast/sep_brahman_animals/ -name "*final*" | xargs -i cp '{}' ind_doc/
+	$ find angus/mrsfast/sep_animal_bed/ -name "*final*" | xargs -i cp '{}' ind_doc/ 
+	$ find gir/mrsfast/sep_gir_animals/ -name "*final*" | xargs -i cp '{}' ind_doc/
+	$ find jersey/mrsfast/sep_jersey_animals/ -name "*final*" | xargs -i cp '{}' ind_doc/
+	$ find holstein/mrsfast/sep_holstein_animals/ -name "*final*" | xargs -i cp '{}' ind_doc/
+	$ find limousin/mrsfast/sep_limousin_animals/ -name "*final*" | xargs -i cp '{}' ind_doc/
+	$ find romagnola/mrsfast/sep_romagnola_animals/ -name "*final*" | xargs -i cp '{}' ind_doc/
+	
+	
+# Extracting Yali's data
+	# I wrote a quick script to turn all of yali's files into individual animal bed files
+	# Script name: process_yalis_data.pl
+	 1200  perl process_yalis_data.pl ngs_acgh_0.5_3_cnv acgh_5_3
+	 1201  perl -c process_yalis_data.pl
+	 1202  perl process_yalis_data.pl ngs_acgh_0.5_3_cnv acgh_5_3
+	 1203  perl -c process_yalis_data.pl
+	 1204  perl process_yalis_data.pl ngs_acgh_0.5_3_cnv acgh_5_3
+	 1205  perl -d process_yalis_data.pl ngs_acgh_0.5_3_cnv acgh_5_3
+	 1206  perl process_yalis_data.pl ngs_acgh_0.5_3_cnv acgh_5_3
+	 1207  mv *.bed ./acgh_5_3
+	 1208  ls
+	 1209  perl process_yalis_data.pl ngs_acgh_0.5_5_cnv acgh_5_5
+	 1210  mkdir acgh_5_5
+	 1211  mv *.bed ./acgh_5_5
+	 1212  perl process_yalis_data.pl ngs_snp_5breed_cnv snp_5_breed
+	 1213  mkdir snp_5_breed
+	 1214  mv *.bed ./snp_5_breed
+	 1215  perl process_yalis_data.pl ngs_snp_all_cnv snp_all
+	 1216  mv *.bed ./snp_all
+	 1217  perl process_yalis_data.pl ngs_snp_single_cnv snp_single
+ 	 1218  mv *.bed ./snp_single
+ 	 
+# Ran into alot of problems trying to write a wrapper script for intersecting all of yali's files with my own
+# Instead, I am going to try another approach: merge all of the bed files using bedtools merge, then use the animal names to create an excel spreadsheet
+	# create bed files with names for each animal's interval, then cat them all together
+	$ for i in *.wssd; do prefix=`echo $i | cut -d'_' -f1`; name=$prefix"_ins_4_3.bed"; awk '{print $1"\t"$2"\t"$3"\t"var}' var=$prefix $i > $name; done
+	$ cat *_ins_4_3.bed > ins_4_3_cat_named.bed
+
+	# Now to create a script that will interpret all of this info! 
+	# Script should take each interval, then take each name in sequence, find the corresponding Yali name, then print them out in a spreadsheet format
+	# Format like this:
+		animal name
+		chr	start	end	animal datasets shared with (for same animal)
+		...
+		end
+	# Redundancy isn't going to be an issue, since I want separate columns for each animal
+	
+	# OK, my script works, but I messed up and merged my NGS datasets!
+	-> here is where I should merge the snp and acgh calls before starting down the Venn diagram path
+	$ cat ins_4_3_cat_named.bed snp*gain.bed acgh*gain.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_4_3_merged_gain_events.bed
+	$ perl intersect_merge_yalis_data.pl ins_4_3_merged_gain_events.bed ins_4_3_separate_stats.tab
+	
+	$ cat ins_3_2_cat_named.bed snp*gain.bed acgh*gain.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_3_2_merged_gain_events.bed
+	$ perl intersect_merge_yalis_data.pl ins_3_2_merged_gain_events.bed ins_3_2_separate_stats.tab
+	
+	$ cat del_3_2_cat_named.bed snp*loss.bed acgh*loss.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > del_3_2_merged_gain_events.bed
+	$ perl intersect_merge_yalis_data.pl del_3_2_merged_gain_events.bed del_3_2_separate_stats.tab
+	
+	$ cat del_4_3_cat_named.bed snp*loss.bed acgh*loss.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > del_4_3_merged_gain_events.bed
+	$ perl intersect_merge_yalis_data.pl del_4_3_merged_gain_events.bed del_4_3_separate_stats.tab
+	
+	# Now that I have these files, I copied them to the intersect folder on my shared folder
+	# I want to pull out numerical stats for each animal and sort the files. 
+	# I will do this using two scripts
+	# First script will create numerical stats for each animal (create_stats_yali_intersection.pl)
+		# I'm not a big fan of the output though, let's change it to a big table format
+		 1365  perl create_stats_yali_intersection.pl ins_3_2_separate_stats.tab ins_3_2_number_intersections.txt
+		 1366  perl create_stats_yali_intersection.pl ins_4_3_separate_stats.tab ins_4_3_number_intersections.txt
+		 1367  perl create_stats_yali_intersection.pl del_3_2_separate_stats.tab del_3_2_number_intersections.txt
+ 		 1368  perl create_stats_yali_intersection.pl del_4_3_separate_stats.tab del_4_3_number_intersections.txt
+ 		 
+ 		# Better, but needs conditional highlighting to make sense of it.
+ 		
+ 	# I forgot to create a merged combined table with my script (make_table_merged_named.bed.pl)
+ 		$ for i in *.tab; do perl -e '$f = $ARGV[0]; chomp $f; @b = split(/\_/, $f); open (IN, "< $f"); open (OUT, "> $b[0].bed"); while(<IN>){chomp $_; print OUT "$_\t$b[0]\n";}' $i; done
+ 		$ cat *.bed | ../../../BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > ind_deletion_4_3_merged.bed
+ 		
+		$ for i in *.wssd; do perl -e '$f = $ARGV[0]; chomp $f; @b = split(/\_/, $f); open (IN, "< $f"); open (OUT, "> $b[0].bed"); while(<IN>){chomp $_; print OUT "$_\t$b[0]\n";}' $i; done
+		$ cat *.bed | ../../../BEDTools-Version-2.10.0/bin/mergeBed -i stdin -nms > ind_insert_4_3_merged.bed
+		
+		$ perl make_table_merged_named_bed.pl ins_4_3/ind_insert_4_3_merged.bed del_4_3/ind_deletion_4_3_merged.bed
+		
+		# 2945 entries and 1753 that were unique to one animal. Much better, IMO. 
+		# I intersected the original merged files (between the 4_3 and 3_2 sets) to check for common CNVs
+			$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ins_4_3/ind_insert_4_3_merged.bed -b ins_3_2/ind_insert_merged.bed -c > intersect_insert_4_3.bed
+			$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a del_4_3/ind_deletion_4_3_merged.bed -b del_3_2/ind_deletion_merged.bed -c > intersect_deletion_3_2.bed
+			# All but 6 of the insertion intervals matched the lower stringency calls. 
+			
+# Now I need to make a more basic chart of intersections and generate a venn diagram off of it!
+	# I created a script (create_intersection_table_yali.pl) that creates comparisons of all datasets and combines numbers in order to form the intersections of a VENN diagram
+		 1377  perl create_intersection_table_yali.pl del_3_2_separate_stats.tab venn_del_3_2.tab
+		 1378  perl create_intersection_table_yali.pl del_4_3_separate_stats.tab venn_del_4_3.tab
+		 1379  perl create_intersection_table_yali.pl ins_3_2_separate_stats.tab venn_ins_3_2.tab
+		 1380  perl create_intersection_table_yali.pl ins_4_3_separate_stats.tab venn_ins_4_3.tab
+		 
+	# Now, I think that I just need to subtract those numbers from the non-aligned numbers and I will get a VENN diagram!
+	# Here are the number of entries for each dataset:
+		* gain acgh_5_3: 2294
+		* loss acgh_5_3: 3146
+		
+		* gain acgh_5_5: 2043
+		* loss acgh_5_5: 2631
+		
+		* gain snp_5_breed: 617
+		* loss snp_5_breed: 1124
+		
+		* gain snp_all: 633
+		* loss snp_all: 1142
+		
+		* gain snp_single: 537
+		* loss snp_single: 834
+		
+		* gain ins_3_2: 13541
+		* loss del_3_2: 11308
+		
+		* gain ins_4_3: 2789
+		* loss del_4_3: 156
+		
+	# Crap, can't make a VENN diagram out of 7 entries! 
+	# I should keep these numbers, but try to merge the snp and acgh numbers before running them through the pipeline (look for the -> above in the notes)
+		# Now to cat all of the snp intervals into one file 
+			$ find ./merge/ -name acgh*cat*gain.bed | xargs -i cat '{}' > acgh_master_cat_gain.bed
+			$ find ./merge/ -name snp*cat*gain.bed | xargs -i cat '{}' > snp_master_cat_gain.bed
+			# same with the loss files
+			
+		$ for i in *master*; do ../../BEDTools-Version-2.10.1/bin/mergeBed -i $i > $i.merge; done
+		
+		$ for i in *.merge; do perl -e' $f = $ARGV[0]; chomp $f; @s = split(/\_/, $f); open(IN, "< $f"); while (<IN>){ chomp $_; print "$_\t$s[0]\n";}' $i > $i.name; done
+		
+		$ cat ./merge/ins_4_3_cat_named.bed ./acgh_master_cat_gain.bed.merge.name ./snp_master_cat_gain.bed.merge.name | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_4_3_simple_combo_gain_events.bed
+		$ cat ./merge/ins_3_2_cat_named.bed ./acgh_master_cat_gain.bed.merge.name ./snp_master_cat_gain.bed.merge.name | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_3_2_simple_combo_gain_events.bed
+		$ cat ./merge/del_3_2_cat_named.bed ./acgh_master_cat_loss.bed.merge.name ./snp_master_cat_loss.bed.merge.name | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > del_3_2_simple_combo_gain_events.bed
+		$ cat ./merge/del_4_3_cat_named.bed ./acgh_master_cat_loss.bed.merge.name ./snp_master_cat_loss.bed.merge.name | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > del_4_3_simple_combo_gain_events.bed
+		
+		# Now moving files to a folder called "simple"
+		
+		# Created a script (create_simpel_yali_stats.pl) to generate the VENN numbers
+		$ perl create_simple_yali_stats.pl ins_3_2_simple_combo_gain_events.bed ins_3_2_simple.tab
+		$ perl create_simple_yali_stats.pl ins_4_3_simple_combo_gain_events.bed ins_4_3_simple.tab
+		$ perl create_simple_yali_stats.pl del_3_4_simple_combo_gain_events.bed del_3_4_simple.tab
+		$ perl create_simple_yali_stats.pl del_3_2_simple_combo_gain_events.bed del_3_2_simple.tab
+		
+		# Wait, that isn't fair... I need to merge the NGS data too. Going to do that fast...
+		# Did the following for each ins/del file:
+			$ ../../BEDTools-Version-2.10.1/bin/mergeBed -i ./merge/del_4_3_cat_named.bed > del_4_3_master.bed
+			$ for i in *master.bed; do perl -e' $f = $ARGV[0]; open(IN, "< $f"); while (<IN>){ chomp $_; print "$_\tNGS\n";}' $i > $i.name; done
+			$ cat acgh_master_cat_gain.bed.merge.name snp_master_cat_gain.bed.merge.name ins_4_3_master.bed.name | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_4_3_fair_gain.bed
+			$ for i in *fair*; do perl create_simple_yali_stats.pl $i $i.simple; done
+			
+# Now I need to do three comparisons for George so that I can weed out the possibilities
+	1. Individual animals
+	2. Merged, full dataset (combined animals)
+	3. Separate breeds
+	
+	# I also need to do a 5 stdev cutoff for the DoC insertions just to see how that turns out
+		# Running:
+		$  sh automate_indv_alkan_pipe.sh
+
+	# My comparisons will be only against the SNP_all and ACGH_5_3 datasets the other datasets will be removed
+	
+	# Created a folder (three_comp) with numerical comparison sub folders
+	# Comparison 1.
+		# Copied the following files over
+		-rwxrwxrwx 1 root root   31841 2011-02-04 14:13 acgh_5_3_cat_gain.bed
+		-rwxrwxrwx 1 root root  103801 2011-02-04 14:13 acgh_5_3_cat_loss.bed
+		-rwxrwxrwx 1 root root 1289591 2011-02-04 14:14 del_3_2_cat_named.bed
+		-rwxrwxrwx 1 root root    9128 2011-02-04 14:15 del_4_3_cat_named.bed
+		-rwxrwxrwx 1 root root 1649387 2011-02-04 14:15 ins_3_2_cat_named.bed
+		-rwxrwxrwx 1 root root  642110 2011-02-04 14:15 ins_4_3_cat_named.bed
+		-rwxrwxrwx 1 root root   23707 2011-02-04 14:14 snp_all_cat_gain.bed
+		-rwxrwxrwx 1 root root   42754 2011-02-04 14:14 snp_all_cat_loss.bed
+		
+		# ins_3_2
+		$ cat ins_3_2_cat_named.bed acgh_5_3_cat_gain.bed snp_all_cat_gain.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_3_2_indiv_comp.bed
+		$ for i in *indiv_comp.bed; do perl intersect_merge_yalis_data.pl $i $i.cohit; done
+		$ for i in *.cohit; do perl create_stats_yali_intersection.pl $i $i.tab; done
+		
+		# ins_4_3
+		$ cat ins_4_3_cat_named.bed acgh_5_3_cat_gain.bed snp_all_cat_gain.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_4_3_indiv_comp.bed
+		$ for i in *indiv_comp.bed; do perl intersect_merge_yalis_data.pl $i $i.cohit; done
+		$ for i in *.cohit; do perl create_stats_yali_intersection.pl $i $i.tab; done
+
+		# del_3_2
+		$ cat del_3_2_cat_named.bed acgh_5_3_cat_loss.bed snp_all_cat_loss.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > del_3_2_indiv_comp.bed
+		$ for i in *indiv_comp.bed; do perl intersect_merge_yalis_data.pl $i $i.cohit; done
+		$ for i in *.cohit; do perl create_stats_yali_intersection.pl $i $i.tab; done
+		
+		# del_4_3
+		$ cat del_4_3_cat_named.bed acgh_5_3_cat_loss.bed snp_all_cat_loss.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > del_4_3_indiv_comp.bed
+		$ for i in *indiv_comp.bed; do perl intersect_merge_yalis_data.pl $i $i.cohit; done
+		$ for i in *.cohit; do perl create_stats_yali_intersection.pl $i $i.tab; done
+		
+	# Comparison 2.
+		# OK, so the goal here is to merge the ngs data without using individual animal names
+		# Treat it all as one set and check the overlap.
+		derek@derek-desktop:~/share/cow4_doc/yali_hd_comp/simple$ cp *master.bed.name ../
+		# that takes care of the NGS intervals
+		
+		$ for i in *gain.bed
+		> do
+		> ../../../BEDTools-Version-2.10.1/bin/mergeBed -i $i > $i.non
+		> done
+		
+		$ for i in *loss.bed; do ../../../BEDTools-Version-2.10.1/bin/mergeBed -i $i > $i.non; done
+		
+		$ for i in acgh*.non; do perl -e' $f = $ARGV[0]; open(IN, "< $f"); while (<IN>){ chomp $_; print "$_\tacgh\n";}' $i > $i.name; done
+		$ for i in snp*.non; do perl -e' $f = $ARGV[0]; open(IN, "< $f"); while (<IN>){ chomp $_; print "$_\tsnp\n";}' $i > $i.name; done
+		
+		$ cat acgh_5_3_cat_gain.bed.non.name snp_all_cat_gain.bed.non.name ins_4_3_master.bed.name | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_4_3_merged_all.bed
+		$ cat acgh_5_3_cat_gain.bed.non.name snp_all_cat_gain.bed.non.name ins_3_2_master.bed.name | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_3_2_merged_all.bed
+		$ cat acgh_5_3_cat_loss.bed.non.name snp_all_cat_loss.bed.non.name del_3_2_master.bed.name | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > del_3_2_merged_all.bed
+		$ cat acgh_5_3_cat_loss.bed.non.name snp_all_cat_loss.bed.non.name del_4_3_master.bed.name | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > del_4_3_merged_all.bed
+		
+		$ for i in *all.bed; do perl create_simple_yali_stats.pl $i $i.simple; done
+		# Merged all of the data into a single excel spreadsheet (all_animal_overlap.xlsx)
+		
+	# Comparison 3.
+		# Now, I need to do comparisons by merging intervals per breed
+		# I should use my data from the merged breed_doc files for the NGS side, but I will have to write a custom script to segregate Yali's data
+		# I have angus breed data for all three settings ( 3_2, 4_3, 5_4)
+		
+		# copied angus data from server 3
+		$ for i in *.final*; do perl -e' $f = $ARGV[0]; open(IN, "< $f"); while (<IN>){ chomp $_; print "$_\tNGS\n";}' $i > $i.name; done
+		
+		# Now to just get the angus references from the acgh and snp datasets
+		$ for i in acgh*.bed; do perl -ne 'chomp $_; @ls = split(/\t/); @ns = split(/\_/, $ls[3]); if ($ns[$#ns] =~ /ang/) {print "$ls[0]\t$ls[1]\t$ls[2]\tacgh\n";} else {next;}' < $i > $i.ang; done
+		$ for i in snp*.bed; do perl -ne 'chomp $_; @ls = split(/\t/); @ns = split(/\_/, $ls[3]); if ($ns[$#ns] =~ /ang/) {print "$ls[0]\t$ls[1]\t$ls[2]\tsnp\n";} else {next;}' < $i > $i.ang; done
+		
+		$ for i in *.wssd.name; do prefix=`echo $i | awk -F'_' '{ print $1"_"$2"_"$3 }'`; name=$prefix"_insertion.bed"; cat $i acgh_5_3_cat_gain.bed.ang snp_all_cat_gain.bed.ang | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > $name; done
+		$ for i in *.tab.name; do prefix=`echo $i | awk -F'_' '{ print $1"_"$2"_"$3 }'`; name=$prefix"_deletion.bed"; cat $i acgh_5_3_cat_loss.bed.ang snp_all_cat_loss.bed.ang | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > $name; done
+		
+		$ for i in *_deletion.bed; do perl create_simple_yali_stats.pl $i $i.simple; done
+		$ for i in *_insertion.bed; do perl create_simple_yali_stats.pl $i $i.simple; done
+		
+	# Adding the 5 stdev insertion cutoff to comparisons 1 and 2
+		$ find . -name "*_auto_5_file1.bed.final.wssd" | xargs -i cp '{}' ./ind_doc/
+		
+		# For the individual animals
+		$ for i in *wssd; do prefix=`echo $i | cut -d'_' -f1`; name=$prefix"_ins_5.bed"; perl -e '$file = $ARGV[0]; chomp $file; @n = split(/\_/, $file); open (IN, "< $file"); while(<IN>){ chomp $_; print "$_\t$n[0]\n";}' $i > $name; done
+		$ cat *.bed | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_5_indv_animal.bed
+		$ cp ins_5_indv_animal.bed ../three_comp/1_individuals/
+		$ cat ins_5_indv_animal.bed ../acgh_5_3_cat_gain.bed ../snp_all_cat_gain.bed | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_5_indv_comp.bed
+		$ perl ../intersect_merge_yalis_data.pl ins_5_indv_comp.bed ins_5_indv_comp.bed.cohit
+		$ perl create_stats_yali_intersection.pl ins_5_indv_comp.bed.cohit ins_5_indv_comp.bed.cohit.tab
+		
+		# For the combined animals and breeds:
+		$ cat *.wssd | ../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > ins_5_combined.bed
+		$ perl -ne 'chomp $_; print "$_\tNGS\n";' < ins_5_combined.bed > ins_5_name_combined.bed
+		$ cp ins_5_name_combined.bed ../three_comp/2_all/
+		$ cat ins_5_name_combined.bed acgh_5_3_cat_gain.bed.non.name snp_all_cat_gain.bed.non.name | ../../../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin -nms > ins_5_merged_all.bed
+		$ perl create_simple_yali_stats.pl ins_5_merged_all.bed ins_5_merged_all.bed.simple
+		
+___________________________________
+Major Table design
+___________________________________
+
+# There are three major tables that George wants me to design for the paper
+	1. Summary of 45 animals (shared in all three datasets)
+			method	method	method
+		animal
+		animal
+		animal
+	
+	2. Merged CNVRs across method
+			CNVR	method?	method?
+		animal
+		animal
+		
+	3. Merged across animals
+			chr	start	end	#animals
+		#
+		#
+		#
+		
+# The toughest one might be the first, let's work out how I'm going to make this one
+# I need to set some guidelines
+	# First, deal with each animal individually
+	# Second, print CNVRs side by side if they overlap
+	# third, order CNVRs by chromosome
+	
+	# OK, it was a long hard battle, but I think I got the script to work!
+	# Script name is combine_CNVRs_full_table.pl
+	
+	# It worked on a test dataset that I made up in my shared folder (/share/cow4_test/)
+	
+# Now I need to get the files organized that I will use in the script:
+	-a ins_4_3_cat_named.bed
+	-b del_4_3_cat_named.bed
+	-c unmerge_pem_del.bed
+	-d acgh_5_3_cat_gain.bed
+	-e acgh_5_3_cat_loss.bed
+	-f snp_all_cat_gain.bed
+	-g snp_all_cat_loss.bed
+	
+# So, the script will take an interval, and if it is within a 50kb range of an X value, it will print out that interval.
+# Overlapping intervals from the other files are included
+# It takes a while (~30 - 40 minutes) but it does an ok job
+
+# My PEM data had the animal names messed up, so I had to chop off a "P" from each animal name using a perl one-liner
+
+
+# Now lets work on table 2:
+	# Just to make this easier, let's "tag" each of my DoC and PEM bed files
+	# Tag should be a "name" just like the snp and acgh bed files: (method_animal)
+	# Let's create some short scripts to reformat the animal name and method tags of my existing files
+	
+	# Created a very fast script to do this: bed_tag_change_mine.pl
+	$ perl bed_tag_change_mine.pl ins_4_3_cat_named.bed doc_ins_table2.bed docins
+	$ perl bed_tag_change_mine.pl del_4_3_cat_named.bed doc_del_table2.bed docdel
+	$ perl bed_tag_change_mine.pl unmerge_pem_del.bed pem_del_table2.bed pemdel
+	
+	# Now to reformat the other datasets
+	# Created a script for this too: bed_tag_change_yalis.pl
+	$ perl bed_tag_change_yali.pl acgh_5_3_cat_gain.bed acgh_gain_table2.bed acghins
+	$ perl bed_tag_change_yali.pl snp_all_cat_gain.bed snp_gain_table2.bed snpins
+	$ perl bed_tag_change_yali.pl acgh_5_3_cat_loss.bed acgh_loss_table2.bed acghdel
+	$ perl bed_tag_change_yali.pl snp_all_cat_loss.bed snp_loss_table2.bed snpdel
+	
+	# Now I need to split them into animals and merge just the animals together
+	# Created a script to do this: bed_split_by_animal.pl
+	$ perl bed_split_by_animal.pl acgh_gain_table2.bed
+	...
+	
+	# Now I am going to merge each animal individually, across methods
+	# Made a wrapper script to do this: bed_merge_across_method.pl
+	$ perl bed_merge_across_method.pl
+	
+	# Now, I just need to cat the files and create a new script to process them all into a table!
+	# Made a script to take the concatenated file and turn it into a table:
+	$ perl bed_create_merge_method_table.pl all_animals_merge_method.bed
+	
+	
+# Table 3 is the easiest (I think I already have this one, but I need to number each of the CNVRs):
+	# Well, lets do it over again, similar to the way that I did the merge for table 2
+	# I am going to use bedtools merge on each of the animal files (but I'll convert yali's files into my tag format)
+	# Changed the script bed_tag_change_yali.pl to just output simple tags
+	$ perl bed_tag_change_yali.pl snp_all_cat_loss.bed snp_loss_retag.bed
+	...
+	
+	# Now I just need to bedtools merge each file...
+	$ for i in *retag*; do ../../../BEDTools-Version-2.10.1/bin/mergeBed -i $i -nms > $i.merge; done
+	$ ../../../BEDTools-Version-2.10.1/bin/mergeBed -i ins_4_3_cat_named.bed -nms > doc_ins_bed.merged
+	$ ../../../BEDTools-Version-2.10.1/bin/mergeBed -i del_4_3_cat_named.bed -nms > doc_del_bed.merged
+	$ ../../../BEDTools-Version-2.10.1/bin/mergeBed -i corrected_pem_del.bed -nms > pem_del_bed.merged
+	
+	# I created a script to generate the final table: bed_tag_animal_merge_table.pl
+	# It takes ARGV input from as many files as you push into it, generates tags from each file, and creates a .tab file with the specifications I described above
+	$ perl bed_tag_animal_merge_table.pl doc_ins_bed.merged doc_del_bed.merged snp_gain_retag.bed.merge snp_loss_retag.bed.merge acgh_gain_retag.bed.merge acgh_loss_retag.bed.merge pem_del_bed.merged
+	
+	

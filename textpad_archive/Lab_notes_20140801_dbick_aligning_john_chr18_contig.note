@@ -1,0 +1,81 @@
+08/01/2014
+# These are my notes for aligning John's chr18 contigs with his Holstein data
+
+# I'll try to do this fast, and with BWA so that I can do RPSR and the like, later
+Blade14: /mnt/iscsi/vnx_gliu_7/john_assembled_contigs
+$ bwa index chr18_bac_contigs_qstrimmed.fa
+
+# First a test run on Arlinda-Chief
+$ cat ../john_alignment_run_conf.txt | grep Arlinda-Chief | perl -lane '@base = split(/\//, $F[0]); @sbase = split(/[_\.]/, $base[-1]); $f1b = join("_", @sbase[0 .. 4]); @base = split(/\//, $F[1]); @sbase = split(/[_\.]/, $base[-1]); $f2b = join("_", @sbase[0 .. 4]); print "bwa aln chr18_bac_contigs_qstrimmed.fa $F[0] > Arlinda-Chief/$f1b.sai\n"; system("bwa aln chr18_bac_contigs_qstrimmed.fa $F[0] > Arlinda-Chief/$f1b.sai"); print "bwa aln chr18_bac_contigs_qstrimmed.fa $F[1] > Arlinda-Chief/$f2b.sai\n"; system("bwa aln chr18_bac_contigs_qstrimmed.fa $F[1] > Arlinda-Chief/$f2b.sai"); print "bwa sampe chr18_bac_contigs_qstrimmed.fa Arlinda-Chief/$f1b.sai Arlinda-Chief/$f2b.sai $F[0] $F[1] > Arlinda-Chief/$f1b.sam\n"; system("bwa sampe chr18_bac_contigs_qstrimmed.fa Arlinda-Chief/$f1b.sai Arlinda-Chief/$f2b.sai $F[0] $F[1] > Arlinda-Chief/$f1b.sam");'
+
+# Let's pull the discordant reads (reads 4 stdevs from the estimated mean insert length) from the sams
+$ for i in Arlinda-Chief/*.sam; do cat $i; done | perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] =~ /\*/){next;}elsif($F[8] > 650 || $F[8] < 250){print $_;}' > Arlinda-Chief/Arlinda-Chief_discordant_reads.sam
+
+
+# Now I need to get an assessment of where each quiver fragment aligns in the genome
+3850: /seq1/side_projects/john_chr18/
+$ grep scf7180000000103 chr18_whole_chr_nucmer.coords | perl -ne '$_ =~ s/\|//g; $_ =~ s/\s+/\t/g; print "$_\n";' | sort -k3,3n -k4,4n   //
+# This command gives me a good sense of where they are
+
+
+# Let's count the number of discordant read pairs per fragment. This will give me an excellent idea of which contigs are good
+# I am selecting candidates by the number of discordant reads in their bounds and by the discontinuity of their mummer plots
+$ perl -e 'while(<>){chomp; @s = split(/\t/); $h{$s[2]} += 1;} foreach my $k (sort{$h{$b} <=> $h{$a}} keys(%h)){print "$k\t$h{$k}\n";}' < Arlinda-Chief/Arlinda-Chief_discordant_reads.sam
+scf7180000000110|quiver 3116729	<- obvious misassembly
+scf7180000000124|quiver 1702999	<- It's contiguous with the UMD3 genome, but it has alot of repeats. No misassembly
+scf7180000000119|quiver 1495462	<- obvious misassembly
+scf7180000000139|quiver 1291803	<- It's contiguous with the UMD3 genome, but the beginning is likely a misassembly
+scf7180000000125|quiver 1158882	<- obvious misassembly
+scf7180000000116|quiver 976531	<- It's contiguous with the UMD3 genome, but the end is likely a misassembly
+scf7180000000122|quiver 924345	<- obvious misassembly in the middle
+scf7180000000121|quiver 625881	<- It's contiguous with the UMD3 genome, but it has alot of repeats. No misassembly
+scf7180000000118|quiver 596059	<- obvious misassembly
+scf7180000000120|quiver 544659	<- It's contiguous with the UMD3 genome, but it has alot of repeats. No misassembly
+scf7180000000102|quiver 523758	<- It's contiguous with the UMD3 genome, but it has alot of repeats. Possibly misassembly at end
+scf7180000000131|quiver 513035	<- obvious misassembly
+scf7180000000117|quiver 330290	<- misassembly at the end
+scf7180000000132|quiver 319172	<- misassembly at the beginning
+scf7180000000133|quiver 248964	<- It's contiguous with the UMD3 genome, but it has alot of repeats. No misassembly
+scf7180000000134|quiver 228659	<- It's contiguous with the UMD3 genome, but it has alot of repeats. No misassembly
+scf7180000000130|quiver 156231	<- It's contiguous with the UMD3 genome, but it has alot of repeats. No misassembly
+scf7180000000129|quiver 147138	<- possible misassemblies at beginning and end
+scf7180000000111|quiver 36130	<- possible misassembly at the beginning, but most likely due to repeats
+scf7180000000112|quiver 32807	<- possible misassembly at the end
+scf7180000000107|quiver 19566
+scf7180000000140|quiver 9898	<- possible misassembly at the end, but it's still a candidate
+scf7180000000142|quiver 9171	<- possible misassembly
+scf7180000000141|quiver 8894	<- possible misassembly at the end, but it's still a candidate
+scf7180000000144|quiver 8641	<- possible misassembly at the beginning; might be Holstein SV
+scf7180000000103|quiver 5090	<- fair candidate
+scf7180000000127|quiver 639	<- good candidate!	6000-18,000 is novel
+scf7180000000114|quiver 587	<- good candidate!	0-10,000 is novel
+scf7180000000136|quiver 270	<- good candidate!	4000-15,000 is novel
+scf7180000000123|quiver 168
+scf7180000000115|quiver 105
+scf7180000000106|quiver 74
+scf7180000000135|quiver 48
+scf7180000000109|quiver 1
+
+$ grep scf7180000000136 chr18_whole_chr_nucmer.coords | perl -ne '$_ =~ s/\|//g; $_ =~ s/\s+/\t/g; print "$_\n";' | sort -k1,1n	//
+40336415        40336750        18941   19279   336     339     80.34   66004023        19412   chr18:1-66004023        scf7180000000136quiver
+57562598        57566444        3845    1       3847    3845    99.90   66004023        19412   chr18:1-66004023        scf7180000000136quiver
+<--- Here is where John's SNP and the tandem dup should be! 4,000 to 15,000 on this contig!--->
+57673141        57676671        19412   15883   3531    3530    99.58   66004023        19412   chr18:1-66004023        scf7180000000136quiver
+57861749        57862066        1224    1545    318     322     86.77   66004023        19412   chr18:1-66004023        scf7180000000136quiver
+
+$ grep scf7180000000114 chr18_whole_chr_nucmer.coords | perl -ne '$_ =~ s/\|//g; $_ =~ s/\s+/\t/g; print "$_\n";' | sort -k1,1n	//
+57529163        57546617        10118   27574   17455   17457   99.85   66004023        27574   chr18:1-66004023        scf7180000000114quiver
+
+$ grep scf7180000000127 chr18_whole_chr_nucmer.coords | perl -ne '$_ =~ s/\|//g; $_ =~ s/\s+/\t/g; print "$_\n";' | sort -k1,1n	//
+15678738        15678931        1681    1874    194     194     97.42   66004023        17030   chr18:1-66004023        scf7180000000127quiver
+57678375        57684610        6179    1       6236    6179    96.06   66004023        17030   chr18:1-66004023        scf7180000000127quiver
+57724852        57725966        1       1115    1115    1115    99.55   66004023        17030   chr18:1-66004023        scf7180000000127quiver
+57746436        57746636        17030   16830   201     201     100.00  66004023        17030   chr18:1-66004023        scf7180000000127quiver
+60438473        60438880        657     1060    408     404     92.40   66004023        17030   chr18:1-66004023        scf7180000000127quiver
+60441535        60442883        1936    3284    1349    1349    84.20   66004023        17030   chr18:1-66004023        scf7180000000127quiver
+60442485        60445203        3138    5859    2719    2722    86.89   66004023        17030   chr18:1-66004023        scf7180000000127quiver
+60445899        60446227        5855    6179    329     325     95.76   66004023        17030   chr18:1-66004023        scf7180000000127quiver
+61002250        61003706        3558    5032    1457    1475    81.92   66004023        17030   chr18:1-66004023        scf7180000000127quiver
+
+
+# OK, we need to check to see if we have any aligned reads within the regions that appear to be novel to the newly assembled fragments

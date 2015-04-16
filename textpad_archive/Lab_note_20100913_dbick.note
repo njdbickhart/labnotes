@@ -1,0 +1,103 @@
+2010_09_13
+#My goal today is to create a consensus sequence for turkey CR1 sequences derived from the recent turkey genome paper.
+#The sequences are contained in the file: turkey_CR1.fa
+
+#Alignment with Clustalw2 was performed
+	1. clustalw2 with no other options
+	
+	2. multiple alignments to clustal format
+	
+	3. alignments with the default settings only revealed a conserved region within the middle of the elements
+	
+#Aligning a cropped segment
+	1. Since CR1 is more likely to replicate at the 3' end, I should crop the initial fastas and align only the ends.
+	
+	2. Creating a perl script to conserve the last 900 bp of each fasta file for future alignment
+		-reduce_fasta.pl
+		-crops out 900 bp when applicable; 500 bp if sequence is shorter
+		
+	3. Alignments still pretty bad, but there are some workable segments
+	
+	4. Gaps will be a big problem in generating a consensus but I'll cross that hurdle when I get to it
+	
+	5. Found the accession number (U88211) for the consensus CR1 George used in the GB&E paper on chicken CR1
+		-incorporated it as an entry in the cropped fasta file
+		-aligned using clustalw2
+		-only the junction of ORF1 and ORF2 in the Gallus gallus CR1 aligned with the consensus sequences identified
+		-they made the consensus sequences off of the internal segment of the repeat!
+		-also, they used weird repeat names to classify the elements (the "R" family)
+		-their CR1_B has 92% ID with chicken CR1_B
+		
+#My options for continuing:
+	1. Crop out the nucleotides between 1676 and 2020 of the alignment and repeatmask with them
+	
+	2. Use the 465bp sequences that George developed for the Chicken CR1 analysis and zebrafinch CR1 analysis
+	
+	#I like option 2 better, since the existing Turkey data is far too piecemeal to use effectively.
+	
+_________________________________________________________________________
+#Setting up the Repeatmasker library file
+_________________________________________________________________________
+
+#Started out with the databases created by George and copied them over to my repeatmasker library folder
+
+#The chicken 465bp sequences had an extraneous carrot in front of the sequence; this would interfere with the repeatmasker search
+	- Developed a quick perl script to remove the extraneous fasta carrot
+	- remove_carrot.pl
+	- moved to bin for future use or modification
+	- cat *.out > chickenCR
+	- cat *.out > zebrafinchCR1
+	- renamed with "_465" suffix (both files)
+	- cat chickenCR_465 zebrafinchCR1_465 > combined_465
+	- combined_465 is the library of chicken and zebrafinch 465bp CR1 repeats
+	
+#I want to test this library out on one chromosome fasta before I do the whole thing.
+	- Used turkey chr26 as a test
+	- RepeatMasker -s -no_is -dir /home/dibkchart/RepeatMasker/turkey/ -lib /home/dbickhart/Libraries/combined_465 /home/gliu/data6/turkey2.01/fasta/Chr26.fa
+	
+	
+__________________________________________________________________________
+#Setting up MrFast
+__________________________________________________________________________
+
+#Agh! I ran out of space on my Server2 home directory!
+	- In order to move files to Server3 use the following
+		ssh 172.16.0.190
+		cd /mnt/gliu1_usb
+		scp -pr gliu@172.16.0.146:/mnt/data2/gliu/penncnv/finalsnpcnv ./
+		
+	- Now, to migrate files over to server 3
+		scp -pr dbickhart@172.16.0.146:/home/dbickhart/RepeatMasker ./
+		scp -pr dbickhart@172.16.0.146:/home/dbickhart/mrfast-2.0.0.3.zip ./
+		scp -pr dbickhart@172.16.0.146:/home/dbickhart/gcc-g++-4.1.2.tar ./
+   		scp -pr dbickhart@172.16.0.146:/home/dbickhart/gcc-g++-4.1.2.tar ./
+   		
+   	- Server3 already has GCC version 4.1.2 installed, so I was able to succesfully compile mrfast
+   	
+   	- mrfast directory is /home/dbickhart/mrfast/
+   	
+   	- Sadly, I don't have access to a larger hard drive and the /home/dbickhart/ drive is nearly full
+   	
+#OK, in the meantime I can run the repeatmasker program and output data to my home directory (the files should be small enough to do this)
+	- creating a script in order to automate the repeat process
+	
+	- my exercise in shell scripting failed, so I made a perl script instead: turkeyautomation.txt
+	
+	- apparently repeatmasker creates temporary chromosome files in order to start producing output so I ran out of memory again
+
+	
+2010_9_14
+#I set up the new machine today and I still don't have access to the larger hard disks on the servers
+#What I'm going to do is copy the Turkey genome over to this new computer and run repeatmasker locally
+#I will test out chromosome 26 first just to estimate the runtime for a microchromosome
+
+___________________________________________________________________________
+#Testing out Virtualbox local run of RepeatMasker
+___________________________________________________________________________
+
+#Set up a virtualbox Ubuntu 10.04 (x86) guest on this Windows 7 host
+
+#Created a shared folder (SharedFolders) and mounted it using the command:
+	sudo mount -t vboxsf SharedFolders ~/share
+	
+	

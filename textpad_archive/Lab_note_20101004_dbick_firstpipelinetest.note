@@ -1,0 +1,1075 @@
+2010_10_04
+______________________________________
+Working on CNV-seq
+______________________________________
+# CNV-seq would be an excellent way of testing for read depth based CNV's... if it worked!
+
+# There is a debug option
+	./cnv-seq.pl --test ../blackstar/sembatch1/merged_sort.hits --ref UMD3_simulation.hits --genome-size 2500000000 --debug
+	
+		window size to use is 7634.0629336404 x 1.5 = 11451
+		window size to be used: 11451
+		start counting test hits ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		100000 of 37902244 ...
+		200000 of 37902244 ...
+		300000 of 37902244 ...
+
+		...
+		
+		start counting ref hits ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		        hit at window 0 ...
+		100000 of 69472580 ...
+		200000 of 69472580 ...
+		
+		...
+		
+		read 69472580 ref reads, out of 69472580 lines
+		done counting:
+		%chrom: $VAR1 = '7180001747072';
+		$VAR2 = 1;
+		$VAR3 = '7180002020996';
+		$VAR4 = 1;
+		$VAR5 = '7180001697315';
+		$VA ...
+		%count: $VAR1 = '7180001747072';
+		$VAR2 = [
+		          [
+		            20
+		          ],
+		          [
+		            2 ...
+		write read-counts into file: merged_sort.hits-vs-UMD3_simulation.hits.log2-0.6.pvalue-0.001.count
+		Can't use an undefined value as an ARRAY reference at ./cnv-seq.pl line 205, <REF> line 69472580.
+		
+	# I need to find out what the data::Dumper module is for perl (called in line 	192 of the script)
+	
+	# OK, Data::Dumper puts all contents of a variable/hash/array into different "VAR" subheadings. The reason why the last "VAR" is cropped is because the author of this script
+		decided to put the dump into a scalar variable and then print only the first hundred characters using substr. 
+		
+	# I downloaded the "Test" files that the CNV-seq guy posted, and his data format is numerical	
+	
+	# I am going to try to run a test using JUST the data from Chromosome 1 (and by removing the "Chr1" from the left column of the data)
+		grep "Chr1" merged_sort.hits > merged_Chr1.hits
+		find merged_Chr1.hits | xargs perl -p -i.bak -e 's/^.{5}\t.+\n//g'
+		./cnv-seq.pl --test ../blackstar/sembatch1/merged_Chr1.hits --ref UMD3_Chr1.hits --genome-size 158337067
+		# I forgot to remove the "Chr" from each chromosome column
+		# This time it worked, but R did not load! 
+		# I think that the issue is with the Chromosome Un columns. If I can grep the chr names (without the chrUN contigs) then I might have a shot at making this work!
+		
+		# Installing R packages on server 3 is a pain (and isn't saved each time!) so I'm going to install it on my Ubuntu virtualbox
+		
+		
+		
+		# Shock of shocks! If I install packages using the R terminal, they are automatically written to my /home/ directory
+		# This actually worked out! Installed the cnv packages using this line: 
+			R CMD INSTALL cnv/  -l /home/dbickhart/R/x86_64-unknown-linux-gnu-library/2.9
+			
+		# Ran the script using:
+			./cnv-seq.pl --test ../blackstar/sembatch1/merged_Chr1.hits --ref UMD3_Chr1.hits --genome-size 158337067
+			
+	# Using R to view the data:
+		> library(cnv)
+		> data <- read.delim("merged_Chr1.hits-vs-UMD3_Chr1.hits.log2-0.6.pvalue-0.001.minw-4.cnv")
+		> cnv.print(data)
+			...
+			CNVR_1321       chrChr1 156948121       156992041       43921   -1.128627       8.810564e-94
+			CNVR_1322       chrChr1 157016441       157035961       19521   -0.8099646      1.020410e-25
+			CNVR_1323       chrChr1 157045721       157143321       97601   -0.8499107      1.228530e-131
+			CNVR_1324       chrChr1 157148201       157284841       136641  -1.048088       8.728691e-257
+			CNVR_1325       chrChr1 157304361       157362921       58561   -0.872692       2.878536e-83
+			CNVR_1326       chrChr1 157387321       157436121       48801   -0.789218       3.933359e-59
+			CNVR_1327       chrChr1 157475161       157499561       24401   -0.8452508      5.687536e-34
+			CNVR_1328       chrChr1 157519081       157558121       39041   -0.863715       3.346588e-55
+			CNVR_1329       chrChr1 157567881       157636201       68321   -0.9359739      2.151453e-108
+			CNVR_1330       chrChr1 157733801       157792361       58561   -0.8526104      3.592226e-80
+			CNVR_1331       chrChr1 157811881       157850921       39041   -0.9397169      3.818284e-63
+			CNVR_1332       chrChr1 157855801       157963161       107361  -0.8941153      3.959966e-157
+			CNVR_1333       chrChr1 157992441       158060761       68321   -0.8405276      4.653576e-91
+			CNVR_1334       chrChr1 158075401       158143721       68321   -1.049307       1.182567e-129
+			CNVR_1335       chrChr1 158148601       158197401       48801   -0.8095314      1.156769e-61
+			CNVR_1336       chrChr1 158212041       158241321       29281   -0.9205342      2.741212e-46
+			CNVR_1337       chrChr1 158285241       158304761       19521   -0.8492742      1.018798e-27
+			CNVR_1338       chrChr1 158309641       158329161       19521   -0.9334098      4.098376e-32
+		>  plot.cnv(data, CNV=25, upstream=4e+6, downstream=4e+6)
+			Error in function (d, p)  : argument "p" is missing, with no default
+			In addition: Warning message:
+			In plot.cnv.chr(to.plot, chromosome = chrom, ...) :
+  			missed some data points due to small ylim range
+		> plot.cnv.chr(data, chromosome=1, from=154620000, to=158305000)
+			Error in eval(expr, envir, enclos) : object 'position' not found
+			In addition: Warning messages:
+			1: In max(na.omit(data$p.value)) :
+			no non-missing arguments to max; returning -Inf
+		
+	# OK, so the R output functions are messed up on server 3. Luckily, I am able to use R on my Ubuntu distribution in order to get actual results!
+		> plot.cnv(data, CNV=4, upstream=4e+6, downstream=4e+6)
+			Warning messages:
+			1: In plot.cnv.chr(to.plot, chromosome = chrom, ...) :
+ 			 missed some data points due to small ylim range
+			2: Removed 11 rows containing missing values (geom_point). 
+			3: Removed 11 rows containing missing values (geom_point). 
+			
+		> as.list(plot.cnv.chr)
+			$data
+
+
+			$chromosome
+			[1] NA
+
+			$from
+			[1] NA
+
+			$to
+			[1] NA
+
+			$title
+			[1] NA
+
+			$ylim
+			c(-4, 4)
+
+			$glim
+			c(NA, NA)
+
+			$xlabel
+			[1] "Position (bp)"
+
+			[[9]]
+			{
+   				chrom.name <- chromosome
+    				if (!is.na(chrom.name)) 
+        				data <- subset(data, chromosome == chrom.name)
+    				if (!is.na(from) & !is.na(to)) 
+        				data <- subset(data, position >= from & position <= to)
+    				if (length(unique(data$chromosome)) > 1) 
+       					 warning("More than one chromosome! use plot.cnv.all() instead?")
+    				if (nrow(subset(data, data$log2 > max(ylim) | data$log2 < 
+        				min(ylim))) > 0) 
+        				warning("missed some data points due to small ylim range")
+    				if (is.na(glim[1])) 
+        				glim[1] <- median(subset(data, log2 >= 0.6 & log2 <= 
+            				1)$p.value)
+    				if (is.na(glim[1])) 
+        				glim[1] <- 1e-04
+    				if (is.na(glim[2])) 
+        				glim[2] <- max(na.omit(data$p.value))
+    				p <- ggplot() + geom_point(data = data, map = aes(x = position, 
+        				y = log2, colour = p.value))
+    				p <- p + scale_y_continuous(expression(paste(Log[2], " Ratio")), 
+        				lim = ylim)
+    				p <- p + scale_x_continuous(xlabel)
+    				p <- p + scale_colour_gradient(limits = glim, trans = "log10", 
+        				low = "red", high = "white")
+   				temp = subset(data, data$p.value < min(glim))
+    				if (nrow(temp) > 0) 
+        				p <- p + geom_point(data = temp, map = aes(x = position, 
+            				y = log2), colour = "red")
+    				if (!is.na(title)) 
+        				p$title <- title
+    				p
+			}
+
+		> plot.cnv.chr(data, chromosome=1, from=1, to=1000000)
+			Error in eval(expr, envir, enclos) : object 'position' not found
+			In addition: Warning messages:
+			1: In max(na.omit(data$p.value)) :
+			  no non-missing arguments to max; returning -Inf
+			2: In log(c(1e-04, -Inf), 10) : NaNs produced
+			
+		# Alright... I'm limited to just one function out of the package...
+		
+		# Wait! plot.cnv.all works!
+		
+		> plot.cnv.all(data, ylim=c(-4,4))
+			Warning messages:
+			1: In plot.cnv.all(data, ylim = c(-4, 4)) :
+			  missed some data points due to small ylim range
+			2: In RColorBrewer::brewer.pal(n, .$pal_name()) :
+			  minimal value for n is 3, returning requested palette with 3 different levels
+		
+			3: Removed 101 rows containing missing values (geom_point). 
+			4: In RColorBrewer::brewer.pal(n, .$pal_name()) :
+			  minimal value for n is 3, returning requested palette with 3 different levels
+
+# Now to try to run the program on multiple chromsomes at once but without ChrUn getting in the way!
+	$  grep 'Chr' UMD3_simulation.hits > UMD3_full.hits
+	$  grep 'Chr' merged_sort.hits > merged_full.hits
+	$  ./cnv-seq.pl --test ../blackstar/sembatch1/merged_full.hits --ref UMD3_full.hits --genome-size 2500000000
+		
+		genome size used for calculation is 2500000000
+		../blackstar/sembatch1/merged_full.hits: 33838469 reads
+		UMD3_full.hits: 69214027 reads
+		The minimum window size for detecting log2>= 0.6 should be 6385.9645431929
+		The minimum window size for detecting log2<=-0.6 should be 8380.39986867991
+		window size to use is 8380.39986867991 x 1.5 = 12571
+		window size to be used: 12571
+		read 33838469 test reads, out of 33838469 lines
+		read 69214027 ref reads, out of 69214027 lines
+		write read-counts into file: merged_full.hits-vs-UMD3_full.hits.log2-0.6.pvalue-0.001.count
+		R package cnv output: merged_full.hits-vs-UMD3_full.hits.log2-0.6.pvalue-0.001.minw-4.cnv
+		Loading required package: ggplot2
+		Loading required package: reshape
+		Loading required package: plyr
+		
+		Attaching package: 'reshape'
+		
+		
+		        The following object(s) are masked from package:plyr :
+		
+		         round_any
+		
+		Loading required package: grid
+		Loading required package: proto
+		[1] "chromosome:  Chr10"
+		[1] "chromosome:  Chr7"
+		[1] "chromosome:  Chr4"
+		[1] "chromosome:  Chr27"
+		[1] "chromosome:  Chr25"
+		[1] "chromosome:  Chr22"
+		[1] "chromosome:  Chr19"
+		[1] "chromosome:  Chr1"
+		[1] "chromosome:  Chr9"
+		[1] "chromosome:  Chr2"
+		[1] "chromosome:  Chr21"
+		[1] "chromosome:  Chr20"
+		[1] "chromosome:  Chr11"
+		[1] "chromosome:  Chr13"
+		[1] "chromosome:  Chr8"
+		[1] "chromosome:  Chr26"
+		[1] "chromosome:  Chr14"
+		[1] "chromosome:  Chr29"
+		[1] "chromosome:  Chr15"
+		[1] "chromosome:  Chr18"
+		[1] "chromosome:  ChrX"
+		[1] "chromosome:  Chr3"
+		[1] "chromosome:  Chr16"
+		[1] "chromosome:  Chr28"
+		[1] "chromosome:  Chr6"
+		[1] "chromosome:  Chr12"
+		[1] "chromosome:  Chr17"
+		[1] "chromosome:  Chr23"
+		[1] "chromosome:  Chr5"
+		[1] "chromosome:  Chr24"
+
+	# Oh my God! It worked!
+	
+	$  scp -pr merged_full.hits-vs-UMD3_full.hits.log2-0.6.pvalue-0.001.minw-4.cnv dbickhart@172.16.0.146:/home/dbickhart/
+
+	<> Ubuntu
+	
+	> data <- read.delim("merged_full.hits-vs-UMD3_full.hits.log2-0.6.pvalue-0.001.minw-4.cnv")
+	
+	> plot.cnv(data, CNV=4, upstream=4e+6, downstream=4e+6)
+		[1] "CNV number given is not avaliable from data"
+		# Note: if I do multiple chromosomes at a time, the program does not make "CNV counts"
+		
+	> plot.cnv.all(data, ylim=c(-4,4))
+	
+	> dev.copy(pdf,'cnv_umd3_blackstar.pdf')
+	
+	> dev.off()
+	
+# Some thoughts: We don't have enough coverage in blackstar to make meaningful comparisons. Instead, I think that the Eck et al. dataset might be ideal for cnv-seq comparisons.
+
+# If we get around 4 - 5x coverage in any one dataset, then I think that we have enough data to make worthwhile read-depth comparisons. 
+
+___________________________________________
+Back to Hydra
+___________________________________________
+
+# Since ChrUn led to so many problems with cnv-seq, what if I remove those hits from my dataset before running them through hydra?
+
+# Creating a perl script to run through the bedpe file and delete all lines that have one of the chrun contigs in them
+	
+	$ perl rm_chrun_bedpe.pl ../share/081211_1_readname.bedpe
+	$ ./hydra -in /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_readname.bedpe.out -out 081211_1_breaks -mld 125 -mno 450 -ms 1
+		# Still nothing!
+		# What's the deal?
+		
+	# Going to try to remove pcr duplicates...
+	
+	$  ./dedupDiscordants.py -i ../../blackstar/pembatch1/081211_1_readname.bedpe.out > 081211_1_readname.deduped.bedpe
+	
+	$  ./hydra -in 081211_1_readname.deduped.bedpe -out 081211_1_breaks -mld 125 -mno 450 -ms 1
+	
+	# IT WORKED! the dedupDiscordants.py script is essential for running the program!
+	
+# Now that hydra works, I really want to fine-tune the alignment stages. It turns out that novoalign is free to non-profit users! Now to give it a shot
+
+
+____________________________________________
+Working on Novoalign
+____________________________________________
+# I need a good tier two/three alignment program in order to reduce the CNV calls (and for better confidence in values. 
+
+# I am attempting to custom tune Novoalign in order to meet those qualities.
+	$ ./novoindex -k 14 -s 3 -m -n UMD3_mask ../../B_tau_UMD_3.1/UMD3_mask_novo.index ../../B_tau_UMD_3.1/UMD3_masked.fa
+		Usage:
+		    novoindex  -k 99 -s 9 -m indexfile sequencefiles....
+		Where:
+		    -k   99        is the k-mer length to be used for the index. Typically 14.
+		    -s   9         is the step size for the index. Typical values are from 1 to 3.
+		    -m             sets lower case masking on. Lower case sequence will not be indexed.
+		    -b             sets bisulphite indexing and alignment mode for methylation experiments.
+		    -n   name      sets the an internal name for the reference sequence index. This is
+		                   used in report headers and as the AS: field in SAM SQ record.
+		                   Defaults to the indexfile name.
+		    indexfile      is the filename for the indexed reference sequence generated by novoindex.
+		    sequencefiles  a list of sequence files in fasta format to be included in the index.
+		
+		# Creating 9 indexing threads.
+		# novoindex construction dT = 194.6s
+		# Index memory size   4.066Gbyte.
+		# Done.
+
+	$ ./novoalign 
+		-d /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_mask_novo.index 										# Index file for genome fasta
+		-f /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_unmap_1 /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_unmap_2 	# Sequence files, space delimited
+		-F ILMFQ 															# Files in Illumina FQ format
+		-o SAM 																# Output is in SAM format
+		-r R 																# Multiple hit reads have only one position reported (randomly)
+		> /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_novo.sam
+
+			# Interpreting input files as Illumina FASTQ, Cassava Pipeline 1.3.
+			# Index Build Version: 2.5
+			# Hash length: 14
+			# Step size: 3
+
+2010_10_05
+# The first novoalign run finished (no idea how long it took), so now I am going to run the exhaustive alignment as described in the Hydra workflow
+
+	$   samtools view -bS -o 081211_1_novo.bam 081211_1_novo.sam
+	$  ../../samtools-0.1.8/samtools view -bS -o 081211_1_novo.bam 081211_1_novo.sam 		# I forgot that someone has an older version of samtools in the Path. I should always use my install
+	
+	$  ../../samtools-0.1.8/samtools view -bF 0x2 081211_1_novo.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 081211_1_1tier2.fq -fq2 081211_1_2tier2.fq
+			 
+			 $ ls -l *tier*
+				-rw-rw-r--+ 1 dbickhart mapping 23789151 2010-10-05 08:38 081211_1_1tier2.fq
+				-rw-rw-r--+ 1 dbickhart mapping 23789151 2010-10-05 08:38 081211_1_2tier2.fq
+				
+	$ ./novoalign -d /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_mask_novo.index -f /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_1tier2.fq /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_2tier2.fq -F ILMFQ -t 20 -o SAM -rE 180 > /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_novo2.sam
+		# novoalign (2.05.33) - short read aligner with qualities.
+		# (C) 2008 NovoCraft
+		# Licensed for evaluation, educational, and not-for-profit use only.
+		#  novoalign -d /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_mask_novo.index -f /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_1tier2.fq /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_2tier2.fq -F ILMFQ -t 20 -o SAM -rE 180
+		Error: File format is not compatible with minimum quality code '#' in file 081211_1_1tier2.fq
+		Error: Cannot open input sequence files. /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_1tier2.fq  /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_2tier2.fq
+		
+	$ ./novoalign -d /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_mask_novo.index -f /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_1tier2.fq /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_2tier2.fq -F STDFQ -t 20 -o SAM -rE 180 > /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_novo2.sam
+		# novoalign (2.05.33) - short read aligner with qualities.
+		# (C) 2008 NovoCraft
+		# Licensed for evaluation, educational, and not-for-profit use only.
+		#  novoalign -d /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_mask_novo.index -f /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_1tier2.fq /mnt/gliu1_usb/dbickhart/blackstar/pembatch1/081211_1_2tier2.fq -F STDFQ -t 20 -o SAM -rE 180
+		# Interpreting input files as Sanger FASTQ.
+		# Index Build Version: 2.5
+		# Hash length: 14
+		# Step size: 3
+		#       Paired Reads:   225022
+		#      Pairs Aligned:        6
+		#     Read Sequences:   450044
+		#            Aligned:    11951
+		#   Unique Alignment:     8351
+		#   Gapped Alignment:        0
+		#     Quality Filter:   111357
+		# Homopolymer Filter:     5812
+		#       Elapsed Time: 168,192s
+		# Fragment Length Distribution
+		#       From    To      Count
+		# Mean   nan, Std Dev   nan
+		# Done.
+
+		(<>) The only way that the second novoalign run would be accepted is if I changed the -F option from ILMFQ (Illumina scores) to STDFQ (Sanger scores). 
+		(<>) Maybe the bamToFastq program changes the scores to the Sanger scale?
+	
+	$ ../../samtools-0.1.8/samtools view -bS -o 081211_1_novo2.bam 081211_1_novo2.sam
+	
+	# Note: this would be a good spot to merge the bam files from multiple lanes of the same organism/individual. Then I can get the FULL dataset in the bedpe file
+	
+	$ ../../samtools-0.1.8/samtools sort -n 081211_1_novo2.bam 081211_1_novo2_sort
+	
+	$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i 081211_1_novo2_sort.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra >081211_1_novo.bedpe
+	
+	# This would be the spot where I screen for alignments in simple sequence repeats. However, I am still trying to generate the simple sequence files from the UMD3 genome
+	
+	$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i 081211_1_novo.bedpe > 081211_1_novo_dedup.bedpe
+		
+		$ ls -l *novo*bedpe
+			-rw-rw-r--+ 1 dbickhart mapping 298492 2010-10-05 09:03 081211_1_novo.bedpe
+			-rw-rw-r--+ 1 dbickhart mapping 276167 2010-10-05 09:08 081211_1_novo_dedup.bedpe
+			
+	$ ../../Hydra-Version-0.5.3/bin/hydra -in 081211_1_novo_dedup.bedpe -out 081211_1_novo_breaks -mld 125 -mno 450 -ms 2
+		
+		$ ls -l *breaks*
+			-rw-rw-r--+ 1 dbickhart mapping 2819 2010-10-05 09:11 081211_1_novo_breaks.all
+			-rw-rw-r--+ 1 dbickhart mapping 6540 2010-10-05 09:11 081211_1_novo_breaks.detail
+			-rw-rw-r--+ 1 dbickhart mapping  741 2010-10-05 09:11 081211_1_novo_breaks.final
+
+
+__________________________________________
+Now to design the pipeline
+__________________________________________
+
+# I already have a good base in my paired_end_process_hydra.pl script, but I want to incorporate more features
+	# Forking into multiple processors for batch processing
+	# Options for running the program
+	# Identifying if a file is gzipped or not prior to processing
+
+# Here is a list of steps in order to get the files to a point where Hydra can process them:
+	
+	# bwa aln /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/mask_UMD3 <first fq file> > <first.sai>
+	# bwa aln /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/mask_UMD3 <second fq file> > <second.sai>
+	# bwa sampe /mnt/gliu1_usb/dbickhart/bwa-0.5.8a/mask_UMD3 <first.sai> <second.sai> <first fq file> <second fq file> > <output.sam>
+	
+	# samtools view -bS -o <output.bam> <input.sam>
+	# samtools sort -n <input.bam> <output_prefix>
+	# samtools view -bF 0x2 <input_prefix.bam> | bamToFastq -bam stdin -fq1 <disc.fq1> -fq2 <disc.fq2>
+	
+	# samtools view <sorted.bam> | perl -lane 'print "$F[3]\t$F[7]"' > <output.pos>
+	# calculateMAD.pl input.pos
+	
+	# novoalign -d /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_mask_novo.index -f <disc.fq1> <disc.fq2> -F STDFQ -o SAM -r R > <output.sam>
+	
+	# samtools view -bS -o <output.bam> <input.sam>
+	# samtools sort -n <input.bam> <output_prefix>
+	# samtools view -bF 0x2 <input_prefix.bam> | bamToFastq -bam stdin -fq1 <disc2.fq1> -fq2 <disc2.fq2>
+	
+	# novoalign -d /mnt/gliu1_usb/B_tau_UMD_3.1/UMD3_mask_novo.index -t 30 -o SAM -rE 180 -f <disc2.fq1> <disc2.fq2> > <output.sam>
+	
+	# samtools view -bS -o <output.bam> <input.sam>
+	# samtools sort -n <input.bam> <output_prefix>
+	# samtools merge -n <final.bam> <input.bam1> <input.bam2> ...
+	
+	# bamToBed -i <final.bam> -tag NM | pairDiscordants.py -i stdin -m hydra > <output.bedpe>
+	
+	# (spot to add SSR pairToBed section) pairToBed -a input.bedpe -b SSR.bed (must be created ahead of time) -type notboth | cut -f 1-12 > <output_noSSR.bedpe>
+	
+	# dedupDiscordants.py -i <input.bedpe> > <output_dedup.bedpe>
+	
+	# hydra -in <input_dedup.bedpe> -out <output_breaks prefix> -mld (predetermined, 10x M.A.D.) -mno (predetermined, median + M.A.D.) -ms 2 (or possibly more)
+	
+	# bedpeToBed12.py script using the breakpoints.final file
+	
+	# Load into UCSC or IGV
+	
+# Here is how I am going to organize filenames for output:
+	<first part of input read name>_<second part of input read name>_<counter>_<alnstagenumber(1-3)>_<dedup/sort>.<filetype>
+	
+# The current draft of the pipeline script is called hydra_pipeline.pl
+
+# I am going to put it on hold for now, as I need to get the SSR bed file
+
+___________________________________________
+Creating the SSR file
+___________________________________________
+# OK, now that the skeleton of the pipeline is fairly well built, I want to tweek the settings so that we can have high confidence in the output
+
+# one of those settings would be the SSR step. 
+
+# I have two goals: 1) Get decent repeatmasker data for constructing the SSR.bed and 2) Learn how to create the SSR.bed
+	1) I am going to use George's suggestions to try to determine how to get the good repeatmasker data
+	2) I believe that I could find out how to do this in BEDTools
+	
+# George's suggestion for repeatmasker is to test things out: determine if crossmatch is decent or if wublast is faster and better
+	- Step one is to test out only chromosome 5.
+		$ ./RepeatMasker -species cow -s -pa 7 ../chr5.masked 
+		
+		# This is using George's pre-masked chr5.masked file with crossmatch
+		
+		# I downloaded wublast and tomorrow I will attept to set it up and use it on my linux drive
+		
+2010_10_06 - 2010_10_07
+# I was able to install Wublast on my Ubuntu virtualbox and now I will attempt to run RepeatMasker on the Cow 4 chromosome 5
+	# Downloaded chromosome 5 from UCSC baylor 4.0 build
+	$ ./RepeatMasker -species cow -s -pa 4 chr5.fa
+	
+	# Finished, here is the .tbl file contents
+			==================================================
+			file name: chr5.fa                  
+			sequences:             1
+			total length:  125847759 bp  (117666604 bp excl N/X-runs)
+			GC level:         41.47 %
+			bases masked:   56822782 bp ( 45.15 %)
+			==================================================
+			               number of      length   percentage
+			               elements*    occupied  of sequence
+			--------------------------------------------------
+			SINEs:             99335     21076856 bp   16.75 %
+			      Alu/B1           1           71 bp    0.00 %
+			      MIRs         20261      2899000 bp    2.30 %
+			
+			LINEs:             51626     26486357 bp   21.05 %
+			      LINE1        25301     14069879 bp   11.18 %
+			      LINE2        12783      3423185 bp    2.72 %
+			      L3/CR1        1705       342182 bp    0.27 %
+			      RTE          31538     16192425 bp   12.87 %
+			
+			LTR elements:      18272      5550441 bp    4.41 %
+			      ERVL          3141      1228048 bp    0.98 %
+			      ERVL-MaLRs    5701      1877325 bp    1.49 %
+			      ERV_classI    3836      1586170 bp    1.26 %
+			      ERV_classII   5057       732227 bp    0.58 %
+			
+			DNA elements:      12071      2494785 bp    1.98 %
+			      hAT-Charlie   6901      1274896 bp    1.01 %
+			      TcMar-Tigger  2287       635868 bp    0.51 %
+			
+			Unclassified:        259        50002 bp    0.04 %
+			
+			Total interspersed repeats:  55658441 bp   44.23 %
+			
+			
+			Small RNA:           332        30234 bp    0.02 %
+			
+			Satellites:           26        62537 bp    0.05 %
+			Simple repeats:    14650       555189 bp    0.44 %
+			Low complexity:    13258       524400 bp    0.42 %
+			==================================================
+			
+			* most repeats fragmented by insertions or deletions
+			  have been counted as one element
+		                                                      
+		
+			The query species was assumed to be bos taurus    
+			RepeatMasker version open-3.2.9 , sensitive mode
+		                                 
+			run with blastp version 3.0PE-AB [2009-10-30] [linux26-i686-ILP32F64 2010-02-04T15:53:36]
+			RepBase Update 20090604, RM database version 20090604
+	
+	# Created a perl script to take the "out" file and convert it into a SSRs.bed file
+	# Script name is: extract_SSR.pl and it takes @ARGV files on the command line
+	
+# Now I am going to try to repeatmask chromosome 25 with the -species cow option, then try to mask it using Adelson's library
+	$ ./RepeatMasker -species cow -s -pa 4 chr25.fa
+		# completed in about an hour
+			==================================================
+			file name: chr25.fa                 
+			sequences:             1
+			total length:   44060403 bp  (41359953 bp excl N/X-runs)
+			GC level:         46.95 %
+			bases masked:   18653241 bp ( 42.34 %)
+			==================================================
+			               number of      length   percentage
+			               elements*    occupied  of sequence
+			--------------------------------------------------
+			SINEs:             39293      7651587 bp   17.37 %
+			      Alu/B1           0            0 bp    0.00 %
+			      MIRs          8798      1225735 bp    2.78 %
+			
+			LINEs:             17641      7370953 bp   16.73 %
+			      LINE1         9836      4491712 bp   10.19 %
+			      LINE2         4701      1096457 bp    2.49 %
+			      L3/CR1         485        82705 bp    0.19 %
+			      RTE           8380      3698553 bp    8.39 %
+			
+			LTR elements:       6856      2144817 bp    4.87 %
+			      ERVL          1190       423912 bp    0.96 %
+			      ERVL-MaLRs    2915       908470 bp    2.06 %
+			      ERV_classI    1539       608428 bp    1.38 %
+			      ERV_classII   1032       165454 bp    0.38 %
+			
+			DNA elements:       5778      1066820 bp    2.42 %
+			      hAT-Charlie   4028       693063 bp    1.57 %
+			      TcMar-Tigger   685       184964 bp    0.42 %
+			
+			Unclassified:         86        17864 bp    0.04 %
+			
+			Total interspersed repeats:  18252041 bp   41.43 %
+			
+			
+			Small RNA:           176        13693 bp    0.03 %
+			
+			Satellites:            9         2870 bp    0.01 %
+			Simple repeats:     4981       219427 bp    0.50 %
+			Low complexity:     4000       167440 bp    0.38 %
+			==================================================
+			
+			* most repeats fragmented by insertions or deletions
+			  have been counted as one element
+			                                                      
+			
+			The query species was assumed to be bos taurus    
+			RepeatMasker version open-3.2.9 , sensitive mode
+			                                 
+			run with blastp version 3.0PE-AB [2009-10-30] [linux26-i686-ILP32F64 2010-02-04T
+			15:53:36]
+			RepBase Update 20090604, RM database version 20090604
+	
+	$ ./RepeatMasker -lib ./Libraries/bovine_custom_repeat_lib.fasta  -s -pa 4 chr25.fa.masked
+		# Now running with David Adelson's custom repeat library against the masked sequence
+		# It finished, but there was an error with repeatmasker's focus
+			==================================================
+			file name: chr25.fa.masked          
+			sequences:             1
+			total length:   44060403 bp  (22709033 bp excl N/X-runs)
+			GC level:         48.69 %
+			bases masked:     954666 bp ( 2.17 %)
+			==================================================
+			               number of      length   percentage
+			               elements*    occupied  of sequence
+			--------------------------------------------------
+			SINEs:                5          418 bp    0.00 %
+			      ALUs            0            0 bp    0.00 %
+			      MIRs            3          174 bp    0.00 %
+			
+			LINEs:              154        21249 bp    0.05 %
+			      LINE1         129        18532 bp    0.04 %
+			      LINE2          18         2296 bp    0.01 %
+			      L3/CR1          4          306 bp    0.00 %
+			
+			LTR elements:       161        47346 bp    0.11 %
+			      ERVL           36         9884 bp    0.02 %
+			      ERVL-MaLRs      0            0 bp    0.00 %
+			      ERV_classI     90        32357 bp    0.07 %
+			      ERV_classII    12         1722 bp    0.00 %
+			
+			DNA elements:       118        33903 bp    0.08 %
+			     hAT-Charlie      3         1494 bp    0.00 %
+			     TcMar-Tigger     0            0 bp    0.00 %
+			
+			Unclassified:      4045       837557 bp    1.90 %
+			
+			Total interspersed repeats:   940473 bp    2.13 %
+			
+			
+			Small RNA:            2          333 bp    0.00 %
+			
+			Satellites:          78        11826 bp    0.03 %
+			Simple repeats:      32         2897 bp    0.01 %
+			Low complexity:     487        13439 bp    0.03 %
+			==================================================
+			
+			* most repeats fragmented by insertions or deletions
+			  have been counted as one element
+			                                                      
+			
+			The query species was assumed to be homo          
+			RepeatMasker version open-3.2.9 , sensitive mode
+			                                 
+			run with blastp version 3.0PE-AB [2009-10-30] [linux26-i686-ILP32F64 2010-02-04T
+			15:53:36]
+			The query was compared to classified sequences in ".../bovine_custom_repeat_lib.
+			fasta"
+			RepBase Update 20090604, RM database version 20090604
+			
+		# So, repeatmasker assumed that the sequence was homo sapiens!	
+		
+	# Here are the results from me using crossmatch on a pre-masked version of Cow4 chr5:
+			==================================================
+			file name: chr5.masked              
+			sequences:             1
+			total length:  125847759 bp  (117666604 bp excl N/X-runs)
+			GC level:         41.47 %
+			bases masked:   57280485 bp ( 45.52 %)
+			==================================================
+			               number of      length   percentage
+			               elements*    occupied  of sequence
+			--------------------------------------------------
+			SINEs:             99656     21170781 bp   16.82 %
+			      Alu/B1           1           71 bp    0.00 %
+			      MIRs         20504      2984128 bp    2.37 %
+			
+			LINEs:             51257     26828682 bp   21.32 %
+			      LINE1        24826     14189557 bp   11.28 %
+			      LINE2        13008      3604900 bp    2.86 %
+			      L3/CR1        1813       372459 bp    0.30 %
+			      RTE          31322     16208308 bp   12.88 %
+			
+			LTR elements:      18150      5486813 bp    4.36 %
+			      ERVL          3106      1184249 bp    0.94 %
+			      ERVL-MaLRs    5648      1866977 bp    1.48 %
+			      ERV_classI    3819      1580159 bp    1.26 %
+			      ERV_classII   5049       733203 bp    0.58 %
+			
+			DNA elements:      11850      2483732 bp    1.97 %
+			      hAT-Charlie   6820      1270345 bp    1.01 %
+			      TcMar-Tigger  2234       636531 bp    0.51 %
+			
+			Unclassified:        251        49308 bp    0.04 %
+			
+			Total interspersed repeats:  56019316 bp   44.51 %
+			
+			
+			Small RNA:           326        29002 bp    0.02 %
+			
+			Satellites:           30        62377 bp    0.05 %
+			Simple repeats:    14914       587519 bp    0.47 %
+			Low complexity:    14888       589867 bp    0.47 %
+			==================================================
+			
+			* most repeats fragmented by insertions or deletions
+			  have been counted as one element
+			                                                      
+			
+			The query species was assumed to be bos taurus    
+			RepeatMasker version open-3.2.9 , sensitive mode
+			                                 
+			run with cross_match version 0.990329
+			RepBase Update 20090604, RM database version 20090604
+			
+			
+			
+	
+__________________________________________
+Manually testing pipeline
+__________________________________________
+# I want to run through the pipeline step by step in order to test the effectiveness of Novoalign vs the bowtie/bwa method. 
+
+# In order to speed this process up, I am going to run everything off of an indexed chromosome 5 (cow 4 assembly) and wait until I have the SSR.bed file before I screen the SSR linked pe's out.
+
+# Ultimate goal is to compare the datasets generated by both methods to see the differences in hydra calls.
+
+	(<>) Bowtie/bwa run:
+		$ ./bowtie-build ../blackstar/chr5.masked B_tau_ch5
+		$ ./bowtie -I 200 -X 300 -q -m 2 --un un_081211_1 -S B_tau_ch5 -1 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq -2 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq ../blackstar/chr5test/081211_1_bowtie.sam
+		
+		$ ./bwa aln B_tau_chr5 ../bowtie-0.12.7/un_081211_1_1 > bow_081211_1_1.sai
+		$ ./bwa aln B_tau_chr5 ../bowtie-0.12.7/un_081211_1_2 > bow_081211_1_2.sai
+		$ ./bwa sampe B_tau_chr5 bow_081211_1_1.sai bow_081211_1_2.sai ../bowtie-0.12.7/un_081211_1_1 ../bowtie-0.12.7/un_081211_1_2 > ../blackstar/chr5test/bow_081211_1.sam
+
+		$ ../../samtools-0.1.8/samtools view -bS -o bow_081211_1.bam bow_081211_1.sam
+		$ ../../samtools-0.1.8/samtools sort -n bow_081211_1.bam bow_081211_1_sort
+		
+		$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i bow_081211_1_sort.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > bow_081211_1.bedpe
+		# This analysis completed in approximately 2.5 hours
+	
+		# Now I'm going to test out my newly generated bed file with the SSR's just for kicks
+		$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a bow_081211_1.bedpe -b /mnt/gliu1_usb/dbickhart/chr5SSRs.bed -type notboth | cut -f 1-12 > bow_disc_081211_1.bedpe
+			$ls -l *.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3424510 2010-10-06 11:21 bow_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3266264 2010-10-06 16:47 bow_disc_081211_1.bedpe
+
+		$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i bow_disc_081211_1.bedpe > bow_disc_dedup_081211_1.bedpe
+			# It gives errors because it tries to reference a "13th" and "14th" column in the bedpe file that aren't there
+			# I believe that the removal of the SSR script caused this error
+			# Here is how I might fix it: run the "cut" command with -f 1-14
+			
+		$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a bow_081211_1.bedpe -b /mnt/gliu1_usb/dbickhart/chr5SSRs.bed -type notboth | cut -f 1-14 > bow_disc_14_081211_1.bedpe
+			# That got the 13th and 14th columns back
+			$ ls -l *.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3424510 2010-10-06 11:21 bow_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3266264 2010-10-06 16:47 bow_disc_081211_1.bedpe <- should be similar
+				-rw-rw-r--+ 1 dbickhart mapping 3423388 2010-10-07 09:14 bow_disc_14_081211_1.bedpe <- should be similar
+			# Very odd... maybe the 13th and 14th columns accounted for far more data being lost in the bow_disc_081211_1.bedpe file?
+			
+		$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i bow_disc_14_081211_1.bedpe > bow_disc_dedup_081211_1.bedpe
+			$ ls -l *.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3424510 2010-10-06 11:21 bow_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3266264 2010-10-06 16:47 bow_disc_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3423388 2010-10-07 09:14 bow_disc_14_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3240908 2010-10-07 09:19 bow_disc_dedup_081211_1.bedpe
+		
+		$ ../../samtools-0.1.8/samtools view bow_081211_1_sort.bam | perl -lane 'print "$F[3]\t$F[7]"' > bow_081211_1.pos
+			# reported the MAD as being zero (because of a TON of unmapped reads! over 95% did not map!)
+			# going to try to calculate the MAD off of the bowtie sam file
+		
+		$  ../../samtools-0.1.8/samtools view -bS -o 081211_1_bowtie.bam 081211_1_bowtie.sam
+		$  ../../samtools-0.1.8/samtools sort -n 081211_1_bowtie.bam 081211_1_bowtie_sort
+		$  ../../samtools-0.1.8/samtools view 081211_1_bowtie_sort.bam | perl -lane 'print "$F[3]\t$F[7]"' > 081211_1.pos
+			# still alot of zeros; going to have to remove them
+		$  perl -lane 'next if /^0/; print "$F[0]\t$F[1]"' < 081211_1.pos >081211_1_crop.pos                                 <- This script removes zeros from the position file!	
+		$  perl ../pembatch1/calculateMAD.pl 081211_1_crop.pos
+			207.5 is the first median value
+			The M.A.D. of this dataset is: 30.5
+			
+		$  ../../Hydra-Version-0.5.3/bin/hydra -in bow_disc_dedup_081211_1.bedpe -out bow_081211_1_breaks -mld 300 -mno 807 -is -li
+			$ls -l *breaks*
+				-rw-rw-r--+ 1 dbickhart mapping  46501 2010-10-07 09:50 bow_081211_1_breaks.all
+				-rw-rw-r--+ 1 dbickhart mapping 470336 2010-10-07 09:50 bow_081211_1_breaks.detail
+				-rw-rw-r--+ 1 dbickhart mapping  45181 2010-10-07 09:50 bow_081211_1_breaks.final
+		$  ../../Hydra-Version-0.5.3/scripts/bedpeToBed12.py -i bow_081211_1_breaks.final -n bow > bow_test.bed		
+			
+	
+	(<>) Bwa/novoalign run:
+		$ ./bwa index -p B_tau_chr5 -a bwtsw ../blackstar/chr5.masked
+		$ ./bwa aln B_tau_chr5 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq > novo_081211_1_1.sai
+		$ ./bwa aln B_tau_chr5 /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq > novo_081211_1_2.sai
+		$ ./bwa sampe B_tau_chr5 novo_081211_1_1.sai novo_081211_1_2.sai /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_1_sequence.fq /mnt/gliu1_usb/mrfast-2.0.0.3/081211_HWI-EAS174_s_1_2_sequence.fq > ../blackstar/chr5test/novo_1_081211_1.sam
+		
+		$ ../../samtools-0.1.8/samtools view -bS -o novo_1_081211_1.bam novo_1_081211_1.sam
+		$ ../../samtools-0.1.8/samtools sort -n novo_1_081211_1.bam novo_1_081211_1_sort
+		$ ../../samtools-0.1.8/samtools view -bF 0x2 novo_1_081211_1_sort.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 novo_1_081211_1_1.fq -fq2 novo_1_081211_1_2.fq
+		
+		$ ./novoindex -k 14 -s 3 -m B_tau_chr5 ../blackstar/chr5.masked
+		$ ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/novocraft/B_tau_chr5 -f novo_1_081211_1_1.fq novo_1_081211_1_2.fq -F ILMFQ -o SAM -r R > novo_2_081211_1.sam
+		# The above step actually seems to be working... strange... I thought that the bamToFastq script had changed my previous run's phred scores from the illumina score values...
+
+		$ ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/novocraft/B_tau_chr5 -f novo_1_081211_1_1.fq novo_1_081211_1_2.fq -o SAM -r R > novo_2_081211_1.sam
+		# Novoalign was taking especially long, so I removed the -F option and tried to run it again
+		# Still taking a longer time than before (11am on Wednesday)
+		# Still running as of 9am... perhaps the difficulty is due to a significantly smaller reference sequence to align to?
+		# Finished at 2pm Thursday, so it took about 24 hours for this one alignment!
+			# Mean   222, Std Dev  74.7
+			# Done.
+		
+		$ ../../samtools-0.1.8/samtools view -bS -o novo_2_081211_1.bam novo_2_081211_1.sam
+		$ ../../samtools-0.1.8/samtools sort -n novo_2_081211_1.bam novo_2_081211_1_sort
+		$ ../../samtools-0.1.8/samtools view -bF 0x2 novo_2_081211_1_sort.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 novo_2_081211_1_1.fq -fq2 novo_2_081211_1_2.fq
+			$ ls -l *.fq
+			-rw-rw-r--+ 1 dbickhart mapping 125474508 2010-10-06 10:46 novo_1_081211_1_1.fq
+			-rw-rw-r--+ 1 dbickhart mapping 125474508 2010-10-06 10:46 novo_1_081211_1_2.fq
+			-rw-rw-r--+ 1 dbickhart mapping 121873224 2010-10-07 14:27 novo_2_081211_1_1.fq
+			-rw-rw-r--+ 1 dbickhart mapping 121873224 2010-10-07 14:27 novo_2_081211_1_2.fq
+
+		# That didn't get rid of many more concordant reads! Perhaps the second alignment stage would be overkill? Still going to try it.
+		$ ../../novocraft/novoalign -d /mnt/gliu1_usb/dbickhart/novocraft/B_tau_chr5 -f novo_2_081211_1_1.fq novo_2_081211_1_2.fq -o SAM -t 30 -r E 180 > novo_3_081211_1.sam
+			# novoalign (2.05.33) - short read aligner with qualities.
+			# (C) 2008 NovoCraft
+			# Licensed for evaluation, educational, and not-for-profit use only.
+			#  novoalign -d /mnt/gliu1_usb/dbickhart/novocraft/B_tau_chr5 -f novo_2_081211_1_1.fq novo_2_081211_1_2.fq -o SAM -t 30 -r E 180
+			# Interpreting input files as Sanger FASTQ.
+			# Index Build Version: 2.5
+			# Hash length: 14
+			# Step size: 3
+		# Again, it interprets the second tier alignment files as Sanger format instead of Illumina... very strange...
+		# Also, it aligns MUCH faster than the -r R option!
+		# Novoalign MUST be the thing that changes the quality scores! It probably changes them to the Sanger scale from the Illumina scale	
+		$ ../../samtools-0.1.8/samtools view -bS -o novo_3_081211_1.bam novo_3_081211_1.sam
+		$ ../../samtools-0.1.8/samtools sort -n novo_3_081211_1.bam novo_3_081211_1_sort
+		
+		$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i novo_3_081211_1_sort.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > novo_3_081211_1.bedpe
+
+		# OK, and here is where something got very strange
+		# The above line took a long time to process, (the cursor didn't return to the command line) but it had finished shortly after beginning! Also the resulting bedpe file is VERY tiny!
+			$ ls -l *bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3424510 2010-10-06 11:21 bow_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3266264 2010-10-06 16:47 bow_disc_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3423388 2010-10-07 09:14 bow_disc_14_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3240908 2010-10-07 09:19 bow_disc_dedup_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping   12944 2010-10-07 15:42 novo_3_081211_1.bedpe  <- this is it
+				
+		$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_3_081211_1.bedpe -b /mnt/gliu1_usb/dbickhart/chr5SSRs.bed  -type notboth | cut -f 1-14 > novo_3_ded_081211_1.bedpe
+			$ ls -l *bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3424510 2010-10-06 11:21 bow_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3266264 2010-10-06 16:47 bow_disc_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3423388 2010-10-07 09:14 bow_disc_14_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping 3240908 2010-10-07 09:19 bow_disc_dedup_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping   12944 2010-10-07 15:42 novo_3_081211_1.bedpe
+				-rw-rw-r--+ 1 dbickhart mapping   12944 2010-10-07 15:48 novo_3_ded_081211_1.bedpe
+			# OK, NOW I'm officially worried about this run's results
+		$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i novo_3_ded_081211_1.bedpe > novo_3_discded_081211_1.bedpe
+
+		$ ../../Hydra-Version-0.5.3/bin/hydra -in novo_3_discded_081211_1.bedpe -out novo_081211_1_breaks -mld 300 -mno 807 -is -li
+			$ ls -l *breaks*
+				-rw-rw-r--+ 1 dbickhart mapping  46501 2010-10-07 09:50 bow_081211_1_breaks.all
+				-rw-rw-r--+ 1 dbickhart mapping 470336 2010-10-07 09:50 bow_081211_1_breaks.detail
+				-rw-rw-r--+ 1 dbickhart mapping  45181 2010-10-07 09:50 bow_081211_1_breaks.final
+				-rw-rw-r--+ 1 dbickhart mapping      0 2010-10-07 15:52 novo_081211_1_breaks.all
+				-rw-rw-r--+ 1 dbickhart mapping      0 2010-10-07 15:52 novo_081211_1_breaks.detail
+				-rw-rw-r--+ 1 dbickhart mapping      0 2010-10-07 15:52 novo_081211_1_breaks.final
+
+		# OK, troubleshooting time...
+			$ ../../samtools-0.1.8/samtools view novo_3_081211_1_sort.bam | perl -lane 'next if $F[3] =~ /^0/; print "$F[0]\t$F[1]\t$F[2]\t$F[3]"'
+			# Prints out a ton of aligned reads, and all read-name sorted
+			$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i bow_081211_1_sort.bam -tag NM > bow_081211_1_sort.bed
+				$ ls -l *.bed
+					-rw-rw-r--+ 1 dbickhart mapping 37048621 2010-10-07 16:16 bow_081211_1_sort.bed
+					-rw-rw-r--+ 1 dbickhart mapping   122121 2010-10-07 10:01 bow_test.bed
+					-rw-rw-r--+ 1 dbickhart mapping   428858 2010-10-07 15:39 novo_3_081211_1.bed
+
+			$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i novo_2_081211_1_sort.bam -tag NM > novo_2_081211_1_sort.bed
+			# Now I'm testing the results of the second alignment to see if I can get actual results from that point!
+				$ ls -l *bed
+					-rw-rw-r--+ 1 dbickhart mapping 37048621 2010-10-07 16:16 bow_081211_1_sort.bed
+					-rw-rw-r--+ 1 dbickhart mapping   122121 2010-10-07 10:01 bow_test.bed
+					-rw-rw-r--+ 1 dbickhart mapping  9022379 2010-10-07 16:29 novo_2_081211_1_sort.bed
+					-rw-rw-r--+ 1 dbickhart mapping   428858 2010-10-07 15:39 novo_3_081211_1.bed
+					-rw-rw-r--+ 1 dbickhart mapping   428858 2010-10-07 16:27 novo_3_081211_1_sort2.bed
+				
+			$ ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i novo_2_081211_1_sort.bed -m hydra > novo_2_081211_1.bedpe
+				$ ls -l *bedpe
+					-rw-rw-r--+ 1 dbickhart mapping 3424510 2010-10-06 11:21 bow_081211_1.bedpe
+					-rw-rw-r--+ 1 dbickhart mapping  409061 2010-10-07 16:32 novo_2_081211_1.bedpe
+					-rw-rw-r--+ 1 dbickhart mapping   12944 2010-10-07 15:42 novo_3_081211_1.bedpe
+				# Reasonable... but let's see...
+				
+			$  ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_2_081211_1.bedpe -b /mnt/gliu1_usb/dbickhart/chr5SSRs.bed -type notboth | cut -f 1-14 > novo_2_ded_081211_1.bedpe
+					-rw-rw-r--+ 1 dbickhart mapping  409061 2010-10-07 16:32 novo_2_081211_1.bedpe
+					-rw-rw-r--+ 1 dbickhart mapping  405569 2010-10-07 16:35 novo_2_ded_081211_1.bedpe
+			
+			$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i novo_2_ded_081211_1.bedpe > novo_2_discded_081211_1.bedpe
+					-rw-rw-r--+ 1 dbickhart mapping  385514 2010-10-07 16:38 novo_2_discded_081211_1.bedpe
+
+			$ ../../Hydra-Version-0.5.3/bin/hydra -in novo_2_discded_081211_1.bedpe -out novo_081211_1_breaks -mld 300 -mno 807 -is -li
+			# Now that produced something! 
+			# Something to keep in mind: the second alignment might be removing the artifacts! These calls might all be artifacts in the end!
+					-rw-rw-r--+ 1 dbickhart mapping  46501 2010-10-07 09:50 bow_081211_1_breaks.all
+					-rw-rw-r--+ 1 dbickhart mapping 470336 2010-10-07 09:50 bow_081211_1_breaks.detail
+					-rw-rw-r--+ 1 dbickhart mapping  45181 2010-10-07 09:50 bow_081211_1_breaks.final
+					-rw-rw-r--+ 1 dbickhart mapping  21933 2010-10-07 16:39 novo_081211_1_breaks.all
+					-rw-rw-r--+ 1 dbickhart mapping  66118 2010-10-07 16:39 novo_081211_1_breaks.detail
+					-rw-rw-r--+ 1 dbickhart mapping  21583 2010-10-07 16:39 novo_081211_1_breaks.final
+
+			$ ../../Hydra-Version-0.5.3/scripts/bedpeToBed12.py -i novo_081211_1_breaks.final -n novo > novo_test.bed
+
+# The alignment techniques gave different calls for the same dataset! Probably has to do with different algorithms, settings and other such things.
+# Technically, the end of the novoalign protocol should have resulted in NO calls to chromosome 5 based on that subset of data. 
+# Though, the designer of Hydra does state that the third alignment stage IS optional. 
+
+
+
+
+2010_10_08
+# Today, I am going to try using Mosaik in order to compare and contrast its effectiveness vs novoalign.
+# First, I need to create a reference sequence index
+	$ ./MosaikBuild -fr /mnt/gliu1_usb/dbickhart/blackstar/chr5.masked -oa /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked.dat
+	$ ./MosaikJump -ia /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked.dat -out /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked_jump_14 -hs 14
+	# The jump files were necessary to reduce the amount of ram headspace needed by the hash-based aligner. The hash size (-hs) was set at 14.
+	
+# Now, I need to create indexes of the .fq files themselves (a bit of a pain, but if this makes the program that much faster...)
+	$ ./MosaikBuild -q /mnt/gliu1_usb/blackstar/NGS/081211_HWI-EAS174_s_1_1_sequence.fq -q2 /mnt/gliu1_usb/blackstar/NGS/081211_HWI-EAS174_s_1_2_sequence.fq -out /mnt/gliu1_usb/blackstar/NGS/081211_s_1_pe.dat -st illumina
+	# Done in 25 seconds!
+	
+# Time for the alignment:
+	$ ./MosaikAligner -in /mnt/gliu1_usb/blackstar/NGS/081211_s_1_pe.dat -out /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1.dat -ia /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked.dat -hs 14 -mm 4 -mhp 100 -act 20 -bw 13 -j /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked_jump_14 -p 4 
+			Aligning read library (1392886):
+			100%[=========================================================]   1,506.4 reads/s       in 15:24
+			
+			Alignment statistics (mates):
+			===================================
+			# failed hash:       2708 (  0.1 %)
+			# filtered out:   1958057 ( 70.3 %)
+			# unique:          153652 (  5.5 %)
+			# non-unique:      669790 ( 24.1 %)
+			-----------------------------------
+			total:            2784207
+			total aligned:     823442 ( 29.6 %)
+			
+			Alignment statistics (reads):
+			============================================
+			# unaligned:                837838 ( 60.2 %)
+			# orphaned:                 286654 ( 20.6 %)
+			# both mates unique:         25278 (  1.8 %)
+			# one mate non-unique:       40334 (  2.9 %)
+			# both mates non-unique:    202782 ( 14.6 %)
+			--------------------------------------------
+			total reads:               1392886
+			total reads aligned:        555048 ( 39.8 %)
+			
+			Miscellaneous statistics:
+			==================================
+			aligned mate bp:          29643830
+			alignment candidates/s:   109294.1
+
+	$ ./MosaikText -in /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1.dat -bam /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1.bam
+	# This converts the file to the *.bam format
+	
+	$ ../../samtools-0.1.8/samtools sort -n /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1.bam /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1_sorted
+	# This sorting step took longer than usual.
+	$ ../../samtools-0.1.8/samtools view -bF 0x2 /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1_sorted.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_1_mosaik.fq -fq2 /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_2_mosaik.fq
+	
+	$ ./MosaikBuild -q /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_1_mosaik.fq -q2 /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_2_mosaik.fq  -out /mnt/gliu1_usb/dbickhart/blackstar/081211_1_pe_2.dat -st illumina
+		# reads: 0 |ERROR: The mate1 read name did not match the mate2 read name. Resynchronization support needs to be implemented.
+		# This error seems to be a problem listed under the issues on the mosaik sourceforge page; let me see if I can find a work around...
+		
+		$ ../../samtools-0.1.8/samtools view -bF 0x2 /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 /mnt/gliu1_usb/dbickhart/blackstar/081211_1_1_mosaik.fq -fq2 /mnt/gliu1_usb/dbickhart/blackstar/081211_1_2_mosaik.fq
+		# Trying it with an unsorted bam...
+		# Same results
+		
+		$ ../../samtools-0.1.8/samtools view -bF 0x0002 /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 /mnt/gliu1_usb/dbickhart/blackstar/081211_1_1_mosaik.fq -fq2 /mnt/gliu1_usb/dbickhart/blackstar/081211_1_2_mosaik.fq
+		# Trying it with a different bit score exclusion
+		# One thing that I've noticed: the same readname has muliple listings in this alignment... maybe that is the issue? Perhaps I should change the initial mosaic alignment to report only one random read?
+		# That parameter would be -m unique
+		
+		$ ./MosaikAligner -in /mnt/gliu1_usb/blackstar/NGS/081211_s_1_pe.dat -out /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1.dat -ia /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked.dat -hs 14 -mm 4 -mhp 100 -act 20 -bw 13 -j /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked_jump_14 -p 4 -m unique
+		$ ./MosaikText -in /mnt/gliu1_usb/dbickhart/blackstar/081211_s_1_mosaik_1.dat -bam /mnt/gliu1_usb/dbickhart/blackstar/081211_t_1_mosaik_1.bam
+		$ ../../samtools-0.1.8/samtools view -bF 0x2 /mnt/gliu1_usb/dbickhart/blackstar/081211_t_1_mosaik_1_sorted.bam | ../../Hydra-Version-0.5.3/bin/bamToFastq -bam stdin -fq1 /mnt/gliu1_usb/dbickhart/blackstar/081211_t_1_1_mosaik.fq -fq2 /mnt/gliu1_usb/dbickhart/blackstar/081211_t_1_2_mosaik.fq
+		# It STILL gives the same mismatched fastq files! I am just going to continue on with the 081211_s_1_mosaik_1_sorted.bam file for now and not try to perform a second alignment...
+		
+	$ ../BEDTools-Version-2.10.0/bin/bamToBed -i 081211_s_1_mosaik_1_sorted.bam -tag NM | ../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > 081211_s_1_mosaik.bedpe
+		# This one generated a bedpe file of 60 megabytes, 10 times the size of the bowtie-based bedpe for this dataset!!
+		
+	$ ../BEDTools-Version-2.10.0/bin/pairToBed -a 081211_s_1_mosaik.bedpe -b ../chr5SSRs.bed -type notboth | cut -f 1-14 > 081211_ssr_1_mosaik.bedpe
+	
+	$ ../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i 081211_ssr_1_mosaik.bedpe > 081211_ded_1_mosaik.bedpe
+	$ ../Hydra-Version-0.5.3/bin/hydra -in 081211_ded_1_mosaik.bedpe -out 081211_all_mosaik_breaks -mld 300 -mno 807 -is -li
+		-rw-rw-r--+ 1 dbickhart mapping  707061 2010-10-08 14:28 081211_all_mosaik_breaks.all
+		-rw-rw-r--+ 1 dbickhart mapping 5299515 2010-10-08 14:28 081211_all_mosaik_breaks.detail
+		-rw-rw-r--+ 1 dbickhart mapping   63338 2010-10-08 14:28 081211_all_mosaik_breaks.final
+		
+	$ ../Hydra-Version-0.5.3/bin/hydra -in 081211_ded_1_mosaik.bedpe -out 081211_all_mosaik_breaks -mld 300 -mno 807 -is -li -ms 10
+		# increased stringency with supporting pairs
+		-rw-rw-r--+ 1 dbickhart mapping   86828 2010-10-08 14:29 081211_all_mosaik_breaks.all
+		-rw-rw-r--+ 1 dbickhart mapping 3284816 2010-10-08 14:29 081211_all_mosaik_breaks.detail
+		-rw-rw-r--+ 1 dbickhart mapping   13239 2010-10-08 14:29 081211_all_mosaik_breaks.final
+
+	$ ../Hydra-Version-0.5.3/scripts/bedpeToBed12.py -i 081211_all_mosaik_breaks.final -n mosaik > mosaik_all.bed
+
+
+	(<>) Now I am going to create a bed file using the unique alignment protocol
+	$ ../BEDTools-Version-2.10.0/bin/bamToBed -i 081211_t_1_mosaik_1_sorted.bam  -tag NM | ../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > 081211_t_1_mosaik.bedpe
+	$ ../BEDTools-Version-2.10.0/bin/pairToBed -a 081211_t_1_mosaik.bedpe -b ../chr5SSRs.bed -type notboth | cut -f 1-14 > 081211_ssr_t_mosaik.bedpe
+	$ ../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i 081211_ssr_t_mosaik.bedpe > 081211_ded_1_mosaik.bedpe
+	$ ../Hydra-Version-0.5.3/bin/hydra -in 081211_ded_1_mosaik.bedpe -out 081211_unique_mosaik_breaks -mld 300 -mno 807 -is -li
+		-rw-rw-r--+ 1 dbickhart mapping   86828 2010-10-08 14:29 081211_all_mosaik_breaks.all
+		-rw-rw-r--+ 1 dbickhart mapping 3284816 2010-10-08 14:29 081211_all_mosaik_breaks.detail
+		-rw-rw-r--+ 1 dbickhart mapping   13239 2010-10-08 14:29 081211_all_mosaik_breaks.final
+		-rw-rw-r--+ 1 dbickhart mapping  608272 2010-10-08 14:40 081211_unique_mosaik_breaks.all
+		-rw-rw-r--+ 1 dbickhart mapping 7332450 2010-10-08 14:40 081211_unique_mosaik_breaks.detail
+		-rw-rw-r--+ 1 dbickhart mapping  329211 2010-10-08 14:40 081211_unique_mosaik_breaks.final
+	$ ../Hydra-Version-0.5.3/bin/hydra -in 081211_ded_1_mosaik.bedpe -out 081211_unique_mosaik_breaks -mld 300 -mno 807 -is -li -ms 10
+		-rw-rw-r--+ 1 dbickhart mapping   75771 2010-10-08 14:41 081211_unique_mosaik_breaks.all
+		-rw-rw-r--+ 1 dbickhart mapping 5723955 2010-10-08 14:41 081211_unique_mosaik_breaks.detail
+		-rw-rw-r--+ 1 dbickhart mapping   37050 2010-10-08 14:41 081211_unique_mosaik_breaks.final
+		
+	# Interesting... the unique reporting resulted in MORE break calls... 
+	
+	$ ../Hydra-Version-0.5.3/scripts/bedpeToBed12.py -i 081211_unique_mosaik_breaks.final -n mosunique > mosaik_unique.bed
+	
+# Very interesting results when I plot these two Bed files on the UCSC browser!
+
+# Both are somewhat similar to each other (the unique alignment method has more tick marks) and both are more similar to the bowtie bed file than to the novoalign bed file! 
+
+# I believe that the novoalign algorithm might not be sufficient for this sort of breakpoint analysis!
+
+# Significant breakpoint detected in the three synoptic bed files on chromosome 5 at the 45 megabase region. Hard to tell what the CNV is; the program gives multiple colors!
+
+# Let's try one more alternative: novoalign THEN mosaik!
+	$ ../../mosaik-aligner/bin/MosaikBuild -q novo_2_081211_1_1.fq -q2 novo_2_081211_1_2.fq  -out novo_mos_081211_1.dat -st sanger
+	$ ../../mosaik-aligner/bin/MosaikAligner -in novo_mos_081211_1.dat -out novo_mos_algn_081211_1.dat -ia /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked.dat -hs 14 -mm 4 -mhp 100 -act 20 -bw 13 -j /mnt/gliu1_usb/dbickhart/mosaik-aligner/chr5_masked_jump_14 -p 4 -m all
+	# I believe that reporting "all" hits would be the best option for hydra. This way the program can make "informed" decisions on plotting breakpoints
+	$ ../../mosaik-aligner/bin/MosaikText -in novo_mos_algn_081211_1.dat -bam novo_mos_081211_1.bam
+	$ ../../samtools-0.1.8/samtools sort -n novo_mos_081211_1.bam novo_mos_081211_1_sort
+	$ ../../BEDTools-Version-2.10.0/bin/bamToBed -i novo_mos_081211_1_sort.bam -tag NM | ../../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > novo_mos_081211_1.bedpe
+	$ ../../BEDTools-Version-2.10.0/bin/pairToBed -a novo_mos_081211_1.bedpe -b ../../chr5SSRs.bed -type notboth | cut -f 1-14 > novo_mos_ssr_081211_1.bedpe
+	$ ../../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i novo_mos_ssr_081211_1.bedpe > novo_mos_ded_081211_1.bedpe
+	$ ../../Hydra-Version-0.5.3/bin/hydra -in novo_mos_ded_081211_1.bedpe -out novo_mos_081211_breaks -mld 300 -mno 807 -is -li -ms 10
+		-rw-rw-r--+ 1 dbickhart mapping   46501 2010-10-07 09:50 bow_081211_1_breaks.all
+		-rw-rw-r--+ 1 dbickhart mapping  470336 2010-10-07 09:50 bow_081211_1_breaks.detail
+		-rw-rw-r--+ 1 dbickhart mapping   45181 2010-10-07 09:50 bow_081211_1_breaks.final
+		-rw-rw-r--+ 1 dbickhart mapping   21933 2010-10-07 16:39 novo_081211_1_breaks.all
+		-rw-rw-r--+ 1 dbickhart mapping   66118 2010-10-07 16:39 novo_081211_1_breaks.detail
+		-rw-rw-r--+ 1 dbickhart mapping   21583 2010-10-07 16:39 novo_081211_1_breaks.final
+		-rw-rw-r--+ 1 dbickhart mapping   45128 2010-10-08 16:23 novo_mos_081211_breaks.all
+		-rw-rw-r--+ 1 dbickhart mapping 2066590 2010-10-08 16:23 novo_mos_081211_breaks.detail
+		-rw-rw-r--+ 1 dbickhart mapping    8697 2010-10-08 16:23 novo_mos_081211_breaks.final
+	# Even less than the novo alignment! Might be a good sign... but...
+	$ ../../Hydra-Version-0.5.3/scripts/bedpeToBed12.py -i novo_mos_081211_breaks.final -n nov_mos > novo_mos.bed
+	# It is a good sign. The final bed file is very specific, with fewer items but similar to the highly supported CNV's in the synoptic bed files I generated.
+	
+# I believe that some of the final stages will be the inclusion of the consensus repeat elements to the "SSR removal" stage of the alignment and the removal of pairs that map to one or more of those repeats.
+# I also need to be conscious of the edit distance of the reads themselves; I should scour novoalign, bwa and Mosaik for options to tune this setting
+	
+	
+__________________________________________
+RepeatMasker fine tuning
+__________________________________________
+# running a two-step repeatmask on chromosome 25 of the cow4 genome on server 2
+$ ./RepeatMasker -species cow -e wublast -s -pa 4 -dir ./cow4_chr25 chr25.fa 
+$ ./RepeatMasker -lib ./Libraries/bovine_custom_repeat_lib.fasta -s -pa 6 -dir ./cow4_chr25/ ./cow4_chr25/chr25.fa.masked

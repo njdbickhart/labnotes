@@ -1,0 +1,307 @@
+02/15/2011
+# I need to do a single end DoC analysis for Fleckvieh
+# Since it will be a short run, I will also include my notes on the blackstar PEM run that I will do
+
+# My previous run on Fleckvieh produced a ton of "hits" files, but they are unsorted and are not in bed format.
+# I am going to take care of that right now, and then I will run them through Alkan's pipeline.
+
+$ for i in *.hits; do prefix=`perl -e '$f = $ARGV[0]; chomp $f; $b = substr($f, 0, (length($f) - 11)); print $b;' $i`; echo $prefix; name=$prefix".bed"; perl -lane '$e = $F[1] + 36; print "$F[0]\t$F[1]\t$e";' < $i > $name; sort -k 1,1 $name > $prefix.sort.bed; rm $name; done
+
+# The Fleckvieh combined bed file is a bit too big, I might have to do the same sort of combine that I did with the simulation reads files.
+# I have revised my combined bed hits file to take the Fleckvieh sequence.
+
+# Now to split the combined bed file into smaller chunks.
+$ split -l 48840261 fleckvieh_combined.bed fleck_se_
+$ for i in fleck*; do mv $i $i.bed; done
+$ perl combine_bed_hits.pl
+
+# Fleckvieh discordant reads:
+	30703750  399148750 2905301760 total
+	
+# Fleckvieh combined SE reads:
+	244201301  732603903 5898788908 fleckvieh_combined.bed
+	
+# OK, the script ended, so now it is time to run Alkan's pipeline.
+$ perl run_alkan_pipeline.pl --File1 combine_file1.bed --File1_c combine_file1_c.bed --File2 combine_file2.bed --File3 combine_file3.bed --File3_c combine_file3_c.bed
+	Loading numbers from combine_file1_c.bed into array...
+	Calculating average...
+	Calculating stdev...
+	Average was: 1010.96666658745
+	Stdev was; 15972.3267262012
+	
+	# Oh boy...
+	# Not quite sure how this worked, but it did! Found some deletions!
+	Control GC files ready
+	Normalizing control regions
+	Recalculating averages
+	Avg:  1025.275646  std:  268.109992  AutoCut:  2097.715614  AutoCut2:  1829.605622  Del:  489.055662
+	
+	# the number of insertions and deletions:
+	$ wc *.final.wssd; wc *deletions.tab
+		  794  2382 18479 combine_file1.bed.final.wssd
+		  8  24 187 combine_file1.bed.final.deletions.tab
+		  
+	# I am still confused by this though... lets take a look
+	$ cut -f 4 combine_file1_c.bed | perl ../../../alkan_files/wssd-package/statStd.pl
+		total   1683056
+		Minimum 0
+		Maximum 5850683
+		Average 1010.966667
+		Median  959
+		Standard Deviation      15972.331471
+		Mode(Highest Distributed Value) 941
+	
+	$ perl -lane 'if($F[3] > 1000000){ print $_;}' < combine_file1_c.bed
+		chr16   6845566 6857850 2075413
+		chr16   6846566 6858630 5850667
+		chr16   6847566 6861573 5850683
+		chr16   6848566 6862122 5850630
+		chr16   6849566 6863382 5850637
+		chr16   6850566 6865050 5850557
+		chr16   6851566 6872163 5850369
+		chr16   6852566 6872624 5850297
+		chr16   6853566 6872624 5850297
+		chr16   6854566 6872624 5850297
+		chr16   6855566 6872624 5850297
+		chr16   6856566 6873166 5850350
+		chr16   6857566 6873780 5850328
+		chr21   659946  673898  1411558
+		chr21   660946  673898  1411558
+		chr21   661946  674077  1411577
+		chr21   662946  675769  1411480
+		
+	# Lets check out these regions
+		# Both regions have multiple copy predicted mRNA's from water buffalo
+		# Also both regions have human chain locations
+		# Only the chr16 region appears in my final.wssd file, so at least they're being accounted for
+		  
+# I think this is good. Now I just need to rerun the blackstar single end data through the doc pipeline and get this all organized
+# Then we can start perusing the data and make calls
+
+# Running blackstar through the pipeline:
+	# based on my notes, I believe that the blackstar_hits.bed file that I have in the blackstar doc folder contains the new and old sequence
+	# Removing simple sequence repeats...
+	$ ../../../../BEDTools-Version-2.10.0/bin/intersectBed -a blackstar_hits.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/simple_trf/repeat_merged_extended.bed -v > blackstar_rem_hits.bed
+	
+	$ perl auto_full_alkan_pipeline.pl --in blackstar_rem_hits.bed
+	# Oops! this remove the repeat intervals again; should not mess with the analysis
+	Avg:  237.386771  std:  57.765553  AutoCut:  468.448983  AutoCut2:  410.683430  Del:  121.855665
+	
+	$  wc blackstar_rem_hits_r_file1.bed.final.wssd ; wc blackstar_rem_hits_r_file1.bed.final.deletions.tab
+		  760  2280 17695 blackstar_rem_hits_r_file1.bed.final.wssd
+		  81  243 1903 blackstar_rem_hits_r_file1.bed.final.deletions.tab
+
+# Animal ID's
+	# I'm calling Fleckvieh BTFV01
+	# Blackstar is BTHO11
+
+# Adding names:
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBTFV01";' < fleckvieh_wssd.bed > BTFV01_auto_4_duplications.bed
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBTFV01";' < fleckvieh_deletions.bed > BTFV01_auto_2_deletions.bed
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBTHO11";' < blackstar_wssd_final.bed > BTHO11_ins_4.bed
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBTHO11";' < blackstar_deletions_final.bed > BTHO11_del_2.bed
+	
+# Concatenating files and merging:
+	# ins_4_3 folder:
+	$ for i in *.wssd; do echo $i; perl -e '$f = $ARGV[0]; chomp $f; @g = split(/\_/, $f); open(OUT, "> $g[0]_ins_4.bed"); open(IN, "< $f"); while(<IN>){ chomp $_; @F = split(/\t/); print OUT "$F[0]\t$F[1]\t$F[2]\t$g[0]\n";}' $i; done
+	$ cat *_ins_4.bed BTFV01_auto_4_duplications.bed > ind_ins_4_named.bed
+	$ ../../../BEDTools-Version-2.10.0/bin/mergeBed -i ind_ins_4_named.bed -nms > ind_ins_4_nmerged.bed
+	
+	# del_4_3 folder:
+	$ for i in *.deletions.tab; do echo $i; perl -e '$f = $ARGV[0]; chomp $f; @g = split(/\_/, $f); open(OUT, "> $g[0]_del_2.bed"); open(IN, "< $f"); while(<IN>){ chomp $_; @F = split(/\t/); print OUT "$F[0]\t$F[1]\t$F[2]\t$g[0]\n";}' $i; done
+	$ cat *_del_2.bed BTFV01_auto_2_deletions.bed > ind_an_del_2_cat.bed
+	$ ../../../BEDTools-Version-2.10.0/bin/mergeBed -i ind_an_del_2_cat.bed -nms > ind_an_del_2_nmerge.bed
+	
+______________________________________
+Blackstar PEM
+______________________________________
+# First, I need to turn the single-line text files into regular fastqs
+$ for i in 081211_HWI*.txt; do perl convert_seq_fastq.pl $i; done
+
+# Then, I am going to gzip them and run the mrsfast pem wrapper program on them. 
+
+# Running:
+	# I set the --min to 150 and the --max to 350
+	# If things look fishy, I'll run the reads in a normal mrsfast setting and then check them out later.
+	$ perl blackstar_mrsfast_pem_wrapper.pl black_pe.txt
+	
+	# oops! Forgot to index the newly masked file.
+	# Rerunning
+	
+	# The blackstar files are REALLY bad! The second read file has such low quality that most of the reads are "N's" and "B's"!
+	# Still going to try to run them...
+	
+	# I had increased the mrsfast pem wrapper's min and max values. The values were 50 and 800 respectively
+	# This resulted in some reads mapping; now to check out the stats...
+	
+	$ perl ../../../angus/sam_avg_stdev.pl BTHO11P.EAS174090409.5.1_.5.sam
+	***************************************************
+	Splice counter: 1
+	BTHO11P.EAS174090409.5.1_.5.sam number of reads: 530
+	After splicing...
+	Average: 217.746691871456
+	Standard Deviation: 30.6668190949781
+	A + 3 Stdevs: 309.74714915639
+	A - 3 Stdevs: 125.746234586521
+	***************************************************
+	
+	$ perl ../../../angus/sam_avg_stdev.pl BTHO11P.EAS174090504.4.1_.4.sam
+	***************************************************
+	Splice counter: 598
+	BTHO11P.EAS174090504.4.1_.4.sam number of reads: 1099177
+	After splicing...
+	Average: 196.180789001064
+	Standard Deviation: 43.7823420814337
+	A + 3 Stdevs: 327.527815245365
+	A - 3 Stdevs: 64.833762756763
+	***************************************************
+	
+	$ perl ../../../angus/sam_avg_stdev.pl BTHO11P.EAS174090504.8.1_.8.sam
+	***************************************************
+	Splice counter: 516
+	BTHO11P.EAS174090504.8.1_.8.sam number of reads: 1002111
+	After splicing...
+	Average: 196.365156575262
+	Standard Deviation: 43.681246744452
+	A + 3 Stdevs: 327.408896808619
+	A - 3 Stdevs: 65.3214163419064
+	***************************************************
+	
+	$ perl ../../../angus/sam_avg_stdev.pl BTHO11P.EAS174090515.4.1_.4.sam
+	***************************************************
+	Splice counter: 578
+	BTHO11P.EAS174090515.4.1_.4.sam number of reads: 1138169
+	After splicing...
+	Average: 197.044157346533
+	Standard Deviation: 43.5599210422452
+	A + 3 Stdevs: 327.723920473269
+	A - 3 Stdevs: 66.3643942197975
+	***************************************************
+	
+	$ perl ../../../angus/sam_avg_stdev.pl BTHO11P.EAS174090520.5.1_.5.sam
+	***************************************************
+	Splice counter: 112
+	BTHO11P.EAS174090520.5.1_.5.sam number of reads: 974148
+	After splicing...
+	Average: 197.625271550538
+	Standard Deviation: 42.0463732596655
+	A + 3 Stdevs: 323.764391329535
+	A - 3 Stdevs: 71.4861517715418
+	***************************************************
+	
+	# That is so odd... Well, it looks like the values that I need to use are 66 and 327 for min and max.
+	
+	# Added the --discordant-vh option back in and changed the min and max values
+	$ perl blackstar_mrsfast_pem_wrapper.pl new_black_pe.txt
+	
+	# I am going to unzip the old blackstar fastqs and perform the same run on them as well.
+	# Changed the blackstar_mrsfast_wrapper.pl script and put in two new min/max numbers (74 and 375 respectively)
+	$ perl blackstar_mrsfast_pem_wrapper.pl black_paired.txt
+	# This is a run of the old files; they should all output to the same directory as the new files.
+	
+	# Alright now to cat the files and run variationhunter:
+	$ cat *DIVET* > blackstar_combined_divet.vh
+	$ /mnt/gliu1_usb/dbickhart/Variationhunter/VariationHunter_SC -i blackstar_converted_divet.vh -m 66 -M 327 -p 0.10 -s 3
+	
+	$ perl -lane 'print "$F[0]\t$F[1]\t$F[2]\tBTHO11";' < blackstar_temp_del.bed > blackstar_name_del_pem.bed
+	
+	
+	# Moved it to my sharedfolder directory
+	$ cat blackstar_name_del_pem.bed ./tab_files/*_tag_del.bed > full_name_unmerged_pem.bed
+	$ ../BEDTools-Version-2.10.1/bin/mergeBed -i full_name_unmerged_pem.bed -nms > full_name_merged_pem.bed
+	
+___________________________________
+Creating major tables
+___________________________________
+# working directory: linux box /derek/share/cow4_doc/new_doc
+# Starting on table 1 (Summary of animals shared in all datasets):
+	$ perl combine_CNVRs_full_table.pl -a ind_ins_4_named.bed -b ind_an_del_2_cat.bed -c full_name_unmerged_pem.bed -d acgh_5_3_cat_gain.bed -e acgh_5_3_cat_loss.bed -f snp_all_cat_gain.bed -g snp_all_cat_loss.bed
+	# This file needs to be conditionally highlighted afterwards to get an idea of the overlap.
+	# Completed... or not.
+	# I forgot to crop the "P" off of the pem names! Crap!
+	$ perl -lane 'if ($F[3] =~ /B.{5}P/){chop $F[3];} print "$F[0]\t$F[1]\t$F[2]\t$F[3]";' < full_name_unmerged_pem.bed > unmerged_pem_filtered_name.bed
+	$ perl combine_CNVRs_full_table.pl -a ind_ins_4_named.bed -b ind_an_del_2_cat.bed -c unmerged_pem_filtered_name.bed -d acgh_5_3_cat_gain.bed -e acgh_5_3_cat_loss.bed -f snp_all_cat_gain.bed -g snp_all_cat_loss.bed
+	
+	
+# Now, going to complete table 2 (CNVs merged across methods):
+	# Tagging methods and converting Yali's animal names to mine:
+	$ perl bed_tag_change_mine.pl ind_ins_4_named.bed doc_ins_table2.bed docins
+	$ perl bed_tag_change_mine.pl ind_an_del_2_cat.bed doc_del_table2.bed docdel
+	$ perl bed_tag_change_mine.pl unmerged_pem_filtered_name.bed pem_del_table2.bed pemdel
+	$ perl bed_tag_change_yali.pl acgh_5_3_cat_gain.bed acgh_gain_table2.bed acghins
+	$ perl bed_tag_change_yali.pl acgh_5_3_cat_loss.bed acgh_loss_table2.bed acghdel
+	$ perl bed_tag_change_yali.pl snp_all_cat_gain.bed snp_gain_table2.bed snpins
+	$ perl bed_tag_change_yali.pl snp_all_cat_loss.bed snp_loss_table2.bed snpdel
+	
+	# Now, separating the animals for each method out: 
+	$ for i in *.bed; do perl bed_split_by_animal.pl $i; done
+	
+	# Now to merge the animals across methods:
+	$ perl bed_merge_across_method.pl
+	
+	# Now to convert this into table form:
+	$ cat *.bed > cat_animals_method_merge.bed
+	$ perl bed_create_merge_method_table.pl ./merged_method/cat_animals_method_merge.bed
+	# Added some clickable hyperlinks to the table
+	
+	# I sabotaged myself: I changed bed_tag_change_yali.pl to not include the method tags.
+	# Redoing it.. (methods remain the same)
+	
+# Finally, let's finish up table 3 (CNVs merged across animals):
+	# changed the version of beg_tag_change_yali.pl only in the new_doc folder
+	$ perl bed_tag_change_yali.pl snp_all_cat_gain.bed snp_gain_retag.bed
+	$ perl bed_tag_change_yali.pl snp_all_cat_loss.bed snp_loss_retag.bed
+	$ perl bed_tag_change_yali.pl acgh_5_3_cat_gain.bed acgh_gain_retag.bed
+	$ perl bed_tag_change_yali.pl acgh_5_3_cat_loss.bed acgh_loss_retag.bed
+	
+	# Now to merge the individual files (already done for the doc files)
+	$ for i in *retag*; do ../../../BEDTools-Version-2.10.1/bin/mergeBed -i $i -nms > $i.merge; done
+	$ ../../../BEDTools-Version-2.10.1/bin/mergeBed -i unmerged_pem_filtered_name.bed -nms > pem_filtered.bed.merge
+	
+	# Now running the table generating script
+	$ perl bed_tag_animal_merge_table.pl acgh_gain_retag.bed.merge acgh_loss_retag.bed.merge ind_ins_4_nmerged.bed ind_an_del_2_nmerge.bed pem_filtered.bed.merge snp_gain_retag.bed.merge snp_loss_retag.bed.merge
+	
+__________________________________
+Overlap with UMD3.1 coords
+__________________________________
+
+# George wants me to find out how many CNV's overlap with the following UMD3.1 coordinates:
+	chr1:145295000-145455000
+	
+# I am going to use a web-based approach this time, but, in the future, it might be wise to develop a command line system
+# First, I went to NCBI genome and typed in bos taurus chromosome 1
+# Next, I clicked "Download/view sequence/evidence"
+# Then I typed the coordinates in the "From" and "To" boxes and hit "Change region/strand"
+# Then I clicked "display" and it gave me the fasta.
+
+# OK, when I blasted the results, I got an error from NCBI's webtool. This means that I should really consider using the command line for this.
+# Well, I think that the above steps were giving me coordinates for the cow4 assembly. 
+
+# Trying out formatdb on the cow4 genome:
+	$ pb formatdb -p F -i /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4.fa -n cow4 -t cow4
+	# I think that I might have found an already formatted copy of UMD3 here: /mnt/data100/mespar1/external/UMD3/umd3.fa
+	# Wait, fastacmd cannot extract nucleotide sequence from coordinates... crap!
+	
+# OK, so I created a Bioperl script to extract the nucleotide sequence for me:
+$ perl extract_seq_from_fasta.pl --in /mnt/data100/mespar1/external/UMD3/Chr1.fa --out ./umd3_region.fa --chr Chr1 --s 145295000 --e 145455000
+
+# Now to blast it against the cow4 genome:
+	$ pb blastall -p blastn -d cow4 -i umd3_region.fa  -o 160kb_region.out -m 9 -e 1e-20
+	Job was split into 134 pieces: 104 queued, 28 running, 2 done (1.5%)
+	
+# success, but with some caveats
+# Here is the largest region that came back on chr1:
+	146580898       146578646
+	
+# Here are the corresponding regions identified in my new major table #3
+	1447	chr1	146515604	146526642	1	BTLM09 <- doc_ins
+	11	chr1	145803032	145812242	1	BTHO09 <- acgh_gain
+	
+# Regions 100kb away:
+	1446	chr1	145432434	145446718	2	BTFV01	BTHO11 <- doc_ins
+					
+	
+	
+
+
+	

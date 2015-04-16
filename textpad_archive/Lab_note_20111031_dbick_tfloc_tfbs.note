@@ -1,0 +1,1093 @@
+10/31/2011
+# George would like me to finish his work on the TFBS identification using TFLOC
+# I have downloaded some of the note files and located some of the data
+# Here are his note file locations
+	- /home/dbickhart/  (Lab_note_20061204_cutoff*)
+	- /home/gliu/Lab_note/ (Lab_note_20061204*)
+
+# Here are the scripts that were used in the SOP files
+	- /home/dbickhart/tfloc/ (tfloc*)
+	
+# Here are the source files for the tfloc files
+	- /mnt/data6/gliu/TFLOC/
+	- /mnt/data6/gliu/TFLOC/pepck/  <- George's run on PEPCK
+	
+# Here are the goals:
+	- Quickly run the tfloc pipeline on the 1kb upstream regions of each gene
+	- Generate a map of TFBS predicted sites on the cattle genome
+	- Submit a note file to Journal of Animal Science and generate a website to list the TFBS predictions
+	
+	#Later#
+	- Refine the program to take into account indels within the binding sites
+	- Refine the program to determine modules of multiple overlapping TFBS sites
+	- Run the program on the whole genome and list the predictions
+	
+# Based on the paper (Identification of conserved regulatory elements in mammalian promoter regions: ... ), they had to settle on a cutoff value for top percentage of raw scores
+# They found that a raw score of 0.03% was the best in terms of sensitivity
+# I am not sure if I should rerun it to test this again.
+
+# The workflow appears to be:
+	1. Run tfloc on the maf alignment file and separate into three batches with alternating first files (ie. mouse first, then rat, then human)
+	2. Convert all of the maf output into a single file (tfloc_maf_batch_breaker.pl)
+	3. Remove duplicate entries (tfloc_test_same_aln.pl)
+	4. Create background information (tfloc_mean_stdev1.pl) [looks like a simple stdev value chart]
+	5. Create a cutoff for each matrix per species (tfloc_cutoff_test01_0.0001.pl)
+	6. Create cutoffs for three species and generate a mysql table (tfloc_cutoff_min01_0.0001.pl, tfloc_cutoff_min02_0.0001.pl)
+	7. Create a TFBS table in mysql and load data into it (tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl)
+	8. Test for the best cutoff value (tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl)
+	9. Run tfloc at the cutoff (tfloc_upstream_maf3_hmr_h.pl)
+	10. 
+	
+# OK, so I believe that I need to get the maf files (multiz alignment), which are in this style of format:
+	##maf version=1 scoring=zero
+	##maf version=1 scoring=zero
+	a score=0.000000
+	s hg18.NM_198943 0 1000 + 1000 GCATTTTAAACCCAAGTGAAATCTCCTAGGCCCTTCATGCCACACTCA-TCCATCCCTACCTAC--TTGTGTTGCAACCAAGGGCCCCACTGTAGTGCCTAGGGGAGCAGGTCTAGGGCACAGTGCCAGGCC
+	s mm8        0  861 +  861 GCACTTGAAGCCCAAACGAAGCCTCCTAG-CCCTTCCTGCCACACTTAACCCAACCCCACTCACACCTCTTTTGCAACCAAGGGGCCTGATATGGCACCTA--AGAGCAAGTCTGGGGTG-GGTGCCAGGTCTGAT
+	s rn4        0  852 +  852 gcaCTTGAAGCCCAAAGGAAGCCTCCTAG-CCCTTCCTGCTGCACTTAACCCAACCCCGCTCACACCTCTTTTGCAAC-AAGGGGCCTGATATGGCACCTA--AGAGCAAGTCTGGGGCG-GGTGCCAGGTCTGAT
+	
+# George has a 5-way alignment here: server2: /home/gliu/data2/mz/mz17/cow4_5way_maf
+	# I need to remove mouse and platypus and reformat the alignment so that the "gaps" from mouse/platypus are not there anymore
+	# I also need to remove the "BC" gene accesssions and replace them with refseq annotations (file to do this is mgcfullmrna.txt from UCSC)
+	# Not only that, I need to remove the "r" line (e.g., r txupstream 1000 BC112873) and reformat the cow4 "s" line header to say something similar to: s btau4.NM_12321312   <- for each refseq accession
+	
+	
+# Lets see if the tfloc source files compile
+	pwd: /home/dbickhart/share/tfbs_project/tfloc
+	$ make
+		cc ./tfloc.c ./matt-maf.c ./util.c ./tfloc_util.c ./seq.c -I -g -O -w -W -lm -o tfloc
+	$ ./tfloc
+		USAGE:  tfloc [-verbose | -gala | -hgb] maf_file transfac_file id [-order] [-cut CUTOFF] [-nseq NUM_SEQS_IN_ALIGNMENT] [-nm NUM_MISSES] [-nfm NOFLOAT_MULTIPLIER]
+	# So now, I think that I just need to place it in my PATH to run some of George's scripts
+	$ cp tfloc ~/bin/
+	
+# Altering George's tfloc scripts
+	# George generated several perl scripts to process parts of his pipeline and they all use MYSQL databases
+	# All of his scripts were downloaded from server 2 and placed in this directory: /home/dbickhart/share/tfbs_project/tfloc/scripts/
+	# I am going to go through them in order and alter them to use my mysql database
+		# To do's
+			- tfloc_maf_batch_breaker1.pl  		DONE
+				- Change line 87 and 90 regex to look for cattle refseq name
+				- Alter line 130 to swap out the order of the files into separate batches	
+			- tfloc_test_same_aln02.pl		DONE
+				- MINOR: change the subfolder list elements on lines 6 and 15 to incorporate dynamic number ranges
+			- tfloc_mean_stdev1.pl			DONE
+				- change lines 18 to 28 to use my mysql database on Ubuntu
+				- change line 98 to use my mysql database table
+				- change line 125 to incorporate dynamic subfolders
+				- Look into using forks, though it is tough to follow George's code here. My confusion is based on the use of multiple processes for what looks like the same job
+			- tfloc_cutoff_test01_0.0001.pl		
+				- currently, no changes
+			- tfloc_cutoff_min01_0.0001.pl
+				- change "in_folder" variables to point to actual folders
+				- change "temp_cutoff" variabel to point to actual files
+			- tfloc_cutoff_min02_0.0001.pl
+				- change "in_folder" variables to point to actual folders
+				- change "temp_cutoff" variabel to point to actual files
+			- tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl
+				- change lines 18 to 28 to use my mysql database on Ubuntu
+				- possibly incorporate forks
+			- tfloc_upstream_maf3_hmr_h.pl
+				- change lines 18 to 23 to use my mysql database
+				- change line 158 to incorporate dynamic folder numbers
+				- note: the only difference between the "h" "m" and "r" versions of these scripts are the variable names for the tables (one for each animal (human, mouse, rat))
+				- change the script to take dynamic values for each animal used
+			- tfloc_tfbs_batch_breaker1.pl
+				- change line 91 regex to look for cattle refseq name
+			- tfbs_merger_by_pos02a_hmr.pl
+				- change lines 20 to 27 to use my mysql database
+				- change line 86 to use dynamic folder numbers
+				- change line 89 regex to identify cattle refseq numbers
+				- remove/hide comments to make sense of the sort and merger
+			- tfbs_merger_by_pos02_hmr.pl
+				- same as tfbs_merger_by_pos02a_hmr.pl
+			
+		# New script to compose: Script to process the cow4_5way_maf alignment to remove the platypus and mouse alignments and reformat the alignment to remove unanimous underscores; 
+		# Also, replace the "BC" refseq numbers with actual refseq numbers next to the cattle alignment. 
+			pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts
+			$ cp ../../backup/Perl/convert_refgene_to_bed.pl ./
+			$ cp ../../cow4_doc/nelore/major_table_2/refGene.txt ./
+			$ perl convert_refgene_to_bed.pl refGene.txt
+			
+			# George said to use the refseq ids (from the mgcgene.txt file) instead of the chromosome coordinates
+			$ perl create_BC_to_refseq_simple_table.pl
+				Number of non-matching entries: 1067
+				Number of collisions: 0
+			# I believe that worked much better!
+			
+			# Now to create the modified mafs
+			$ perl remove_mouse_plat_maf.pl
+				Alignments not found: 929
+			# Success
+		# Now, I need to generate a transfac file by downloading the JASPAR TFBS matrix and convert the files into transfac format
+			# Important note file: /home/gliu/Lab_Note/Lab_note_20060725.txt  also Lab_note_20060717.txt and Lab_note_20060719.txt
+			# In order to generate the transfac file I need to generate an imb file from the JASPAR database.
+			# Here are the relevant sections from the Lab_note_20060717.txt file:
+				/*
+					20060717
+					
+					1. prepare imd tfbs file from /home/gliu/test_sw/tffind/jaspar2005/
+					JASPAR_CORE      JASPAR_FAM      JASPAR_PHYLOFACTS
+					
+					2. create database cowtfbs;
+					
+					3. create tables
+					DROP TABLE MATRIX_ANNOTATION;
+					CREATE TABLE MATRIX_ANNOTATION(
+					ID VARCHAR (16) DEFAULT '' NOT NULL,
+					tag VARCHAR(255)DEFAULT '' NOT NULL,
+					val varchar(255) DEFAULT '',
+					PRIMARY KEY (ID, tag)
+					);
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_CORE/MATRIX_ANNOTATION.txt' into table MATRIX_ANNOTATION;
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_FAM/MATRIX_ANNOTATION_new.txt' into table MATRIX_ANNOTATION;
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_PHYLOFACTS/MATRIX_ANNOTATION.txt' into table MATRIX_ANNOTATION;
+					
+					The names of MF matrix contains multiple words which is not comptible with tfloc. I renamed all names by connecting words with "-" and saved into this file: /home/gliu/test_sw/tffind/jaspa
+					r2005/mySQL/JASPAR_FAM/MATRIX_ANNOTATION_new.txt
+					
+					===
+					DROP TABLE MATRIX_DATA;
+					CREATE TABLE MATRIX_DATA(
+					ID VARCHAR (16) DEFAULT '' NOT NULL,
+					row VARCHAR(1) NOT NULL,
+					col TINYINT(3) UNSIGNED NOT NULL,
+					val float(7,2),
+					PRIMARY KEY (ID, row, col)
+					);
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_CORE/MATRIX_DATA.txt' into table MATRIX_DATA;
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_FAM/MATRIX_DATA.txt' into table MATRIX_DATA;
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_PHYLOFACTS/MATRIX_DATA.txt' into table MATRIX_DATA;
+					
+					===
+					CREATE TABLE MATRIX_INFO(
+					ID VARCHAR (16) DEFAULT '' NOT NULL PRIMARY KEY ,
+					type ENUM ('PFM', 'ICM','PWM') DEFAULT 'PFM' NOT NULL
+					);
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_CORE/MATRIX_INFO.txt' into table MATRIX_INFO;
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_FAM/MATRIX_INFO.txt' into table MATRIX_INFO;
+					load data local infile '/home/gliu/test_sw/tffind/jaspar2005/mySQL/JASPAR_PHYLOFACTS/MATRIX_INFO.txt' into table MATRIX_INFO;
+					
+			# From 	/home/gliu/Lab_Note/Lab_note_20060725.txt	
+					
+					4. prepare imd matrix fromthe mySQL tables
+					        For mySQL database (cowtfbs) table (MATRIX_INFO, MATRIX_DATA, MATRIX_ANNOTATION) creation and loading, see Lab_note_20060717.txt and Lab_note_20060719.txt.
+					
+					        imd_tfbs.pl -t MATRIX_INFO
+					
+					        This cmd creates imd_tfbs.txt under
+					        /home/gliu/test_sw/tffind/tffind_Rv1.1/imd_tfbs.txt
+					        /home/gliu/test_sw/tffind/jaspar2005/imd_tfbs.txt
+					
+					5. prepare transfac matrix
+					        imd2transfac1.pl -i imd_tfbs.txt -o transfac_tfbs.txt
+					        This cmd creates imd_tfbs.txt under
+					        /home/gliu/test_sw/tffind/tffind_Rv1.1/transfac_tfbs.txt
+					        /home/gliu/test_sw/tffind/jaspar2005/transfac_tfbs.txt
+					        /home/gliu/test_sw/tfloc/transfac_tfbs.txt
+					        /mnt/data2/gliu/mz/mz17/maf/transfac_tfbs.txt
+					
+					6. tffind
+					
+					tffind ALIGNMENT_FILE MATRIX_FILE_DATABASE [-n TFBS_NAME][-p TFBS_CONSENSUS_PATTERN]
+					  [-a TFBS_ACCESS_NUMBER] [-i TFBS_TRANSFAC_ID] [-s 'SPACER']
+					  [-list] [-db MATRIX_FILE_DATABASE] [-min MIN_SEQS] [-cut CUTOFF]
+					  [-range FROM TO] [-lookin SEQS_TO_LOOK_IN]
+					  [-exons g|c|e WHICH_SEQ EXONS_FILENAME] [-reltop] [-lc] [-gff]
+					 > OUTPUT_FILE
+
+				*/
+			# Downloaded all JASPAR files from: http://jaspar.genereg.net/html/DOWNLOAD/all_data/sql_tables/
+			# JASPAR files have changed since 2006, so I need to figure out what the difference is, if I need the new styles of databases and how to alter George's scripts to convert them
+			# George wants me to use the following JASPAR collections: CORE vertebrata, FAM and PHYLOFACTS
+			# Redownloading the specific JASPAR files now and loading them into separate folders in /home/dbickhart/share/tfbs_project/jaspar/
+			# Downloaded two critical scripts: imd_tfbs.pl and imd2transfac1.pl  (to be used in that order)
+			# Creating the TFBS databases to be used in the construction of the imd and transfac files
+				mysql> use tfbs;
+				mysql> create table MATRIX_ANNOTATION(
+				    -> ID VARCHAR(16) default '' not null,
+				    -> tag VARCHAR(255) default '' not null,
+				    -> val varchar(255) default '',
+				    -> PRIMARY KEY (ID, tag));
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/CORE/MATRIX_ANNOTATION.txt' into table MATRIX_ANNOTATION;
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/FAM/MATRIX_ANNOTATION.txt' into table MATRIX_ANNOTATION;
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/PHYLOFACTS/MATRIX_ANNOTATION.txt' into table MATRIX_ANNOTATION;
+				
+				mysql> create table MATRIX_DATA( 
+				    -> ID varchar(16) default '' not null, 
+				    -> row varchar(1) not null, 
+				    -> col tinyint(3) unsigned not null, 
+				    -> val float(7,2), 
+				    -> PRIMARY KEY(ID, row, col));
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/CORE/MATRIX_DATA.txt' into table MATRIX_DATA;
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/FAM/MATRIX_DATA.txt' into table MATRIX_DATA;
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/PHYLOFACTS/MATRIX_DATA.txt' into table MATRIX_DATA;
+				
+				# Here is where the JASPAR database differs from the 2005 version
+				mysql> create table MATRIX_NAME(
+				    -> ID int not null,
+				    -> collection varchar(16) default '',
+				    -> base_ID varchar(16) default '' not null,
+				    -> version tinyint default 1 not null,
+				    -> name varchar(255) default '' not null,
+				    -> PRIMARY KEY (ID));
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/CORE/MATRIX.txt' into table MATRIX_NAME;
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/FAM/MATRIX.txt' into table MATRIX_NAME;
+				mysql> load data local infile '/home/dbickhart/share/tfbs_project/jaspar/PHYLOFACTS/MATRIX.txt' into table MATRIX_NAME;
+				
+				# So, in the imd_tfbs.pl script, I need to get the name from the MATRIX_NAME database, the base_ID from the MATRIX_NAME database and the matrix data from MATRIX_DATA
+				# MATRIX_ANNOTATION would be unused.
+			# Created a script to process the MYSQL data into a workable transfac file
+				$ perl create_transfac_from_mysql.pl
+
+# Running the pipeline 	
+	# Removing duplicates
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/
+	$ perl tfloc_maf_batch_breaker1.pl -i cow4_refseq_filtered_1000_upstream.maf -o 1k
+	
+	pwd: within 1k
+	$ perl ../tfloc_test_same_aln02.pl
+	
+	pwd: within 1k_dhc
+	# This is a substantially improved version of George's original script. It works much faster than before and allows you to check files before removing
+	$ perl ../tfloc_test_same_aln03.pl 2> /dev/null
+	$ chmod +x removal_command
+	$ ./removal_command
+	
+	# Running the tfloc_mean_stdev1.pl script
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k
+	$ perl ../tfloc_mean_stdev1.pl -i . -t MATRIX_NAME -c 00 -s upstream1000 -p 1
+	# Found an error with my maf file: 
+	# The header of the maf file has the length of the sequence at the top (s canFam2                 0   98 +       98  <- length) and this must be consistent with the sequence in the alignment
+	# the "." value counts as a "letter" to tfloc.
+	# I just need to reformat/remove the numbers/"."'s to make it work now.
+	# OK, I think that I found out why UCSC used the "."'s in their alignment. From their website:
+		The maf/upstream*.maf.gz files contain alignments in regions upstream of
+		annotated transcription starts for MGC genes with annotated 5' UTRs.
+		These files differ from the standard MAF format: they display
+		alignments that extend from start to end of the upstream region in 
+		cow, whether or not alignments actually exist. In situations where no  
+		alignments exist or the alignments of one or more species are missing, 
+		dot (".") is used as a placeholder. Multiple regions of an assembly's
+		sequence may align to a single region in cow; therefore, only the 
+		species name is displayed in the alignment data and no position information 
+		is recorded. The alignment score is always zero in these files. These files
+		are updated weekly.
+	
+	# In addition, the size of the strings changed from my reformatting so I recalculated the sizes of the alignments and had them printed in the beginning of the script
+	# So I rewrote remove_mouse_plat_maf.pl to replace all of the "."'s with "-"'s as well as to perform the calculation
+		$ perl remove_mouse_plat_maf.pl
+	# Now, I need to go through the steps of the pipeline again, but it should be relatively faster than before
+		$ perl tfloc_maf_batch_breaker1.pl -i cow4_refseq_filtered_1000_upstream.maf -o 1k
+		# Within each folder (1k, 1k_dhc and 1k_hcd)
+			$ perl ../tfloc_test_same_aln03.pl 2> /dev/null
+				Found 42 instances and will remove 35
+			$ chmod +x removal_command
+			$ ./removal_command
+			$ rm removal_command
+		# Now to test tfloc to see if it can actually run with the data I've provided
+		$ tfloc -verbose NM_001045993_01848 ../../transfac_tfbs.txt TFAP2A
+			Segmentation fault
+		# I found out the reason why using the netbeans IDE with a compiled tfloc program (load sources into netbeans, create complex makefile, run makefile, load compiled file into netbeans then debug)
+		# The issue was that my transfac file had a P0 instead of a PO tag before the matrix
+		# It was fixed and now I think that the program can work without faults
+		
+		# Now to calculate the background:
+		pwd: in 1k, 1k_dhc and 1k_hcd (respectively)
+		$ perl ../tfloc_mean_stdev1.pl -i . -t MATRIX_NAME -c 00 -s upstream1000 -p 1
+		$ perl  ../tfloc_mean_stdev1.pl -i . -t MATRIX_NAME -c 00 -s upstream1000 -p 2
+		$ perl ../tfloc_mean_stdev1.pl -i . -t MATRIX_NAME -c 00 -s upstream1000 -p 3
+		
+	# Now to calculate the cutoff matrix for each species
+	pwd: in 1k, 1k_dhc and 1k_hcd (respectively)
+	$ perl ../tfloc_cutoff_test01_0.0001.pl -i . -t MATRIX_NAME -c 00 -p 1 -s upstream1000
+	$ perl ../tfloc_cutoff_test01_0.0001.pl -i . -t MATRIX_NAME -c 00 -p 2 -s upstream1000
+	$ perl ../tfloc_cutoff_test01_0.0001.pl -i . -t MATRIX_NAME -c 00 -p 3 -s upstream1000
+	
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts
+	$ perl tfloc_cutoff_min01_0.0001.pl -i . -t MATRIX_NAME -c 00 -p 1 -s upstream1000
+	## NOTE: This is where George diverges off of the beaten track. Here he includes another script that deals with "unique" entries (what criteria he uses to select "unique" entries is unknown)
+	## I am going to press ahead with the upstream1000_cutoff files that I've generated from this batch of files and use NM_174737 (PCK1) as a test gene for the tfbs prediction
+	## I will give George this information, create a few graphs/charts and then ask him for his suggestion on where to go from here.
+	
+	## UPDATE: I believe that the "unique" folders are just resultant from the duplicate removal step ##
+	
+	# Now to create plots in R for all of the *.count files to se if they fit with a gaussian distribution model
+	# My script name is called "process_tfloc_count_to_qqplot.pl"
+	pwd: in 1k, 1k_dhc and 1k_hcd (respectively)
+	perl process_tfloc_count_to_qqplot.pl
+	
+	# Creating MYSQL database for further script access
+		mysql> create table tfbs.MATRIX_BS_STATS_NOUN_upstream1000_raw (
+		    -> ID varchar(50) default '' not null primary key,
+		    -> CUTOFF0_0001 int,
+		    -> CUTOFF0_0002 int,
+		    -> CUTOFF0_0003 int,
+		    -> CUTOFF0_0004 int,
+		    -> CUTOFF0_0005 int,
+		    -> CUTOFF0_0006 int,
+		    -> CUTOFF0_0007 int,
+		    -> CUTOFF0_0008 int,
+		    -> CUTOFF0_0009 int,
+		    -> CUTOFF0_001 int,
+		    -> CUTOFF0_01 int,
+		    -> CUTOFF0_05 int,
+		    -> CUTOFF0_1 int,
+    		    -> key(ID));
+    		mysql> load data local infile '/home/dbickhart/share/tfbs_project/rewritten_scripts/upstream1000_cutoff_min.txt' into table tfbs.MATRIX_BS_STATS_NOUN_upstream1000_raw;
+    		mysql> create table tfbs.MATRIX_BS_STATS_NOUN_upstream1000 select A.name, B.* from tfbs.MATRIX_NAME A left join tfbs.MATRIX_BS_STATS_NOUN_upstream1000_raw B on (A.base_ID=B.ID) where B.ID is not null;
+    	
+    	# Problem with count output
+    	# So I am getting weird counts from tfloc on my shared drive. I will try to use George's compiled tfloc executable on Server 2
+    		Server 2: /mnt/data6/gliu/dbickhart/jaspar
+    		$ mysql -u gliu -p
+    		mysql> use cowtfbs;
+    		mysql> create table DMATRIX_ANNOTATION(
+		    -> ID VARCHAR(16) default '' not null,
+		    -> tag VARCHAR(255) default '' not null,
+		    -> val varchar(255) default '',
+		    -> PRIMARY KEY (ID, tag));
+		mysql> load data local infile 'CORE/MATRIX_ANNOTATION.txt' into table DMATRIX_ANNOTATION;
+		mysql> load data local infile 'FAM/MATRIX_ANNOTATION.txt' into table DMATRIX_ANNOTATION;
+		mysql> load data local infile 'PHYLOFACTS/MATRIX_ANNOTATION.txt' into table DMATRIX_ANNOTATION;
+		
+		mysql> create table DMATRIX_DATA(
+		    -> ID varchar(16) default '' not null,
+		    -> row varchar(1) not null,
+		    -> col tinyint(3) unsigned not null,
+		    -> val float(7,2),
+		    -> PRIMARY KEY(ID, row, col));
+		mysql> load data local infile 'CORE/MATRIX_DATA.txt' into table DMATRIX_DATA;
+		mysql> load data local infile 'FAM/MATRIX_DATA.txt' into table DMATRIX_DATA;
+		mysql> load data local infile 'PHYLOFACTS/MATRIX_DATA.txt' into table DMATRIX_DATA;
+		
+		mysql> create table DMATRIX_NAME(
+		    -> ID int not null,
+		    -> collection varchar(16) default '',
+		    -> base_ID varchar(16) default '' not null,
+		    -> version tinyint default 1 not null,
+		    -> name varchar(255) default '' not null,
+		    -> PRIMARY KEY (ID));
+		mysql> load data local infile 'CORE/MATRIX_NAME.txt' into table DMATRIX_NAME;
+		mysql> load data local infile 'FAM/MATRIX.txt' into table DMATRIX_NAME;
+		mysql> load data local infile 'PHYLOFACTS/MATRIX.txt' into table DMATRIX_NAME;
+		# I need to rewrite my scripts to parse these databases and to create new ones on server 2 now.
+    		
+    		Server 2: /mnt/data6/gliu/dbickhart/tfbs_project/rewritten_scripts
+    		pwd: in 1k, 1k_dhc and 1k_hcd (respectively)
+    		$ perl ../tfloc_mean_stdev2.pl -i . -t DMATRIX_NAME -c 00 -s upstream1000 -p 1
+    		$ perl ../tfloc_mean_stdev2.pl -i . -t DMATRIX_NAME -c 00 -s upstream1000 -p 2
+    		$ perl ../tfloc_mean_stdev2.pl -i . -t DMATRIX_NAME -c 00 -s upstream1000 -p 3
+    		
+    		# These .count files have a greater diversity of numbers
+    		# I believe that George did change the source code of the program to generate these files.
+    		# tar gzipped the files and transferred them back to my linux virtual box
+    		# Checking the distribution of values:
+    		pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k/count
+    		
+    		# I can apparently run George's compiled executable on my linux box, so I will work from there from now on.
+    		# Important distinction: George's executable requires the transfac file to have a P0 flag instead of a PO flag for the start of the matrix
+    		pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k
+    		$ ../tfloc.exe -verbose 1/NM_001080227_01714 ../transfac_tfbsg.txt TFAP2A -cut 0  <- this works
+    		
+    		
+    	# Restarting the pipeline to get the cutoff values correct
+    		pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/
+    		pwd: in 1k, 1k_dhc and 1k_hcd respectively
+    		$ perl ../tfloc_cutoff_test01_0.0001.pl -i count -t MATRIX_NAME -c 00 -p 1 -s upstream1000
+    		
+    		pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts
+    		$ perl tfloc_cutoff_min01_0.0001.pl -i . -t MATRIX_NAME -c 00 -p 1 -s upstream1000
+    		
+    		mysql> drop table if exists MATRIX_BS_STATS_NOUN_upstream1000;
+    		mysql> drop table if exists MATRIX_BS_STATS_NOUN_upstream1000_raw;
+		mysql> create table tfbs.MATRIX_BS_STATS_NOUN_upstream1000_raw (
+		    -> ID varchar(50) default '' not null primary key,
+		    -> CUTOFF0_0001 int,
+		    -> CUTOFF0_0002 int,
+		    -> CUTOFF0_0003 int,
+		    -> CUTOFF0_0004 int,
+		    -> CUTOFF0_0005 int,
+		    -> CUTOFF0_0006 int,
+		    -> CUTOFF0_0007 int,
+		    -> CUTOFF0_0008 int,
+		    -> CUTOFF0_0009 int,
+		    -> CUTOFF0_001 int,
+		    -> CUTOFF0_01 int,
+		    -> CUTOFF0_05 int,
+		    -> CUTOFF0_1 int,
+		    -> key(ID));	
+		mysql> load data local infile '/home/dbickhart/share/tfbs_project/rewritten_scripts/upstream1000_cutoff_min.txt' into table tfbs.MATRIX_BS_STATS_NOUN_upstream1000_raw;
+		mysql> create table tfbs.MATRIX_BS_STATS_NOUN_upstream1000 select A.name, B.* from tfbs.MATRIX_NAME A left join tfbs.MATRIX_BS_STATS_NOUN_upstream1000_raw B on (A.base_ID=B.ID) where B.ID is not null;
+		
+		pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k_hcd
+		# Using the PCK1 gene ./1/NM_174737_01227 for this testing
+		$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./1 -t MATRIX -c 00 -s NM_174737_01227 -p 1
+		
+	# Checking the cutoff
+		# So George had a great idea: run the pipeline to determine the cutoff and then check the predicted sites against the known sites by creating a custom bed file and placing it on the UCSC genome browser
+		# I will make a script that will make a similar bed file using the human coordinates of the hcd maf file
+		# I blasted the human sequence and found out that it lies within the following coordinates on the hg18 assembly: 
+			ACTIONS      QUERY           SCORE START  END QSIZE IDENTITY CHRO STRAND  START    END      SPAN
+			---------------------------------------------------------------------------------------------------
+			browser details YourSeq          815     1   815   815 100.0%    20   +   55568753  55569567    815
+			
+		# Now to calculate the coordinates reported by tfloc to ensure that they are analogous to the basepair positions
+			585	NM_174737	627	633	YCATTAA	+	996	0
+			$ perl -e 'my $line = <>; $line =~ s/-//g; @s = split(//, $line); for ($x = 625; $x <= 632; $x++){print "$s[$x]";} print "\n";' < human_pck1_sequence.txt
+				TTCATTAA
+		
+			585	NM_174737	657	662	CAGGTA	-	844	0
+			$ perl -e 'my $line = <>; $line =~ s/-//g; @s = split(//, $line); for ($x = 656; $x <= 661; $x++){print "$s[$x]";} print "\n";' < human_pck1_sequence.txt
+				TCCCTG
+				
+			585	NM_174737	703	716	TGGNNNNNNKCCAR	+	950	0
+			$ perl -e 'my $line = <>; $line =~ s/-//g; @s = split(//, $line); for ($x = 702; $x <= 715; $x++){print "$s[$x]";} print "\n";' < human_pck1_sequence.txt
+				TGGCCGTGATCCAG
+				
+			585	NM_174737	630	638	YTAAYNGCT	+	862	0
+			$ perl -e 'my $line = <>; $line =~ s/-//g; @s = split(//, $line); for ($x = 629; $x <= 637; $x++){print "$s[$x]";} print "\n";' < human_pck1_sequence.txt
+				TTAACAACT
+				
+		# I think that the numbers in the tfloc output are equivalent to the non "-" characters in the sequence. This is good!
+		# Now to make some sample bed files using my new script: create_custom_bed_track_from_raw_tfbs_predictions.pl
+		pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k_hcd
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0003/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0003.bed chr20 55568753
+		
+		# Slight update to that script: I added a feature that generates a tabular output of all the overlaps between tfloc and the known sites
+		# This includes the sensitivity and specificity of the calls as well
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0003/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0003.bed chr20 55568753 55569567
+			Overlaps:	60
+			21	12	9	60	48	0.571428571428571	0.479166666666667
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0001/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0001.bed chr20 55568753 55569567
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0002/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0002.bed chr20 55568753 55569567
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0004/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0004.bed chr20 55568753 55569567
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0005/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0005.bed chr20 55568753 55569567
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0006/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0006.bed chr20 55568753 55569567
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0007/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0007.bed chr20 55568753 55569567
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0008/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0008.bed chr20 55568753 55569567
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0009/tfbs_raw_NM_174737_01227.txt NM_174737_predictions_0009.bed chr20 55568753 55569567
+		
+		# Now, taking the "tab" files generated from the tfbs output and adding them all to one central excel file
+		# Done. It looks like the 0.0004 cutoff value is the best one
+		
+		# Now to start making the calls and generating the datasets
+		pwd /home/dbickhart/share/tfbs_project/rewritten_scripts/
+			in 1k, 1k_dhc and 1k_hcd respectively
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s cow -p 1
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s dog -p 2
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s human -p 3
+			
+		# George used a few more scripts to try to reconcile unique regions in his pipeline, but I think that I'll just dump the raw mysql data and work with it using my own scripts
+		pwd /home/dbickhart/share/tfbs_project/rewritten_scripts/
+		$ mq -e "select right(chrom, 5) as bin, left(chrom, 12) as refGene, chromStart, chromEnd, name as seq_or_TF, strand, score from tfbs.tfbs_new_cow_1 order by bin;" > cattle_head_tfbs_prediction_unformatted.txt
+		$ mq -e "select right(chrom, 5) as bin, left(chrom, 12) as refGene, chromStart, chromEnd, name as seq_or_TF, strand, score from tfbs.tfbs_new_dog_2 order by bin;" > dog_head_tfbs_prediction_unformatted.txt
+		$ mq -e "select right(chrom, 5) as bin, left(chrom, 12) as refGene, chromStart, chromEnd, name as seq_or_TF, strand, score from tfbs.tfbs_new_human_3 order by bin;" > human_head_tfbs_prediction_unformatted.txt
+		
+		# I wrote one script that will merge coordinates from identical TFs 
+		# George did not want me to predict TFBSs on chrunall, but I would be missing several thousand if I did not. I can always filter them out later
+		$ perl finalize_tfbs_prediction_list.pl -o cattle_tfbs_merged_bin.tab -i cattle_head_tfbs_prediction_unformatted.txt -b cattle_tfbs_merged.bed -c '255,0,0'
+			Old total	New total	Number merged
+			422552	373515	37567
+		$ perl finalize_tfbs_prediction_list.pl -o dog_tfbs_merged_bin.tab -i dog_head_tfbs_prediction_unformatted.txt -b dog_tfbs_merged.bed -c '0,255,0'
+			Old total	New total	Number merged
+			422799	368658	37106
+		$ perl finalize_tfbs_prediction_list.pl -o human_tfbs_merged_bin.tab -i human_head_tfbs_prediction_unformatted.txt -b human_tfbs_merged.bed -c '0,0,255'
+			Old total	New total	Number merged
+			422674	368549	37106
+		
+		# Now to convert the bed files into bigBed and talk to George about hosting them.
+		pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts
+		$ ../../fetchChromSizes.txt bosTau4 > ucsc_bosTau4.chrom.sizes
+		$ sort -k1,1 -k2,2n cattle_tfbs_merged.bed > cattle_tfbs_merged_sorted.bed
+		$ perl -lane 'if($F[2] < $F[1]){print "$F[0]\t$F[2]\t$F[1]\t$F[3]\t$F[4]\t$F[5]\t$F[6]\t$F[7]\t$F[8]\n";}else{print $_;}' < cattle_tfbs_merged_sorted.bed > cattle_tfbs_merged_sorted_filtered.bed
+		$ sort -k1,1 -k2,2n cattle_tfbs_merged_sorted_filtered.bed > cattle_tfbs_merged_sorted.bed
+		
+		# There was a problem with one of the RefSeq IDs. Going to try to remove the problematic entries (look like duplicates but with the wrong coordinates NM_001046249_02484 is good
+		$ perl finalize_tfbs_prediction_list.pl -o cattle_tfbs_merged_bin.tab -i cattle_head_tfbs_prediction_unformatted.txt -b cattle_tfbs_merged.bed -c '255,0,0'
+		
+		# It turns out that all of the coordinates for the reverse strand sequence are borked! Ucsc uses reverse compliment coordinates for their maf files if the alignment is negative!
+		# Rewrote tfloc_upstream_maf3_hmr_h.pl to correct the coordinates
+		pwd /home/dbickhart/share/tfbs_project/rewritten_scripts/
+			in 1k, 1k_dhc and 1k_hcd respectively
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s cow -p 1
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s dog -p 2
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s human -p 3
+			
+		# It turns out that my transfac file has ID's that are illegal in tfloc (spaces and parentheses) this needs to be changed.
+		pwd /home/dbickhart/share/tfbs_project/rewritten_scripts/
+		$ perl -lane 'if($F[0] =~ /^ID/ || $F[0] =~ /^NA/ || $F[0] =~ /^DE/){$ws = join("", @F[1..scalar(@F)]); $ws =~ s/[()]/_/g; $ws =~ s/-/_/g; print "$F[0]   $ws";}else{print $_;}' < transfac_tfbsg.txt > transfac_tfbsgf.txt
+			pwd: in 1k, 1k_dhc and 1k_hcd respectively
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s cow -p 1
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s dog -p 2
+			# It turns out that if I run these simultaneously, they collide on the transfac file! I need to run them separately or create different transfac files
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s human -p 3
+		
+		# Now to check and see if things have improved
+		pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts
+		$ mq -e "select right(chrom, 5) as bin, left(chrom, 12) as refGene, chromStart, chromEnd, name as seq_or_TF, strand, score from tfbs.tfbs_new_cow_1 order by bin;" > cattle_head_tfbs_prediction_unformatted.txt
+		# Going to try to finalize it without removing the previous problem entries to see if that works out better.
+		$ perl finalize_tfbs_prediction_list.pl -o cattle_tfbs_merged_bin.tab -i cattle_head_tfbs_prediction_unformatted.txt -b cattle_tfbs_merged.bed -c '255,0,0'
+		$ sort -k1,1 -k2,2n cattle_tfbs_merged.bed > cattle_tfbs_merged_sorted.bed
+		$ ../../bedToBigBed.txt cattle_tfbs_merged_sorted.bed ucsc_bosTau4.chrom.sizes cattle_tfbs_merged_sorted.bb
+			End coordinate 116459475 bigger than chr10 size of 106383598 line 30390 of cattle_tfbs_merged_sorted.bed   # Well, I got farther than I did before!
+		# Perhaps it is time to put chr size parity in the finalize script to ensure that everything is alright.
+		# I think that I might have a good metric for doing this in the finalize chromosome 
+		$ perl finalize_tfbs_prediction_list.pl -o cattle_tfbs_merged_bin.tab -i cattle_head_tfbs_prediction_unformatted.txt -b cattle_tfbs_merged.bed -c '255,0,0'
+		Refseq conversion stats
+		Illegal collisions: 335	Skipped because larger than chr: 547
+		Number of data entries skipped: 7274
+		Nonexistent refgenes:
+		NM_001075388
+		...
+		Old total	New total	Number merged
+		414269	369991	37050
+
+		# The non-existent refgenes are all chrunall
+		# ARGH! Some of the maf file headers are malformed and do not process through my regex parser!
+		# Trying a "split" approach to get the necessary information
+		# This means that I will have to rerun tfloc_upstream_maf3_hmr_h.pl again
+		pwd /home/dbickhart/share/tfbs_project/rewritten_scripts/
+			in 1k, 1k_dhc and 1k_hcd respectively
+			$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s cow -p 1
+				Total No. of Mappings:            100856
+			$ mq -e "select right(chrom, 5) as bin, left(chrom, 12) as refGene, chromStart, chromEnd, name as seq_or_TF, strand, score from tfbs.tfbs_new_cow_1 order by bin;" > cattle_head_tfbs_correct_prediction_unformatted.txt
+			$ perl finalize_tfbs_prediction_list.pl -o cattle_tfbs_merged_sorted.bed -i cattle_head_tfbs_correct_prediction_unformatted.txt -b cattle_tfbs_merged.bed -c '255,0,0'
+			$ mv cattle_tfbs_merged_sorted.bed cattle_tfbs_merged_sorted_bin.tab
+			$ ../../bedToBigBed.txt cattle_tfbs_merged.bed ucsc_bosTau4.chrom.sizes cattle_tfbs_merged_sorted.bb
+			
+			# Going to try to recover some of the chrUnall refseq genes
+			$ perl finalize_tfbs_prediction_list.pl -o cattle_tfbs_wchrun_bin.tab -b cattle_tfbs_merged_wchrun.bed -i cattle_head_tfbs_correct_prediction_unformatted.txt -c '255,0,0'
+				Refseq conversion stats
+				Illegal collisions: 442	Skipped because larger than chr: 0
+				Number of data entries skipped: 9658
+				Nonexistent refgenes: 0
+				Old total	New total	Number merged
+				424021	376731	37676
+				
+# Redo with BC numbers and coordinates intact.
+	# George had an excellent suggestion: how about I keep the chromosome and coordinates intact in the maf file and use them later to good effect?
+	# storing the previous files in a tar.gz archive
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts
+	$ mkdir previous
+	# Moved 1k, 1k_dch and 1k_hcd to previous
+	# Windows clamped down on file permissions, so I'll have to zip it.
+	# OK, so my goal is to change the filenames to the BC coords and to keep the chromosomes in the same position in the maf alignment (also remove the ".'s" from the file).
+	# Should be easy enough to create a custom script to batch process all of it. 
+	# Created a custom script: tfloc_bc_maf_batchbreaker.pl
+	$ perl tfloc_bc_maf_batchbreaker.pl -o 1k -r 1
+		Total: 8740	Successful: 8057	No seq: 683	Filename error: 0
+	$ perl tfloc_bc_maf_batchbreaker.pl -o 1k_dch -r 2
+		Total: 8740	Successful: 8057	No seq: 683	Filename error: 0
+	$ perl tfloc_bc_maf_batchbreaker.pl -o 1k_hdc -r 3
+		Total: 8740	Successful: 8057	No seq: 683	Filename error: 0
+		
+	# I have rewritten tfloc_upstream_maf3_hmr_h.pl to be a "complete" solution for generating the final data.
+	# Crossing my fingers that this works...
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k
+	$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s cow -p 1 
+		# It worked successfully, but the mysql db connection timed out
+		# I rewrote the script to try to query mysql right before the loading of the infile
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k_dch
+	$ perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s dog -p 2
+		# Note: my method for extracting the chromosome from the maf file truncated the ChrUn contigs in that previous run
+		# I rewrote the script for the dog and human run, so I will have to take the mysql dump files and use them as a cross reference to affix the proper chromosome
+		# Unknown contigs onto the cattle one. Should be relatively painless
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k_hdc
+	$ sleep 6h; perl ../tfloc_upstream_maf3_hmr_h.pl -i . -t MATRIX_BS_STATS -c 00 -s human -p 3
+	
+	# Now to work on my finalize_tfbs_prediction_list.pl script to affix refseq names and merge entries that overlap by 80% (keeping the one with the highest zscore)
+	# My finalize script should now do a proper removal of entries that have lower zscores but have the same TF prediction and overlap the same coordinates
+	# Two output files: 
+		#1 a "bin" file that I will use to generate a final mysql table for the website script
+		#2 a "bed" file that will be created for us to view in UCSC
+		
+	$ perl finalize_tfbs_prediction_list.pl -o cattle_bc_tfbs_btau4.bin -i 1k/temp_tfbs_cow_1 -b cattle_bc_tfbs_btau4.bed -f 1
+		Refseq conversion stats
+		Illegal collisions: 729	Skipped because larger than chr: 0
+		Number of data entries skipped because larger than chr: 149
+		Nonexistent refgenes: 0
+		Old total	New total	Number removed
+		391953	379189	7722
+		
+		#Note, I had to change the tfbs site names within the transfac file to get tfloc to work on them (the names were improperly formated)
+		# Here is the perl code to format the names properly
+				$row->[0] =~ s/\s//g;
+				$row->[0] =~ s/[()-\/]/_/g;
+		
+		# Crap! All of my previous predictions were off by 1000 if they were on the reverse strand because of an error in my calculation.
+		# I will rewrite my finalize script to reprocess the bed files to remove this error
+	$ perl finalize_tfbs_prediction_list.pl -o cattle_bc_tfbs_btau4.bin -i 1k/temp_tfbs_cow_1 -b cattle_bc_tfbs_btau4.bed -f 1
+		Refseq conversion stats
+		Illegal collisions: 729	Skipped because larger than chr: 0
+		Number of data entries skipped because larger than chr: 0
+		Nonexistent refgenes: 0
+		No refseq gene exception: 26250
+		Old total	New total	Number removed
+		391953	379333	7724
+		# Interesting, that gave me 149 more entries in the end
+	# The next two entries failed because tfloc did not give the proper coordinates for the positions (since the cattle genome was not placed first)
+	# I will have to rewrite finalize_tfbs_prediction_list.pl in order to redo these entries (and make the refseq position locations correpond to exactly 1kb locations upstream of their associated genes)
+	$ perl finalize_tfbs_prediction_list.pl -o dog_bc_tfbs_btau4.bin -i 1k_dch/temp_tfbs_dog_2 -b dog_bc_tfbs_btau4.bed -f 1
+		Illegal collisions: 729	Skipped because larger than chr: 0
+		Number of data entries skipped because larger than chr: 0
+		Nonexistent refgenes: 0
+		No refseq gene exception: 388913
+		Old total	New total	Number removed
+		392205	379577	7721
+		
+	$ perl finalize_tfbs_prediction_list.pl -o human_bc_tfbs_btau4.bin -i 1k_hdc/temp_tfbs_human_3 -b human_bc_tfbs_btau4.bed -f 1
+		Illegal collisions: 729	Skipped because larger than chr: 0
+		Number of data entries skipped because larger than chr: 0
+		Nonexistent refgenes: 0
+		No refseq gene exception: 388770
+		Old total	New total	Number removed
+		392053	379429	7714
+		
+	# OK, I think that did the trick
+	
+	# Now to start working on the website.
+	# I will use two tables based on my finalize script's output: a general location table and an individual prediction table
+	# Going to generate the SQL tables under George's mysql username and use his data for retrieval. Database will be cow_tfbs
+		Server 2
+		mysql> use cowtfbs;
+		mysql> create table btau4_browser_lookup (
+		    -> bin int(5) not null primary key,
+		    -> chr varchar(35) not null,
+		    -> start int(14) not null default '0',
+		    -> end int(14) not null default '0',
+		    -> gene_id varchar(50),
+		    -> refseq_id varchar(50),
+		    -> mgc_id varchar(50),
+		    -> key(bin));
+		mysql> load data local infile '/mnt/data6/gliu/dbickhart/cattle_bc_tfbs_btau4.bin' into table btau4_browser_lookup;
+		
+		mysql> create table btau4_tfbs_predictions (
+		    -> chr varchar(35) not null,
+		    -> start int(14) not null default '0',
+		    -> end int(14) not null default '0',
+		    -> tfbs_name varchar(120) not null,
+		    -> zscore int(5) not null default '0',
+		    -> strand varchar(3) not null,
+		    -> thickstart int(14),
+		    -> thickend int(14),
+		    -> color varchar(20));
+		mysql> load data local infile '/mnt/data6/gliu/dbickhart/cattle_bc_tfbs_btau4.bed' into table btau4_tfbs_predictions;
+		
+	# OK, that part is finished, now to create the website script to query those tables and print results.
+	# Since I already have the colors assigned, I can do a little bit more filtering in the script than George was able to do
+	# Created an initial script (still needs some debugging and html editting): create_tfbs_custom_track.pl
+	
+# Now time to write the paper.
+	# I checked the number of exclusions that would have occurred if I included mouse or platypus using check_mouse_plat_maf_synteny.pl
+	# Here are the numbers for future reference (ie. reviewer questions)
+		Including all five species:  1337 possible sites to check
+		Including just human, dog cow:  8052
+		Including just cow and dog: 8160
+		Including just human and cow: 8435
+		Including just mouse and cow: 7644
+		
+		# So we chose the three species with the best synteny of upstream regions based on these exclusion statistics
+		
+	# I am also going to check my CNV predictions with overlap compared to predicted TFBSs. I think this will be interesting, but perhaps not too informative.
+		mysql> create table cow_tfbs_pred_final_bed (
+		    -> chr varchar(100) not null,
+		    -> start int(12) not null,
+		    -> end int(12) not null,
+		    -> tfbs varchar(100) not null,
+		    -> score int(5) not null,
+		    -> strand varchar(2) not null,
+		    -> thickstart int(12),
+		    -> thickend int(12),
+		    -> color varchar(15));
+		    
+		mysql> load data local infile "/home/dbickhart/share/tfbs_project/rewritten_scripts/cattle_bc_tfbs_btau4.bed" into table cow_tfbs_pred_final_bed;
+		
+		# OK, now for the painful part; learning how to check overlap in MySQL databases
+		mysql> select * from hd_an_cnv_cn a join tfbs.cow_tfbs_pred_final_bed b on b.start <= a.end and b.end >= a.start and a.chr = b.chr;
+			15275 rows in set (3 min 34.12 sec)
+			# Not bad, but this includes buffalo
+			
+		mysql> select * from hd_an_cnv_cn a join tfbs.cow_tfbs_pred_final_bed b on b.start <= a.end and b.end >= a.start and a.chr = b.chr and a.animal != "BUFFALO";
+			14381 rows in set (3 min 33.09 sec)
+			# Still not bad! About 4% of the TFBS predictions are covered by CNVs
+			
+		# Outputting results to a file for later:
+		$ mq -e 'select * from cnvs.hd_an_cnv_cn a join tfbs.cow_tfbs_pred_final_bed b on b.start <= a.end and b.end >= a.start and a.chr = b.chr and a.animal != "BUFFALO";' > mysql_tfbs_cnv_overlap.tab
+	# George made a good point that the SNP intersections are likely to be more interesting
+		# Downloaded all the dbSNP positions from ftp.ncbi.nih.gov/snp/organisms/cow_9913/
+		# They are all mapped to either UMD3.1 or Btau4.2
+		# George wants me to liftover the UMD3.1 coordinates to cow4 (the mappings appear to be redundant) and then try the overlap. Should take the better part of a day to do, but might be worth it
+		
+		# Yali has given me her converted cow4 coordinates from the 700k snp chip (/home/dbickhart/share/tfbs_project/bsnp50all.pfb)
+			# chromosome "30" is chrunall, and I believe that it is the size that George originally made it (ie. huge gaps between contigs)
+			# Testing this out under Yali's PENNCNV folder on Server 2
+			Server 2: /mnt/data2/gliu/cow4_umd3
+			$ perl -e 'while(<>){chomp; ($n) = $_ =~ /TOTAL\((\d+)\) ATCGO/; $t += $n; $v++;} print "t length: $t\n"; $c = ($v * 10000) + $t; print "length if v equals 10,000: $c\n";' < chrUn_length_cow4.tab
+				t length: 283544868
+				length if v equals 10,000: 402244868
+				
+			# Yup, so the total size of the chrUnAll chromosome is consistent with a 10kb spacer between the contigs
+			# Getting the order of the contigs so that I can create a conversion script
+			$ perl -e 'while(<>){chomp; @s = split(/\s+/); ($t) = $s[2] =~ /TOTAL\((\d+)\)/; print "$s[1]\t$t\n";}' < chrUn_length_cow4.tab > /home/dbickhart/chrun_order_forchrunall_cow4.txt
+			
+			# Now to write the conversion script and process the data
+			pwd: /home/dbickhart/share/tfbs_project
+			$ perl process_700k_snp_data.pl
+			
+			# Done! Now to try lifting over the coordinates from the dbsnp database
+			$ cd dbsnp_check
+			$ for i in ./dbsnp_check/*.txt; do perl -lane 'if($F[0] =~ /^\d+/ && $F[6] ne "?" && $F[-1] eq "Bos_taurus_UMD_3.1"){$e = $F[11] + 1; print "chr$F[6]\t$F[11]\t$e\t$F[0]";}' < $i; done > ../dbsnp_coords.bed */
+			$ cd ..
+			$ ./liftOver.txt dbsnp_coords.bed bosTau6ToBosTau4.over.chain dbsnp_coords_btau4_convert.bed dbsnp_coords_unmapped.bed
+			# dbsnp_coords_btau4_convert.bed is the converted dbsnp entries
+				# Liftover statistics
+				dbsnp_coords_btau4_convert.bed (converted file):	8944416 SNPs
+				dbsnp_coords_unmapped.bed (unmapped conversions):	169394 SNPs
+				Original file (dbsnp_coords.bed):	9113810 SNPs
+				Percentage mapped to unmapped:	98.14%
+				# Not a bad liftover result!
+				# The converted file has the following fields( chr, start, end, SNP accesssion)
+		# Now to start the intersection
+		# I think that I'll use bedtools (since it is relatively lightweight and I do not want to load all of the snp coords into a mysql table!)
+		$ intersectBed -a dbsnp_coords_btau4_convert.bed -b rewritten_scripts/cattle_bc_tfbs_btau4.bed -wa > dbsnp_tfbs_intersect_btau4.bed
+		$ uniq dbsnp_tfbs_intersect_btau4.bed > dbsnp_tfbs_intersect_btau4_unique.bed
+		$ wc -l dbsnp_tfbs_intersect_btau4_unique.bed
+			2725 dbsnp_tfbs_intersect_btau4_unique.bed   or 0.03% of the converted SNPs
+		# Getting all the intersection data that I can for a final table
+		# I know that several overlapping TFBSs could be hit by the same SNP, so this command should give me that redundancy back
+		$ intersectBed -a dbsnp_coords_btau4_convert.bed -b rewritten_scripts/cattle_bc_tfbs_btau4.bed -wa -wb | uniq  > dbsnp_tfbs_intersect_full_stats_unique.bed	
+		$ wc -l dbsnp_tfbs_intersect_full_stats_unique.bed
+			7534 dbsnp_tfbs_intersect_full_stats_unique.bed  or ~ 0.06% of the converted SNPs
+			
+		# Now to match Yali's SNP array to these results
+		# Need to convert it to bed format first
+		$ perl -lane '$e = $F[1] + 1; print "$F[0]\t$F[1]\t$e\t$F[2]";' < converted_700k_snp_coords.txt > converted_700k_snp_coords.bed
+		$ intersectBed -a converted_700k_snp_coords.bed -b rewritten_scripts/cattle_bc_tfbs_btau4.bed -wa -wb | uniq  > snp700k_tfbs_intersect_full_stats_unique.bed
+		$ wc -l snp700k_tfbs_intersect_full_stats_unique.bed 
+			444 snp700k_tfbs_intersect_full_stats_unique.bed   444 / 763572  = ~ 0.06 % of the available snps from the array
+			
+		# I investigated approximately 1000 bases upstream of  7764 genes, making my total search space about 7,764,000 (assuming no overlaps of bases(which DID occur but was very infrequent))
+		# This means that I searched about 0.3% of the total genome
+		
+		# George wants me to check the bos 1 array coordinates
+		# Luckily, they have bosTau4 coordinates! Going to do the intersection
+		pwd: /home/dbickhart/share/tfbs_project/
+		$ perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[2]\t$s[3]\n";}' < ../AxiomBOS1.btau4.bed > bos1_btau4_coords.bed
+		$ intersectBed -a bos1_btau4_coords.bed -b rewritten_scripts/cattle_bc_tfbs_btau4.bed -wa -wb | uniq > bos1_tfbs_intersect_full_stats_unique.bed
+		$ wc -l bos1_tfbs_intersect_full_stats_unique.bed
+			346 bos1_tfbs_intersect_full_stats_unique.bed
+			
+		# George would like gene intersection data for the snps so I created a script to generate that data for him:
+		$ perl associate_gene_with_snp_table.pl snp700k_tfbs_intersect_full_stats_unique.bed > snp770k_tfbs_with_gene_intersect.tab
+			notfound: 0
+		$ perl associate_gene_with_snp_table.pl dbsnp_tfbs_intersect_full_stats_unique.bed > dbsnp_tfbs_with_gene_intersect.tab
+			notfound: 0
+		$ perl associate_gene_with_snp_table.pl bos1_tfbs_intersect_full_stats_unique.bed > bos1_tfbs_with_gene_intersect.tab
+			notfound: 0
+			
+		# Determining genes common to all three datasets
+		$ perl -e 'chomp(@ARGV); $c = 0; @a; foreach $f (@ARGV){open(IN, "< $f"); my %h; while($l = <IN>){chomp $l; @s = split(/\t/, $l); $h{$s[3]} = 1;} $a[$c] = \%h; $c++;} foreach $k (keys(%{$a[0]})){if(exists($a[1]->{$k}) && exists($a[2]->{$k})){print "$k\n";}}' dbsnp_tfbs_with_gene_intersect.tab snp770k_tfbs_with_gene_intersect.tab bos1_tfbs_with_gene_intersect.tab 
+			PTPRCAP
+			ABHD4
+			PDCD4
+			CAPZA2
+			NYD-SP18
+			IGFBP7
+			ELOVL7
+			DNAJB4
+			PRP4
+			MAT2B
+			TADA2A
+			COG8
+			 
+			LOC513822
+			C16H1orf170
+			GSX1
+			TUBGCP4
+			MGC151975
+			PANX2
+			C10H14orf93
+			SOSTDC1
+			RPL23A
+			C3H1orf109
+			CPN2
+			OMG
+			RPS16
+			MYADM
+			
+		# Number of unique gene intersections
+		$ perl -e 'chomp(@ARGV); $c = 0; %h; foreach $f (@ARGV){open(IN, "< $f"); while($l = <IN>){chomp $l; @s = split(/\t/, $l); $h{$s[3]} = 1;}} foreach my $k (keys(%h)){$c++;} print "$c\n";' dbsnp_tfbs_with_gene_intersect.tab snp770k_tfbs_with_gene_intersect.tab bos1_tfbs_with_gene_intersect.tab 
+			1765  (already subtracted 1 for the "blank" line)  # Gene symbols
+		$ perl -e 'chomp(@ARGV); $c = 0; %h; foreach $f (@ARGV){open(IN, "< $f"); while($l = <IN>){chomp $l; @s = split(/\t/, $l); $h{$s[5]} = 1;}} foreach my $k (keys(%h)){$c++;} print "$c\n";' dbsnp_tfbs_with_gene_intersect.tab snp770k_tfbs_with_gene_intersect.tab bos1_tfbs_with_gene_intersect.tab 
+			1887  #MGC accessions
+		
+		# Remaking the known prediction sites to fit on the cow assembly
+		$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0004/tfbs_raw_BC112664_1394.txt cow4_0004_BC112664_known.bed chr13 59379216 59380216 1
+		
+	# George wants me to use the liftover coordinates from the human known sites to redo the figure
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k/
+	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC112664_1394 -p 1
+	
+	# Now to recalculate the values
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0004/tfbs_raw_BC112664_1394.txt cow4_0004_predicted_regions.bed chr13 59379216 59380216 0 0
+	
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0001/tfbs_raw_BC112664_1394.txt cow4_0001_predicted_regions.bed chr13 59379216 59380216 0 0
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0002/tfbs_raw_BC112664_1394.txt cow4_0002_predicted_regions.bed chr13 59379216 59380216 0 0
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0003/tfbs_raw_BC112664_1394.txt cow4_0003_predicted_regions.bed chr13 59379216 59380216 0 0
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0005/tfbs_raw_BC112664_1394.txt cow4_0005_predicted_regions.bed chr13 59379216 59380216 0 0
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0006/tfbs_raw_BC112664_1394.txt cow4_0006_predicted_regions.bed chr13 59379216 59380216 0 0
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0007/tfbs_raw_BC112664_1394.txt cow4_0007_predicted_regions.bed chr13 59379216 59380216 0 0
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0008/tfbs_raw_BC112664_1394.txt cow4_0008_predicted_regions.bed chr13 59379216 59380216 0 0
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions.pl ./perc_0009/tfbs_raw_BC112664_1394.txt cow4_0009_predicted_regions.bed chr13 59379216 59380216 0 0
+	
+	
+# Matt needs me to check on some snp coords for him. 
+# Here's what I will do: Take his coordinates, lift them over to cow4, then expand them by 10bp on either side (start - 10bp and end + 10bp)
+# Then I will extract the sequence from a cow4 fasta, then run tfloc on the sequences
+# after this, I will change the base (according to matt's data) then rerun tfloc to get the new scores
+	pwd: /home/dbickhart/share/cow4_doc/liftover
+	$ ./liftOver matt_snp_tfbs_intersections.txt bosTauMd3ToBosTau4.over.chain matt_snp_tfbs_tocow4.bed matt_snp_tfbs_tocow4.unmapped
+	# now, I altered the input bed by adding the basepair change in the fourth column (s[3])
+	
+	# Err, wait... I think that Matt's data corresponds to the custom stretch of maff file that I extracted using mafsInRegion.exe
+	pwd: /home/dbickhart/share/tfbs_project/
+	$ perl -lane '$s = $F[1] - 10; $e = $F[2] + 9; print "$F[0]\t$s\t$e";' < matt_snp_tfbs_tocow4.bed > matt_snp_double_check_expanded_coords.bed
+	$ ./mafsInRegion.exe matt_snp_double_check_expanded_coords.bed matts_local_maf_chr4.maf bosTau4.5way.maf 
+		Extracting from 1 files to matts_local_maf_chr4.maf
+	# Manually editted the file to remove mm and orana sequences
+	# Going to cross my fingers and try this..
+	
+	# didn't work, trying a wrapper script to handle this.
+	$ perl process_matts_local_data.pl matts_local_maf_chr4.maf matts_unaltered_tfbs_sites.bed
+	$ wc -l matts_unaltered_tfbs_sites.bed 
+		36 matts_unaltered_tfbs_sites.bed   # OK, we're in business here.
+	
+	# Now to manually alter the maf file and try it again
+	$ perl process_matts_local_data.pl matts_local_maf_snps_chr4.maf matts_snp_tfbs_sites.bed
+	$ wc -l matts_snp_tfbs_sites.bed 
+		21 matts_snp_tfbs_sites.bed
+	
+	# Intersecting with the original snp coordinates to identify any putative changes
+	$ intersectBed -a matt_snp_tfbs_tocow4.bed -b matts_unaltered_tfbs_sites.bed -wb > unaltered_matts_snp_tfbs_intersections.bed
+	$ intersectBed -a matt_snp_tfbs_tocow4.bed -b matts_snp_tfbs_sites.bed -wb > snp_matts_snp_tfbs_intersections.bed
+		
+____________________________
+UMD3 problem
+____________________________
+# The UCSC genome team does not want to do the multiz alignment for UMD3, so I might have to do this myself
+# I found an email from their mailing list that details the methods to do this:
+		Amar,
+		Yes, you can use the same programs that we use to generate this upstream
+		file for MAFs. First, you will need to download the Genome Browser source
+		code which is free for personal, academic and non-profit use. Please see
+		this FAQ for the download link:
+		
+		http://genome.ucsc.edu/FAQ/FAQlicense#license3
+		
+		The two programs that you will need are featureBits and mafFrags.
+		featureBits is in the directory, src/hg/featureBits/, and mafFrags is in
+		the directory, src/hg/ratStuff/mafFrags/.
+		
+		featureBits uses the database tables but you can also use files of the
+		database table dumps. If you go to our downloads server:
+		http://hgdownload.cse.ucsc.edu
+		and then follow the link for human and then find the relevant assembly and
+		click on the "Annotation database" link then you can find a download for
+		the refGene and multiz17way tables. mafFrags may require that you load the
+		multi17way into a table and you will also need the chromInfo, seq and
+		extFile tables for that assembly in your database. The extFile ID is
+		referred to in the multiz17way table and then the row in the extFile table
+		for that id specifies the location of the maf files and then the seq table
+		shows the offset used in those files for specific sequences. You would
+		need to download the maf files for the multiz17way and then modify the
+		relevant extFile table row to show the directory of the location of your files.
+		Then you will need to use this script to generate files for N bases
+		upstream of the RefSeq genes:
+		
+		foreach i (1000 2000 5000)
+		        echo "making upstream$i.maf"
+		        nice featureBits hg18 refGene:upstream:$i -fa=/dev/null -bed=up.bad				<- Extracts the upstream regions
+		        cat up.bad|sed -e "s/_up_${i}_/\t/" >up.bad2							<- removes upstream tag ( i think!)
+		        awk -F '\t' '{printf("%s\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4, 0, $6)}' up.bad2 > up.bed	<- converts file to bed format
+		        rm up.bad
+		        nice mafFrags hg18 multiz17way up.bed upstream$i.maf \ -orgs=species.lst			<- this goes through an existing maf table for human to extract only the alignments for the upstream regions
+		        #rm up.bed
+		        mv up.bed up.bed.$i
+		    end
+		
+		If you would prefer, I can generate the files for you, if you let me know
+		the upstream regions that you require and which assembly you are using
+		(i.e. hg17 or hg18). It looks like you need the multiz17way alignments for
+		200 bp and 500 bp upstream of the RefSeq txStart.
+		
+		I hope that this helps you. Please let me know if you have further
+		questions.
+		
+		Rachel
+		
+	# So, I have several options:
+		1. Do a full multiz alignment of cattle to two other animals (dog and mouse?) then use the maf tools from UCSC according to the above pipeline
+		2. Download the axt files from the multiple alignments of bostau6 to other animals and use the axt tools from ucsc
+		
+	# I think that #2 would be faster but might require a full installation of the ucsc kent tools samples
+	# I would download the axts of each animal, install the axt tools from UCSC kent and then convert them to mafs and use mafFrags
+	# Unfortunately there is no program to combine axt files. I may have to do the alignment by myself using multiz
+	
+______________________________
+Rebuttal notes
+______________________________
+
+# The reviewers want to see the following:
+	1. More known tfbs sites included in the cutoff estimation
+	2. Comparison with other methods (possibly Contra2)
+	
+# I will start with the inclusion of more experimentally characterized TFBS sites.
+	# Using the following papers for identification of new sites for analysis:
+		1. Wasserman WW et al. BMC Journal of Biology 2003 vol2, article 13) [human][multiple]
+		2. Gautier-Stein, A. et al. Mol. Endogrinology 2005. [Rat] [G6PC]
+		3. Wasner, C. et al. Biochimica et Biophysica Acta- Gene Structure and Expression 2001. [human] [G6PC]
+		4. Ayala, J.E. et al. Diabetes 1999. [human] [G6PC]
+		5. Blanco, E. et al. PLoS computational biology 2006. [human] [TTR]
+		6. Corcoran, D. L. et al. Genome Research 2005. [human] [G6PC]
+		
+	# Now, to start lifting over everything for the comparison
+	pwd: /home/dbickhart/share/tfbs_project/known_predicted
+	$ /media/sf_SharedFolders/tfbs_project/liftOver.txt rat_known_BC114011_3301.bed rn4ToHg19.over.chain rat_known_BC114011_3301_liftoverhg19.bed rat_unmapped_BC114011_3301.bed
+	$ for i in human_known_BC1*.bed; do /media/sf_SharedFolders/tfbs_project/liftOver.txt $i hg19ToBosTau4.over.chain $i.liftover $i.unmapped; done
+	$ /media/sf_SharedFolders/tfbs_project/liftOver.txt rat_known_BC114011_3301_liftoverhg19.bed hg19ToBosTau4.over.chain rat_known_BC114011_3301.bed.liftover rat_known_BC114011_3301.bed.unmapped
+		# The results
+		$ wc -l *.liftover
+		  2 human_known_BC103035_4689.bed.liftover
+		  8 human_known_BC114011_3301.bed.liftover
+		  1 human_known_BC118091_7854.bed.liftover
+		  3 human_known_BC118328_7609.bed.liftover
+		  3 human_known_BC134665_5318.bed.liftover
+		  0 human_known_BC142385_7950.bed.liftover
+		  1 human_known_BC149006_2645.bed.liftover
+		  2 rat_known_BC114011_3301.bed.liftover
+ 		 20 total
+ 		# So, about 20 more sites to work with. That makes it ~ 40 sites across 8 different genes
+ 		
+ 	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts
+ 	# Creating the temp tfbs predictions
+ 	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC103035_4689 -p 1
+ 	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC114011_3301 -p 1
+ 	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC118091_7854 -p 1
+ 	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC118328_7609 -p 1
+ 	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC134665_5318 -p 1
+ 	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC149006_2645 -p 1
+ 	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC114011_3301 -p 1
+ 	
+ 	# And here is the custom script to check everything
+ 	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0001/tfbs_raw_BC103035_4689.txt,./perc_0001/tfbs_raw_BC112664_1394.txt,./perc_0001/tfbs_raw_BC114011_3301.txt,./perc_0001/tfbs_raw_BC118091_7854.txt,./perc_0001/tfbs_raw_BC118328_7609.txt,./perc_0001/tfbs_raw_BC134665_5318.txt,./perc_0001/tfbs_raw_BC149006_2645.txt cow4_0001_predicted_regions.bed chr13 3434 34343 0 0
+ 	# There is something wrong with the TFBS sites. Maybe I have the wrong locations? I need to repick them
+ 	# Oops! Just a bug in the script. Trying the rest through this pipeline
+ 	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0002/tfbs_raw_BC103035_4689.txt,./perc_0002/tfbs_raw_BC112664_1394.txt,./perc_0002/tfbs_raw_BC114011_3301.txt,./perc_0002/tfbs_raw_BC118091_7854.txt,./perc_0002/tfbs_raw_BC118328_7609.txt,./perc_0002/tfbs_raw_BC134665_5318.txt,./perc_0002/tfbs_raw_BC149006_2645.txt cow4_0002_predicted_regions.bed chr13 3434 34343 0 0
+ 	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0003/tfbs_raw_BC103035_4689.txt,./perc_0003/tfbs_raw_BC112664_1394.txt,./perc_0003/tfbs_raw_BC114011_3301.txt,./perc_0003/tfbs_raw_BC118091_7854.txt,./perc_0003/tfbs_raw_BC118328_7609.txt,./perc_0003/tfbs_raw_BC134665_5318.txt,./perc_0003/tfbs_raw_BC149006_2645.txt cow4_0003_predicted_regions.bed chr13 3434 34343 0 0
+ 	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0004/tfbs_raw_BC103035_4689.txt,./perc_0004/tfbs_raw_BC112664_1394.txt,./perc_0004/tfbs_raw_BC114011_3301.txt,./perc_0004/tfbs_raw_BC118091_7854.txt,./perc_0004/tfbs_raw_BC118328_7609.txt,./perc_0004/tfbs_raw_BC134665_5318.txt,./perc_0004/tfbs_raw_BC149006_2645.txt cow4_0004_predicted_regions.bed chr13 3434 34343 0 0
+ 	
+ 	# Yeah, I definitely need better TF site predition locations. The "-" coordinates for the TFs upstream of the genes are NOT good enough
+	# Restarting it using just the G6PC gene, ACTA1 and PEPCK
+	# Creating new folder (refined_known)
+	# searching the oreganno database for new genes/locations
+	pwd: /home/dbickhart/share/tfbs_project/oreganno
+	$ cat ./* | perl -e 'while(<STDIN>){chomp; if($_ =~ /Target_Gene/){next;}elsif($_ =~ /UNKNOWN/){next;}else{@s = split(/\t/); $h{$s[0]} += 1;}} foreach $v (sort {$h{$a} <=> $h{$b}} keys(%h)){print "$v\t$h{$v}\n";}'    */
+	
+	pwd: /home/dbickhart/share/tfbs_predictions/rewritten_scripts/1k
+	$ perl ../tfloc_upstream_maf3_hmr_test_cutoff_0.0001.pl -i ./maf -t MATRIX -c 00 -s BC134665_5318 -p 1
+	
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0001/tfbs_raw_BC112664_1394.txt,./perc_0001/tfbs_raw_BC114011_3301.txt,./perc_0001/tfbs_raw_BC134665_5318.txt chr13 3434 34343 0 0
+		Overlaps:	93
+		44	24	20	93	83	0.545454545454545	0.253012048192771
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0002/tfbs_raw_BC112664_1394.txt,./perc_0002/tfbs_raw_BC114011_3301.txt,./perc_0002/tfbs_raw_BC134665_5318.txt chr13 3434 34343 0 0
+		Overlaps:	179
+		44	31	13	179	156	0.704545454545455	0.224358974358974
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0003/tfbs_raw_BC112664_1394.txt,./perc_0003/tfbs_raw_BC114011_3301.txt,./perc_0003/tfbs_raw_BC134665_5318.txt chr13 3434 34343 0 0
+		Overlaps:	284
+		44	32	12	284	242	0.727272727272727	0.231404958677686
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0004/tfbs_raw_BC112664_1394.txt,./perc_0004/tfbs_raw_BC114011_3301.txt,./perc_0004/tfbs_raw_BC134665_5318.txt chr13 3434 34343 0 0
+		Overlaps:	359
+		44	33	11	359	301	0.75	0.215946843853821
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0005/tfbs_raw_BC112664_1394.txt,./perc_0005/tfbs_raw_BC114011_3301.txt,./perc_0005/tfbs_raw_BC134665_5318.txt chr13 3434 34343 0 0
+		Overlaps:	416
+		44	33	11	416	358	0.75	0.195530726256983
+	$ perl ../create_custom_bed_track_from_raw_tfbs_predictions_extended.pl ./perc_0006/tfbs_raw_BC112664_1394.txt,./perc_0006/tfbs_raw_BC114011_3301.txt,./perc_0006/tfbs_raw_BC134665_5318.txt chr13 3434 34343 0 0
+		Overlaps:	452
+		44	33	11	452	403	0.75	0.186104218362283
+	
+# For a comparison with other methods, George suggested that I avoid Contra2 (too much work)
+# Here is an alternative: Core_TF
+	- Hestand, M. S. BMC Bioinformatics. 2008. 
+# Actually, George wants me to use multitf instead. 
+# Here is the multitf website:
+http://multitf.dcode.org/
+
+# Here is how I am going to try to run this:
+	1. Get the maf files for the three genes and extract the fastas (without the '-'s')
+	2. Align the fastas for each animal using the linked "mulan" tool
+	3. run the predictions through a comparison perl script against the known sites (similar to my bed program)
+	
+# BC gene name lookup
+	BC112664	<- PCK1
+	BC114011	<- G6PC
+	BC134665	<- ACTA1
+	
+# Now to get the individual fasta sequences:
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k
+	$ perl -e '$h =<>; $h = <>; $h = <>; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">bostau4\n$s[6]\n"; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">canFam2\n$s[6]\n"; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">hg18\n$s[6]\n";' < ./maf/BC112664_1394 > ../../multitf/pck1_three_species.fa
+	$ perl -e '$h =<>; $h = <>; $h = <>; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">bostau4\n$s[6]\n"; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">canFam2\n$s[6]\n"; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">hg18\n$s[6]\n";' < ./maf/BC114011_3301 > ../../multitf/g6pc_three_species.fa
+	$ perl -e '$h =<>; $h = <>; $h = <>; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">bostau4\n$s[6]\n"; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">canFam2\n$s[6]\n"; $b = <>; chomp $b; @s = split(/\s+/, $b); $s[6] =~ s/-//g; print ">hg18\n$s[6]\n";' < ./maf/BC134665_5318 > ../../multitf/acta1_three_species.fa
+	
+	# Now to load them into mulan
+	# Species 1: cow. Species 2: dog. Species 3: human
+	# Selected the "send mulan to multitf"
+		# Kept all options at the default (transfac vertebrate, matrix similarity: optimized for function)
+		# selected all TFs
+		# selected the "multi-conserved" TF link
+			# Oh man, it is a trashy proprietary format
+			# I need to select the cattle locations, convert them into actual bp coordinates and then run them against the predictions
+			# I will create a perl script to do this similar to the custom bed track program
+			
+			pwd /home/dbickhart/share/tfbs_project/multitf/
+			$ perl compare_multitf_known_sites.pl -m ../rewritten_scripts/1k/maf/BC134665_5318 -t acta1_conserved.multitf -k ../refined_known/human_known_BC134665_5318.bed.liftover -o acta1_overlap_stats.tab
+				10	9	1	165	118	0.9	0.457627118644068	54
+			$ perl compare_multitf_known_sites.pl -m ../rewritten_scripts/1k/maf/BC112664_1394 -t pck1_conserved.multitf -k ../refined_known/human_known_BC112664_1394.bed.liftover -o pck1_overlap_stats.tab
+				20	7	13	105	40	0.35	0.15	6
+			$ perl compare_multitf_known_sites.pl -m ../rewritten_scripts/1k/maf/BC114011_3301 -t g6pc_conserved.multitf -k ../refined_known/human_known_BC114011_3301.bed.liftover -o g6pc_overlap_stats.tab
+				14	13	1	91	57	0.928571428571429	0.491228070175439	28
+				
+			Totals: 44	29	15	361	215	0.65909090	0.40930	88
+			
+# I also rewrote the associate_gene_with_snp_table.pl script to estimate the impact of the snp within the TFBS site
+	pwd: /home/dbickhart/share/tfbs_project/
+	$ perl associate_gene_with_snp_table.pl snp700k_tfbs_intersect_full_stats_unique.bed > snp770k_tfbs_with_gene_intersect.tab
+	$ perl associate_gene_with_snp_table.pl dbsnp_tfbs_intersect_full_stats_unique.bed > dbsnp_tfbs_with_gene_intersect.tab
+	$ perl associate_gene_with_snp_table.pl bos1_tfbs_intersect_full_stats_unique.bed > bos1_tfbs_with_gene_intersect.tab
+	
+# Just some base statistics
+	pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts
+	# Including mouse, how many genes could we survey?
+	$ perl -e 'while(<>){chomp; @s = split(/\s+/); if($s[0] eq "s"){$b[0] = <>; $b[1] = <>; $b[2] = <>; $o = <>; $t = 1; foreach $y (@b){chomp $y; @g = split(/\s+/, $y); if ($g[3] == 0){$t = 0;}} if($t){$f++;}}} print "$f\n";' < upstream1000.maf 
+		7339
+	# What are the number of maf lines that are empty in the different animals?
+	$ perl -e 'while(<>){chomp; @s = split(/\s+/); if($s[0] eq "s"){if($s[1] =~ /bosTau4/){$s[1] = "bosTau4";}if($s[3] == 0){}else{$h{$s[1]} += 1;}}} foreach $k (keys(%h)){print "$k\t$h{$k}\n";}' < upstream1000.maf 
+		canFam2	8165
+		bosTau4	8740
+		ornAna1	1437
+		mm9	7649
+		hg18	8440
+		
+____________________________________
+Rebuttal 2
+____________________________________
+# Reviewer 1 wants a better web resource
+# I will take the lower cutoff values and create a dynamic table lookup to allow the user to select their own cutoff value
+# This script will query the 0.006 cutoff value and calculate all of the TFBS sites from all genes. I can then filter using the cutoff table on the website later
+pwd: /home/dbickhart/share/tfbs_project/rewritten_scripts/1k
+$ perl ../tfloc_upstream_maf3_hmr_h_low_cut.pl -i . -t MATRIX_BS_STATS -c 00 -s cow -p 1
+
+$cd ../
+$ perl finalize_tfbs_prediction_list.pl -o 1k/cattle_bc_tfbs_btau4.bin -i ./1k/temp_tfbs_cow_1 -b 1k/cattle_bc_tfbs_btau4.bed
+
+# Copied the new bed over to the cgi bin of the webserver

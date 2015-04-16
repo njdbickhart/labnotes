@@ -1,0 +1,134 @@
+2010_10_28
+#Testing out two new possibilities to try to shore up the settings for novoalign and Mosaik
+	1. Using novoalign on an indexed genome to try to speed up alignment
+	2. Using the -bw option on Mosaik and decreasing the hash size of the index
+	
+_______________________________________
+Novoalign on masked genome
+_______________________________________
+# The previous runtime for Novoalign was a horrible 2.5 days on four processors. If I can reduce that to 1 day, it would be bearable; less than that would be amazing.
+
+# Converted the pre-masked UCSC cow4 genome into a "no chrUNAll"
+	$ perl -e '$a=1; while(<>){if($_ =~ /^>chrUn.+/){$a=0;next;}elsif($a==1){print $_;}}' < bosTau4.fa.masked > bosTau4_noUn.masked
+	$ ./novoindex -k 14 -s 2 -m /mnt/gliu1_usb/dbickhart/blackstar/novo_cow4_noUn_mask.index /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4_noUn.masked
+	
+	$ ../../novocraft/novoalign -d ../../blackstar/novo_cow4_noUn_mask.index -f 080902_2_1_tier2.fq 080902_2_2_tier2.fq -o SAM -r R -i PE 100, 50 -H > nindex_080902_2_tier2.sam
+	# Started at ~ 11:00am 10/28/2010
+	# It appears that if you do not set the -c option, novoalign will use as many threads as possible
+		19438 dbickhar  20   0 5274m 4.9g 4.9g S  503  7.7  50:39.43 novoalign
+		# That shows five cpus dedicated to novoalign... not sure if that's possible!
+		# Yup, now it expanded up to all eight processors
+		# So I might have to be careful with the -c option if I am to regulate novoalign functions
+		
+	# Novoalign finished FAR faster than before! Masking the genome prior to indexing was the key
+		#     Read Sequences:  7223950
+		#            Aligned:  1219320
+		#   Unique Alignment:  1044239
+		#   Gapped Alignment:    20784
+		#     Quality Filter:   686249
+		# Homopolymer Filter:    69651
+		#       Elapsed Time: 42616.066 (sec.)
+		#           CPU Time: 5249.4 (min.)
+		# Fragment Length Distribution
+		#       From    To      Count
+		#       25      29      78
+		#       30      34      4469
+		#       35      39      15014
+		#       40      44      18718
+		#       45      49      30936
+		#       50      54      40575
+		#       55      59      35599
+		#       60      64      29100
+		#       65      69      27317
+		#       70      74      26544
+		#       75      79      25981
+		#       80      84      25181
+		#       85      89      24254
+		#       90      94      23309
+		#       95      99      22111
+		#       100     104     20472
+		#       105     109     19214
+		#       110     114     17126
+		#       115     119     14343
+		#       120     124     11013
+		#       125     129     7441
+		#       130     134     4402
+		#       135     139     2343
+		#       140     144     1174
+		#       145     149     576
+		#       150     154     254
+		#       155     159     117
+		#       160     164     65
+		#       165     169     27
+		#       170     174     17
+		#       175     179     16
+		#       180     184     7
+		#       185     189     10
+		#       190     194     11
+		#       195     199     17
+		#       200     204     6
+		#       205     209     7
+		#       210     214     10
+		#       215     219     4
+		#       220     224     9
+		#       225     229     3
+		#       230     234     5
+		# Mean    77, Std Dev  25.9
+		# Done.
+
+	# It is very tempting... the 10 hour range (with 8 dedicated cpus) is alright, but it would still take 20 days to process all of the Fleckvieh data
+	
+	# Approximately 1376 reads are processed per cpu minute according to these results
+	
+_____________________________________________
+Mosaik using smaller hash size
+_____________________________________________
+# I know that Mosaik is much faster, but I need to find out if it can be "cranked up" for more sensitivity.
+
+# Ooops! MosaikSort should have been a part of my previous analysis. It resolves paired end orientations.
+	# command line options
+		-mem : how many alignments to cache [default: 6,000,000]
+		-afl : allows all fragment lengths when evaluating unique read pairs
+		-ci : sets fragment length confidence interval [default: 0.9973]
+		-sa : samples fragment lengths from all unique read pairs
+		-rmm : resolve multiple vs. multiple read pairs
+		-ium : ignore unique vs multiple read pairs
+		-consed : gives unique read names to each read (as opposed to using the same names for multiple alignments)
+		-dup : removes duplicates
+		
+# Trying MosaikSort first
+	$ ../../mosaik-aligner/bin/MosaikSort -in 080902_2_align.dat -out mos_sort_080902_2.dat -ci 0.90 -sa -ium -consed
+		------------------------------------------------------------------------------
+		MosaikSort 1.1.0017                                                 2010-10-24
+		Michael Stromberg & Wan-Ping Lee  Marth Lab, Boston College Biology Department
+		------------------------------------------------------------------------------
+		
+		- resolving the following types of read pairs: [unique orphans] [unique vs unique]
+		- using entire data set for fragment length confidence interval calculation
+		- setting the confidence interval to 0.8000
+		- enabling consed renaming: mate number will be appended to the read name
+		
+		- phase 1 of 3: building fragment length distribution:
+		samples: 1,371,009 (16,456.5 samples/s)
+		
+		ERROR: When determining whether to apply mate-pair or paired-end constraints, an irregularity in the alignment model counts was discovered.
+		
+		       Normal mate-pair data sets have the highest counts for alignment models:  4 & 5.
+		       Normal paired-end data sets have the highest counts for alignment models: 2 & 6.
+		       Normal solid-end data sets have the highest counts for alignment models: 1 & 8.
+		
+		       We expect that the ratio of the 6 lowest counts to the 2 highest counts to be no larger than 0.10, but in this data set the ratio was 0.19
+		
+		- alignment model 6:     24883 hits
+		- alignment model 2:     21151 hits
+		- alignment model 7:      6138 hits
+		- alignment model 3:      2149 hits
+		- alignment model 8:       114 hits
+		- alignment model 5:        99 hits
+		- alignment model 4:        62 hits
+		- alignment model 1:        53 hits
+
+	# The issue is that MosaikSort hangs if divergent mate pair orientations are higher than 10% of the top two supposed orientations. In the case of my data: 19% of the reads are divergent in orientation.
+	
+	# This is an issue that is going to be resolved by the current curator (he will add functionality that allows one to FORCE mosaiksort to accept an alignment model)
+	# He has not released a fix yet.

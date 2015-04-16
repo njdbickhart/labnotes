@@ -1,0 +1,155 @@
+04/01/2011
+# This notefile will simply be used to organize my "catchup exercises" for this weekend. Here is what I have to do:
+	1. Format the data from the Nelore 30X simulation and get ready to generate a figure from it.
+	2. Run mrsfast on the UMD3 masked genome
+	3. Create a pipeline script to generate primers (particularly from the mapped paired end reads)
+	
+_________________________________
+UMD3 genome run
+_________________________________
+
+# Lakshmi was kind enough to give me his repeatmasker.out file from the UMD3 genome. It is in the .gff3 format.
+# I need to process it into a bed file, and then I'm in business!
+$ perl -lane '$F[0] =~ tr/C/c/; print "$F[0]\t$F[3]\t$F[4]";' < ../../Repeats.gff3 > umd3_lak_repeats.bed
+$ perl -lane '$s = $F[1] - 36; if($s < 0){$s = 0;} $e = $F[2] + 36; print "$F[0]\t$s\t$e";' < umd3_lak_repeats.bed > umd3_lak_36_repeats.bed
+$ ../../BEDTools-Version-2.10.0/bin/mergeBed -i umd3_lak_36_repeats.bed > umd3_lak_36_merged_repeats.bed
+
+$ perl -e 'while(<>){chomp; @F = split(/\t/); $t += $F[2] - $F[1];} print "$t\n";' < umd3_repeats_36_merge.bed
+	1415189519
+$ perl -e 'while(<>){chomp; @F = split(/\t/); $t += $F[2] - $F[1];} print "$t\n";' < umd3_lak_36_merged_repeats.bed
+	1421373391
+	
+# So lakshmi's file covers 10 more megabases! Excellent! Let's see the overlap
+	
+	$ wc umd3_repeats_36_merge.bed
+ 	2286903  6860709 53649400 umd3_repeats_36_merge.bed
+ 	2293286   6879858  53912423 umd3_lak_36_merged_repeats.bed
+ 	
+ 	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a umd3_repeats_36_merge.bed -b umd3_lak_36_merged_repeats.bed | wc
+	2170966
+	
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a umd3_lak_36_merged_repeats.bed -b umd3_repeats_36_merge.bed | wc
+	2170966
+	
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a umd3_lak_36_merged_repeats.bed -b umd3_repeats_36_merge.bed -v | wc
+ 	122320  366960 2880970
+ 	
+# Let's see what happens when we merge the files and then check the masked content
+
+$ cat umd3_lak_36_merged_repeats.bed umd3_repeats_36_merge.bed | ../../BEDTools-Version-2.10.0/bin/mergeBed -i stdin > umd3_lak_std_36_total_merge_repeats.bed
+
+$ perl -e 'while(<>){chomp; @F = split(/\t/); $t += $F[2] - $F[1];} print "$t\n";' < umd3_lak_std_36_total_merge_repeats.bed
+	1512770676
+	
+# how about we go with this one just to be safe? 
+
+# Now to remask the genome:
+	$ ../../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi umd3_base_genome.fa -bed umd3_lak_std_36_total_merge_repeats.bed  -fo umd3_rep_mask.bed
+	$ ../../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi umd3_rep_mask.bed -bed trf_umd3_merged_extend.bed -fo umd3_rep_trf_mask.bed
+	
+	# Now to start masking the Gaps... lets see how much sequence is found in the gaps file:
+	$ perl -e 'while(<>){chomp; @F = split(/\t/); $t += $F[2] - $F[1];} print "$t\n";' < UMD3_gaps.bed
+		18894363
+		
+	$ ../../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi umd3_rep_trf_mask.bed -bed UMD3_gaps.bed -fo umd3_soft_mask_gaps.bed -soft
+	$ perl -e 'while(<>){ $c = ($_ =~ tr/n/X/); $n += $c; print $_;}' < umd3_soft_mask_gaps.bed > umd3_full_masked_gap_a.fa
+	
+	# Now to test it:
+	$ perl -e 'while(<>){ $c = ($_ =~ tr/N/N/); $n += $c; $f = ($_ =~ tr/X/X/); $x += $f; $a = ($_ =~ tr/ACGT/ACGT/); $A += $a;} print "\nN: $n\nX: $x\nA: $A\n";' < umd3_full_masked_gap_a.fa
+		N: 1436679966
+		X: 18894364
+		A: 1205332499
+		
+		# So, about 90 megabases less of non-masked sequence. Let's try it out!
+		
+# Test run of newly masked genome:
+
+$ mrsfast-2.3.0.2/mrsfast --index alkan_files/umd3/umd3_full_masked_gap_a.fa
+
+$ mrsfast-2.3.0.2/mrsfast --search alkan_files/umd3/umd3_full_masked_gap_a.fa --seq nelore_30x/fastqs/090820_HWUSI-EAS174_0009/s_7_1_sequence.fq -o /mnt/data110/dbickhart/umd3_run/test_run.sam
+$ mrsfast-2.3.0.2/mrsfast --search alkan_files/cow4_36_noun_rmask.fa --seq nelore_30x/fastqs/090820_HWUSI-EAS174_0009/s_7_1_sequence.fq -o /mnt/data110/dbickhart/umd3_run/test_cow4.sam
+# that is just a test against my masked cow4 genome. I'm hoping that I did not "overmask" the umd3 genome!
+
+$ wc test_cow4.sam test_run.sam
+   1366148   17759924  223863841 test_cow4.sam
+   5904636   76760268  972074816 test_run.sam
+   
+# well, that makes significantly more hits that mapped! This may be due to the increased chr sizes for UMD3
+	$ perl -e 'while(<>){ @F = split(/\t/); $h{$F[2]} += 1;} foreach $k (keys(%h)){ print "$k\t $h{$k}\n";}' < test_run.sam
+		chr7     157149
+		chr23    76819
+		chr20    77745
+		chr26    64043
+		chr22    265425
+		chr14    298358
+		chr8     249442
+		chr19    91511
+		chr1     200010
+		chr29    118604
+		chr6     256106
+		chr11    166111
+		chr17    143676
+		chr24    82915
+		chr21    149742
+		chr16    117026
+		chr3     235495
+		chr25    65259
+		chr18    136713
+		chr12    105265
+		chr15    111640
+		chrX     215895
+		chr4     460784
+		chr2     183634
+		chr9     185805
+		chr28    93771
+		chr27    1143871
+		chr13    145361
+		chr10    166366
+		chr5     140095
+		
+	# Looks like chr27 is the anomaly. Let's create a script to crop out the cryptic repeats by creating a bed file
+	$ perl select_cryptic_repeats.pl test_run.sam > output.bed
+	# This script pulls out the reads that map more than 30 times to get the cryptic repeats.
+	# now to mask these repeats out of the genome!
+	$ perl -lane '$s = $F[1] - 36; $e = $F[2] + 36; if ($s < 0){ $s = 0;} print "$F[0]\t$s\t$e";' < output.bed > cryptic_repeats.bed
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i ../umd3_run/cryptic_repeats.bed > cryptic_repeats_merge.bed
+	
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi umd3_full_masked_gap_a.fa -bed cryptic_repeats_merge.bed -fo umd3_full_cryptic_gap_a.fa
+	
+	# Now to test this out on the previous test file
+	$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --index umd3_full_cryptic_gap_a.fa
+	$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search ./reference/umd3_full_cryptic_gap_a.fa --seq /mnt/gliu1_usb/dbickhart/nelore_30x/fastqs/090820_HWUSI-EAS174_0009/s_7_1_sequence.fq -o ./umd3_run/cryptic_test.sam
+	
+	$ wc cryptic_test.sam
+	  2303353  29943589 377662982 cryptic_test.sam
+	# OK, I think that seems more reasonable
+	
+# Running nelore 30x
+# OK, now we're going to try this again! I will run four instances of the nelore sequence data using the mrsfast_umd3_wrapper.pl script
+
+$ perl mrsfast_umd3_wrapper.pl nse_list.txt a /mnt/data110/dbickhart/umd3_run/nelorese_list
+$ perl mrsfast_umd3_wrapper.pl npe_list.txt b /mnt/data110/dbickhart/umd3_run/nelorepe_list_1
+$ perl mrsfast_umd3_wrapper.pl npe_list2.txt c /mnt/data110/dbickhart/nelorepe_list_2
+$ perl mrsfast_umd3_wrapper.pl npe_list3.txt d /mnt/data110/dbickhart/umd3_run/nelorepe_list_3
+
+# I had to end two of the runs (nelorepe_list_1 and nelorepe_list_2) because of the impending shutdown. I cropped the completed files out of the lists and reran them:
+
+$ perl mrsfast_umd3_wrapper.pl npe_list4.txt a /mnt/data110/dbickhart/umd3_run/nelorepe_list_4
+$ perl mrsfast_umd3_wrapper.pl npe_list5.txt b /mnt/data110/dbickhart/umd3_run/nelorepe_list_5
+
+# One of the runs completed; now lets start doing the individual Illumina HD files:
+	# To get the file list for the wrapper:
+	$ ls ./angus/fastqs/*.fq.gz > angus_umd3.list
+	
+	$ ls ./brahman/fastq/*.fq.gz > brahman_umd3.list
+	$ ls ./gir/fastq/*.fq.gz > gir_umd3.list
+	$ ls ./holstein/fastqs/*.fq.gz > holstein_umd3.list
+	$ ls ./jersey/fastq/*.fq.gz > jersey_umd3.list
+	$ ls ./limousin/fastq/*.fq.gz > limousin_umd3.list
+	
+# The actual runs:
+	$ perl mrsfast_umd3_wrapper.pl angus_umd3.list d /mnt/data110/dbickhart/umd3_run/angus_hd
+	$ perl mrsfast_umd3_wrapper.pl brahman_umd3.list c /mnt/data110/dbickhart/umd3_run/brahman_hd
+	$ perl mrsfast_umd3_wrapper.pl gir_umd3.list d /mnt/data110/dbickhart/umd3_run/gir_hd
+	$ perl mrsfast_umd3_wrapper.pl holstein_umd3.list d /mnt/data110/dbickhart/umd3_run/holstein_hd
+	$ perl mrsfast_umd3_wrapper.pl jersey_umd3.list b /mnt/data110/dbickhart/umd3_run/jersey_hd

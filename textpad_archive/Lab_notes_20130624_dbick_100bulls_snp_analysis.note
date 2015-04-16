@@ -1,0 +1,11 @@
+06/24/2013
+# These are my notes on processing the SNP data from the 100 bulls project
+
+# Right now, my priority will be ADSA, and I need to get some interesting SNPs ready for my presentation
+# I am going to download SNPeff and I will try to get some interesting information out of my sample
+	Blade14: /mnt/iscsi/vnx_gliu_7/snpEff
+	$ ~/jdk1.7.0/bin/java -jar snpEff.jar download UMD3.1.68
+	
+	Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/BTAN_SNPS
+	$ ~/jdk1.7.0/bin/java -jar ../../snpEff/snpEff.jar eff -s BTAN_BTHO_snps_filtered_snpeff.html UMD3.1.68 BTAN_BTHO_snps_filtered.vcf > BTAN_BTHO_snps_filtered_snpeff.stdout
+	

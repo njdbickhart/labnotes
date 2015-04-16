@@ -1,0 +1,189 @@
+Lab_note_2011_02_09
+# I need to prepare the UMD3 assembly for sequencing and optimize the PEM parameters for the paper.
+
+_________________________________
+UMD3 preparation and run
+_________________________________
+
+# I will just use the previous methods that I used for the cow_4 genome to create a usable UMD3 assembly
+
+# Just for my reference, here is a subsection of my old note file on this (from 11/12/2010)
+	# In order to use the winmaker.c program (creates the windows necessary for the wrapper program) I need a repeatmasked cow4 genome with N's (and X's for gaps)
+	# BEDtools has all the programs that I need to do this, and I have the UCSC mask.out and gap files
+	# First I need to extend the repeat bed file by 36bp in either direction for each interval
+		$ perl -ne '@seg = split(/\t/,$_);$seg[1] -= 36; $seg[2] += 36; if($seg[1] < 1){$seg[1] = 1;} print "$seg[0]\t$seg[1]\t$seg[2]\t$seg[3]\t$seg[4]\t$seg[5]\n";' < bosTau4.fa.bed > cow4_6bpextend_repeat.bed
+		# This was done in my shared directory on my Ubuntu virtualbox
+		
+		# Checking to see the chromosome names
+		$ perl -n -e '@f=split(/\t/,$_);if($a eq $f[0]){next;}else{print "$f[0]\n"; $a = $f[0];}' < cow4_36bpextend_repeat.bed
+			# All accounted for, including chrM
+		
+		# Now on Server 3
+		# Merging overlapping entries in the bed file:
+			$ ./mergeBed -n -i /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36bpextend_repeat.bed > ../../alkan_files/cow4_36bp_repeat_merged.bed
+		
+		# Initial masking (masks with 'N's'):
+			$ ./maskFastaFromBed -fi /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4.fa -fo /mnt/gliu1_usb/dbickhart/alkan_files/bosTau4_36bpextend_masked.fa -bed /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36bp_repeat_merged.bed
+			# UCSC strikes again! The cow4 fasta has lowercase masking in regions that were not indicated on the mask.out file
+			# Masking them.
+			$ perl -n -e 'if($_ =~ /^>.*/){print $_;next;}else{$_=~ s/[acgt]/N/g; print $_;}' < bosTau4_36bpextend_masked.fa > bosTau4_36_full_masked.fa
+			
+		
+		# Generate Gaps file from UCSC .agp file:
+			$ perl -ne '@seg = split(/\t/,$_); if($seg[4] =~ /N/){print $_;}else{next;}' < bosTau4.agp > cow4_gaps.bed
+			# The "N" column indicates a gap entry
+			
+		# Now, I am going to see if I can "soft-mask" the "n's" of the gaps in the reference so that I can later convert lowercase "n's" into "X's"
+			$ ../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi bosTau4_36_full_masked.fa -fo bosTau_36_gapn_masked.fa -soft -bed cow4_gaps.bed
+			# I think it worked!
+			# Now to convert only the lowercased n's into "X's"
+		$ perl -n -e 'if($_ =~ /^>.*/){print $_;next;}else{$_=~ s/n/X/g; print $_;}' < bosTau_36_gapn_masked.fa > bosTau_36final_fullmasked.fa
+		
+# OK, bad news, I don't have a bed file that I can use to mask the sequence easily. I'm going to have to create one instead. 
+# Actually, I do! It's on my main directory (UMD3_repeats.out) but it needs to be converted into bed format
+
+# I downloaded the agp files from the NCBI ftp site. Going to convert them into a gaps bed file fast
+	 1731  for i in *agp; do perl -ne 'if ($_ =~ /#/){next;} @seg = split(/\t/, $_); if($seg[4] =~ /[NU]/){print $_;}else{next;}' < $i > $i.bed; done
+	 1742  cat *.bed > UMD_gaps.agp
+ 	 1743  perl -e 'while(<>){@a = split(/\t/, $_); print "$a[0]\t$a[1]\t$a[2]\n";}' < UMD_gaps.agp > UMD3_gaps.bed
+ 	 
+# I need to change the chromosome names for UMD3.1 (they just had to use a capital "C" huh?)
+	derek@derek-desktop:~/share/Bos_taurus_UMD_3.1/chromefasta$ for i in *.fa; do perl -ne 'if ($_ =~ />/){ chomp $_; ($d) = $_ =~ />Chr(\d*)/; print ">chr$d\n";} else{ print $_;}' < $i > $i.r; done
+	derek@derek-desktop:~/share/Bos_taurus_UMD_3.1/chromefasta$ cat *.r ChrX.fa > umd3_base_genome.fa
+	
+# So, I have the gaps, repeat.bed file, and concatenated sequence fasta, but I need to generate a tandem repeats file!
+# Downloaded the trf 64 linux executable from their website
+	$ ./trf404.linux64.exe umd3_base_genome.fa 2 7 7 80 10 50 500 -d
+	# got a segmentation fault at the end. 
+	# reperforming the trf test on my linux virtualbox and for each individual umd3 chromosome
+	
+	$ for i in ../*.r; do ./trf404.linux.exe $i 2 7 7 80 10 50 500 -d; done
+	$ ./trf404.linux.exe ../ChrX.fa 2 7 7 80 10 50 500 -d
+
+	# I developed a script (convert_trf_to_bed.pl) that should pull the necessary information from the vast amount of files and turn it all into a bed file.
+	$ perl convert_trf_to_bed.pl
+	# It worked very quickly; the whole process (trf + script) took about 1 hour to do at those settings
+	$ ../../BEDTools-Version-2.10.1/bin/mergeBed -i trf_umd3_out.bed > trf_umd3_merged.bed
+	$ perl -lane '$s = $F[1] - 36; $e = $F[2] + 36; if ($s < 0) { $s = 0;} print "$F[0]\t$s\t$e";' < trf_umd3_merged.bed > trf_umd3_merged_extend.bed
+	
+	# Formatting the repeatmasker output
+	$ perl -lane '$c += 1; if($c == 1){next;}else{($n) = $F[0] =~ m/Chr(\d+)/g; print "chr$n\t$F[1]\t$F[2]";}' < UMD3_repeats.bed > UMD3_simple_repeats.bed
+	# Extending the repeatmasker intervals:
+	$ perl -lane '$s = $F[1] - 36; $e = $F[2] + 36; if ($s < 0){ $s = 0;} print "$F[0]\t$s\t$e";' < UMD3_simple_repeats.bed > umd3_repeats_36bp.bed
+	$ ../../BEDTools-Version-2.10.0/bin/mergeBed -i umd3_repeats_36bp.bed > umd3_repeats_36_merge.bed
+	
+	# Now, to N-mask the sequences:
+	$ ../../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi umd3_base_genome.fa -bed umd3_repeats_36_merge.bed -fo umd3_rep_mask.bed
+	$ ../../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi umd3_rep_mask.bed -bed trf_umd3_merged_extend.bed -fo umd3_rep_trf_mask.bed
+	
+	# Checking to see if there is any softmasking...
+	$ perl -e 'while(<>){ $c = ($_ =~ tr/acgt/acgt/); $n += $c;} print "\n$n\n";' < umd3_rep_trf_mask.bed
+
+	30
+	# nope! 
+	
+	# Softmasking the gaps:
+	$ ../../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi umd3_rep_trf_mask.bed -bed UMD3_gaps.bed -fo umd3_rep_trf_softgap_mask.bed -soft
+	# Now, X masking the gaps:
+	$ perl -e 'while(<>){ $c = ($_ =~ tr/n/X/); $n += $c; print $_;}' < umd3_rep_trf_softgap_mask.bed > umd3_masked_gap.fa
+	$ perl -e 'while(<>){ $c = ($_ =~ tr/N/N/); $n += $c; $f = ($_ =~ tr/X/X/); $x += $f; $a = ($_ =~ tr/ACGT/ACGT/); $A += $a;} print "\nN: $n\nX: $x\nA: $A\n";' < umd3_masked_gap.fa
+
+		N: 1347605294
+		X: 18,894,364
+		A: 1294407171
+		
+		2660906829
+
+N: 1530162014
+X: 167379839
+A: 936871893
+
+2634413746
+		
+	# That's quite a bit of non-masked sequence, but I'll go with it. 
+	
+# Rewrote simulate_36x_reads_artifact.pl to use threads and ran it on umd3_masked_gap.fa
+# Now, I copied the masked umd3 genome four times and ran the mrsfast indexer on them:
+	$ for i in umd3_masked*.fa; do ../../mrsfast-2.3.0.2/mrsfast --index $i; done
+	# Creating samtools fasta index:
+	$ ../../samtools-0.1.8/samtools faidx umd3_masked_gap_b.fa
+
+# Wrote a simple wrapper (single end mapping) to start mapping the simulation chromosome files
+	# Testing it:
+	$ perl mrsfast_umd3_wrapper.pl sim_chr_b.txt b
+	$ perl mrsfast_umd3_wrapper.pl sim_chr_c.txt c
+	$ perl mrsfast_umd3_wrapper.pl sim_chr_d.txt d
+	
+	$ perl mrsfast_umd3_wrapper.pl sim_chr_list.txt d
+	$ perl mrsfast_umd3_wrapper.pl sim_chr2_list.txt a
+	
+# So, those are all mapped, but now I need to make the windows for UMD3, combine the simulation hits, and then run my rewritten script: bedtools_intersect_simulation.pl
+	# Lets get started with combining and sorting the simulation bam files, then printing out a bed file for it:
+	$ for i in *.bam; do ../../samtools-0.1.8/samtools view $i | perl -lane '$end = $F[3] + 36; print "$F[0]\t$F[1]\t$end";' > combined_sim/$i.bed; done
+	# So, I did not sort the files first. This should still be ok.
+	
+	# One big issue: winmaker only works on one chromosome at a time.
+	# I am using my script (split_fasta.pl) to create individual umd3 fastas and then I will use winmaker on each one and cat them together. 
+	$ for i in chr*.fa; do ../wssd-package/winmaker $i; done
+	
+	# Now to cat them all together and make the windows files
+	$ cat *.copynumber | sort -k 1,1 > umd3_base_file3.text
+	$ cat *.coverage | sort -k 1,1 > umd3_base_file1.text
+	$ cat *.wssd | sort -k 1,1 > umd3_base_file2.text
+	
+	# In order to make the initial controls, I need to do a liftover of the WGAC+WSSD regions in cow4 to UMD3
+	$ ./liftOver WSSD_WGAC_finalmerged_noChrun.bed bosTau4ToBosTauMd3.over.chain WSSD_WGAC_umd3_liftover.bed WSSD_WGAC_unmapped_umd3.bed
+	$ wc WSSD_WGAC_umd3_liftover.bed 
+	 19187  57561 450043 WSSD_WGAC_umd3_liftover.bed
+	$ wc WSSD_WGAC_unmapped_umd3.bed 
+	 14444  44248 281373 WSSD_WGAC_unmapped_umd3.bed
+	$perl -e 'while(<>){@F = split(/\t/); $t += $F[2] - $F[1];} print "$t\n";' < WSSD_WGAC_umd3_liftover.bed
+		144266202
+	$ perl -e 'while(<>){@F = split(/\t/); $t += $F[2] - $F[1];} print "$t\n";' < WSSD_WGAC_unmapped_umd3.bed
+		94975468
+	 
+	# Ok, so not that great of a conversion, but it'll have to do! George was correct: the UMD3 assembly is overly compressed.
+	# Now to intersect the WGAC and WSSD file with the intervals from file 1 and 3. 
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a umd3_base_file1.text -b WSSD_WGAC_umd3_liftover.bed -v > umd3_initial_file1_c.text
+		$ wc umd3_base_file1.text umd3_initial_file1_c.text
+		 2146454  6439362 50421459 umd3_base_file1.text
+		 1905615  5716845 44775948 umd3_initial_file1_c.text
+		 4052069 12156207 95197407 total
+		# I am really going to need to do some cropping!
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a umd3_base_file3.text -b WSSD_WGAC_umd3_liftover.bed -v > umd3_initial_file3_c.text
+		$ wc umd3_base_file3.text umd3_initial_file3_c.text
+		 1267185  3801555 29796089 umd3_base_file3.text
+		 1196395  3589185 28133970 umd3_initial_file3_c.text
+		 2463580  7390740 57930059 total
+		 
+	# OK, before I do anything, i'm going to need to align a real dataset against the control files. 
+	# So, I've gotten everything set up to this point; I just need to align the files then run them through the controls to pluck out the errant intervals.
+	
+_____________________________________
+Running mrsfast on UMD3
+_____________________________________
+
+# The nelore sequence data will be my major comparison point against the assemblies (because of its high coverage), so lets do that one first:
+	# Just doing single end reads to save time
+	$ perl mrsfast_umd3_wrapper.pl npe_list.txt a umd3_rerun
+	$ perl mrsfast_umd3_wrapper.pl npe_list2.txt b umd3_rerun
+	$ perl mrsfast_umd3_wrapper.pl npe_list3.txt c umd3_rerun
+	
+	# I had to stop the run and delete the data; we ran out of room on the usb drive.
+	# OK, now I have the space to continue running the data:
+	$ perl mrsfast_umd3_wrapper.pl npe_list.txt a /mnt/data110/dbickhart/umd3_run
+	$ perl mrsfast_umd3_wrapper.pl npe_list2.txt b /mnt/data110/dbickhart/umd3_run
+	$ perl mrsfast_umd3_wrapper.pl npe_list3.txt c /mnt/data110/dbickhart/umd3_run
+	
+	# OK, so that did not work. The sam files for ONE single end run were at least 250 Gigs!
+	# That suggests to me that the genome has not been completely repeatmasked, at least in one location!
+	# I will take one of the masked fastas and run it through repeatmasker on my local virtual box.
+	
+	./RepeatMasker/RepeatMasker -e wublast -pa 3 -species cow -no_is umd3_mask/umd3_masked_gap_a.fa
+	
+	# This produced about 668,000 lines! So, my "repeatmasker out" file did not sufficiently mask the genome!
+	
+	# Migrating the repeatmasker folders and files to server3 where I'll try to mask the raw genome fasta using the -s option
+	# Server 3 has an outdated version of perl, so I'm going to try to run this locally on my computer...
+	
+	$ ./RepeatMasker -no_is -s -pa 4 -dir umd3 -species cow /home/derek/share/Bos_taurus_UMD_3.1/chromefasta/umd3_base_genome.fa

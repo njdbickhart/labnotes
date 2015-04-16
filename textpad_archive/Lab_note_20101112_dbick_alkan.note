@@ -1,0 +1,1252 @@
+2010_11_12 - 2010_11_23
+# The Alkan files
+
+# My goal is to coopt the program that Alkan's group sent us and use it on the Holstein NGS data. 
+# This is a DoC (Depth of Coverage) analysis for CNV detection
+
+# George's folders
+	[dbickhart@bfgl-svr3 CommonFiles]$ cd cattleSD_web/
+	[dbickhart@bfgl-svr3 cattleSD_web]$ ls
+	TableS3.xls  WGAC.tab  wssd_desc  WSSD_DOC.tab
+	[dbickhart@bfgl-svr3 cattleSD_web]$ cd ..
+	[dbickhart@bfgl-svr3 CommonFiles]$ ls compare/
+	*cow4_wgac.txt      cowSD-master.xls          WGAC_oo_vs_superdup.xls  wssdGE10K_nogap.tab.gz
+	*cow4_wssd.txt      genomicSuperDups.txt.bz2  WSSD_5690.xls <---- master file for WSSD
+	cowSD-master1.xls  WGAC_lt94.xls             wssdGE10K_nogap.tab
+	[dbickhart@bfgl-svr3 CommonFiles]$ ls bosTau4_genomicSuperDups/
+	1233948198_bosTau4-WSSD_2009Feb06.tab.gz              bosTau4_genomicSuperDups.tab.bz2
+	1233948475_bosTau4-genomicSuperDups_2009Feb06.tab.gz  bovineWSSD.tab.bz2
+	1233949751_bosTau4-9410KWGACNR_2009Feb06.tab.gz       oo.weild10kb.join.all.cull
+	1233949768_bosTau4-94WGAC_2009Feb06.tab.gz            WSSD_DOC_UnAll.tab
+	*bosTau4_genomicSuperDups.tab <--                         xw.join.all.cull
+	[dbickhart@bfgl-svr3 CommonFiles]$ ls AFRI_2009/
+	1867_ge_5k_SD.01.01.ps              grant_45k.01.01.pdf    ngs_wssd_01_45k.extra
+	*blackstar_ngs_wssd_join_repeat.tab  grant_45k.01.01.ps     ngs_wssd_01_45k_PEM.extra
+	blackstar_ngs_wssd.txt              grant_45_PEM.01.01.ps  ngs_wssd_01_50k.extra
+	grant_35k.01.01.pdf                 grant_50k.01.01.pdf    ngs_wssd_01.extra
+	grant_35k.01.01.ps                  grant_50k.01.01.ps     PEM_del.txt
+	grant_40k.01.01.pdf                 ngs_wssd_01_35k.extra  PEM_del.txt.nooverlap
+	grant_40k.01.01.ps                  ngs_wssd_01_40k.extra
+
+
+
+__________________________________
+Generating masked genome fasta
+__________________________________
+# In order to use the winmaker.c program (creates the windows necessary for the wrapper program) I need a repeatmasked cow4 genome with N's (and X's for gaps)
+# BEDtools has all the programs that I need to do this, and I have the UCSC mask.out and gap files
+# First I need to extend the repeat bed file by 36bp in either direction for each interval
+	$ perl -ne '@seg = split(/\t/,$_);$seg[1] -= 36; $seg[2] += 36; if($seg[1] < 1){$seg[1] = 1;} print "$seg[0]\t$seg[1]\t$seg[2]\t$seg[3]\t$seg[4]\t$seg[5]\n";' < bosTau4.fa.bed > cow4_6bpextend_repeat.bed
+	# This was done in my shared directory on my Ubuntu virtualbox
+	
+	# Checking to see the chromosome names
+	$ perl -n -e '@f=split(/\t/,$_);if($a eq $f[0]){next;}else{print "$f[0]\n"; $a = $f[0];}' < cow4_36bpextend_repeat.bed
+		# All accounted for, including chrM
+	
+	# Now on Server 3
+	# Merging overlapping entries in the bed file:
+		$ ./mergeBed -n -i /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36bpextend_repeat.bed > ../../alkan_files/cow4_36bp_repeat_merged.bed
+	
+	# Initial masking (masks with 'N's'):
+		$ ./maskFastaFromBed -fi /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4.fa -fo /mnt/gliu1_usb/dbickhart/alkan_files/bosTau4_36bpextend_masked.fa -bed /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36bp_repeat_merged.bed
+		# UCSC strikes again! The cow4 fasta has lowercase masking in regions that were not indicated on the mask.out file
+		# Masking them.
+		$ perl -n -e 'if($_ =~ /^>.*/){print $_;next;}else{$_=~ s/[acgt]/N/g; print $_;}' < bosTau4_36bpextend_masked.fa > bosTau4_36_full_masked.fa
+		
+	
+	# Generate Gaps file from UCSC .agp file:
+		$ perl -ne '@seg = split(/\t/,$_); if($seg[4] =~ /N/){print $_;}else{next;}' < bosTau4.agp > cow4_gaps.bed
+		# The "N" column indicates a gap entry
+		
+	# Now, I am going to see if I can "soft-mask" the "n's" of the gaps in the reference so that I can later convert lowercase "n's" into "X's"
+		$ ../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi bosTau4_36_full_masked.fa -fo bosTau_36_gapn_masked.fa -soft -bed cow4_gaps.bed
+		# I think it worked!
+		# Now to convert only the lowercased n's into "X's"
+		$ perl -n -e 'if($_ =~ /^>.*/){print $_;next;}else{$_=~ s/n/X/g; print $_;}' < bosTau_36_gapn_masked.fa > bosTau_36final_fullmasked.fa
+		
+# George wants me to remask the fasta using WindowMasker (http://bioinformatics.oxfordjournals.org/content/22/2/134.full)
+
+# Windowmasker requires the NCBI C++ tools, and even then, it requires a special configuration (enter into the src/app/windowmasker folder and read the README.build file for details)
+	# I ended up cd'ing to the /build/windowmasker directory and running "make" 
+	# This was after several make errors attempting to compile the binaries
+	# It might have worked...
+	
+	$ ./windowmasker -mk_counts -in bostau_window.fa -out bosTau_36_windowmask.fa
+	$ ./windowmasker -ustat bosTau_36_windowmask.fa -in bostau_window.fa  -out cow4_36_windowmask.fa
+	# Output was not in bed format; converting:
+	
+	$ perl -ne 'if($_ =~ /^>(chr.+)/){$chr = $1;}else{$_ =~ s/[\s\t]//; @seg = split(/-/, $_); print "$chr\t$seg[0]\t$seg[1]";}' < cow4_36_windowmask.fa > cow4_36_windowmask.bed
+		
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi /mnt/gliu1_usb/dbickhart/alkan_files/bosTau_36final_fullmasked.fa -fo /mnt/gliu1_usb/dbickhart/alkan_files/bosTau_36final_testwindowmasked.fa -bed cow4_36_windowmask.bed
+		Unexpected file format.  Please use tab-delimited BED, GFF, or VCF. Perhaps you have non-integer starts or ends at line 1?
+		# This might be due to the number of columns in the bed file, adding some extra zeros
+		
+	$ perl -ne '@i=split(/\t/, $_); $i[0] =~ s/[\s\t]//g; $i[1] =~ s/[\s\t]//g; $i[2] =~ s/[\s\t]//g; print "$i[0]\t$i[1]\t$i[2]\t0\t0\t0\t0\t0\t0\n";' < cow4_36_windowmask.bed > cow4_36_9_windowmask.bed
+	# Yup, that did the trick; BEDtools requires at least 9 columns to work (even if they are empty!)
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi /mnt/gliu1_usb/dbickhart/alkan_files/bosTau_36final_fullmasked.fa -fo /mnt/gliu1_usb/dbickhart/alkan_files/bosTau_36final_testwindowmasked.fa -soft -bed cow4_36_9_windowmask.bed
+	
+	# Since my last command merely softmasked the regions, I wanted to see how many "acgt's" and how many "n's" were softmasked
+	$ perl -e 'while(<>){if($_ =~ /[nagctx]/){@a = split(//, $_); foreach $b (@a){$f{$b}+= 1;}}else{next;}} print "n\t$f{n}\na\t$f{a}\ng\t$f{g}\nc\t$f{c}\nt\t$f{t}\n";' < bosTau_36final_testwindowmasked.fa
+	# I believe that the "X's" in my previous masking, might have been softmasked to "n's" by windowmasker
+	
+		n       11869
+		a       68328769
+		g       32139170
+		c       32173629
+		t       68439778
+		x
+
+	# So it didn't mask the X's!
+	$ perl -ne '$_ =~ s/[agctn]/N/g; print $_;' < bosTau_36final_testwindowmasked.fa > bosTau_36final_finalwindowmasked.fa
+	# Now, just to test the final output...
+	$ perl -e 'while(<>){if($_ =~ /[NACGTX]/){@a = split(//, $_); foreach $b (@a){$f{$b}+= 1;}}else{next;}} print "n\t$f{N}\na\t$f{A}\ng\t$f{G}\nc\t$f{C}\nt\t$f{T}\nx\t$f{X}\n";' < bosTau_36final_fullmasked.fa
+		n       1501470025
+		a       357510855
+		g       257658505
+		c       257425120
+		t       358034862
+		x       186068178
+		Non masked: 1230629342
+
+	# That seems about right.
+	# Now to stitch together the unknown contigs
+	# Created a script (stitch_cow4_chrun.pl) to do this, but it is inoptimal. I had to comment out the autosome printing and just focus on printing out the chrUN contigs.
+	# Now I need to remove the chrUn contigs from the original files
+		$perl -ne 'if (($_ =~ /^>chrUN/) || ($_ =~ /^>chrM/)){$a += 1; next;}elsif($a < 1){ print $_;}' < cow4_36_finalwindow.fa > cow4_36_finalautosome.fa
+		
+	$ cat cow4_36_finalautosome.fa cow4_36_finalwindow_stitch.fa > cow4_36_finalcombined.fa
+	# Finally! Now I need to fasta index the file (samtools) and mrsfast index the file
+		$ ../mrsfast-2.3.0.2/mrsfast --index cow4_36_finalcombined.fa
+			Generating Index from cow4_36_finalcombined.fa
+		$ ../samtools-0.1.8/samtools faidx cow4_36_finalcombined.fa
+			[fai_build_core] line length exceeds 65535 in sequence 'chrUnall'.
+			Segmentation fault
+			# Going to have to format chrUnall's sequence into lines of ~ 200bp each
+			# Ah! Now I know why my previous script gave really weird grep results! It printed out the entire sequence as one contiguous line!
+			# Created a script that prints out 200 bases per line called (format_chrunall.pl)
+			# Didn't work; Bioperl cannot easily section off the lines for each fasta sequence
+			# Using these one-liners instead:
+			
+				$ perl -ne 'if($_ =~ />chrUnall/){$a = 1; print ">chrUnall\n";}elsif($a == 1){for($x=0; $x < length($_); $x += 60){$b = substr($_, $x, 60); print "$b\n";}}' < cow4_36_finalcombined.fa > chrun_formated.fa
+				$ perl -ne 'if (($_ =~ /^>chrUnall/) || ($_ =~ /^>chrM/)){$a += 1; next;}elsif($a < 1){ print $_;}' < cow4_36_finalcombined.fa > cow4autosomes_formated.fa
+				$ cat cow4autosomes_formated.fa chrun_formated.fa > cow4_36_finalcombined.fa
+		
+		# Retrying
+		$ ../mrsfast-2.3.0.2/mrsfast --index cow4_36_finalcombined.fa
+			Generating Index from cow4_36_finalcombined.fa
+		
+		$ ../samtools-0.1.8/samtools faidx cow4_36_finalcombined.fa
+			
+			
+# I have to remake chrUnall
+# I am going to do so using a perl script that I made (reprint_chrUnall.pl)
+
+# Basically, the chrUnall contigs were converted into a chrUnall with 10kb of "X's" stitching them together
+$ cat cow4autosomes_formated.fa chrun_format.txt > cow4_36_finalcombined.fa
+# Redid the mrsfast and samtools indexing (just like above)
+	[fai_build_core] different line length in sequence 'chrUnall'.
+	Segmentation fault
+	# wow... so samtools is incredibly picky!
+	
+# Fixed it with a really fast perl script (format_fasta.pl)	
+# I also fixed the contig_order.txt file to accurately display the base intervals
+_________________________________
+Running mrsfast 
+_________________________________
+
+# One important step that I cannot omit is to generate a new "fasta-index" file using samtools and to insert it into the create_hits_cnvseq.pl script
+
+# Retrieving new blackstar fastqs (George has fastq's from 09313 and earlier)
+	$ cp BTHO11*090324*gz /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/
+	$ cp BTHO11*0904*gz /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/
+	$ cp BTHO11*0905*gz /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/
+
+# creating list of files to process:
+	$ find *.fq > new_black.txt	
+	
+# Running:
+	$ perl create_hits_cnvseq.pl --in new_black.txt --out_dir /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast --mrsFast
+	
+# That finished much faster than I expected! Now I will run mrsFast on the original blackstar files too:
+	$ perl create_hits_cnvseq.pl --in blackstar_files.txt --out_dir /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast --thread 3 --mrsFast
+	# File names were changed to appropriately reflect the differences in fastq name structure
+
+# Now I will be running create_hits_cnvseq.pl on Holstein.
+	# copied 28 files from the sequence_vault folder to George's usb mount
+	$ gunzip BTHO*gz ; find BTHO* > holstein_list.txt ; perl create_hits_cnvseq.pl --in holstein_list.txt --out_dir /mnt/gliu1_usb/dbickhart/holstein/mrsfast --thread 3 --mrsfast
+
+# Retrieved all of the Angus files from the sequence vault
+# Now to run them!
+	$ gunzip BTAN*.gz ; find BTAN* > angus_list.txt ; perl create_hits_cnvseq.pl --in angus_list.txt -- out_dir /mnt/gliu1_usb/dbickhart/angus/mrsfast --thread 2 --mrsfast
+
+# Going to set up a run of Nelore to work over the holiday:
+	$ sleep 5h ; gunzip BIN*.gz ; find BIN* > nelore_list.txt ; sleep 48h ; perl create_hits_cnvseq.pl --in nelore_list.txt --out_dir /mnt/gliu1_usb/dbickhart/nelore/mrsfast --thread 2 --mrsfast
+
+# Now I am going to run Limousin sequence:
+	$ gunzip BTLM*.gz ; find BTLM* > limousin_list.txt ; perl create_hits_cnvseq.pl --in limousin_list.txt --out_dir /mnt/gliu1_usb/dbickhart/limousin/mrsfast --thread 2 --mrsfast
+	
+# Running Jersey:
+	$ gunzip BTJE*.gz ; find BTJE* > jersey_list.txt ; perl create_hits_cnvseq.pl --in jersey_list.txt --out_dir /mnt/gliu1_usb/dbickhart/jersey/mrsfast --thread 2 --mrsfast
+	
+# Running Brahman:
+	$ find BIBR* > brahman_list.txt
+	$ perl create_hits_cnvseq.pl --in brahman_list.txt --out_dir /mnt/gliu1_usb/dbickhart/breed_doc/brahman/mrsfast --thread 2 --mrsfast
+	
+________________________________
+Keeping tabs on necessary files
+________________________________
+
+# This is a list of files that I need to run the WSSD package from Alkan's group:
+	(<INPUT FILES>)
+	*File1 (BED file with 5Kb non-masked sequence; slide by absolute 1kb window [start sequence])
+	*File1_control (BED file with "known to be unique hits." Determined by subtracting CNV's in DGV and known seg. dups in UCSC. Same intervals as in File1)
+	*File2 (BED file with 1Kb non-masked sequence; slide by absolute 1kb window [start sequence])
+	*File3 (BED file with 1Kb non-masked sequence; NO overlap between windows [end sequence begins next window])
+	*File3_control (BED file with "known to be unique hits." Determined by subtracting CNV's in DGV and known seg. dups in UCSC. Same intervals as in File3)
+	
+	(<DEFINED FILES>)
+	*GAPSFILE (BED file that contains coordinates of the assembly gaps
+	*BACS_GC_FILE (BED file that contains the same intervals as the File1_control but includes the GC% within the intervals) <- must be sorted
+	*BACS_CN_GC_FILE (BED file that contains the same intervals as the File3_control but includes the GC% within the intervals) <- must be sorted
+	*HG17_5K_GC_FILE (BED file (same intervals File1) GC%)
+	*HG17_1K_GC_FILE (BED file (same intervals File2) GC%)
+	*HG17_CN_GC_FILE (BED file (same intervals File3) GC%)
+	
+________________________________
+List of things to alter on Server 3
+________________________________
+
+# In order to run the full script on Server 3, I must change some of the shell scripts that Can sent me
+
+# Here is a list of things that I must change:
+	* gcnorm-auto** (Change the $BINDIR variable to point to all of the scripts/executables that I will use)
+	* gcnorm-auto** (Change the $GINGERBIN and $GOZBIN variables all to $BINDIR)
+	* create_hits_cnvseq.pl (point the samtools_view_sort() samtools command to new fasta index of masked genome sequence)
+	* Create an artifact file (basically, screen simulation data throught the program in order to identify regions that are prone to duplications)
+	* Change gaps file to reflect actual coordinates on the chrunall stitched scaffold that I created <--- finished; used perl script (reformat_chrun_gaps.pl)
+	* Create G+C% for each interval
+	* Map hits to each interval
+	
+	
+________________________________
+Creating intervals for CNV's
+________________________________
+
+# Yali gave me the locations of the following files:
+	/mnt/data110/gliu/mrfast/CommonFiles/
+		danishcnvr.txt
+		israelicnvr.txt
+		koreancnvr.txt
+		mergedcnvrfromLIU-HOU-SD-DANMARK-KOREA-ISRAEL.txt
+		
+# George wants the mergedcnv text file without the SD intervals, so I am removing the SD's found in the file: 4293_all_SD.extra		
+		
+# Took Yali's mergedcnv text and converted it into a nine column bed file
+	$ perl -ne '$_ =~ /^(\w+)\t(\w+)\t(\w+)/; print "$1\t$2\t$3\t0\t0\t0\t0\t0\t0\n";' < mergedCNVandSD.txt > mergedCNVandSD.bed
+	# She had some weird break characters hidden in the merged text... really screwed up the creation of the bed file!
+	
+	# I didn't take my chances with the SD file
+	$ perl -ne '$c +=1; if($c == 1){next;}else{$_ =~ /^(\w+)\t(\w+)\t(\w+)/; print "$1\t$2\t$3\t0\t0\t0\t0\t0\t0\n";}' < 4293_all_SD.extra > all_SD.bed
+	
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -v -a mergedCNVandSD.bed -b all_SD.bed > mergedCNV_noSD.bed
+	
+	# Generated from the cat'ed cnv files just in case:
+	$ ../BEDTools-Version-2.10.0/bin/mergeBed -i cat_CNVR.bed > cat_CNVR.txt
+	
+(<>) Creating the windows from the masked genome:
+	# Compiled windowmaker.c
+	$ gcc -o windowmaker windowmaker.c
+	
+	# Ran it on the masked, and X'ed cow genome:
+	$ ./wssd-package/winmaker cow4_36_finalcombined.fa
+
+	# It finished much more quickly than I expected! And it generated three files:
+		cow4_36_finalcombined.fa.coverage <- slide by 1kb, 5kb non-masked sequence
+			chrX    10086   24354
+			chrX    57916   73047
+			chrX    58916   75427
+			chrX    77916   115474
+			chrX    78916   116489
+			chrX    79916   116673
+			chrX    80916   116693
+			chrX    81916   116693
+			chrX    82916   116693
+			chrX    83916   116693
+			chrX    84916   116693
+			chrX    85916   116693
+			chrX    86916   123720
+			chrX    87916   123754
+			chrX    88916   123813
+			chrX    89916   123852
+			chrX    90916   123852
+			chrX    91916   123852
+
+		cow4_36_finalcombined.fa.copynumber <- slide by 1kb, no overlap in windows
+			chrX    0       7210
+			chrX    7211    9439
+			chrX    10086   12389
+			chrX    12390   15371
+			chrX    15372   18672
+			chrX    18673   21811
+			chrX    21812   24354
+			chrX    30097   32810
+			chrX    32811   37571
+			chrX    39474   40879
+			chrX    40880   43037
+			chrX    43038   44646
+			chrX    45201   47041
+
+		cow4_36_finalcombined.fa.wssd  <- slide by 1kb, 1kb non-masked sequence
+			chrX    0       7210
+			chrX    1000    7243
+			chrX    2000    7243
+			chrX    3000    7243
+			chrX    4000    7243
+			chrX    5000    7267
+			chrX    6000    8864
+			chrX    7000    9228
+			chrX    8000    9624
+			chrX    10086   12389
+			chrX    11086   13126
+			chrX    12086   15316
+			chrX    13086   17839
+			chrX    14086   18302
+			chrX    15086   18620
+			
+	# Now all I need to do is get the mapped files, construct a perl script to change the "hits" into the intervals generated by this window, and run the shell script!	
+	# I created a dual-purpose perl script (intervals_to_GChits.pl) that can generate the GC% files and map hits to the intervals (though not simultaneously)
+	
+	# Testing it out now:
+		$ perl intervals_to_GChits.pl --genome cow4_36_finalcombined.fa --name test --gcproduce
+		# This is the gcproduce mode which should generate G+C% for each coordinate interval. 
+		# This may take a while, which is ok!
+		
+	# Problem: winmaker only works on one chromosome fasta at a time! I will have to split them then cat them together.
+	# Problem solved: created a script (split_fasta.pl) that uses bioperl's write_seq method to create separate chromosome fastas
+		$ for i in chr*
+		> do
+		> ./winmaker $i
+		> done
+		
+		$ cat *.copynumber > cow4_36_finalcombined.fa.copynumber
+		$ cat *.coverage > cow4_36_finalcombined.fa.coverage
+		$ cat *.wssd > cow4_36_finalcombined.fa.wssd
+
+	# Now I will rerun the intervals_to_GChits.pl script, but I need to monitor the time
+	$ time perl intervals_to_GChits.pl --genome cow4_36_finalcombined.fa --name test --gcproduce
+	# I modified intervals_to_GChits.pl to use the tr/// function in order to count bases rather than use the split function
+	# It is working ever so slightly faster... still might take a long time (probably 1 to 3 days)
+	
+	# I stopped it in order to make a faster GC% interval parser. Bioperl is, sadly, unsuitable for GC percentages.
+	# New script has eschewed the multifunctionality of hits per interval, and is now solely dedicated to GC percentage detection (GC_intervals.pl)
+	$ perl GC_intervals.pl --path /mnt/gliu1_usb/dbickhart/alkan_files/separate_chrs --genome cow4_36_finalcombined.fa --name test
+		# It looks like it just might finish in my lifetime!
+		
+	# Using a perl script to map the hits to the window intervals is a different story. 
+	# It was taking forever as well! I believe that I can shorten the time substantially by using BEDtools instead:
+		$ perl -ne '@a = split(/\t/, $_); chomp $a[1]; $end = $a[1] + 36; print "$a[0]\t$a[1]\t$end\n";' < merged.hits > blackstar_hits.bed
+		$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_36_finalcombined.fa.coverage -b blackstar_hits.bed -c > blackstar_hits_file1.bed
+		# It works MUCH faster and I don't have to reinvent the wheel!
+
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_36_finalcombined.fa.copynumber -b blackstar_hits.bed -c > blackstar_hits_file3.bed
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_36_finalcombined.fa.wssd -b blackstar_hits.bed -c > blackstar_hits_file2.bed
+
+	# Plotting GC percent mapped reads:
+		# Created a perl script to bin the reads into GC percentages (bin_GC_from_copynumber.pl)
+		$ perl bin_GC_from_copynumber.pl --wssd cow4_gc_wssd.bed --name blackstar_wssd_gc_bin --in /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast/blackstar_hits_file2.bed
+		
+		# When I transported the data to excel, I noticed that there were six regions that had WAY too many reads! 
+		# This may be due to the limitation of decimal places in my GC_interval.pl script. I increased the size of the reported decimal places by 2 additional decimal points
+		
+		# Retrying it with six significant digits
+		$ perl bin_GC_from_copynumber.pl --wssd test_gc_wssd.bed --name more_decimal --in /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast/blackstar_hits_file2.bed
+
+		# Still gave similar GC content aggregations
+		# Testing to see if the GC content hits were located in longer or shorter windows in the genome:
+		$ grep '0.355711' test_gc_wssd.bed | awk '{print $3-$2, $2, $3}' > test_gc_lengths.txt
+		$ grep '0.355711' test_gc_wssd.bed | awk '{print $3-$2}' | perl -e '$b = 0; while(<>){$a += $_; $b++;} print $a / $b;'
+			4200.52424814116
+		# Trying it for a normal data point:
+		$ grep '0.3757' test_gc_wssd.bed | awk '{print $3-$2}' | perl -e '$b = 0; while(<>){$a += $_; $b++;} print $a / $b; print "\n";'
+			4053.427
+			
+		# Seems normal, now lets see if it's an issue in GC mapping locations in one of the chromosomes
+		$ grep '0.355711' test_gc_wssd.bed | awk '{print $1}' | perl -e '%h; while(<>){chomp $_; $h{$_} += 1;} foreach $key (keys(%h)){print "$key\t$h{$key}\n";}'
+		
+		$ grep '0.3757' test_gc_wssd.bed | awk '{print $1}' | perl -e '%h; while(<>){chomp $_; $h{$_} += 1;} foreach $key (keys(%h)){print "$key\t$h{$key}\n";}'
+		
+		      0.3575           0.355711
+			chr7    429	chr7    345
+			chr23   132	chr23   109
+			chr20   295	chr20   296
+			chr26   156	chr26   152
+			chr22   202	chr22   94
+			chr14   344	chr14   276
+			chr19   120	chr19   85
+			chr8    461	chr8    351
+			chr1    712	chr1    672
+			chr29   159	chr29   113
+			chr11   355	chr11   296
+			chr6    614	chr6    544
+			chr17   279	chr17   236
+			chr24   253	chr24   233
+			chr21   201	chr21   194
+			chr16   229	chr16   219
+			chr25   53	chr25   19
+			chr18   128	chr18   72
+			chr3    474	chr3    431
+			chr12   347	chr12   376
+			chr15   319	chr15   207
+			chrX    321	chrX    296
+			chr4    609	chr4    546
+			chr2    735	chr2    531
+			chr9    522	chr9    503
+			chr28   143	chr28   109
+			chr27   168	chr27   130
+			chr13   201	chr13   123
+			chr10   413	chr10   361
+			chrUnall 722	chrUnall 634
+			chr5    521	chr5    458
+		
+		
+	# So it is probably an issue with the mapped hits file... I will have to check
+	$ grep '0.355711' test_gc_wssd.bed > test_gc_lengths.txt
+	$ grep '0.3757' test_gc_wssd.bed | awk '{printf "%s\t%i\t%i\n", $1, $2, $3}' > normal_gc_lengths.txt
+
+	
+	# Testing to see which chromosome had the most hits map to it
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a errant_gc_lengths.txt -b blackstar_hits.bed -c > errant_chrom_lengths.txt
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a normal_gc_lengths.txt -b blackstar_hits.bed -c > normal_chrom_lengths.txt
+	
+	$ perl -e '%h; while(<>){@a = split(/\t/, $_); chomp $a[3]; $h{$a[0]} += $a[3];} foreach $k (keys(%h)){ print "$k\t$h{$k}\n";}' < errant_chrom_lengths.txt
+		0.355711		0.37751	
+		chr7	12565	chr7	18221
+		chr23	4110	chr23	5826
+		chr20	10248	chr20	11603
+		chr26	66786	chr26	6457
+		chr22	3266	chr22	8235
+		chr14	9231	chr14	14035
+		chr19	3077	chr19	4525
+		chr8	13925	chr8	18661
+		chr1	23406	chr1	28741
+		chr29	4300	chr29	6520
+		chr11	10872	chr11	14295
+		chr6	22165	chr6	25350
+		chr17	8534	chr17	10753
+		chr24	8619	chr24	10381
+		chr21	6666	chr21	8526
+		chr16	7168	chr16	9601
+		chr25	688	chr25	7918
+		chr18	2954	chr18	6505
+		chr3	16027	chr3	21024
+		chr12	12903	chr12	14488
+		chr15	8245	chr15	13634
+		chrX	6242	chrX	7994
+		chr4	18293	chr4	24530
+		chr2	18440	chr2	29989
+		chr9	18115	chr9	21376
+		chr28	4133	chr28	5707
+		chr27	4577	chr27	7089
+		chr13	4440	chr13	8388
+		chr10	13022	chr10	18677
+		chrUnall	22999	chrUnall	38150
+		chr5	16484	chr5	21221
+		total	382500		448420
+
+	# Maybe the math is wrong? Checking:
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a blackstar_hits.bed -b errant_gc_lengths.txt -wa | perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[3]; $b += $a[3];} print "$b\n";'
+	# This should only report lines from the blackstar_hits.bed and then sum up the total number of hits within the window.
+		
+	# George says that this should be alright. It is likely similar to their results
+	# I rewrote the bin_GC_from_copynumber.pl script to calculate the average number of hits per GC bin, but the averages didn't help much!
+	
+_________________________________
+Creating Union of WSSD and WGAC
+_________________________________
+
+# Directory for WSSD and WGAC files is: /mnt/data110/gliu/mrfast/CommonFiles/cattleSD_web
+	$ more wssd_desc
+		Cow WSSD On Cow assembly bosTau4
+		Introduction
+		
+		Using WGS library of 23,948,744 reads from one female cow, for Whole Genome Shotgun Sequence Detecti
+		on (WSSD) to detect chimp duplication. Query string used
+		
+		TRACE_TYPE_CODE = "WGS" CENTER_NAME = "BCM" SUBSPECIES_ID = HEREFORD/NULL String used
+		Repeatmasking, Megablast & Quality Rescore
+		
+		Repeatmask general common repeats at <=10% and bovine specific repeats
+		
+		blast-2.2.16_x64/megablast  -d /var/tmp/gingerDB/bos_taurus_0308  -D 3 -p 93 -F m -U T -s 220 -R T
+		
+		quality rescore:
+		
+		/mnt/local/inhousebin/blast_window_cleaner1.pl  -binsize 500 -maxreads 20 -o STDOUT | /net/eichler/v
+		ol7/home/ginger/bin/NFS_blast_quality_rescorer353a_gg.pl   -in  STDIN -minquality 30 -alignments 12:
+		13    -qual2db  /var/tmp/gingerDB/bos_taurus_0308.qual   -inputtype megablastD3 -pattern2 \"lcl\|(\S
+		+)\" -pattern1 \"([A-Z0-9]+\.\d+)\"  -noalignments    -globalfast
+		Reads Pick & Sliding Window
+		
+		Recruit Reads if:
+		high quality identity >94%, alignment length >300bp, unique bases >200p, high quality bases >200bp,
+		aligned bases/total length >40%. 13,523,039 reads/alignments got collected.
+		Use 5K non-gap, repeatmasking-free bases for sliding window.
+		Thesholds
+		
+		Megablasting 96 unique bovine BACs (repeat-masked with the same parameter as the bosTau4 assembly ag
+		ainst each WGS library respectively, quality rescoring all the alignments and picking high quality b
+		ases. Calculate the statistics of depth coverage and divergence of no-gap, no-div10% common repeat 5
+		Kb windows:
+		        phred >=30
+		total window    15527
+		Minimum         14
+		Maximum         129
+		Average         52.7474077413538
+		Median  52
+		Standard Deviation      12.7880776758235
+		avg +3x stddev  91.1116407688243
+		
+		WSSD Picking
+		
+		
+		By Depth Coverage:
+         	if 6/7 5Kb windows with depth coverage >91.1116407688243
+	# These are the notes for how WSSD's were picked
+	
+# I need to generate a "merged" file of WSSD's and WGAC's in order to run a good simulation later. 
+
+# The WSSD file is already in neat order, but the WGAC is a different story:
+	$  head WGAC.tab
+chrom   chromStart      chromEnd        name    score   strand  otherChrom      otherStart      otherEnd        otherSize       uid     posBasesHit     testResult      verdict chits   ccov    alignfile       alignL  indelN  indelS  alignB  matchB  mismatchB       transitionsB    transversionsB  fracMatch       fracMatchIndel  jcK     k2K
+chr10   1045613 1046814 chr1:146484171  8519    +       chr1    146484171       146485365       161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000224      1190    7       16      428     1114    76      49      27      0.936134        0.93066 0.0667497       0.0670993
+chr10   1045614 1047131 chr1:10662887   16287   +       chr1    10662887        10664429        161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000202      1503    6       54      846     1391    112     79      33      0.925482        0.921803        0.0784846       0.0791816
+chr10   1045614 1047131 chr1:18983634   11924   _       chr1    18983634        18985181        161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000204      1508    8       49      644     1369    139     90      49      0.907825        0.903034        0.0983508       0.0991515
+chr10   1045614 1047131 chr1:19457678   17018   _       chr1    19457678        19459222        161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000205      1506    9       50      848     1398    108     66      42      0.928287        0.922772        0.0753772       0.075736
+chr10   1045614 1047128 chr1:35506526   12622   +       chr1    35506526        35508082        161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000208      1502    5       67      654     1383    119     73      46      0.920772        0.917717        0.0837326       0.0841872
+chr10   1045614 1047129 chr1:49537785   14328   +       chr1    49537785        49539333        161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000210      1510    5       44      673     1407    103     63      40      0.931788        0.928713        0.0715157       0.0718385
+chr10   1045614 1046734 chr1:59678510   6412    +       chr1    59678510        59679620        161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000212      1106    5       19      341     1037    69      43      26      0.937613        0.933393        0.0651352       0.0654234
+chr10   1045614 1047131 chr1:92927348   9399    +       chr1    92927348        92928873        161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000216      1487    9       69      501     1372    115     68      47      0.922663        0.917112        0.0816215       0.0819873
+chr10   1045614 1046776 chr1:110440210  12354   +       chr1    110440210       110441373       161106243       0       1000    N/A     N/A     N/A     N/A     align_both/0000/both000219      1159    3       8       540     1082    77      45      32      0.933563        0.931153        0.0695653       0.0698136
+
+
+# OK, here is what I am going to try: print out the query chrom and the aligned chrom, then use BEDTools sort then BEDTools merge.
+
+$ perl -ne '$x+=1; if($x == 1){next;}else{@s=split(/\t/, $_); print "$s[0]\t$s[1]\t$s[2]\t0\t0\t0\t0\t0\t0\n$s[6]\t$s[7]\t$s[8]\t0\t0\t0\t0\t0\t0\n";}' < WGAC.tab > WGAC.bed
+
+$ ../BEDTools-Version-2.10.0/bin/sortBed -i WGAC.bed > WGAC_sorted.bed
+
+$ ../BEDTools-Version-2.10.0/bin/mergeBed -i WGAC_sorted.bed > WGAC_merged_sorted.bed
+$ wc WGAC_merged_sorted.bed
+ 	39095 117285 926412 WGAC_merged_sorted.bed
+
+$ cat WSSD_crop.bed WGAC_merged_sorted.bed > WSSD_WGAC_cat.bed
+$ ../BEDTools-Version-2.10.0/bin/mergeBed -i WSSD_WGAC_cat.bed > WSSD_WGAC_finalmerged.bed
+
+	$wc WSSD_WGAC_finalmerged.bed
+		39838 119514 943810 WSSD_WGAC_finalmerged.bed
+	$ wc WSSD_crop.bed
+ 		5690  17070 138914 WSSD_crop.bed
+	# If the number of lines were to increase by simple addition, I would expect 44785 lines. 
+	
+	
+_____________________________________
+Creating the BAC control files
+_____________________________________
+# OK, George gave me the BAC file locations (server 2: /mnt/data10/gliu/cow4/cow4segup/fasta_whole/96bac/)
+
+# Slight problem: I cannot find the coordinates of the BACs
+# Hooray! I don't have to megablast the BACSs! George has a xls file that contains parsed blast output that he used to assign BAC locations
+# All that I need to do is parse out the coordinates of BAC hits along with BAC chromosomes and then I'm in business!
+	# designed a one-shot perl script to do that for me! (cow4_bac_coord_parse.pl)
+	# I still need to format the file:
+	$ perl -ne '$_ =~ s/\(//g; $_ =~ s/\)//g; print $_;' < cow4_96BAC_raw.bed > cow4_96BAC_nopar.bed
+	# Manually removed whitespace entries (they were probably going to be a pain to perl parse out)
+	$ perl -ne '@a = split(/\t/, $_); chomp $a[2]; if($a[2] > $a[1]){print $_;}elsif($a[1]>$a[2]){print "$a[0]\t$a[2]\t$a[1]\n";}' < cow4_96BAC_nopar.bed > cow4_96BAC_ordered.bed
+
+
+# Proposed processes to generate the File1 and File 3 controls:
+	* Identify BAC coordinate locations on each chromosome (for cow4)
+	* Subtract out WGAC and WSSD 
+	* Intersect once with the cow4_36_finalcombined.fa.coverage and cow4_36_finalcombined.fa.copynumber files <- creates file1 and file 3 controls
+	* Run both through the GC interval script <- creates BACS_GC_FILE and BACS_CN_GC_FILE
+	
+# Actual stuff that I did:
+	$ ../BEDTools-Version-2.10.0/bin/mergeBed -i cow4_96BAC_ordered.bed > cow4_96BAC_merged.bed 
+	$ ../BEDTools-Version-2.10.0/bin/subtractBed -a cow4_96BAC_merged.bed -b ../cow4_repeats_c.bed > cow4_96BAC_norepeats.bed
+	$ ../BEDTools-Version-2.10.0/bin/subtractBed -a cow4_96BAC_norepeats.bed -b ../alkan_files/WSSD_WGAC_finalmerged.bed > cow4_96BAC_norep_nosupdup.bed
+	
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_96BAC_norep_nosupdup.bed -b ../alkan_files/cow4_36_finalcombined.fa.coverage > cow4_96BAC_file1_c.bed
+	$ ../BEDTools-Version-2.10.0/bin/mergeBed -i cow4_96BAC_file1_c.bed > cow4_96BAC_file1_m.bed
+	$ perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 1000){next;}else{$b += 1;}} print $b;' < cow4_96BAC_file1_m.bed  <- output was 1866
+	
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_96BAC_norep_nosupdup.bed -b ../alkan_files/cow4_36_finalcombined.fa.copynumber > cow4_96BAC_file3_c.bed
+	$ ../BEDTools-Version-2.10.0/bin/mergeBed -i cow4_96BAC_file3_c.bed > cow4_96BAC_file3_m.bed
+	$ perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 1000){next;}else{$b += 1;}} print $b;' < cow4_96BAC_file3_m.bed <- output was 1393
+	
+	# Cropping intervals less than 1000 basepairs
+	$ perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 1000){next;}else{print $_;}}' < cow4_96BAC_file3_m.bed > cow4_96BAC_file3_control.bed
+	$ perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 1000){next;}else{$b +print $_;}}' < cow4_96BAC_file1_m.bed > cow4_96BAC_file1_control.bed
+	
+# Creating the GC content BAC files:
+	# I modified the GC_intervals.pl script for the filenames/types needed for generating the control GC percentages
+	$ perl GC_control_intervals.pl --genome cow4_96BAC --path ./separate_chrs --name cow4_BAC
+	# This generated the necessary GC intervals for the program
+
+# Creating BAC_wssd_hits file
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_96BAC_norep_nosupdup.bed -b ../alkan_files/cow4_36_finalcombined.fa.wssd > cow4_96BAC_file2_c.bed
+	$ perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 1000){next;}else{$b += 1;}} print $b;'< cow4_96BAC_file2_c.bed
+		3058 <- number of entries
+
+
+# Now that I think about it... I should not have merged the file1 and file3 controls. Redoing them
+	$ perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 1000){next;}else{print $_;}}' < cow4_96BAC_file1_c.bed > cow4_96BAC_file1_control.bed
+	$ perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 1000){next;}else{print $_;}}' < cow4_96BAC_file2_c.bed > cow4_96BAC_file2_control.bed
+	$ perl -e 'while(<>){@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 1000){next;}else{print $_;}}' < cow4_96BAC_file3_c.bed > cow4_96BAC_file3_control.bed
+	# Now they have intervals greater than 1000
+
+	$ perl GC_control_intervals.pl --genome cow4_96BAC --path ./separate_chrs --name cow4_BAC
+	# Now I need to remove duplicated entries
+	$ perl -ne '@a = split(/\t/, $_); chomp $a[2]; chomp $a[3]; if($a[3] == 0){next;}else{print $_;}' < cow4_BAC_gc_file1_control.bed | sort | uniq > cow4_BAC_gc_file1_c_uniq.bed
+	$ perl -ne '@a = split(/\t/, $_); chomp $a[2]; chomp $a[3]; if($a[3] == 0){next;}else{print $_;}' < cow4_BAC_gc_file3_control.bed | sort | uniq > cow4_BAC_gc_file3_c_uniq.bed
+	$ perl -ne '@a = split(/\t/, $_); chomp $a[2]; chomp $a[3]; if($a[3] == 0){next;}else{print $_;}' < cow4_BAC_gc_file2_control.bed | sort | uniq > cow4_BAC_gc_file2_c_uniq.bed
+
+	$ sort cow4_96BAC_file1_control.bed | uniq > cow4_96BAC_file1_c_uniq.bed
+	$ sort cow4_96BAC_file2_control.bed | uniq > cow4_96BAC_file2_c_uniq.bed
+	$ sort cow4_96BAC_file3_control.bed | uniq > cow4_96BAC_file3_c_uniq.bed
+
+(<>) OK New strategy! FORGET THE ABOVE STUFF
+	# created chromosome_lengths.txt off of the output from my GC interval script
+	# Now I am going to subtract the WGAC_WSSD_finalmerged_nochrunall.bed from the chromosome lengths
+	$ ../BEDTools-Version-2.10.0/bin/subtractBed -a chromome_lengths.txt -b WSSD_WGAC_finalmerged_noChrun.bed > cow4_controls.bed
+	$ perl -ne '@a = split(/\t/, $_); chomp $a[2]; if(($a[2] - $a[1]) < 5000){next;}else{print $_;}' < cow4_controls.bed > cow4_controls_5k.bed
+	
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_36_finalcombined.fa.coverage -b cow4_controls_5k.bed -wa | uniq > cow4_file1_controls.bed
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_36_finalcombined.fa.copynumber -b cow4_controls_5k.bed -wa | uniq > cow4_file3_controls.bed
+
+	
+	# Creating GC intervals...
+	$ perl GC_control_intervals.pl --genome cow4 --path ./separate_chrs --name cow4
+	
+	# I removed chrUnall from the GC files, so I might as well remove it from all files and make my life easier
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' < cow4_gc_copynumber.tab > cow4_gc_copynumber_nochrun.tab
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' < cow4_gc_wssd.tab > cow4_gc_wssd_nochrun.tab
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' < cow4_gc_coverage.tab > cow4_gc_coverage_nochrun.tab
+	
+	perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' < cow4_reordered_cropped_gaps.bed > cow4_reordered_cropped_gaps_nochrun.bed
+	
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' <blackstar_hits_file1.bed > blackstar_hits_nochrun_file1.bed
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' <blackstar_hits_file2.bed > blackstar_hits_nochrun_file2.bed
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' <blackstar_hits_file3.bed > blackstar_hits_nochrun_file3.bed
+
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' < cow4_36_finalcombined.fa.copynumber > cow4_36_finalcombined.fa_nochrun.copynumber
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' < cow4_36_finalcombined.fa.coverage > cow4_36_finalcombined.fa_nochrun.coverage
+	$ perl -ne 'if($_ =~ /chrUnall/){next;}else{print $_;}' < cow4_36_finalcombined.fa.wssd > cow4_36_finalcombined.fa_nochrun.wssd
+
+	
+_____________________________________
+Current things finished for Alkan's protocol
+_____________________________________
+
+# For no chrUnall:
+# Windowfiles
+	cow4_36_finalcombined.fa_nochrun.coverage <- file1
+	cow4_36_finalcombined.fa_nochrun.wssd <- file2
+	cow4_36_finalcombined.fa_nochrun.copynumber <- file3
+
+# Blackstar dataset:
+	File1: blackstar_hits_nochrun_file1.bed
+	File2: blackstar_hits_nochrun_file2.bed
+	File3: blackstar_hits_nochrun_file3.bed
+	
+# Cow4 controls:
+	File1: blackstar_file1_control.bed
+	File3: blackstar_file3_control.bed
+
+# Gap file with coordinates from chrUnall
+	GAPSFILE: cow4_reordered_cropped_gaps_nochrun.bed
+
+# Cow4 control GC files:
+	BACS_GC_FILE=/mnt/gliu1_usb/dbickhart/alkan_files/cow4_gc_file1_controls.bed
+	BACS_CN_GC_FILE=/mnt/gliu1_usb/dbickhart/alkan_files/cow4_file3_controls.bed
+	HG17_5K_GC_FILE=/mnt/gliu1_usb/dbickhart/alkan_files/cow4_gc_coverage_nochrun.tab
+	HG17_1K_GC_FILE=/mnt/gliu1_usb/dbickhart/alkan_files/cow4_gc_wssd_nochrun.tab
+	HG17_CN_GC_FILE=/mnt/gliu1_usb/dbickhart/alkan_files/cow4_gc_copynumber_nochrun.tab
+
+
+# Generating the input and base files for Alkan's protocol
+
+____________________________________
+Final Tasks and preliminary run
+____________________________________
+# Ok, so I only have two more things to do: create the control GC files and reformat certain bed files into the weird "-" delimited format
+
+# I easily created the control GC files using my remade GC_control_intervals.pl script
+
+# The following files need to be reformated into "-" delimited files:
+	* BACS_CN_GC_FILE: cow4_BAC_gc_file3_control.bed
+		-> chr10-100185697-100190863 0.422000
+	* HG17_5K_GC_FILE: cow4_gc_coverage.bed
+	* HG17_1K_GC_FILE: cow4_gc_wssd.bed
+	* HG17_CN_GC_FILE: cow4_gc_copynumber.bed
+		# All were the same format as the first CN GC file
+
+# Here is how to convert them:
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' file | sort -k 1,1 > file_new
+	
+# My actual commands:
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' cow4_BAC_gc_file3_control.bed | sort -k 1,1 > cow4_BAC_gc_file3_control.tab
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' cow4_gc_coverage.bed | sort -k 1,1 > cow4_gc_coverage.tab
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' cow4_gc_wssd.bed | sort -k 1,1 > cow4_gc_wssd.tab
+	$ awk '{print $1"-"$2"-"$3"\t"$4}' cow4_gc_copynumber.bed | sort -k 1,1 > cow4_gc_copynumber.tab
+	
+# I got a little antsy about the gaps file as well (since it had 9 columns instead of the three columns in Alkan's "howto" text
+	$ awk '{print $1"\t"$2"\t"$3}' cow4_reordered_gaps.bed > cow4_reordered_cropped_gaps.bed
+	
+# Now to give it a shot!
+	$ sh main_alkan_pipeline_script.sh
+
+	
+	awk: cmd. line:1: fatal: cannot open file `.unique.auto' for reading (No such file or directory)
+	awk: cmd. line:1: fatal: cannot open file `.unique.sex' for reading (No such file or directory)
+	awk: cmd. line:1: fatal: cannot open file `/mnt/gliu1_usb/dbickhart/alkan_files/wssd_package/cow4_BAC_gc_file1_c
+	ontrol.bed' for reading (No such file or directory)      <- fixed this
+	rm: cannot remove `.unique.auto': No such file or directory
+	rm: cannot remove `.unique.sex': No such file or directory
+	Control GC files ready
+	Normalizing control regions
+	main_alkan_pipeline_script.sh: line 62: 20694 Segmentation fault      $BINDIR/depthloess-avg -i $1.unique.auto.g
+	c.depth -a $1.unique.auto.gc.depth-avg -e $2 > $1.unique.auto.gc.depth.normalized
+	main_alkan_pipeline_script.sh: line 63: 20695 Segmentation fault      $BINDIR/depthloess-avg -i $1.unique.sex.gc
+	.depth -a $1.unique.sex.gc.depth-avg -e $3 > $1.unique.sex.gc.depth.normalized
+	Recalculating averages
+	main_alkan_pipeline_script.sh: line 67: /net/eichler/vol7/home/ginger/bin/statStd.pl: No such file or directory
+	main_alkan_pipeline_script.sh: line 68: /net/eichler/vol7/home/ginger/bin/statStd.pl: No such file or directory
+	main_alkan_pipeline_script.sh: line 69: /net/eichler/vol7/home/ginger/bin/statStd.pl: No such file or directory
+	main_alkan_pipeline_script.sh: line 70: /net/eichler/vol7/home/ginger/bin/statStd.pl: No such file or directory
+	(standard_in) 1: parse error
+	(standard_in) 1: parse error
+	(standard_in) 1: parse error
+	(standard_in) 1: parse error
+	(standard_in) 1: parse error
+	(standard_in) 1: parse error
+	(standard_in) 2: parse error
+	(standard_in) 2: parse error
+	(standard_in) 1: parse error
+	(standard_in) 1: parse error
+	Avg:   std:   AutoCut:   AutoCut2:
+	AvgS:   stdS:   SexCut:   SexCut2:
+	Preparing the full genome
+	awk: cmd. line:1: fatal: cannot open file `.auto' for reading (No such file or directory)
+	awk: cmd. line:1: fatal: cannot open file `.sex' for reading (No such file or directory)
+	awk: cmd. line:1: fatal: cannot open file `.auto' for reading (No such file or directory)
+	awk: cmd. line:1: fatal: cannot open file `.sex' for reading (No such file or directory)
+	rm: cannot remove `.auto': No such file or directory
+	rm: cannot remove `.sex': No such file or directory
+	rm: cannot remove `.auto': No such file or directory
+	rm: cannot remove `.sex': No such file or directory
+	rm: cannot remove `.auto.merged': No such file or directory
+	rm: cannot remove `.sex.merged': No such file or directory
+	Normalizing full genome
+	main_alkan_pipeline_script.sh: line 128: 20784 Segmentation fault      $BINDIR/depthloess-avg -i $8.auto.gc.depth -a $1.unique.auto.gc.depth-avg -e $2 > $8.auto.gc.depth.normalized
+	main_alkan_pipeline_script.sh: line 129: 20785 Segmentation fault      $BINDIR/depthloess-avg -i $8.sex.gc.depth -a $1.unique.sex.gc.depth-avg -e $3 > $8.sex.gc.depth.normalized
+	rm: cannot remove `.auto.gc.depth': No such file or directory
+	rm: cannot remove `.sex.gc.depth': No such file or directory
+	rm: cannot remove `.auto.gc.depth.normalized': No such file or directory
+	rm: cannot remove `.sex.gc.depth.normalized': No such file or directory
+	Calling duplications
+	please give contiguous window size and window number cutoff
+	please give contiguous window size and window number cutoff
+	cat: _wssd-auto.tab: No such file or directory
+	cat: _wssd-sex.tab: No such file or directory
+	rm: cannot remove `_wssd-auto.tab': No such file or directory
+	rm: cannot remove `_wssd-sex.tab': No such file or directory
+	Calling deletions
+	please give contiguous window size and window number cutoff
+	please give contiguous window size and window number cutoff
+	cat: _deletions-auto.tab: No such file or directory
+	cat: _deletions-sex.tab: No such file or directory
+	rm: cannot remove `_deletions-auto.tab': No such file or directory
+	rm: cannot remove `_deletions-sex.tab': No such file or directory
+	Padding 1
+	chr1
+	-->chr1
+	chr2
+	-->chr2
+	chr3
+	-->chr3
+	chr4
+	-->chr4
+
+	# OK! I've got alot of work ahead of me still!
+	
+	# Here are the filenames that I need to fill:
+		#$1 BAC doc file name  
+			- I have the BAC intervals, now I just need to map hits to them
+			$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_96BAC_file1_control.bed -b ../blackstar/newblackstar_fq/mrsfast/blackstar_hits.bed -c > cow4_96BAC_file1_C_hits.bed
+			# wait a second... maybe I need the original (non-intersected) intervals for the bacs...
+			$ perl -ne 'if($_ =~ /chrUn/){next;}else{print $_;}' < WSSD_WGAC_finalmerged.bed > WSSD_WGAC_finalmerged_noChrun.bed
+			$ ../BEDTools-Version-2.10.0/bin/intersectBed -a WSSD_WGAC_finalmerged_noChrun.bed -b ../blackstar/newblackstar_fq/mrsfast/blackstar_hits.bed -c > cow4_WSSD_WGAC_hits.bed
+			$ mv cow4_WSSD_WGAC_hits.bed cow4_WSSD_WGAC_hits.unique.auto
+			
+			# I redid the BAC interval files, so now I want to plot the hits on either file1 control or file3 control...
+			$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_96BAC_file1_c_uniq.bed -b ../blackstar/newblackstar_fq/mrsfast/blackstar_hits.bed -c > cow4_96BAC_file1_c_hits.unique.auto
+			
+		#$2 unique bacs average DOC
+			- For this one, I can do a simple perl one-liner.
+		#$3 unique bacs avg+3stdev
+			- Same here
+		#$4 unique bacs (avg+3stdev)/5
+			- Here as well
+		#$5 HG17 5K DOC file name
+			- This is File1
+			#final file name: /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast/blackstar_hits_file1.bed 
+		#$6 HG17 1K DOC file name
+			- This is File 3
+			#final file name: /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast/blackstar_hits_file3.bed
+		#$7 unique bacs avg-2stdev
+			- perl one-liner
+		#$8 unique bacs (avg-2stdev)/5
+			- perl one-liner
+		#$9 unique bacs avg+2stdev
+			- perl one-liner
+		#$10 unique bacs avg/5
+			- perl one-liner
+		#$11 BAC nonoverlapping 1K DOC file name
+			- Need to generate this, basically BAC coords intersected with the WSSD intervals
+		#$12 HG17 nonoverlapping 1K DOC file name
+			- This is the WSSD coord file
+	
+	# I created a perl script to deal with Alkan's numbers (generate_alkans_numbers.pl) but theres is a problem!
+	# The BAC intervals are of varying sizes and that is throwing off the standard deviation calculations
+	# OK, so I am going to filter the BAC coordinates from the intersection of the WGAC and WSSD files and eliminate the ones under 5k. 
+	# Then I am going to weight the BAC interval sizes according to 5k intervals. Every five k gets a division multiplier for the total number of hits
+		$ perl -ne 'chomp $_; @a = split(/\t/, $_); if ($a[2]-$a[1] < 5000){next;}else{print "$_\n";}' < cow4_WSSD_WGAC_hits.unique.auto > cow4_WSSD_WGAC_hits_5k.unique.auto
+		$ perl -e 'while(<>){chomp $_; @a = split(/\t/, $_); push(@b, ($a[2]-$a[1]));} foreach (@b){ $f += $_;} $c = $f / scalar(@b); print "$c\n";' < cow4_WSSD_WGAC_hits_5k.unique.auto
+			18366.1516056759 <- This shows me the average number of hits. Still quite large! I might have to crop out certain regions!
+		$ perl -e 'while(<>){chomp $_; @a = split(/\t/, $_); push(@b, $a[3]);} sort(@b); $ret = ($b[(@b / 2)-1] + $b[@pole / 2]) / 2; print "$ret\n";' < cow4_WSSD_WGAC_hits_5k.unique.auto
+			1949.5 <- This is the median for the dataset
+		$ perl -e 'while(<>){chomp $_; @a = split(/\t/, $_); push(@b, $a[3]);} foreach (@b){ $c += $_;} $m1 = $c / scalar(@b); foreach(@b){ $d += ($m1 - $_)**2;} $m2 = $d / scalar(@b); $g = sqrt($m2); print "$g\n";' < cow4_WSSD_WGAC_hits_5k.unique.auto
+			4356.20020606964 <- and that is the standard deviation	
+		$ perl -ne 'chomp $_; @a = split(/\t/, $_); if($a[3] > 6000){print "$_\n";}' < cow4_WSSD_WGAC_hits_5k.unique.auto | wc
+    			122     488    3440
+    		# So, about 122 values are above the average + 1 standard deviation
+    		# Let's calculate the average interval and interval standard deviation and see how that measures up
+    		# Wait... this is crazy. Alkan must have used a file that had the window sizes already calculated. Otherwise, how did he take into account intervals of different sizes? 
+	
+	# OK, scratch out all of the above.
+	# Redid the generate_alkans_numbers.pl script using cow4_96BAC_file1_c_hits.unique.auto
+		$ perl generate_alkans_numbers.pl cow4_96BAC_file1_c_hits.unique.auto
+			2=86.834486
+			3=499.604535363918
+			4=99.9209070727836
+			7=-188.34554549276
+			8=-37.6691090985521
+			9=362.014519192582
+			10=17.3668973699822
+		#cropped the numbers down to 6 decimal places
+
+(<>) OK, so I redid my files (see the BAC heading) and now I am going to try to run it again.
+	# Important reminder: WSSD_hg17 is the wrapper, NOT the shell script!
+
+	# I changed the directory for the callGCnorm function in the WSSD_hg17.c file; I need to recompile it
+		$ gcc -o WSSD_hg17 -lm  WSSD_hg17.c
+
+	# I also created a null file for the artifact masking
+	
+	$ ./WSSD_hg17 /mnt/gliu1_usb/dbickhart/alkan_files/cow4_gc_file1_controls.bed /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast/blackstar_hits_nochrun_file1.bed /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast/blackstar_hits_nochrun_file2.bed /mnt/gliu1_usb/dbickhart/alkan_files/cow4_gc_file3_controls.bed /mnt/gliu1_usb/dbickhart/blackstar/newblackstar_fq/mrsfast/blackstar_hits_nochrun_file3.bed 1
+		segmentation fault
+
+____________________________________________
+Troubleshooting section
+____________________________________________
+# The run generated the following files:
+	-rw-rw-r--+ 1 dbickhart mapping 27531870 2010-11-22 17:07 cow4_gc_file1_controls.bed_correl.eps <- graph
+	-rw-rw-r--+ 1 dbickhart mapping      689 2010-11-22 17:07 cow4_gc_file1_controls.bed_correl.plot <- instructions for graph
+	-rw-rw-r--+ 1 dbickhart mapping     3898 2010-11-22 17:08 cow4_gc_file1_controls.bed_correl.png <- picture of graph
+	-rw-rw-r--+ 1 dbickhart mapping        0 2010-11-22 17:06 cow4_gc_file1_controls.bed.log <- empty
+	-rw-rw-r--+ 1 dbickhart mapping  6878930 2010-11-22 17:07 cow4_gc_file1_controls.bed_r2matrix.tab <- just a list of "2\t0"
+	-rw-rw-r--+ 1 dbickhart mapping 43848350 2010-11-22 17:07 cow4_gc_file1_controls.bed.unique <- the coordinates of the gc_file1_control file but with zeros at the end ("chr1\tstart\tend\t0")
+
+# So, I believe that the program got as far as the first gc file control, but then stopped.
+
+# Here is one problem: the female script has the wrong path to statStd.pl
+# Another problem: the female script path variables had ending "/'s". They shouldn't!
+
+# Going to try this again, and I will save the stdout and sterr messages:
+	$ ./wssd-package/WSSD_hg17 cow4_gc_file1_controls.bed blackstar_hits_nochrun_file1.bed blackstar_hits_nochrun_file2.bed cow4_gc_file3_controls.bed  blackstar_hits_nochrun_file3.bed 1
+		CNT: 1719695    DEPTH: 0        CNT2: 1669234
+		Max. number of data points scaled up to: 3072
+		Max. number of data points scaled up to: 4608
+		Max. number of data points scaled up to: 6912
+		Max. number of data points scaled up to: 10368
+		Max. number of data points scaled up to: 15552
+		Max. number of data points scaled up to: 23328
+		Max. number of data points scaled up to: 34992
+		Max. number of data points scaled up to: 52488
+		Max. number of data points scaled up to: 78732
+		Max. number of data points scaled up to: 118098
+		Max. number of data points scaled up to: 177147
+		Max. number of data points scaled up to: 265720
+		Max. number of data points scaled up to: 398580
+		Max. number of data points scaled up to: 597870
+		Max. number of data points scaled up to: 896805
+		Max. number of data points scaled up to: 1345207
+		Max. number of data points scaled up to: 2017810
+
+		Iteration 0
+		WSSR        : 1.6597e+07        delta(WSSR)/WSSR   : 0
+		delta(WSSR) : 0                 limit for stopping : 1e-05
+		lambda    : 1.5813
+		
+		initial set of free parameter values
+		
+		a               = 1
+		b               = 1
+		/
+		
+		Iteration 1
+		WSSR        : 350330            delta(WSSR)/WSSR   : -46.3755
+		delta(WSSR) : -1.62467e+07      limit for stopping : 1e-05
+		lambda    : 0.15813
+		
+		resultant parameter values
+		
+		a               = 27.0685
+		b               = -54.1361
+
+		/
+	
+		Iteration 2
+		WSSR        : 350229            delta(WSSR)/WSSR   : -0.000288127
+		delta(WSSR) : -100.91           limit for stopping : 1e-05
+		lambda    : 0.015813
+		
+		resultant parameter values
+	
+		a               = 27.3644
+		b               = -54.7281
+
+		/
+	
+		Iteration 3
+		WSSR        : 350229            delta(WSSR)/WSSR   : -3.39428e-12
+		delta(WSSR) : -1.18878e-06      limit for stopping : 1e-05
+		lambda    : 0.0015813
+	
+		resultant parameter values
+	
+		a               = 27.3645
+		b               = -54.7281
+	
+		After 3 iterations the fit converged.
+		final sum of squares of residuals : 350229
+		rel. change during last iteration : -3.39428e-12
+	
+		degrees of freedom (ndf) : 1719717
+		rms of residuals      (stdfit) = sqrt(WSSR/ndf)      : 0.451281
+		variance of residuals (reduced chisquare) = WSSR/ndf : 0.203655
+	
+		Final set of parameters            Asymptotic Standard Error
+		=======================            ==========================
+	
+		a               = 27.3645          +/- 0.0133       (0.04859%)
+		b               = -54.7281         +/- 0.0266       (0.0486%)
+	
+	
+		correlation matrix of the fit parameters:
+	
+		               a      b
+		a               1.000
+		b              -1.000  1.000
+
+		command: /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/gcnorm-auto_female-hg17_full.sh cow4_gc_file1_controls.bed 0.000000 0.000000 0.000000 blackstar_hits_nochrun_file1.bed blackstar_hits_nochrun_file2.bed 0.000000 0.000000 0.000000 0.000000 cow4_gc_file3_controls.bed blackstar_hits_nochrun_file3.bed
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		Avg:  0.000000  std:  0.000000  AutoCut:  0  AutoCut2:  0
+		AvgS:   stdS:   SexCut:   SexCut2:
+		Preparing the full genome
+		Normalizing full genome
+		Calling duplications
+		
+		Use of uninitialized value in pattern match (m//) at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/wssd_picker.pl line 179, <IN> line 4040075.
+		Calling deletions
+		
+		Use of uninitialized value in pattern match (m//) at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/wssd_picker.pl line 179, <IN> line 4518485.
+		REDGRAY THRESHOLD  0.000000
+		Padding 1
+		chr1
+		-->chr1
+		chr2
+		-->chr2
+		chr3
+		-->chr3
+		...
+		chr21
+		-->chr21
+		chr22
+		-->chr22
+		chrX
+		chrY
+		
+		Artifact masking
+		chr1
+		-->chr1
+		chr1    one: 149860357  two: 0  oneonly: 149860357      twoonly: 0      one-two: 0
+		chr2
+		-->chr2
+		chr2    one: 132882517  two: 0  oneonly: 132882517      twoonly: 0      one-two: 0
+		chr3
+		-->chr3
+		chr3    one: 119428385  two: 0  oneonly: 119428385      twoonly: 0      one-two: 0
+		chr4
+		-->chr4
+		chr4    one: 117769309  two: 0  oneonly: 117769309      twoonly: 0      one-two: 0
+		...
+		chr20   one: 70777880   two: 0  oneonly: 70777880       twoonly: 0      one-two: 0
+		chr21
+		-->chr21
+		chr21   one: 64981457   two: 0  oneonly: 64981457       twoonly: 0      one-two: 0
+		chr22
+		-->chr22
+		chr22   one: 58629550   two: 0  oneonly: 58629550       twoonly: 0      one-two: 0
+		chrX
+		chrX    one: 82556371   two: 0  oneonly: 82556371       twoonly: 0      one-two: 0
+		chrY
+		TOTAL
+		
+		        one: 2129265710 two: 0  oneonly: 2129265710     twoonly: 0      one-two: 0
+
+		Use of uninitialized value in print at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl line 30.
+		Use of uninitialized value in print at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl line 31.
+		Illegal division by zero at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl line 34.
+		avg
+		/mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/gcnorm-auto_female-hg17_full.sh: line 190: 27181 Segmentation fault      $BINDIR/depthloess-avg -i $bacfile.gc.depth -a $bacfile.gc.depth-avg -e $avg > $bacfile.gc.depth.normalized
+		normalizing hg17
+		/mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/gcnorm-auto_female-hg17_full.sh: line 204: 27203 Segmentation fault      $BINDIR/depthloess-avg -i $fullfile.gc.depth -a $bacfile.gc.depth-avg -e $avg > $fullfile.gc.depth.normalized
+		calculating CN
+	
+# So, this time it got alot farther, but it passed along an r^2 matrix of zero, and it turned that into an average of 0 and a std deviation of 0. 
+# I have to either work on the main c wrapper at the R2 matrix subroutines and the setAvgStdev routines or I have to make a comparable perl script to pipe the necessary data into the gcnorm script
+# The gcnorm script is the key to the whole pipeline, and it takes the most time. 
+
+# One issue with the side programs: pad.c only progresses to chromosome 24
+# Rewrote the loop to better reflect the cow4 genome
+
+# So... my big problem is making sure that the r^2 calculation is correct and that the average and standard deviation are passed along to the shell script
+	# Ok, I think that the first file that I entered into the wrapper c program is wrong; I shouldn't use the GC file!
+	# Also I need to make the file1 control and file3 control intersect with the hits file to get an accurate count of the hits
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_file1_controls.bed -b ../blackstar/newblackstar_fq/mrsfast/blackstar_hits.bed -c > blackstar_file1_control.bed
+	$ ../BEDTools-Version-2.10.0/bin/intersectBed -a cow4_file3_controls.bed -b ../blackstar/newblackstar_fq/mrsfast/blackstar_hits.bed -c > blackstar_file3_control.bed
+	
+	# Ok, now to try this again...
+	$ ./wssd-package/WSSD_hg17 blackstar_file1_control.bed blackstar_hits_nochrun_file1.bed blackstar_hits_nochrun_file2.bed blackstar_file3_control.bed blackstar_hits_nochrun_file3.bed 1
+		Iteration 0
+		WSSR        : 2.49381e+13       delta(WSSR)/WSSR   : 0
+		delta(WSSR) : 0                 limit for stopping : 1e-05
+		lambda    : 1.5813
+		
+		initial set of free parameter values
+		
+		a               = 1
+		b               = 1
+		/
+		
+		Iteration 1
+		WSSR        : 2.48277e+13       delta(WSSR)/WSSR   : -0.00444764
+		delta(WSSR) : -1.10424e+11      limit for stopping : 1e-05
+		lambda    : 0.15813
+		
+		resultant parameter values
+		
+		a               = -3.53595
+		b               = 263.47
+
+		correlation matrix of the fit parameters:
+		
+		               a      b
+		a               1.000
+		b              -1.000  1.000
+		command: /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/gcnorm-auto_female-hg17_full.sh blackstar_file1_control.bed 256.398913 11655.315308 2331.063062 blackstar_hits_nochrun_file1.bed blackstar_hits_nochrun_file2.bed -7342.878685 -1468.575737 7855.676510 51.279783 blackstar_file3_control.bed blackstar_hits_nochrun_file3.bed
+		# So, that means that the standard deviation is about 3000... (I took the second number in that command (11655.315308), subtracted the average (256) and then divided by 3)
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		Avg:  512.797826  std:  3799.639926  AutoCut:  15711.357530  AutoCut2:  11911.717604
+		AvgS:   stdS:   SexCut:   SexCut2:
+		Preparing the full genome
+		Normalizing full genome
+		Calling duplications
+		...
+		Use of uninitialized value in pattern match (m//) at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/wssd_picker.pl line 179, <IN> line 4518485.
+		Calling deletions
+		
+		Use of uninitialized value in pattern match (m//) at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/wssd_pick
+		er.pl line 179, <IN> line 4518485.
+		REDGRAY THRESHOLD  7855.676510
+		Padding 1
+
+		chr26
+		-->chr26
+		chr27
+		-->chr27
+		chr28
+		-->chr28
+		chr29
+		-->chr29
+		chrX
+		Artifact masking
+		-->chr20
+		chr20   one: 0  two: 0  oneonly: 0      twoonly: 0      one-two: 0
+		chr21
+		-->chr21
+		chr21   one: 10510      two: 0  oneonly: 10510  twoonly: 0      one-two: 0
+		chr22
+		-->chr22
+		chr22   one: 0  two: 0  oneonly: 0      twoonly: 0      one-two: 0
+		chrX
+		chrX    one: 0  two: 0  oneonly: 0      twoonly: 0      one-two: 0
+		chrY
+		chrY    one: 0  two: 0  oneonly: 0      twoonly: 0      one-two: 0
+
+		TOTAL
+		
+		        one: 222442     two: 0  oneonly: 222442 twoonly: 0      one-two: 0
+		Use of uninitialized value in print at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl line 30.
+		Use of uninitialized value in print at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl line 31.
+		Illegal division by zero at /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl line 34.
+		avg
+		/mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/gcnorm-auto_female-hg17_full.sh: line 190: 18007 Segmentation fault      $BINDIR/depthloess-avg -i $bacfile.gc.depth -a $bacfile.gc.depth-avg -e $avg > $bacfile.gc.depth.normalized
+		normalizing hg17
+		/mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/gcnorm-auto_female-hg17_full.sh: line 204: 18026 Segmentation fault      $BINDIR/depthloess-avg -i $fullfile.gc.depth -a $bacfile.gc.depth-avg -e $avg > $fullfile.gc.depth.normalized
+		calculating CN
+
+	# Now, wssd_picker.pl is the problem... also the artifact masker only goes up to chromosome 22 (probably not that big of an issue since I'm not artifact masking yet)
+	
+	# Trying gdb again.
+	# I had to recompile all of the C programs using the -g option of gcc
+	# Wait... there might have been output...
+		$ more blackstar_hits_nochrun_file1.bed_wssdGE10K.tab
+		chr16   6845566 6860003
+		chr21   65610527        65621036
+		chr25   433967  459742
+		chr26   14774417        14792344
+		chr27   11579904        11622516
+		chr4    124429748       124446482
+		chr6    5546342 5613494
+		chr6    5784256 5833086
+		chr6    6409001 6451878
+		chr7    6091617 6113657
+	
+	# So it looks like file1 was processed, but file3 was not (file3 was processed at the end of the shell script, so that makes sense)
+	# wssd_picker.pl
+		# The command that is supposedly passed to this script for this run was:
+			$ wssd_picker.pl -f blackstar_hits_nochrun_file1.bed.gc.depth -w 7 -s 6 -c 15711.357530 -b 3 -k blackstar_hits_nochrun_file2.bed -n 5 -i 1 -t 3142.27150600000000000000 -o blackstar_file1_control.bed.wssd.tab
+	
+			# That generated no errors/warnings, but also generated an empty file 
+			# Trying it again with a lower -c and -t
+			$ wssd-package/wssd_picker.pl -f blackstar_hits_nochrun_file1.bed.gc.depth -w 7 -s 6 -c 1571.357530 -b 3 -k blackstar_hits_nochrun_file2.bed -n 5 -i 1 -t 314.27150600000000000000 -o blackstar_file1_control.bed.wssd.tab
+			
+			# Still nothing! Let's check the input files
+			$ head blackstar_hits_nochrun_file1.bed.gc.depth
+				       chr1    4000    18452   0.394157        380
+				       chr1    5000    24113   0.405162        429
+				       chr1    6000    24432   0.402961        448
+				       chr1    7000    24711   0.397679        450
+				       chr1    8000    26186   0.401160        448
+				       chr1    9000    27264   0.376675        445
+				       chr1    10000   27497   0.380552        448
+				       chr1    11000   28407   0.388877        488
+				       chr1    12000   28881   0.384353        500
+				       chr1    13000   31254   0.382352        534
+				       
+			$ head blackstar_hits_nochrun_file2.bed
+				       chr10   0       4289    66
+				       chr10   1000    5125    56
+				       chr10   2000    5125    56
+				       chr10   3000    6022    61
+				       chr10   4000    9048    45
+				       chr10   5000    9484    41
+				       chr10   6000    10146   29
+				       chr10   7000    10169   31
+				       chr10   8000    10169   31
+				       chr10   9000    10745   31
+
+	# So wssd_picker.pl works... its just that the shell script influenced the input
+	# Also, it would help if I fed in the correct value!
+		$ wssd-package/wssd_picker.pl -f blackstar_hits_nochrun_file1.bed.depth.normalized -w 2 -s 6 -c 157.357530 -b 3 -k blackstar_hits_nochrun_file2.bed -n 5 -i 1 -t 314.27150600000000000000 -o blackstar_file1_control.bed.wssd.tab
+			head blackstar_hits_nochrun_file1.bed.depth.normalized
+			0.394157 boo
+			chr1    4000    18452   636.398913
+			0.405162 boo
+			chr1    5000    24113   685.398913
+			0.402961 boo
+			chr1    6000    24432   704.398913
+			0.397679 boo
+			chr1    7000    24711   706.398913
+			0.401160 boo
+			chr1    8000    26186   704.398913
+			
+		# So, the depthloess-avg.c script is still adding in that "boo" crap... let's remove the "boo" columns to see if the program works without them
+			$ perl -ne 'if ($_ =~ /boo/){next;}else{print $_;}' < blackstar_hits_nochrun_file1.bed.depth.normalized > blackstar_test_file1.bed.normalized
+			$ wssd-package/wssd_picker.pl -f blackstar_test_file1.bed.normalized -w 2 -s 6 -c 157.357530 -b 3 -k blackstar_hits_nochrun_file2.bed -n 5 -i 1 -t 314.27150600000000000000 -o blackstar_file1_control.bed.wssd.tab
+			$ wssd-package/wssd_picker.pl -f blackstar_test_file1.bed.normalized -w 1 -s 1 -c 1571.357530 -b 3 -k blackstar_hits_nochrun_file2.bed -n 5 -i 1 -t 3142.271506 -o blackstar_file1_control.bed.wssd.tab
+			$ head blackstar_file1_control.bed.wssd.tab
+				      chrom   wssd_start      wssd_end
+				      chr1    9209710 9220380
+				      chr1    23400477        23404114
+				      chr1    39218051        39246424
+				      chr1    114479509       114501599
+				      chr1    114604509       114614088
+				      chr1    144951032       144970311
+				      chr1    147211401       147222319
+				      chr1    147523580       147533965
+				      chr1    149777194       149789355
+				      
+			# OK, now I understand... wssd_picker.pl takes windows that are over the -c threshold, but must be -w # contiguous windows. 
+			# So I need to crop the control file a bit more...
+		
+		
+###############################################
+#                                             #
+#		Procedure		      #
+#                                             #
+###############################################
+
+(<>) Masked Genome sequence (36 bp extension of N-masked regions, Gaps "X'ed" and chrUnall stitched together)
+	# Generate bed file from repeatmasker out file:
+	$ perl convert_RM_out_tab.pl
+	$ perl extract_SSRs.pl
+	
+	# Extend intervals in the bed file by 36bp
+	$ perl -ne '@seg = split(/\t/,$_);$seg[1] -= 36; $seg[2] += 36; if($seg[1] < 1){$seg[1] = 1;} print "$seg[0]\t$seg[1]\t$seg[2]\t$seg[3]\t$seg[4]\t$seg[5]\n";' < bosTau4.fa.bed > cow4_6bpextend_repeat.bed
+	
+	# Merge overlapping entries:
+	$ ./mergeBed -n -i /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36bpextend_repeat.bed > ../../alkan_files/cow4_36bp_repeat_merged.bed
+		
+	# Mask regions using the BED file:
+	$ ./maskFastaFromBed -fi /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4.fa -fo /mnt/gliu1_usb/dbickhart/alkan_files/bosTau4_36bpextend_masked.fa -bed /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36bp_repeat_merged.bed
+	$ perl -n -e 'if($_ =~ /^>.*/){print $_;next;}else{$_=~ s/[acgt]/N/g; print $_;}' < bosTau4_36bpextend_masked.fa > bosTau4_36_full_masked.fa	
+		
+	# Use windowmasker on masked fasta:
+	$ ./windowmasker -mk_counts -in bostau_window.fa -out bosTau_36_windowmask.fa
+	$ ./windowmasker -ustat bosTau_36_windowmask.fa -in bostau_window.fa  -out cow4_36_windowmask.fa
+	$ perl -ne 'if($_ =~ /^>(chr.+)/){$chr = $1;}else{$_ =~ s/[\s\t]//; @seg = split(/-/, $_); print "$chr\t$seg[0]\t$seg[1]";}' < cow4_36_windowmask.fa > cow4_36_windowmask.bed
+	$ perl -ne '@i=split(/\t/, $_); $i[0] =~ s/[\s\t]//g; $i[1] =~ s/[\s\t]//g; $i[2] =~ s/[\s\t]//g; print "$i[0]\t$i[1]\t$i[2]\t0\t0\t0\t0\t0\t0\n";' < cow4_36_windowmask.bed > cow4_36_9_windowmask.bed
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi /mnt/gliu1_usb/dbickhart/alkan_files/bosTau_36final_fullmasked.fa -fo /mnt/gliu1_usb/dbickhart/alkan_files/bosTau_36final_testwindowmasked.fa -soft -bed cow4_36_9_windowmask.bed
+	$ perl -ne '$_ =~ s/[agctn]/N/g; print $_;' < bosTau_36final_testwindowmasked.fa > bosTau_36final_finalwindowmasked.fa
+	
+	# Generate Gaps file from UCSC .agp file:
+	$ perl -ne '@seg = split(/\t/,$_); if($seg[4] =~ /N/){print $_;}else{next;}' < bosTau4.agp > cow4_gaps.bed	
+		
+	# Softmask bases in the gaps region, then substitute softmasked bases for hardmasked "X's"
+	$ ../BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi bosTau4_36_full_masked.fa -fo bosTau_36_gapn_masked.fa -soft -bed cow4_gaps.bed
+	$ perl -n -e 'if($_ =~ /^>.*/){print $_;next;}else{$_=~ s/n/X/g; print $_;}' < bosTau_36_gapn_masked.fa > bosTau_36final_fullmasked.fa
+			
+	# Stitch chrUnall contigs into one unitary fasta sequence	
+	$ perl reprint_chrUnall.pl
+	$ perl -ne 'if (($_ =~ /^>chrUN/) || ($_ =~ /^>chrM/)){$a += 1; next;}elsif($a < 1){ print $_;}' < cow4_36_finalwindow.fa > cow4_36_finalautosome.fa <- generate separate autosome file
+	$ perl format_fasta.pl <- you need to reformat the chrUnall file in order to run it through samtools
+	$ cat cow4autosomes_formated.fa chrun_format.txt > cow4_36_finalcombined.fa
+	
+	

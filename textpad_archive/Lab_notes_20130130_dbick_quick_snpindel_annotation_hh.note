@@ -1,0 +1,59 @@
+
+
+
+# Running SNPEFF on the list of variants that matt gave me in his spreadsheet (Dairy HH2 HH3 BH1 Exome results.xlsx)
+
+# First I need to change the table of variants into a simplistic vcf format. 
+# Just changed the header into this template and it was accepted by SNPEFF (probably doesn't use any of the extraneous fields)
+	##fileformat=VCFv4.1
+	##fileDate=20090805
+	##source=myImputationProgramV3.1
+	##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+	##FILTER=<ID=q10,Description="Quality below 10">
+	##FORMAT=<ID=CR,Number=1,Type=Float,Description="Call rate of snp per sample">
+	#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	DOM	HH2_HH3_A	HH2_HH3_B	HH2_HH3_C	HH2_A	HH2_B	HH2_C	HH2_D	HH2_E	BH1_A	BH1_B	BH1_C	BH1_D	BH1_E	BH1_F	BH1_G	HH3_A	HH3_B	HH3_C	HH3_D	HH3_E
+
+# Now to run the vcfs through the program:
+	pwd: /home/dbickhart/share/side_projects/matt_snp_annotation
+	$ java -jar ../../test_software/snpEff_3_1/snpEff.jar eff UMD3.1.68 -i vcf -o txt -chr chr -s hh2_snpeff.html -a 1 hh2_loci.vcf > hh2_snpeff.stdout
+	$ java -jar ../../test_software/snpEff_3_1/snpEff.jar eff UMD3.1.68 -i vcf -o txt -chr chr -s hh3_snpeff.html -a 1 hh3_loci.vcf > hh3_snpeff.stdout
+	$ java -jar ../../test_software/snpEff_3_1/snpEff.jar eff UMD3.1.68 -i vcf -o txt -chr chr -s bh1_snpeff.html -a 1 bh1_loci.vcf > bh1_snpeff.stdout
+	
+# Came up with the following non synonymous variants:
+	# HH2
+	# Chromo	Position	Reference	Change	Change_type	Homozygous	Quality	Coverage	Warnings	Gene_ID	Gene_name	Bio_type	Trancript_ID	Exon_ID	Exon_Rank	Effect	old_AA/new_AA	Old_codon/New_codon	Codon_Num(CDS)	Codon_Degeneracy	CDS_size	Codons_around	AAs_around	Custom_interval_ID
+	chr1	95643514	A	G	SNP		50	0		ENSBTAG00000020073	NCEH1_BOVIN	protein_coding	ENSBTAT00000026745			NON_SYNONYMOUS_CODING	H/R	cAt/cGt	164	1	1227	gtaCATgcc / gtaCGTgcc	vHa / vRa	rs1
+	
+	# HH3
+	# Chromo	Position	Reference	Change	Change_type	Homozygous	Quality	Coverage	Warnings	Gene_ID	Gene_name	Bio_type	Trancript_ID	Exon_ID	Exon_Rank	Effect	old_AA/new_AA	Old_codon/New_codon	Codon_Num(CDS)	Codon_Degeneracy	CDS_size	Codons_around	AAs_around	Custom_interval_ID
+	chr8	95410507	T	C	SNP		50	0		ENSBTAG00000008772	SMC2	protein_coding	ENSBTAT00000011562			NON_SYNONYMOUS_CODING	F/S	tTc/tCc	1135	1	3576	catTTCaca / catTCCaca	hFt / hSt	rs11
+	
+	#BH1
+	# Chromo	Position	Reference	Change	Change_type	Homozygous	Quality	Coverage	Warnings	Gene_ID	Gene_name	Bio_type	Trancript_ID	Exon_ID	Exon_Rank	Effect	old_AA/new_AA	Old_codon/New_codon	Codon_Num(CDS)	Codon_Degeneracy	CDS_size	Codons_around	AAs_around	Custom_interval_ID
+	chr7	45613660	C	T	SNP		50	0		ENSBTAG00000008695	TCF3	protein_coding	ENSBTAT00000028599			NON_SYNONYMOUS_CODING	D/N	Gac/Aac	70	1	1920	ttcGACccc / ttcAACccc	fDp / fNp	rs5
+	chr7	45772444	G	C	SNP		50	0		ENSBTAG00000020232	REXO1	protein_coding	ENSBTAT00000026945			NON_SYNONYMOUS_CODING	L/V	Ctg/Gtg	643	2	3636	ggcCTGacc / ggcGTGacc	gLt / gVt	rs9
+	
+# The HH2 mutation isn't too convincing; it is a cholesterol esterase that is present in a double knockout mouse strain.
+
+# SMC2 is a condensin involved in chromosome condensation and maintenance, so it is obviously an important gene
+
+# TCF3 is Transcription Factor 3; it is an enhancer for Hes1 which is a critical component for Notch signalling. Notch signalling is an important secondary messaging pathway for cell development and communication during development)
+
+# REXO1 is RNA exonuclease factor that may be involved in X inactivation and has binding domains for TCBE3
+
+# Now to do the potential folding analysis.
+# I created a script that generates a fasta sequence and can incorporate snps into the CDS of a gene
+# Here are my commands to do this:
+	pwd: /home/dbickhart/share/side_projects/matt_snp_annotation
+	$ perl extract_nucleotides_introduce_snps.pl ENSBTAT00000028599 TCF3_normal.fa
+	$ perl extract_nucleotides_introduce_snps.pl ENSBTAT00000028599 TCF3_45613660_c_t.fa 45613660 T
+	
+	# The nucleotide was changed in the proper location, so that is good!
+	
+# Used the following tools to predict protein structure
+	# First, expasy to get the amino acid sequence quickly
+		http://web.expasy.org/translate/
+	# Then, ran the amino acid sequence through Phyre2
+		http://www.sbg.bio.ic.ac.uk/phyre2/html/page.cgi?id=index
+	# The time estimates for these jobs appear to be 4 hours +/- 3.6 hours, so it will be an all day affair
+	

@@ -1,0 +1,1092 @@
+2010_12_29 - 2011_01_18
+
+# Now that I have ironed out some of the bugs of the alkan pipeline, it is time to test run it through everything.
+
+_______________________________________
+Blackstar trial
+_______________________________________
+# I am first going to do a trial run using blackstar. See Lab_note_2010_11_29 for details on how the files were constructed
+	$WD :/
+	$ ../wssd-package/artifact/run_alkan_pipeline.pl --File1 blackstar_hits_nochrun_file1.bed --File1_c blackstar_rem_file1_c.bed --File2 blackstar_hits_nochrun_file2.bed --File3 blackstar_hits_nochrun_file3.bed --File3_c blackstar_rem_file3_c.bed
+		Calculating average...
+		Calculating stdev...
+		Average was: 248.68610783417
+		Stdev was; 3831.76599091478
+		# That's not good..
+		
+	# Oh man... so I must have used the control files that I did not subtract from! Crap!
+	$ perl -ne '@a = split(/\t/); chomp $a[3]; if ($a[3] > 3000){ print $_;}' < blackstar_rem_file1_c.bed | more
+		# This revealed the same intervals that I had removed before were causing the issues
+		
+	# Remaking the controls (again!)
+		$ ../../BEDTools-Version-2.10.0/bin/subtractBed -a cow4_file1_subtract_controls.bed -b ../wssd-package/artifact/file1_removal_ints.bed > cow4_rem_file1_controls.bed
+		$ ../../BEDTools-Version-2.10.0/bin/subtractBed -a cow4_file3_subtract_controls.bed -b ../wssd-package/artifact/file3_removal_ints.bed > cow4_rem_file3_controls.bed
+		
+		$ perl ./GC_control_intervals.pl --genome cow4_rem --path ../separate_chrs --name cow4_rem
+		
+		$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ../controlfilter/cow4_rem_file1_controls.bed -b ../controlfilter/blackstar_nochrun_hits.bed -c > blackstar_rem_file1_c.bed
+		$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ../controlfilter/cow4_rem_file3_controls.bed -b ../controlfilter/blackstar_nochrun_hits.bed -c > blackstar_rem_file3_c.bed
+		
+		$ perl -ne '@a = split(/\t/); chomp $a[3]; if ($a[3] > 3000){ print $_;}' < blackstar_rem_file1_c.bed | wc
+     			86     344    2450
+     			# That's a little better... lets run the pipeline again
+     			
+     	$ ../wssd-package/artifact/run_alkan_pipeline.pl --File1 blackstar_hits_nochrun_file1.bed --File1_c blackstar_rem_file1_c.bed --File2 blackstar_hits_nochrun_file2.bed --File3 blackstar_hits_nochrun_file3.bed --File3_c blackstar_rem_file3_c.bed
+		Calculating average...
+		Calculating stdev...
+		Average was: 236.05185172914
+		Stdev was; 75.2482741627274
+		# What a difference!
+		
+		$ wc blackstar_hits_nochrun_file1.bed.final.wssd
+ 			1009  3027 23538 blackstar_hits_nochrun_file1.bed.final.wssd
+ 			# That is quite a bit, I need to figure out if the artifact file is working
+ 			# I can "comment" it out before I run the pipeline just to see
+ 			
+ 		# also the CN file had the same error... maybe I updated the wrong shell script?
+ 			The average (last one) was listed as a 49.
+ 			$ cut -f 5 blackstar_rem_file1_c.bed.gc.depth.normalized | ../wssd-package/statStd.pl
+				total   1641161
+				Minimum 0
+				Maximum 12369.758991822
+				Average 236.051981
+				Median  234.325936124044
+				Standard Deviation      60.079080
+				Mode(Highest Distributed Value) 231.793187454493
+		# I did! The shell script is cattle_female_pipeline in the perl run_alkan_pipeline script
+		# I changed the cattle_female_pipeline.sh script to reflect all of my changes in the updated_alkan_pipeline.sh script
+		# Running again...
+		
+	$ ../wssd-package/artifact/run_alkan_pipeline.pl --File1 blackstar_hits_nochrun_file1.bed --File1_c blackstar_rem_file1_c.bed --File2 blackstar_hits_nochrun_file2.bed --File3 blackstar_hits_nochrun_file3.bed --File3_c blackstar_rem_file3_c.bed
+		Loading numbers from blackstar_rem_file1_c.bed into array...
+		Calculating average...
+		Calculating stdev...
+		Average was: 236.05185172914
+		Stdev was; 75.2482741627274
+		
+		TOTAL
+		
+        	one: 38504293   two: 175236945  oneonly: 4974437        twoonly: 141707089      one-two: 33529856
+        	# So the artifact masking works... looks like there were alot of predicted artifacts (but that's ok!)
+        	avg  49.744330
+		avg2  99.488660
+
+        	
+        	$  wc blackstar_hits_nochrun_file1.bed.final.wssd
+			204  612 4742 blackstar_hits_nochrun_file1.bed.final.wssd
+			
+		# I'm pretty happy with these results, but I would like to test out some assumptions here:
+			1. GC normalization curves (before and after)
+				# I discovered another "bug" (I forgot to change the partgcdepth.pl input
+				# Fixed, and the pipeline was re-run
+				# I took the gc.depth-avg files and converted them into .ods spreadsheets (location: C:\sharedfolder\alkan\)
+				# Next I need to take the gc.depth.normalized files and create gc.depth-avg files
+				$ cat blackstar_rem_file3_c.bed.gc.depth.normalized | ../wssd-package/partgcdepth.pl > blackstar_file3_c.gc.depth-avg
+				# I turned that into a spreadsheet, and (sure enough) it showed a straight line (location: C:\sharedfolder\alkan\)
+				# Now to check the read depth
+				$ cut -f 5 blackstar_rem_file3_c.bed.gc.depth.normalized | ../wssd-package/statStd.pl
+					total   843164
+					Minimum 0
+					Maximum 5746.23811023497
+					Average 49.744555
+					Median  48.1578782108713
+					Standard Deviation      23.292637
+					Mode(Highest Distributed Value) 41.30317046842
+				$ perl -ne '@a = split(/\t/); chomp $a[4]; if ($a[4] > 100){ print $_;}' < blackstar_rem_file3_c.bed.gc.depth.normalized | wc
+   					4975   24875  234823
+
+				$ perl -ne '@a = split(/\t/); chomp $a[4]; if ($a[4] > 1000){ print $_;}' < blackstar_rem_file3_c.bed.gc.depth.normalized | wc
+     					34     170    1609
+	
+				# OK, then. It's not perfect, but the standard deviations are low. I will keep this in mind as I check other datasets.
+				# Plus, this is probably "screened-out" by artifact masking as well.
+				
+			2. read depth within the artifact regions
+				# I developed a wrapper script to test this. Performed it on the blackstar test
+				$ perl check_artifact_crop.pl blackstar_hits_nochrun_file1.bed.padded.tab blackstar_hits_nochrun_file1.bed.clean.wssd ../controlfilter/blackstar_hits.bed
+					Calculating standard deviation...
+					Calculating average...
+					The average read depth was: 1058.83372418003
+					The standard deviation was: 2877.20601361348
+					The high cutoff was (+ 3 stdevs):9690.45176502048
+					The low cutoff was (- 3 stdevs):-7572.78431666043
+					Determining cutoff values...
+					Values that were higher: 0
+					Values that were lower: 0
+					Total lines: 0
+					# OK, so the line values that were higher or lower was a bit silly... but the variation within these regions was pretty huge! 
+					# I believe that the removal of these artifact regions masks the shortfalls of using mrsFast:
+						# For starters, alignment quality is not really considered
+						# Also, ALL potential matches are reported
+						# So this removes all questionable areas from my analysis
+					$ perl -ne '@a = split(/\t/); chomp $a[3]; if($a[3] > 461){ print $_;}' < hit_art.bed | wc
+  						22322   89288  612229
+  						# Higher than the average + 3 stdevs
+					$ perl -ne '@a = split(/\t/); chomp $a[3]; if($a[3] < 91){ print $_;}' < hit_art.bed | wc
+   						2330    9320   60921	
+   						# Lower than the average - 2 stdevs
+ ___________________________________
+ Running the pipeline on other samples
+ ___________________________________
+ # Now I will develop a script that will process the files (turn the hits files into bed files, intersect them and then run them through the alkan script) and do all that good stuff to the other datasets
+ 
+ # I think that I got it working. The script is called "full_cow4_doc_pipeline.pl"
+ 	# It takes input using the "--in" option and can accept bed files (--b flag)
+ 	# It intersects the files with the interval windows files previously generated and then runs the whole thing through alkan's pipeline
+ 	
+ # Angus run:
+ 	$ perl full_cow4_doc_pipeline.pl --b --in angus_nochrun_hits.bed
+		Loading numbers from angus_nochrun_hits_file1_c.bed into array...
+		Calculating average...
+		Calculating stdev...
+		Average was: 379.813967426417
+		Stdev was; 135.037786784096
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		
+		Avg:  379.964807  std:  95.618108  AutoCut:  762.437239  AutoCut2:  666.819131
+		AvgS:   stdS:   SexCut:   SexCut2:
+ 		
+ 		TOTAL
+		
+		        one: 23393592   two: 175236945  oneonly: 2315956        twoonly: 154159309      one-two: 21077636
+		avg  81.396986
+		avg2  81.405610
+		
+		$ wc angus_nochrun_hits_file1.bed.final.wssd
+  		82  246 1905 angus_nochrun_hits_file1.bed.final.wssd
+		
+	(<>) perl run_alkan_pipeline.pl --File1 angus_nochrun_hits_file1.bed --File1_c angus_nochrun_hits_file1_c.bed --File2 angus_nochrun_hits_file2.bed --File3 angus_nochrun_hits_file3.bed --File3_c angus_nochrun_hits_file3_c.bed
+		TOTAL
+		
+		        one: 23393592   two: 14825563   oneonly: 21741840       twoonly: 13173811       one-two: 1651752
+		avg  81.396986
+		avg2  81.405610
+	
+	(<>) wc angus_nochrun_hits_file1.bed.final.wssd
+		494  1482 11462 angus_nochrun_hits_file1.bed.final.wssd
+
+  		
+# Brahman run:
+	$ perl full_cow4_doc_pipeline.pl --in brahman_se.hits
+		Creating Bed file...
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		Avg:  257.226194  std:  71.318865  AutoCut:  542.501654  AutoCut2:  471.182789
+		AvgS:   stdS:   SexCut:   SexCut2:
+		
+		TOTAL
+		
+		        one: 18747589   two: 175236945  oneonly: 2089833        twoonly: 158579189      one-two: 16657756
+		avg  55.447640
+		avg2  55.472230
+		
+	$ wc brahman_se_file1.bed.final.wssd
+  		80  240 1854 brahman_se_file1.bed.final.wssd
+  		
+  	(<>) perl run_alkan_pipeline.pl --File1 brahman_se_file1.bed --File1_c brahman_se_file1_c.bed --File2 brahman_se_file2.bed --File3 brahman_se_file3.bed --File3_c brahman_se_file3_c.bed
+  		TOTAL
+		
+		        one: 18747589   two: 14825563   oneonly: 17614748       twoonly: 13692722       one-two: 1132841
+		avg  55.447640
+		avg2  55.472230
+	(<>) wc brahman_se_file1.bed.final.wssd
+  		450  1350 10412 brahman_se_file1.bed.final.wssd
+  		
+# Gir run:
+ 	$ perl full_cow4_doc_pipeline.pl --in gir_se.hits
+		Creating Bed file...
+		Loading numbers from gir_se_file1_c.bed into array...
+		Calculating average...
+		Calculating stdev...
+		Average was: 57.4267585451224
+		Stdev was; 41.5983770558809
+		
+		# This might not end well...
+		
+		Recalculating averages
+		Avg:  57.597354  std:  22.084746  AutoCut:  145.936338  AutoCut2:  123.851592
+		AvgS:   stdS:   SexCut:   SexCut2:
+
+		TOTAL
+		
+		        one: 22168921   two: 175236945  oneonly: 3150095        twoonly: 156218119      one-two: 19018826
+		avg  12.823652
+		avg2  12.910426
+		
+	$ wc gir_se_file1.bed.final.wssd
+ 		151  453 3534 gir_se_file1.bed.final.wssd
+
+	# Well... I'll have to repick through this one carefully (if I decide to use it)
+	
+	(<>) perl run_alkan_pipeline.pl --File1 gir_se_file1.bed --File1_c gir_se_file1_c.bed --File2 gir_se_file2.bed --File3 gir_se_file3.bed --File3_c gir_se_file3_c.bed
+		TOTAL
+		
+		        one: 22168921   two: 14825563   oneonly: 20405544       twoonly: 13062186       one-two: 1763377
+		avg  12.823652
+		avg2  12.910426
+	(<>) wc gir_se_file1.bed.final.wssd
+  		558  1674 12964 gir_se_file1.bed.final.wssd
+	
+# Holstein run:
+	$ perl full_cow4_doc_pipeline.pl --b --in holstein_nochrun_hits.bed
+		Calculating average...
+		Calculating stdev...
+		Average was: 282.134826920301
+		Stdev was; 102.07137375386
+		
+		Recalculating averages
+		Avg:  282.254703  std:  70.359251  AutoCut:  563.691707  AutoCut2:  493.332456
+		AvgS:   stdS:   SexCut:   SexCut2:
+		
+		TOTAL
+		
+		        one: 18441166   two: 175236945  oneonly: 1895958        twoonly: 158691737      one-two: 16545208
+		avg  60.466238
+		avg2  60.475272
+		
+	$ wc holstein_nochrun_hits_file1.bed.final.wssd
+  		72  216 1664 holstein_nochrun_hits_file1.bed.final.wssd
+  		
+  	(<>) perl run_alkan_pipeline.pl --File1 holstein_nochrun_hits_file1.bed --File1_c holstein_nochrun_hits_file1_c.bed --File2 holstein_nochrun_hits_file2.bed --File3 holstein_nochrun_hits_file3.bed --File3_c holstein_nochrun_hits_file3_c.bed
+  		TOTAL
+		
+		        one: 18441166   two: 14825563   oneonly: 17221061       twoonly: 13605458       one-two: 1220105
+		avg  60.466238
+		avg2  60.475272
+		
+	(<>) wc holstein_nochrun_hits_file1.bed.final.wssd
+  		442  1326 10219 holstein_nochrun_hits_file1.bed.final.wssd
+
+# Jersey run:
+	$ perl full_cow4_doc_pipeline.pl --in jersey_se.hits
+		Creating Bed file...
+		Calculating average...
+		Calculating stdev...
+		Average was: 273.877711802836
+		Stdev was; 90.086603947966
+
+		Recalculating averages
+		Avg:  273.947245  std:  68.627709  AutoCut:  548.458081  AutoCut2:  479.830372
+		AvgS:   stdS:   SexCut:   SexCut2:
+
+		TOTAL
+		
+		        one: 17355947   two: 175236945  oneonly: 1657728        twoonly: 159538726      one-two: 15698219
+		avg  58.031483
+		avg2  58.037539
+		
+	$ wc jersey_se_file1.bed.final.wssd
+  		56  168 1298 jersey_se_file1.bed.final.wssd	
+  		
+  	(<>) perl run_alkan_pipeline.pl --File1 jersey_se_file1.bed --File1_c jersey_se_file1_c.bed --File2 jersey_se_file2.bed --File3 jersey_se_file3.bed --File3_c jersey_se_file3_c.bed
+  		TOTAL
+		
+		        one: 17355947   two: 14825563   oneonly: 16255150       twoonly: 13724766       one-two: 1100797
+		avg  58.031483
+		avg2  58.037539
+		
+	(<>) wc *final.wssd
+ 		411 1233 9511 jersey_se_file1.bed.final.wssd
+  		
+# Limousin run:
+	$ perl full_cow4_doc_pipeline.pl --in limousin_se.hits
+		Creating Bed file...
+		Calculating average...
+		Calculating stdev...
+		Average was: 286.015285728823
+		Stdev was; 108.16028188309
+
+		Avg:  286.143063  std:  76.627457  AutoCut:  592.652891  AutoCut2:  516.025434
+		AvgS:   stdS:   SexCut:   SexCut2:
+		
+		TOTAL
+		
+        	one: 20549524   two: 175236945  oneonly: 2427571        twoonly: 157114992      one-two: 18121953
+        	avg  61.160089
+		avg2  61.173337
+
+        $ wc limousin_se_file1.bed.final.wssd
+  		93  279 2153 limousin_se_file1.bed.final.wssd	
+
+	(<>) perl run_alkan_pipeline.pl --File1 limousin_se_file1.bed --File1_c limousin_se_file1_c.bed --File2 limousin_se_file2.bed --File3 limousin_se_file3.bed --File3_c limousin_se_file3_c.bed
+		TOTAL
+		
+		        one: 20549524   two: 14825563   oneonly: 19262004       twoonly: 13538043       one-two: 1287520
+		avg  61.160089
+		avg2  61.173337
+		
+	(<>) wc limousin_se_file1.bed.final.wssd
+  		469  1407 10865 limousin_se_file1.bed.final.wssd
+
+# Nelore run:
+	$  perl full_cow4_doc_pipeline.pl --in nelore_se.hits
+		Creating Bed file...
+		Calculating average...
+		Calculating stdev...
+		Average was: 404.181249718969
+		Stdev was; 124.710130471909
+
+		Recalculating averages
+		Avg:  404.240894  std:  104.288488  AutoCut:  821.394846  AutoCut2:  717.106358
+		AvgS:   stdS:   SexCut:   SexCut2:
+		
+		TOTAL
+		
+		        one: 22866463   two: 175236945  oneonly: 2217098        twoonly: 154587580      one-two: 20649365
+		avg  85.846120
+		avg2  85.849875
+		
+	$ wc nelore_se_file1.bed.final.wssd
+  		77  231 1782 nelore_se_file1.bed.final.wssd	
+  		
+  	(<>) perl run_alkan_pipeline.pl --File1 nelore_se_file1.bed --File1_c nelore_se_file1_c.bed --File2 nelore_se_file2.bed --File3 nelore_se_file3.bed --File3_c nelore_se_file3_c.bed
+		TOTAL
+		
+		        one: 22866463   two: 14825563   oneonly: 21603956       twoonly: 13563056       one-two: 1262507
+		avg  85.846120
+		avg2  85.849875
+		
+	(<>) wc nelore_se_file1.bed.final.wssd
+  		484  1452 11197 nelore_se_file1.bed.final.wssd
+  		
+# Romagnola run:
+	$ perl full_cow4_doc_pipeline.pl --in romagnola_se.hits
+		Creating Bed file...
+		Calculating average...
+		Calculating stdev...
+		Average was: 88.7233138721716
+		Stdev was; 54.9071897889356
+		
+		Avg:  88.916059  std:  27.715128  AutoCut:  199.776571  AutoCut2:  172.061443
+		AvgS:   stdS:   SexCut:   SexCut2:
+		
+		TOTAL
+		
+		        one: 17933604   two: 175236945  oneonly: 2538769        twoonly: 159842110      one-two: 15394835
+		avg  19.658323
+		avg2  19.721412
+
+	$ wc romagnola_se_file1.bed.final.wssd
+ 		114  342 2652 romagnola_se_file1.bed.final.wssd
+ 		
+ 	(<>) perl run_alkan_pipeline.pl --File1 romagnola_se_file1.bed --File1_c romagnola_se_file1_c.bed --File2 romagnola_se_file2.bed --File3 romagnola_se_file3.bed --File3_c romagnola_se_file3_c.bed
+ 		TOTAL
+		
+		        one: 17933604   two: 14825563   oneonly: 16551580       twoonly: 13443539       one-two: 1382024
+		avg  19.658323
+		avg2  19.721412
+		
+	(<>) wc romagnola_se_file1.bed.final.wssd
+  		482  1446 11166 romagnola_se_file1.bed.final.wssd
+  		
+# Blackstar test run:
+	$ ./run_alkan_pipeline.pl --File1 blackstar_hits_nochrun_file1.bed --File1_c blackstar_rem_file1_c.bed --File2 blackstar_hits_nochrun_file2.bed --File3 blackstar_hits_nochrun_file3.bed --File3_c blackstar_rem_file3_c.bed
+		Calculating average...
+		Calculating stdev...
+		Average was: 236.05185172914
+		Stdev was; 75.2482741627274
+
+		Recalculating averages
+		Avg:  236.072960  std:  65.370457  AutoCut:  497.554788  AutoCut2:  432.184331
+		AvgS:   stdS:   SexCut:   SexCut2:
+ 		
+ 		TOTAL
+		
+		        one: 38504293   two: 14825563   oneonly: 35246060       twoonly: 11567330       one-two: 3258233
+		avg  49.744330
+		avg2  49.744555
+		
+	$ wc blackstar_hits_nochrun_file1.bed.final.wssd
+  		753  2259 17504 blackstar_hits_nochrun_file1.bed.final.wssd
+  		
+# Just to be safe, I'm going to START to align the Fleckvieh sequence using mrsfast.
+# This way, I can have the files ready if George decides to use them.
+	$ for i in *.fastq
+	> do
+	> ../mrsfast-2.3.0.2/mrsfast --search /mnt/gliu1_usb/dbickhart/alkan_files/cow4_36_finalcombined.fa --seq $i -o $i.sam
+	> rm *.nohit
+	> perl -lane 'if($F[2] =~ /\*/){next;}else{print "$F[2]\t$F[3]"}' < $i.sam > $i.hits
+	> rm $i.sam
+	> done
+	# It's a complicated loop, but hopefully it works!
+
+___________________________________
+Artifact effectiveness
+___________________________________
+
+# It looks like the artifact masking removed ALOT of potential CNV's. 
+
+# This may be a mixed blessing; I could be masking true positives as well.
+
+# I want to check my artifact file just to make sure that everything looks ok.
+
+# I was right: I forgot to crop out the WGAC+WSSD overlapping intervals! Since I've already done the computationally intensive stuff (intersectBed, etc) I just need to run things using my shorter pipeline script
+# I will update the artifact outcomes using this flag: (<>) underneath each heading
+
+
+___________________________________
+Deletions problem and solutions
+___________________________________
+
+# OK, so my big issue is that only ONE deletion was reported out of ALL datasets! Also, that deletion was on chromosome X (which is a problem in and of itself, since many of the animals were male)
+
+# Let's investigate this further using the Angus reads:
+	- Avg:  379.964807  std:  95.618108
+	# So, the corr_auto2delstd variable (from cattle_female_pipeline.sh) would be: 379.96 - 382.9 = -2.94
+	# Not good... not a single window would be detected! If one standard deviation was removed, the value would be: 92.66
+	
+# I will do another run on Angus using less stringent deletion and insertion values, specifically what Can stated in his write-up (3 stdev for insertions and 2 stdev for deletions)
+# Actually, I will run the files first using 4 stdev for insertions (with 3 stdev padding) and 3 stdev for deletions and check the number of deletions. Then, I will modify the script to do 3 stdev for insertions (with 2 stdev padding)
+	- Modified cattle_female_pipeline.sh using comment sigils to change values. (3 stdev for deletions)
+	$ perl run_alkan_pipeline.pl -File1 angus_nochrun_hits_file1.bed -File1_c angus_nochrun_hits_file1_c.bed -File2 angus_nochrun_hits_file2.bed -File3 angus_nochrun_hits_file3.bed -File3_c angus_nochrun_hits_file3_c.bed
+		Calculating average...
+		Calculating stdev...
+		Average was: 379.813967426417
+		Stdev was; 135.037786784096
+		
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		Avg:  379.964807  std:  95.618108  AutoCut:  762.437239  AutoCut2:  666.819131
+		Del:  93.110483
+		# OK, so the deletion cut-off point is now a positive number! This also makes sense statistically, as it is 3 stdevs from the mean.
+		
+		
+		TOTAL
+		
+		        one: 23393592   two: 14825563   oneonly: 21741840       twoonly: 13173811       one-two: 1651752
+		avg  81.396986
+		avg2  81.405610
+		normalizing hg17
+		calculating CN
+		
+	$ wc angus_nochrun_hits_file1.bed.gcnorm.deletions.tab
+  		76  228 1733 angus_nochrun_hits_file1.bed.gcnorm.deletions.tab
+  	$ wc angus_nochrun_hits_file1.bed.final.wssd
+  		494  1482 11462 angus_nochrun_hits_file1.bed.final.wssd
+  		
+  	$ grep -v 'chrX' < angus_nochrun_hits_file1.bed.gcnorm.deletions.tab | wc
+      		4      12      91
+      		
+      		chr14   72385526        72408867
+		chr23   26195892        26250228
+		chr25   2941024 2957062
+		chr7    9387806 9405043
+      		
+      	$ grep -v 'chrX' < angus_nochrun_hits_file1.bed.final.wssd | wc            
+      		453    1359   10525
+      		
+      	# So, my ability to detect deletions and insertions in chrX is compromised from pooling the samples
+      	# I am reporting fewer insertions and more deletions.
+      	
+      	$ perl -ne '@a = split(/\t/); chomp $a[3]; if($a[3] <= 1.5 && $a[0] ne 'chrX'){ $c++;}else{$c = 0;}if($c == 7){ print "$_"; $c = 0;}' < angus_nochrun_hits_file3.bed.CN | wc
+    		174     696    5565
+	$ perl -e 'while(<>){@a = split(/\t/); if($a[0] eq 'chrX'){chomp $a[3]; $b += $a[3]; $c++;}} $d = $b / $c; print "$d\n";' < angus_nochrun_hits_file3.bed.CN
+		1.46157548947587
+	$ perl -e 'while(<>){@a = split(/\t/); if($a[0] eq 'chr1'){chomp $a[3]; $b += $a[3]; $c++;}} $d = $b / $c; print "$d\n";' < angus_nochrun_hits_file3.bed.CN
+		2.06456371495812
+	# So, these one-liners tell me that the average copy number of chrX IS lower than the autosomes. This makes sense only if my dataset is contaminated with male and female individuals.
+	# I may have to remove chrX, and it looks like I might be lucky enough to escape without having to change the control files! (The autosomes should average out the read depth for GC normalization)
+	
+	
+	- Now, lets try cattle_female pipeline.pl using Alkan's reported values (3stdev for insertions and 2 stdev for deletions)
+	$ perl run_alkan_pipeline.pl -File1 angus_nochrun_hits_file1.bed -File1_c angus_nochrun_hits_file1_c.bed -File2 angus_nochrun_hits_file2.bed -File3 angus_nochrun_hits_file3.bed -File3_c angus_nochrun_hits_file3_c.bed
+		Calculating average...
+		Calculating stdev...
+		Average was: 379.813967426417
+		Stdev was; 135.037786784096
+	
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		Avg:  379.964807  std:  95.618108  AutoCut:  666.819131  AutoCut2:  571.201023
+		Del:  188.728591
+		# Based on the standard curve for angus, this deletion value corresponds to a copy number of 0.916. Not too bad!
+		
+	$ wc *.final.wssd
+  		705  2115 16384 angus_nochrun_hits_file1.bed.final.wssd
+	$ wc angus_nochrun_hits_file1.bed.gcnorm.deletions.tab
+ 		1162  3486 26738 angus_nochrun_hits_file1.bed.gcnorm.deletions.tab
+ 		
+ 	$ grep -v 'chrX' angus_nochrun_hits_file1.bed.gcnorm.deletions.tab | wc
+    		361    1083    8494
+    	$ grep -v 'chrX' angus_nochrun_hits_file1.bed.final.wssd | wc              
+    		660    1980   15357
+    		
+	# Alkan didn't give us some of his scripts to separate the sex chromosomes from autosomes, so maybe I should write that into the script myself?
+	# I rewrote the cattle_female_pipeline.sh script to separate the X chromsome and calculate separate averages. The new file name is cattle_separate_pipeline.sh
+	# Rerunning the pipeline with the cattle_separate_pipeline.sh command 
+		$ perl run_alkan_pipeline.pl -File1 angus_nochrun_hits_file1.bed -File1_c angus_nochrun_hits_file1_c.bed -File2 angus_nochrun_hits_file2.bed -File3 angus_nochrun_hits_file3.bed -File3_c angus_nochrun_hits_file3_c.bed
+			...
+			splitting X chromosome
+			Autosome average depth 385.118337
+			X chromosome average depth 203.561329
+			Control GC files ready
+			Normalizing control regions
+			Recalculating averages
+			Avg:  385.260356  std:  91.672301  AutoCut:  660.277259  AutoCut2:  568.604958  Del:  201.915754
+			SexA:  21.249880  std:  51.804620  AutoCut:  176.663740  AutoCut2:  124.859120  Del:  -82.359360
+			Preparing the full genome
+			splitting X chromosome
+			
+			# Yeah, with that deletion range, I should probably just ignore the X chromosome
+			# I could just "grep" it out and then run the autosomes as normal. Not quite as interesting, but may be necessary because of the pooling of samples.
+			# So, I'm going to comment out the sex chromosome stuff and just run the autosomes as normal to see if anything changes
+			
+			$ wc angus_nochrun_hits_file1.bed.final.wssd
+ 				1291  3873 29756 angus_nochrun_hits_file1.bed.final.wssd
+			$ grep -v 'chrX' angus_nochrun_hits_file1.bed.final.wssd | wc
+    				699    2097   16268
+    			$ wc angus_nochrun_hits_file1.bed.final.deletions.tab
+  				562  1686 13186 angus_nochrun_hits_file1.bed.final.deletions.tab <- grep -v chrX resulted in the same number
+  				
+  		$ perl run_alkan_pipeline.pl -File1 angus_nochrun_hits_file1.bed -File1_c angus_nochrun_hits_file1_c.bed -File2 angus_nochrun_hits_file2.bed -File3 angus_nochrun_hits_file3.bed -File3_c angus_nochrun_hits_file3_c.bed 
+  		# This time, all lines dealing with chrX were commented out in the pipline shell script
+  		
+  	# I believe that ignoring chrX on the DoC side of the analysis might be the best option
+  	# I might have to avoid chrX for PEM analysis as well (just to be fair)
+  	# the pseudoautosomal regions of chrY might be interferring, and the genders of the animals that I pooled are definitely messing things up.
+  	
+# Now to intersect the final.wssd file with my previous angus final.wssd file (generated with a cutoff of 4 stdevs above the average):
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a angus_lessstringent/angus_nochrun_hits_file1.bed.final.wssd -b angus_nochrun_hits_file1.bed.final.wssd -c > angus_stdev_cutoff_sd_comp.bed
+	$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a angus_lessstringent/angus_nochrun_hits_file1.bed.final.wssd -b angus_nochrun_hits_file1.bed.final.wssd > angus_stdev_cutoff_sd_int.bed
+	$ wc angus_stdev_cutoff_sd_int.bed
+  		447  1341 10384 angus_stdev_cutoff_sd_int.bed
+  	$ wc *final.wssd
+  		494  1482 11462 angus_nochrun_hits_file1.bed.final.wssd
+	$ wc angus_lessstringent/angus_nochrun_hits_file1.bed.final.wssd
+  		699  2097 16268 angus_lessstringent/angus_nochrun_hits_file1.bed.final.wssd
+  		
+  	# Now, for the PEM:
+  		$ sort -k 1,1 ../../../Variationhunter/angus/BTAN_combined_sorted_SV.bed > sorted_pem_combined_SV.bed
+  		$ ../../../BEDTools-Version-2.10.0/bin/intersectBed -a angus_lessstringent/angus_nochrun_hits_file1.bed.final.deletions.tab -b sorted_pem_combined_SV.bed
+		# Resulted in nothing
+	
+	# That seems really odd... lets check a large deletion event called by Variation hunter: 
+		# Inside_Start:51338543 Inside_End:51338943 OutSide_Start:51390837 Oustide_End:51391125 chro:chr7 SVtype:2 sup:3 Avg_Span:52263 sumProb:2.995507
+		$  grep 'chr7' angus_nochrun_hits_file3.bed.CN | awk '{if($2 > 51338500 && $3 < 51391000) print $0}'
+			chr7    51338802        51339826        5.5829
+			chr7    51339827        51341091        2.02165
+			chr7    51341092        51342723        1.43877
+			chr7    51342724        51343885        1.01524
+			chr7    51343886        51344948        2.34522
+			chr7    51344949        51345973        6.19991
+			chr7    51345974        51351389        1.21377
+			chr7    51351390        51352834        1.36251
+			chr7    51352835        51356114        1.62123
+			chr7    51356115        51357175        2.62758
+			chr7    51357176        51358200        6.71269
+			chr7    51358201        51363953        1.93938
+			chr7    51363954        51365134        2.15693
+			chr7    51365135        51366265        1.67068
+			chr7    51366266        51367350        1.5832
+			chr7    51367351        51368477        3.96169
+			chr7    51368478        51370041        1.75514
+			chr7    51370042        51371271        1.46964
+			chr7    51371272        51372380        4.23731
+			chr7    51372381        51373405        8.30485
+			chr7    51373406        51378233        1.55579
+			chr7    51378234        51379556        1.65748
+			chr7    51379557        51381084        1.93482
+			chr7    51381085        51382182        3.15598
+			chr7    51382183        51383254        4.6079
+			chr7    51383255        51384730        5.4259
+			chr7    51384731        51387903        1.47649
+			chr7    51387904        51389575        2.52228
+			chr7    51389576        51390687        1.87831
+
+		# OK, this suggests that by pooling the PEM data, I might have increased the number of false positive calls.
+		# I just did a grep for chr7 SV calls in the variation hunter folder for angus, and the majority of calls are within the combined file
+		# So, pooling the PEM data might not be a good idea!
+		
+	# I sent an email to Can asking about the standard deviation values here's his reply:
+		> 1.       In your WSSD pipeline shell script
+		> (gcnorm-auto_female-hg17_full.sh), you set the corr_auto3std variable 
+		> and the corr_auto2delstd variable equal to the average + 4 standard 
+		> deviations. Shouldn’t corr_auto3std be equal to the average +3 stdevs 
+		> and corr_auto2delstd be equal to the average + 2 stdevs?
+		
+		They were in the (very) first version. Then I changed the way I calculate the std (first version was without GC normalization), and obtained tighter control distibutions so I changed those cutoffs to 4std, but left the variable names as is.
+
+	# So, my battle plan is to use 3 stdevs for the deletions instead of 4. This way, I can get deletion calls and still have good stringency.
+	# I will not remove chrX at this time (while I CAN do it, I will ask George about it later)
+		# Changed stdev value in cattle_female_pipeline.sh
+		# before running, here are the wc's for deletions and duplications:
+			$ wc angus_nochrun_hits_file1.bed.final.wssd
+  				494  1482 11462 angus_nochrun_hits_file1.bed.final.wssd
+			$ wc angus_nochrun_hits_file1.bed.gcnorm.deletions.tab
+				0 0 0 angus_nochrun_hits_file1.bed.gcnorm.deletions.tab
+		$ perl run_alkan_pipeline.pl --File1 angus_nochrun_hits_file1.bed --File1_c angus_nochrun_hits_file1_c.bed --File2 angus_nochrun_hits_file2.bed --File3 angus_nochrun_hits_file3.bed --File3_c angus_nochrun_hits_file3_c.bed
+			Calculating average...
+			Calculating stdev...
+			Average was: 379.813967426417
+			Stdev was; 135.037786784096
+			
+			$ wc angus_nochrun_hits_file1.bed.final.wssd
+  				494  1482 11462 angus_nochrun_hits_file1.bed.final.wssd
+  			$ wc angus_nochrun_hits_file1.bed.gcnorm.deletions.tab
+  				76  228 1733 angus_nochrun_hits_file1.bed.gcnorm.deletions.tab <- only 4 deletions on autosomes
+  				
+  		# Now, I am going to remove chrX and see what the pipeline produces (using the run_alkan_pipeline.pl script that calls cattle_separate_pipeline.sh)
+  		$ perl run_alkan_pipeline.pl --File1 angus_nochrun_hits_file1.bed --File1_c angus_nochrun_hits_file1_c.bed --File2 angus_nochrun_hits_file2.bed --File3 angus_nochrun_hits_file3.bed --File3_c angus_nochrun_hits_file3_c.bed
+  			Autosome average depth 385.118337
+  			$ wc angus_nochrun_hits_file1.bed.final.wssd
+  				463  1389 10751 angus_nochrun_hits_file1.bed.final.wssd
+			$ wc angus_nochrun_hits_file1.bed.final.deletions.tab
+ 				11  33 257 angus_nochrun_hits_file1.bed.final.deletions.tab
+ 				
+ 	# Producing files for Brahman with no chrX:
+ 		$ mkdir ./brahman_noX
+ 		$ cp *.bed ./brahman_noX
+ 		$ ./run_alkan_pipeline.pl --File1 brahman_se_file1.bed --File1_c brahman_se_file1_c.bed --File2 brahman_se_file2.bed --File3 brahman_se_file3.bed --File3_c brahman_se_file3_c.bed
+ 	
+ 	# Now for gir:
+ 		$ mkdir ./gir_noX
+ 		$ cp *.bed ./gir_noX
+ 		$ ./run_alkan_pipeline.pl --File1 gir_se_file1.bed --File1_c gir_se_file1_c.bed --File2 gir_se_file2.bed --File3 gir_se_file3.bed --File3_c gir_se_file3_c.bed
+ 		
+ 	# Now for Jersey:
+ 		$ ./run_alkan_pipeline.pl --File1 jersey_se_file1.bed --File1_c jersey_se_file1_c.bed --File2 jersey_se_file2.bed --File3 jersey_se_file3.bed --File3_c jersey_se_file3_c.bed
+ 	
+ 	# and Nelore:
+ 		$ ./run_alkan_pipeline.pl --File1 nelore_se_file1.bed --File1_c nelore_se_file1_c.bed --File2 nelore_se_file2.bed --File3 nelore_se_file3.bed --File3_c nelore_se_file3_c.bed
+ 	
+ 	# Romagnola:
+ 		$ ./run_alkan_pipeline.pl --File1 romagnola_se_file1.bed --File1_c romagnola_se_file1_c.bed --File2 romagnola_se_file2.bed --File3 romagnola_se_file3.bed --File3_c romagnola_se_file3_c.bed
+ 		
+ 	# Holstein:
+ 		$ ./run_alkan_pipeline.pl --File1 holstein_nochrun_hits_file1.bed --File1_c holstein_nochrun_hits_file1_c.bed --File2 holstein_nochrun_hits_file2.bed --File3 holstein_nochrun_hits_file3.bed --File3_c holstein_nochrun_hits_file3_c.bed
+ 		
+ 	# Limousin:
+ 		$ ./run_alkan_pipeline.pl --File1 limousin_se_file1.bed --File1_c limousin_se_file1_c.bed --File2 limousin_se_file2.bed --File3 limousin_se_file3.bed --File3_c limousin_se_file3_c.bed
+
+___________________________________
+Analyzing and combining datasets
+___________________________________
+
+# I created a quick wrapper that combined all of the information from the breeds into one tab delimited file.
+# That perl script was called: "make_table_mrsfast_doc.pl" and the output was "/mnt/gliu1_usb/dbickhart/breed_doc/finaltable.txt"
+
+# OK, so the goal now is to develop some figures/tables. I will read the literature to decide how best to present the data.
+
+# Alkan and Eichler will serve as good guides, but some innovation wouldn't hurt.
+	- Obvious table: common CNV's (all datasets, and indicus vs taurus)
+	- Obvious table: dataset stats and quality (average quality scores; GC percentages; average DoC)
+	- Obvious figure: Chromosome positions of CNVs (perhaps two such figures: Taurus vs Indicine)
+	- Obvious figure: GC skew of one set of reads and Loess normalization
+	- Obvious figure: qPCR linear correlation				<--- Must design the assays
+	- Obvious figure: aCGH linear correlation/comparison
+	- Obvious table: All CNV's (supplemental) [CNV positions, nearby SNPs, ...]
+	- Obvious table: Protein domains near CNV's [use closestBED in BEDTools]
+	- Obvious table: CNV's confirmed by aCGH and qPCR
+	- Figure: Red-gray presentation of predicted SD's and sequencing data confirmation [multiple genomes in comparison]
+	- Figure: Venn diagram of aCGH, PENNCNV and sequencing data comparisons
+	- Table: Comparison of predictions to other publications
+	- Figure: Read depths at regions of known copy number (necessary to calculate CNV copies from expected values)
+
+(<>) Circos figures (<>)
+# Created a "band" pattern for the cow4 chromosomes. 
+# Since karyotype band patterns aren't available for cow4, I decided to use the 50kb+ gaps.
+$ perl -ne '@a = split(/\t/); if($a[5] >= 50000){($ch) = $a[0] =~ m/chr(.*)/; print "band bt$ch $a[0] $a[0] $a[1] $a[2] grey\n";}' < cow4_gaps.bed > circos_cow4_50kgap.txt
+# Tested it out on my linux v-box and it works!
+$ bin/circos -conf cow4_circos_plain_test.conf
+	
+(<>) Table: Common CNV's (DoC) (<>)
+# Going to use BEDTools to try to get the overlap of all common CNV's
+	# OK, so I did this wrong, I will add a -f 0.50 and a -r option (> 50% overlap, reciprocal for a and b) to the intersect commands
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ../angus/mrsfast/angus_nochrun_hits_file1.bed.final.wssd -b ../holstein/mrsfast/holstein_nochrun_hits_file1.bed.final.wssd > ang_hol_intersect.bed
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ang_hol_intersect.bed -b ../limousin/mrsfast/limousin_se_file1.bed.final.wssd > ang_hol_lim_intersect.bed 
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ang_hol_lim_intersect.bed -b ../jersey/mrsfast/jersey_se_file1.bed.final.wssd > ang_hol_lim_jer_intersect.bed
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ang_hol_lim_jer_intersect.bed -b ../../alkan_files/blackstartest/blackstar_hits_nochrun_file1.bed.final.wssd > ang_hol_lim_jer_black_intersect.bed
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ang_hol_lim_jer_black_intersect.bed -b ../romagnola/mrsfast/romagnola_se_file1.bed.final.wssd > b_tau_intersect.bed 
+	
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ../brahman/mrsfast/brahman_se_file1.bed.final.wssd -b ../gir/mrsfast/gir_se_file1.bed.final.wssd > b_ind_intersect.bed
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a b_tau_intersect.bed -b b_ind_intersect.bed > all_intersect.bed
+	
+	# Before using the 50% overlap and reciprocal options, I had 300+ lines in the all_intersect.bed file. After using them, I had 137 lines (much better).
+	
+# Now to get some stats on the numbers of CNV's
+	$ perl -e 'while(<>){@a = split(/\t/); $h{$a[0]}++;} foreach $key(sort{$a cmp $b}(keys(%h))){print "$key\t$h{$key}\n";}' < all_intersect.bed
+		chr1    3
+		chr10   1
+		chr11   1
+		chr12   2
+		chr13   4
+		chr14   1
+		chr15   2
+		chr16   5
+		chr17   3
+		chr18   9
+		chr19   3
+		chr20   1
+		chr21   4
+		chr22   1
+		chr23   1
+		chr24   4
+		chr25   3
+		chr26   4
+		chr27   4
+		chr29   4
+		chr3    14
+		chr4    6
+		chr5    10
+		chr6    8
+		chr7    6
+		chr8    8
+		chr9    5
+		chrX    20
+		# chr2 and 28 are missing from the common pool
+		
+	$ perl -ne '@a = split(/\t/); chomp $a[2]; $b = $a[2] - $a[1]; print "$b\n";' < all_intersect.bed | perl -e 'while(<>){chomp $_; $a += $_; $c++;} $avg = $a / $c; print "$avg\n";'
+		44803.1459854015
+		# average length in the common CNV pool
+		
+	$ perl -ne '@a = split(/\t/); chomp $a[2]; $b = $a[2] - $a[1]; print "$b\n";' < all_intersect.bed | perl -e 'while(<>){chomp $_; $a += $_; $c++;} print "$a\n";'
+		6138031
+		# total number of bases in common pool
+		
+(<>) Table: Dataset stats
+# This will have to be a table with all the breeds, number of animals, number of reads (or X coverage), number of CNV's detected per animal
+	$ Estimating read counts:
+		$ for i in B*P.*fq
+		> do
+		> perl -e 'while(<>){if($_ =~ /@/){$a++;}} print "$a\n";' < $i
+		> echo $i
+		> done
+	# OOps! Forgot that I used the mate pair libraries for single end alignments too... going to have to calculate them after this
+	# Also, I only have to do one out of the two sequencing files (and double the number afterwards)
+	
+		23706691
+		BTAN01P.FC42N19.3.1.15.fq
+		23706691
+		BTAN01P.FC42N19.3.2.15.fq
+		18212516
+		BTAN02P.FC42HEA.7.1.15.fq
+		18212516
+		BTAN02P.FC42HEA.7.2.15.fq
+		16352175
+		BTAN03P.FC42N19.6.1.15.fq
+		16352175
+		BTAN03P.FC42N19.6.2.15.fq
+		18601334
+		BTAN04P.FC42HEA.8.1.15.fq
+		18601334
+		BTAN04P.FC42HEA.8.2.15.fq
+		21143141
+		BTAN05P.FC42N19.1.1.15.fq
+		21143141
+		BTAN05P.FC42N19.1.2.15.fq
+		21951826
+		BTAN06P.FC42MVF.8.1.15.fq
+		21951826
+		BTAN06P.FC42MVF.8.2.15.fq
+		17800845
+		BTAN07P.FC42HMD.1.1.14.fq
+		17800845
+		BTAN07P.FC42HMD.1.2.14.fq
+		17404105
+		BTAN08P.FC42HMD.2.1.14.fq
+		17404105
+		BTAN08P.FC42HMD.2.2.14.fq
+		18681387
+		BTAN09P.FC42HMD.3.1.14.fq
+		18681387
+		BTAN09P.FC42HMD.3.2.14.fq
+		18857697
+		BTAN10P.FC42HMD.4.1.14.fq
+		18857697
+		BTAN10P.FC42HMD.4.2.14.fq
+		
+	# I might as well just write a perl script to automate all of this for me. This way I can tabulate all of the results at the same time
+	# The perl script should Calculate the number of animals (based on differences in the first portion of the filename) and the number of reads. 
+	# A separate script should determine the number of mapped reads (this could be a perl one liner based off of the .bam file)
+	# Then I can fill in the number of reads per 5kb and the number of discordant paired end mappings as well.
+	
+	# So my envisioned design will be:
+		- Breed | # animals | # reads (# paired end) | # mapping locations | # reads per 5kb | Stdev | # discordant paired end reads
+
+	# Script name was get_ngs_dataset_stats.pl and it produced the following output file:  dataset_stats.out
+	
+(<>) Table: Comparisons to other publications
+# Extracting George's aCGH table
+	# Downloaded the table from his GR paper, Table S2
+	# Converted to .csv using open office and then used the following sed command to remove the quotes around the chromosome names:
+	$ cat acgh_cnv_intervals.bed.csv | sed s/\'//g > acgh_cnv_intervals.bed
+	
+# Now to intersect the shared CNV files...
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a acgh_cnv_intervals.bed -b all_intersect.bed -f 0.50 -r > acgh_ngs_overlap.bed
+	$ wc acgh_ngs_overlap.bed
+ 		10  30 235 acgh_ngs_recursive.bed
+ 		
+ 	# Since the aCGH is slightly lower in resolution... let's reduce the stringency
+ 	
+ 	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a acgh_cnv_intervals.bed -b all_intersect.bed -f 0.25 > acgh_ngs_overlap.bed
+	$ wc acgh_ngs_overlap.bed
+ 		29  87 672 acgh_ngs_overlap.bed
+
+	# Wait... I realized that the order is off in my intersections. I should intersect the NGS data in the -a option
+	
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a all_intersect.bed -b acgh_cnv_intervals.bed -f 0.50 -r  > ngs_acgh_recursive.bed
+	$ wc ngs_acgh_recursive.bed
+		10  30 235 ngs_acgh_recursive.bed
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a all_intersect.bed -b acgh_cnv_intervals.bed -f 0.25  > ngs_acgh_overlap.bed
+	$ wc ngs_acgh_overlap.bed
+  		53  159 1220 ngs_acgh_overlap.bed
+  		
+  	# Not too shabby... 53 / 137 (38%)
+  	# Also, this suggests that many of the aCGH CNV's might smaller than reported.
+  	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a all_intersect.bed -b acgh_cnv_intervals.bed -f 0.25 -wb > ngs_acgh_overlap_withb.bed
+  		$ head ngs_acgh_overlap_withb.bed
+		chr3    18825000        18851628        chr3    18825000        18945000 <-|- better resolution
+		chr3    18898757        18945000        chr3    18825000        18945000 <-|
+		chr3    22654961        22701627        chr3    22585743        22931467
+		chr4    109419476       109452844       chr4    109251000       109452844
+		chr4    109635000       109686910       chr4    109635000       109785000
+		chr4    109995756       110015861       chr4    109989000       110041842
+		chr4    124242447       124446483       chr4    124125000       124452651
+		chr5    9573920 9623843 chr5    9573920 10097114
+		chr5    109407770       109437213       chr5    109377000       110054555 <-
+		chr5    109480347       109527308       chr5    109377000       110054555 <-
+	
+	# Now I will work with Yali's PennCNV predictions:
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a all_intersect.bed -b yali_snp_intervals.bed -f 0.25 > ngs_snp_overlap.bed
+	$ wc ngs_snp_overlap.bed
+ 		29  87 681 ngs_snp_overlap.bed
+ 	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a all_intersect.bed -b yali_snp_intervals.bed -f 0.25 -wb > ngs_snp_overlap_withb.bed
+	$ head ngs_snp_overlap_withb.bed
+		chr1    41697280        41716280        chr1    41168633        43216667
+		chr3    13136898        13193934        chr3    12903718        13253595
+		chr3    13241146        13253595        chr3    12903718        13253595
+		chr4    109614853       109686910       chr4    109607343       109690847
+		chr5    109407770       109437213       chr5    109235853       110191418
+		chr5    109480347       109527308       chr5    109235853       110191418
+		chr5    123432422       123482493       chr5    123156376       123840785
+		chr6    118389105       118410942       chr6    118232279       119068909
+		chr7    32161524        32180125        chr7    32121704        32195122
+		chr8    23602066        23657920        chr8    23551032        23657920
+		
+	# Now for all three datasets:
+	$ ../../BEDTools-Version-2.10.0/bin/intersectBed -a ngs_acgh_overlap.bed -b ngs_snp_overlap.bed -f 0.25 -wb > ngs_acgh_snp_full_overlap.bed
+	$ wc ngs_acgh_snp_full_overlap.bed
+ 		14  84 664 ngs_acgh_snp_full_overlap.bed
+ 	$ more ngs_acgh_snp_full_overlap.bed
+		chr4    109635000       109686910       chr4    109614853       109686910
+		chr5    109407770       109437213       chr5    109407770       109437213
+		chr5    109480347       109527308       chr5    109480347       109527308
+		chr8    23602066        23657920        chr8    23602066        23657920
+		chr8    62851994        62905603        chr8    62851994        62905603
+		chr8    73267223        73478148        chr8    73267223        73478148
+		chr8    73715968        73918191        chr8    73715968        73931946
+		chr9    90400061        90459834        chr9    90400061        90459834
+		chr14   13259629        13324519        chr14   13259629        13324519
+		chr15   49197643        49211788        chr15   49197643        49211788
+		chr18   50348554        50370604        chr18   50348554        50370604
+		chr18   50492219        50536764        chr18   50492219        50536764
+		chr18   57147831        57235960        chr18   57147831        57235960
+		chr29   5596797 5645083 chr29   5596797 5645083
+	
+# In order to intersect the individual files, i created a simple wrapper script (make_intersections_bed.pl)
+# All files resulting from that script are located in (/mnt/gliu1_usb/dbickhart/breed_doc/docfigures/comparsion_beds/)
+# Here are some stats on the files:
+	$wc *.acgh_snp.bed
+	   	67   804  6311 angus_nochrun_hits_file1.acgh_snp.bed
+	   	61   732  5714 brahman_se_file1.acgh_snp.bed
+	   	65   780  6106 gir_se_file1.acgh_snp.bed
+	   	64   768  5996 holstein_nochrun_hits_file1.acgh_snp.bed
+	   	69   828  6464 jersey_se_file1.acgh_snp.bed
+	   	72   864  6742 limousin_se_file1.acgh_snp.bed
+	   	59   708  5551 nelore_se_file1.acgh_snp.bed
+	   	58   696  5402 romagnola_se_file1.acgh_snp.bed
+	  	515  6180 48286 total
+
+	$ wc *acgh.bed
+  		158   948  7364 angus_nochrun_hits_file1.acgh.bed
+  		140   840  6483 brahman_se_file1.acgh.bed
+  		144   864  6689 gir_se_file1.acgh.bed
+  		145   870  6734 holstein_nochrun_hits_file1.acgh.bed
+  		149   894  6914 jersey_se_file1.acgh.bed
+  		156   936  7247 limousin_se_file1.acgh.bed
+  		147   882  6826 nelore_se_file1.acgh.bed
+  		137   822  6343 romagnola_se_file1.acgh.bed
+ 		1176  7056 54600 total
+	
+	$ wc *.snp.bed
+  		129   774  6045 angus_nochrun_hits_file1.snp.bed
+  		114   684  5300 brahman_se_file1.snp.bed
+  		123   738  5746 gir_se_file1.snp.bed
+  		119   714  5520 holstein_nochrun_hits_file1.snp.bed
+  		119   714  5533 jersey_se_file1.snp.bed
+  		124   744  5781 limousin_se_file1.snp.bed
+  		128   768  5965 nelore_se_file1.snp.bed
+  		110   660  5084 romagnola_se_file1.snp.bed
+  		966  5796 44974 total
+	
+	
+(<>) Table: All CNV's
+# Now I'm going to make a table with all reported CNV's
+
+$ sort -k 1,1 merged_final_wssd.bed > merged_sorted_wssd.bed
+$ uniq -u merged_sorted_wssd.bed > merged_sorted_unique_wssd.bed
+$ wc merged_sorted_unique_wssd.bed
+ 	2190  6570 50943 merged_sorted_unique_wssd.bed
+
+# The reason why there are so many lines is because the CNV boundary numbers are different.
+# I'm going to have to create a script to merge them and keep the largest boundaries.
+# Well... lets try BEDTools merge first... if it makes far too few CNV's I can revisit the issue.
+$ ../../../BEDTools-Version-2.10.0/bin/mergeBed -i merged_sorted_unique_wssd.bed > all_final_sorted_wssd.bed
+$ wc all_final_sorted_wssd.bed
+  	947  2841 22124 all_final_sorted_wssd.bed
+  	
+# I believe that this is what my intended perl script would do, anyways, so this is good.
+# Let's do this again, but we'll keep the organism names as we merge the bed files...
+
+	# Did this for all of the final.wssd files for each animal.
+	$ perl -ne 'chomp; print "$_\tAng\n";' < angus/mrsfast/angus_nochrun_hits_file1.bed.final.wssd > ang_final_wssd.bed
+
+	$ cat *_wssd.bed > all_wssd_named.bed
+	$ sort -k 1,1 all_wssd_named.bed > all_sorted_wssd_named.bed
+	$ ../../../BEDTools-Version-2.10.0/bin/mergeBed -i all_sorted_wssd_named.bed -nms > all_annotated_wssd_merged.bed
+	
+	$ head all_annotated_wssd_merged.bed
+		chr1    5000    87240   Ang;Black;Bra;Gir;Hol;Lim;Nel;Rom
+		chr1    2677595 2689221 Black
+		chr1    3954206 4015002 Ang;Black;Bra;Gir;Hol;Jer;Lim;Nel;Rom
+		chr1    4020000 4051577 Ang;Black;Gir;Nel
+		chr1    18319723        18332670        Black
+		chr1    25855409        25883151        Black;Nel
+		chr1    36417880        36433032        Ang;Lim;Rom
+		chr1    36460738        36474890        Lim
+		chr1    39218051        39245182        Black
+		chr1    39768013        39794632        Black
+		
+	# Perfect!
+	
+# Now I need to get the loss/gain predictions from sifting through the files produced by Alkan's pipeline	
+
+# I need to determine approximate copy number from the results
+# In order to do this, I need to make a linear regression with known copy number locii in the Cattle genome (no small feat!)
+# So, I am going to pull out FISH data from George's GR paper and I will use that as a basis for making the linear regression.
+	2	Both	2.71E+03	chr12:69655754-69927836	4	2	NA	Yes	<- using this as a "8"			
+	20	CNV	259A1	chr12:70157455-70313037	2	3	3	Yes		<- using this as a "5"		
+	36	CNV	392A13	chr18:63400241-63582990	2	2	2	Yes 		<- using this as a "4"
+	12	Both	324F20	chr4:109766054-110035929	2	1	3	Yes	<- using this as a "5"			
+
+# For a normal copy number location (1), I will have to pick some nominal areas that were not predicted to be CNV's in any of the breeds
+# Two should be sufficient
+	# Picked 7 windows from chromosome 12 by checking the angus File1 hits
+		chr12   76723   98542   355
+		chr12   77723   98542   355
+		chr12   78723   98542   355
+		chr12   79723   99074   357
+		chr12   80723   101645  356
+		chr12   81723   102579  354
+		chr12   82723   103773  354
+
+	# Picked 7 windows from chromosome 18 using the angus File1 hits
+		chr18   64696   88162   355
+		chr18   65696   88162   355
+		chr18   66696   88162   355
+		chr18   67696   88162   355
+		chr18   68696   88162   355
+		chr18   69696   88231   345
+		chr18   70696   88992   344
+
+	# Angus average was 380 before GC norm; checking those locations to see how GC norm influenced them
+		chr12   76723   98542   366.26907186624
+		chr18   64696   88162   335.205570171673
+		# Not the best, but should be ok
+		
+
+# I will design a specialized script that will open the File1 read depth windows, then pull only the regions that correspond to the FISH confirmed areas
+# I did just that; the script name is make_table_mrsfast_doc.pl since I acidentally saved over the last version
+	# It looks like the copy number "8" FISH sample is unreliable (and didn't achieve a copy number of 8 in any of the samples)
+	# Interesting: the Indicus and Romagnola breeds had a higher copy number for the chr18 (expected CN of 4) position than do the Taurus breeds
+	# I have a .CN file for each breed, let's check what the pipeline predicts the copy number to be in those regions:
+		# For Nelore:
+			chr18   63394536        63395958        5.2953
+			chr18   63395959        63397395        3.59919
+			chr18   63402969        63411093        2.93451
+			chr18   63411094        63414007        0.788749
+			chr18   63414008        63415048        5.07788
+			chr18   63415049        63418544        3.01389
+			chr18   63418545        63420791        4.81662
+			chr18   63420792        63424553        1.11454
+			chr18   63424554        63426580        1.32155
+			chr18   63426581        63427891        4.49185
+			chr18   63427892        63430681        5.13513
+			chr18   63430682        63433182        5.75525
+			chr18   63433183        63435660        9.7035
+			chr18   63435661        63438080        4.03503
+			chr18   63438081        63440732        9.28434
+			chr18   63440733        63442090        5.38917
+			chr18   63442091        63447154        3.29973
+			chr18   63447155        63448790        8.0699
+			chr18   63448791        63453140        6.31669
+			chr18   63453141        63454204        8.33189
+			
+		# For angus:
+			chr18   63394536        63395958        4.33389
+			chr18   63395959        63397395        3.34133
+			chr18   63402969        63411093        3.51651
+			chr18   63411094        63414007        1.21501
+			chr18   63414008        63415048        5.84155
+			chr18   63415049        63418544        4.33296
+			chr18   63418545        63420791        4.53961
+			chr18   63420792        63424553        3.00827
+			chr18   63424554        63426580        2.75502
+			chr18   63426581        63427891        4.49864
+			chr18   63427892        63430681        1.98323
+			chr18   63430682        63433182        4.03513
+			chr18   63433183        63435660        3.32601
+			chr18   63435661        63438080        2.91714
+			chr18   63438081        63440732        4.25045
+			chr18   63440733        63442090        3.31576
+			chr18   63442091        63447154        2.09697
+			chr18   63447155        63448790        7.38988
+			chr18   63448791        63453140        3.31447
+			chr18   63453141        63454204        4.58334
+
+		# So, Angus is closer to the expected and Nelore is all over the place (mostly 5's, but some 9's!)
+		# I might not be able to predict copy number based on DoC in Indicus...
+
+		# Angus 4 standard deviations and copy number:
+			- (4 [copy number] / 823.7555 [# hits in that location]) = (X / 762.43 [# hits in standard deviation region])
+			- X = 3.7
+			# So, the average + 4 Standard deviations equals a copy number of 3.7 in Angus
+			
+		# Nelore 4 standard deviations and copy number:
+			- (5 / 935.0833) = (X / 821.394846)
+			- X = 4.4
+			# This is a significant loss of sensitivity if true; I suspect that the Indicus expected copy numbers for the same regions as in Taurus are not the same (in reality) 
+
+(<>) Table: Nearby proteins / transcription factors
+# I downloaded the cow4 refgene list from UCSC and named it cow4_refgene.txt
+# Now, I'm going to convert it into a bed file and then intersect it with my CNV intervals
+# Turned it into a bed file using a short script I developed (convert_refgene_to_bed.pl); Output is in /mnt/gliu1_usb/dbickhart/breed_doc/docfigures/comparison_beds/cow4_refgene.bed
+	# Now to use closestBed on all of the files and get the results.
+	# Since closestBed will report the closest genes without regard for HOW close they are, I developed a short script (calculate_gene_distance.pl) to tack on the gene distance at the end of the refgene files
+	$ for i in *.refgene.bed; do perl calculate_gene_distance.pl $i; done
+	# Now I'm going to crop out the entries with distances greater than 10kb
+	$ for i in *.refgene.bed; do perl -ne '@a = split(/\t/); chomp $a[7]; if($a[7] < 10000){print $_;}' < $i > temp; mv temp $i; done
+
+# There were a fair amount of close genes, but this is to be expected since I masked out all the repeats
+$ wc *.refgene.bed
+  	191  1528 11773 angus_nochrun_hits_file1.refgene.bed
+  	158  1264  9743 brahman_se_file1.refgene.bed
+  	235  1880 14568 gir_se_file1.refgene.bed
+  	155  1240  9524 holstein_nochrun_hits_file1.refgene.bed
+  	137  1096  8415 jersey_se_file1.refgene.bed
+  	156  1248  9606 limousin_se_file1.refgene.bed
+  	163  1304 10020 nelore_se_file1.refgene.bed
+  	197  1576 12129 romagnola_se_file1.refgene.bed
+ 	1392 11136 85778 total
+
+# Another thing: there were some duplicated CNV's since they overlaped with one or more gene locii. 
+
+# Great news! I can use DAVID to check for enriched pathways! I just need to paste the gene accession numbers into the DAVID list and it can tell me the information.
+# I will have to use Homologene (NCBI) to convert Cow4 accession names into human accessions
+
+(<>) Table: aCGH and qPCR validation

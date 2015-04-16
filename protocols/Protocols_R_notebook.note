@@ -1,0 +1,161 @@
+# A collection of R scripts and commands to create figures/tables
+
+____________________
+CN boxplot commands
+____________________
+
+> data <- read.table("top_25_nolow_lewin_taylor_refgene.txt", sep="\t", header = TRUE)
+> drops <- c("chr", "start", "end", "CNVRoverlap", "CNVRintersections")
+> data[,!(names(data) %in% drops)]
+> drops <- c("gene", "chr", "start", "end", "CNVRoverlap", "CNVRintersections")
+> format <- data[,!(names(data) %in% drops)]
+> row.names(format) <- data$gene
+> drops <- c("chr", "start", "end", "CNVRoverlap", "CNVRintersections")
+> format <- data[,!(names(data) %in% drops)]
+> format
+> data <- read.table("top_25_nolow_lewin_taylor_refgene.txt", sep="\t", header = TRUE)
+> format <- data[,!(names(data) %in% drops)]
+> format
+> data <- read.table("top_25_nolow_lewin_taylor_refgene.txt", sep="\t", header = TRUE)
+> format <- data[,!(names(data) %in% drops)]
+> format
+> ls()
+> genenames <- format$gene
+> genenames
+> class(genenames)
+> genenames[3] <- "LOC780876_1"
+> genenames
+> genenames <- as.character(format$gene)
+> genenames
+> genenames[3]
+> genenames[3] <- "LOC780876_1"
+> genenames[2] <- "ZNF280B_1"
+> genenames[5] <- "ZNF280B_2"
+> genenames[6] <- "ZNF280B_3"
+> genenames[8] <- "LOC780876_2"
+> genenames[8] <- "H2B_1"
+> genenames[21] <- "H2B_2"
+> genenames
+> head(format)
+> col.names(format)
+> colnames(format)
+> format[,names(format) %in% "BT"]
+> format[,grep1("BT", names(format))]
+> format[,grepl("BT", names(format))]
+> lewin <- c("chairman"  "chief"     "elevation"
+> lewin <- c("chairman", "chief", "elevation", "ivanhoe", "starbuck")
+> taurus <- c(format[,grepl("BT", names(format))], format[,names(format) %in% lewin])
+> taurus
+> class(taurus)
+> boxplot(taurus)
+> taurus <- as.dataframe(c(format[,grepl("BT", names(format))], format[,names(format) %in% lewin]))
+> taurus <- as.data.frame(c(format[,grepl("BT", names(format))], format[,names(format) %in% lewin]))
+> taurus
+> rownames(taurus) <- genenames
+> genenames
+> rownames(taurus) <- genenames
+> boxplot(taurus)
+> taurus
+> taurus <- as.data.frame(t(taurus))
+> taurus
+> boxplot(taurus)
+> boxplot(taurus[!rownames(taurus) %in% "MGC134093",])
+> boxplot(taurus[,!rownames(taurus) %in% "MGC134093"])
+> boxplot(taurus[2:25,])
+> boxplot(taurus[,2:25])
+> boxplot(taurus[,2:25], horizontal=TRUE)
+> boxplot(taurus[,2:25], horizontal=TRUE, las = 1)
+> boxplot(taurus[,2:25], horizontal=TRUE, las = 1, col = "blue")
+> taurus <- taurus[,25:1]
+> taurus
+> boxplot(taurus[,1:24], horizontal=TRUE, las = 1, col = "blue")
+> boxplot(taurus[,1:24], horizontal=TRUE, las = 1, col = "blue", outcol = "blue")
+> indicus <- format[,grepl("BI", names(format))]
+> indicus
+> rownames(indicus) <- genenames
+> indicus
+> indicus <- as.dataframe(t(indicus))
+> indicus <- as.data.frame(t(indicus))
+> indicus <- indicus[,25:1]
+> indicus
+> boxplot(indicus[,1:24], horizontal=TRUE, las = 1, col = "red", outcol = "red", add = TRUE)
+> ?boxplot
+> boxplot(taurus[,1:24], horizontal=TRUE, las = 1, col = "#00009922", outcol = "#00009922")
+> boxplot(taurus[,1:24], horizontal=TRUE, las = 1, col = "#00009933", outcol = "#00009933", border = "#00009933")
+> boxplot(taurus[,1:24], horizontal=TRUE, las = 1, col = "#0000ff33", outcol = "#0000ff33", border = "#0000ff33")
+> boxplot(taurus[,1:24], horizontal=TRUE, las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66")
+> boxplot(taurus[,1:24], horizontal=TRUE, las = 1, col = "#00006666", outcol = "#00006666", border = "#00006666")
+> boxplot(taurus[,1:24], horizontal=TRUE, las = 1, col = "#0000ff66", outcol = "#0000ff66", border = "#0000ff66")
+> boxplot(indicus[,1:24], horizontal=TRUE, las = 1, col = "#ff000066", outcol = "#ff000066", border = "#ff000066", add = TRUE)
+> save(taurus, indicus, file = "transposed_CN_values.RData")
+> dev.copy2pdf(file = "template_box_plot.pdf", out.type = "pdf", useDingbats = FALSE)
+
+
+____________________
+Fast Pearson
+____________________
+
+> x <- read.table("population_analysis/chr1_wins.ped", header = FALSE)
+> row.names(x) <- x[,2]
+> an0447 <- x["AN0447", c(-1,-2,-3,-4,-5,-6)]
+> an0447 <- t(an0447)
+> btan05 <- x["BTAN05", c(-1,-2,-3,-4,-5,-6)]
+> btan05 <- t(btan05)
+> data <- data.frame(an0447, btan05)
+> cor(data, method = "pearson")
+
+
+_____________________
+Pedigree printing
+_____________________
+
+> library(kinship2)
+> data <- read.delim("totalpedigree.formatted", header=FALSE)
+> data[grep("HO", data$V1), "Fam"] <- 1
+> data[grep("JE", data$V1), "Fam"] <- 2
+> affected <- read.delim("HOJE_animal_names.txt", header=FALSE)
+> data[data$V1 %in% affected$V1,"Affect"] <- 1
+> data[!(data$V1 %in% affected$V1),"Affect"] <- 0
+> pedall <- pedigree(id=data$V1, dadid=data$V2, momid=data$V3, sex=data$V4, famid=data$Fam, affected=data$Affect, missid=0)
+> ped1 <- pedall['1']
+> ped2 <- pedall['2']
+> plot(ped1, cex=0.5)
+> dev.copy2pdf(file="100_bulls_holstein.pdf", useDingbats=FALSE)
+> plot(ped2, cex=0.5)
+> dev.copy2pdf(file="100_bulls_jersey.pdf", useDingbats=FALSE)
+
+_____________________
+Stringmatch processing
+And dataframe editting
+_____________________
+> data[1:10,]
+                   V1                 V2                 V3 V4
+1  HOUSAM000001810969 HOUSAM000001650414 HOUSAF000008219189  1
+2  HOUSAM000001650414 HOUSAM000001427381 HOUSAF000006781299  1
+3  HOUSAF000008219189 HOUSAM000001450228 HOUSAF000007427964  2
+4  HOUSAM000001427381 HOUSAM000001383926 HOUSAF000004546976  1
+5  HOUSAF000006781299 HOUSAM000001237057 HOUSAF000006062344  2
+6  HOUSAM000001450228 HOUSAM000001396885 HOUSAF000003818879  1
+7  HOUSAF000007427964 HOUSAM000001381027 HOUSAF000006685874  2
+8  HOUSAM000001667366 HOUSAM000001441440 HOUSAF000007832117  1
+9  HOUSAM000001441440 HOUSAM000001189870 HOUSAF000003279562  1
+10 HOUSAF000007832117 HOUSAM000001365341 HOUSAF000006472855  2
+
+> data[grep("HO", data$V1), "Fam"] <- 1
+> data[grep("JE", data$V1), "Fam"] <- 2
+> data[1:10,]
+                   V1                 V2                 V3 V4 Fam
+1  HOUSAM000001810969 HOUSAM000001650414 HOUSAF000008219189  1   1
+2  HOUSAM000001650414 HOUSAM000001427381 HOUSAF000006781299  1   1
+3  HOUSAF000008219189 HOUSAM000001450228 HOUSAF000007427964  2   1
+4  HOUSAM000001427381 HOUSAM000001383926 HOUSAF000004546976  1   1
+5  HOUSAF000006781299 HOUSAM000001237057 HOUSAF000006062344  2   1
+6  HOUSAM000001450228 HOUSAM000001396885 HOUSAF000003818879  1   1
+7  HOUSAF000007427964 HOUSAM000001381027 HOUSAF000006685874  2   1
+8  HOUSAM000001667366 HOUSAM000001441440 HOUSAF000007832117  1   1
+9  HOUSAM000001441440 HOUSAM000001189870 HOUSAF000003279562  1   1
+10 HOUSAF000007832117 HOUSAM000001365341 HOUSAF000006472855  2   1
+
+> affected <- read.delim("HOJE_animal_names.txt", header=FALSE)
+> data[data$V1 %in% affected$V1,"Affect"] <- 1
+> data[!(data$V1 %in% affected$V1),"Affect"] <- 0

@@ -1,0 +1,58 @@
+2010_11_01
+# My attempts at deciphering alucode data
+
+# The readme gives instructions on how to run the program on a sample dataset
+# I will be printing commands and output here for deciphering later:
+	$ cc -O -lm build_scaffold.c	# This is likely a compiling code for making an object file
+	$ ./a.out >BUILD_SCAFFOLD	
+		4000 total alus
+		1 subfamilies
+		Subfamily 0 (parent -1 count 4000 mutrate 0.05):
+		
+		
+		ADDING SUBFAMILIES
+		Building subfamily 1 (parent 0, logpvalue -1.938568e+03): pos 218 g to c and pos 77 t to a
+		2 subfamilies
+		Subfamily 0 (parent -1 count 3000 mutrate 0.05):
+		153:a 154:t 261:a 
+		Subfamily 1 (parent 0 count 1000 mutrate 0.01):
+		64:- 65:- 77:a 87:t 90:c 94:t 97:a 99:c 132:+ 145:a 152:g 162:g 174:t 196:g 199:g 218:c 237:c 
+		
+		Building subfamily 2 (parent 0, logpvalue -6.603569e+02): pos 102 t to a and pos 92 g to a
+		3 subfamilies
+		Subfamily 0 (parent -1 count 2096 mutrate 0.05):
+		56:t 153:a 154:t 
+		Subfamily 1 (parent 0 count 1000 mutrate 0.01):
+		64:- 65:- 77:a 87:t 90:c 94:t 97:a 99:c 132:+ 145:a 152:g 162:g 174:t 196:g 199:g 218:c 237:c 
+		Subfamily 2 (parent 0 count 904 mutrate 0.04):
+		72:g 92:a 102:a 153:a 154:t 243:t 261:a 264:+ 271:a 
+		
+		VERIFYING SUBFAMILIES (PRUNE IF NECESSARY)
+		3 subfamilies
+		Subfamily 0 (parent -1 count 2096 mutrate 0.05):
+		56:t 153:a 154:t 
+		Subfamily 1 (parent 0 count 1000 mutrate 0.01):
+		64:- 65:- 77:a 87:t 90:c 94:t 97:a 99:c 132:+ 145:a 152:g 162:g 174:t 196:g 199:g 218:c 237:c 
+		Subfamily 2 (parent 0 count 904 mutrate 0.04):
+		72:g 92:a 102:a 153:a 154:t 243:t 261:a 264:+ 271:a 
+		
+		S=3 BEFORE/AFTER PRUNE
+		THERE ARE 3 SUBFAMILIES IN SCAFFOLD
+
+	$ cc -O -lm compute_scaffold_logpvalues.c
+	$ ./a.out >COMPUTE_SCAFFOLD_LOGPVALUES
+	$ cc -O -lm fill_scaffold.c
+	$ ./a.out >FILL_SCAFFOLD
+		4000 total alus
+		4 total repbase
+		3 subfamilies in scaffold
+		4 subfamilies overall (2 leaves in tree)
+	$ ./print_pvalues.perl
+	$ ./print_subfamilies.perl
+		Done choosing subfamily names
+		Done building SUBFAMILIES.INS
+		Done building SUBFAMILIES.SEQ
+
+	# NOTE: 
+		#The contained script, "driving_script.perl" contains all of the above command lines in "system" calls
+		#If I can figure out the data inputs into the program, then I could run the script to generate output

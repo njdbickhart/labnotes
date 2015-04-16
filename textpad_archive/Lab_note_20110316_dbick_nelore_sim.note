@@ -1,0 +1,223 @@
+03/16/2011
+# Creating a simulation dataset using the high density nelore reads
+
+# My goal is to create a perl script that takes a combined, sorted bam file and randomly selects enough reads from it to generate a simulated depth of coverage for cow4
+# Here are some stats that I need to do this:
+	1. The number of reads that mapped to nelore
+	2. The number of non-masked bases that are on cow4
+
+# From there, I hope to design a script that takes the following input:
+	1. The bam file
+	2. The "X" coverage desired
+	3. 
+	
+# Beginning to sort and merge bam files:
+	# For the pebam folder:
+	$ for i in *.bam; do ../../../samtools-0.1.8/samtools sort $i $i.sort; done
+	$ ../../../samtools-0.1.8/samtools merge pebam_combined_sort.bam *.sort.bam
+	
+	# For the sebam folder:
+	$ for i in *.bam; do ../../../samtools-0.1.8/samtools sort $i $i.sort; done
+	$ ../../../samtools-0.1.8/samtools merge sebam_combined_sort.bam *.sort.bam
+	
+	# Now to combine both:
+	$ ../../samtools-0.1.8/samtools merge ./simulation/all_mapped_nelore.bam ./sebam/sebam_combined_sort.bam ./pebam/pebam_combined_sort.bam
+	
+	# Checking number of mapped reads:
+	$ ../../../samtools-0.1.8/samtools view all_mapped_nelore.bam | wc
+		220342310 2864450030 35394137853
+	
+	# Checking number of unmasked bases in the cow4 masked genome that I used:
+	$ perl -e 'while(<>){ $c = ($_ =~ tr/N/N/); $n += $c; $f = ($_ =~ tr/X/X/); $x += $f; $a = ($_ =~ tr/ACGT/ACGT/); $A += $a;} print "\nN: $n\nX: $x\nA: $A\n";' < cow4_36_noun_rmask.fa
+
+		N: 1530162014
+		X: 167379839
+		A: 936871893
+		
+	# Hmm... so I only have about 9X coverage of the reads in the non-repeatmasked region.
+	
+# I am starting to design the script but I have a major concern: individual chromosome coverage.
+# If the reads are selected at random, there is a possibility that some chromosomes will have less coverage than usual.
+# Therefore, I'm going to calculate the number of total reads per chromosome first, then generate random numbers per chromosome to ensure good coverage of each
+# Actually, that's probably too complicated and not necessarily realistic! I should stick with my initial strategy.
+
+# OK, I wrote the script; now to give it a shot!
+	$ perl nelore_simulation_creation.pl -i all_mapped_nelore.bam -o nelore_sim_1x.bed -n 220342310 -x 1
+	
+	
+# The script failed, and I am a little skeptical of the combined bam file; I should have higher coverage of the non-masked portion of the genome (I think!)
+	$ ../../../samtools-0.1.8/samtools view pebam_combined_sort.bam | wc
+		151083470 1964085110 25509757720
+	$ for i in *__*.bam; do ../../../samtools-0.1.8/samtools view $i | wc >> individual.wc; done
+	$ perl -e 'while(<>){ @F = split(/\s/, $_); $t += $F[0];} print "$t\n";' < individual.wc
+		143376838
+		
+	$ ../../../samtools-0.1.8/samtools view sebam_combined_sort.bam | wc
+	$ for i in *_se*.bam; do ../../../samtools-0.1.8/samtools view $i | wc >> individual.wc; done
+		69258840 900364920 9884380133
+	$ perl -e 'while(<>){ @F = split(/\s/, $_); $t += $F[0];} print "$t\n";' < individual.wc
+		59775211
+		
+	# Yeah, so it looks like only a 9X mapped coverage!
+	
+# Rewrote the script and testing it now to generate 1x coverage...
+	$ perl nelore_simulation_creation.pl -i all_mapped_nelore.bam -o nelore_sim_1x.bed -n 220342310 -x 1
+	# Looks ok. Let's check out the chromosome coverage in the bed file:
+		perl -e '%t; while(<>){chomp; @F = split(/\t/); $t{$F[0]} += 1;} foreach $k (sort {$a cmp $b} (keys(%t))){ print "$k\t$t{$k}\n";}' < nelore_sim_1x.bed
+		chr1    1110515
+		chr10   974326
+		chr11   1096578
+		chr12   648926
+		chr13   959800
+		chr14   651837
+		chr15   765953
+		chr16   1299416
+		chr17   664800
+		chr18   860051
+		chr19   890624
+		chr2    1058485
+		chr20   577525
+		chr21   895157
+		chr22   701293
+		chr23   594734
+		chr24   622429
+		chr25   585669
+		chr26   564590
+		chr27   488904
+		chr28   465078
+		chr29   523077
+		chr3    1160008
+		chr4    1073857
+		chr5    1023098
+		chr6    763680
+		chr7    1097794
+		chr8    1043780
+		chr9    773492
+		chrX    453057
+	# Let's repeat the sampling to see the reproducibility
+	$ perl nelore_simulation_creation.pl -i all_mapped_nelore.bam -o nelore_sim_1x.bed -n 220342310 -x 1
+	$ perl -e '%t; while(<>){chomp; @F = split(/\t/); $t{$F[0]} += 1;} foreach $k (sort {$a cmp $b} (keys(%t))){ print "$k\t$t{$k}\n";}' < nelore_sim_1x.bed
+		chr1    1111279
+		chr10   975287
+		chr11   1096757
+		chr12   648544
+		chr13   960584
+		chr14   651539
+		chr15   764528
+		chr16   1297399
+		chr17   664873
+		chr18   860052
+		chr19   891240
+		chr2    1059670
+		chr20   575156
+		chr21   895850
+		chr22   701592
+		chr23   595813
+		chr24   621885
+		chr25   584514
+		chr26   565363
+		chr27   488729
+		chr28   464690
+		chr29   523793
+		chr3    1160411
+		chr4    1075055
+		chr5    1022771
+		chr6    763728
+		chr7    1095117
+		chr8    1044469
+		chr9    774895
+		chrX    454686
+
+	# Pretty reproducible! Chromosome 16 has an abnormally high read count.	
+	
+	# OK, so I believe that sudamant did samplings from 12X all the way down to 1X. I will do 8X all the way down to 1X (8 simulations)
+	# Here are the relevant sections from his supplemental:
+	
+		We estimated the copy number of all genes (discarding those <3kb in length) in individual NA18507 at
+		full coverage (~43X) and in 15 simulated reduced-coverage genomes created by subsampling reads from
+		NA18507 to ~1-25X coverage. Using the full-coverage genome as a gold standard, we computed
+		deviation in copy number predictions for genes in different copy number classes (Fig. S11). As
+		expected, deviation from the full-coverage estimates widened (i.e., accuracy was lower) as coverage
+		decreased. Additionally, because the variance in read depth scales with copy number state, higher copy
+		number states become increasingly difficult to predict within +/- 0.5 copies. Despite this trend, the
+		magnitude of the errors remains small for genes of moderately elevated copy number, even with greatly
+		reduced sequence data. For a genome at 3X coverage, ~96% (1702/ 1764) of genes >3kb in length with
+		copies ranging from 3-10 remain concordant, changing by < +/- 0.5 copies of the full-coverage estimate
+		(Fig. S12). For an 8X coverage genome, >98% of genes >1kb in length stay within this range.
+	
+	
+	# I set up a wrapper to calculate them all:
+	$ sh nelore_simulation_wrapper.sh
+	
+	# I just checked the line count for the simulation reads; they aren't adding up! 
+	# Unfortunately, I need to make sure that the numbers that I'm generating are unique
+	# I am rewriting the script to ensure that they are
+	$ perl nelore_simulation_creation.pl -i all_mapped_nelore.bam -o nelore_sim_1x.bed -n 220342310 -x 1
+	# Rerunning...
+	$ sh nelore_simulation_wrapper.sh
+	
+	
+	# Well, the lower tier coverage maps look good, but the upper tier coverages are still far too low! 
+	# I created a version of the simulation script that simply "subtracts" the reads from the bam file rather than selects for them
+	# This way, the random number generator doesn't "trip" over itself at the higher coverage areas by generating duplicate numbers!
+	
+	$ perl nelore_simulation_creation_high.pl -i all_mapped_nelore.bam -o nelore_sim_8x.bed -n 220342310 -x 8
+	$ wc nelore_sim_8x.bed
+	 208194107
+	# Much better; going to use this script on 7, 6 and 5
+	$ perl nelore_simulation_creation_high.pl -i all_mapped_nelore.bam -o nelore_sim_7x.bed -n 220342310 -x 7; perl nelore_simulation_creation_high.pl -i all_mapped_nelore.bam -o nelore_sim_6x.bed -n 220342310 -x 6; perl nelore_simulation_creation_high.pl -i all_mapped_nelore.bam -o nelore_sim_5x.bed -n 220342310 -x 5
+	
+	
+	# Now to run my automatic alkan pipeline script on the bed files. 
+	$ for i in *.bed; do perl auto_full_alkan_pipeline.pl --in $i; done
+	
+# That completed successfully; Now I need to compare the results
+
+# George raised a very good point: what about the 1x datasets? Would repetition skew the finds?
+# I am going to set up a wrapper script to generate 10 1x samplings and process them using the alkan pipeline.
+	$ sh nelore_1x_wrapper.sh
+	# Should do all of the processing in order. Might even finish by Friday!
+
+_________________________________
+Comparing Nelore simulation
+_________________________________
+
+# So, my first goal is to do a Bedtools merger using named and cated files
+# Here's how I'm going to do it:
+	$ for i in *.wssd; do prefix=`echo $i | cut -d'_' -f3`; echo $prefix; awk '{print $1"\t"$2"\t"$3"\t"var}' var=$prefix $i > $i.named; done
+	$ for i in *.tab; do prefix=`echo $i | cut -d'_' -f3`; echo $prefix; awk '{print $1"\t"$2"\t"$3"\t"var}' var=$prefix $i > $i.named; done
+	
+	$ cat *.wssd.named > nelore_sim_gain_name.bed
+	$ cat *.tab.named > nelore_sim_loss_name.bed
+	
+	$ ../../BEDTools-Version-2.10.1/bin/mergeBed -i nelore_sim_gain_name.bed -nms > nelore_sim_gain_name.merged
+	$ ../../BEDTools-Version-2.10.1/bin/mergeBed -i nelore_sim_loss_name.bed -nms > nelore_sim_loss_name.merged
+	
+	# Created a very fast script to count the number of datasets each interval was within:
+	$ perl nelore_simulation_merged_table_count.pl nelore_sim_gain_name.merged > table1_nelore_gain_count.bed
+	$ perl nelore_simulation_merged_table_count.pl nelore_sim_loss_name.merged > table1_nelore_loss_count.bed
+	
+# OK, now to compare the 1x simulation results to check the reproducibility
+	$ cp ./nelore_1xsim*/*.final.wssd ./final_output/
+	$ cp ./nelore_1xsim*/*.final.deletions.tab ./final_output/
+	
+	$ for i in *.wssd; do prefix=`echo $i | cut -d'_' -f3`; echo $prefix; awk '{print $1"\t"$2"\t"$3"\t"var}' var=$prefix $i > $i.named; done
+	$ for i in *.tab; do prefix=`echo $i | cut -d'_' -f3`; echo $prefix; awk '{print $1"\t"$2"\t"$3"\t"var}' var=$prefix $i > $i.named; done
+	
+	$ cat ./1x_simulation/*.wssd.named > 1x_sim_gain_name.bed
+	$ cat ./1x_simulation/*.tab.named > 1x_sim_loss_name.bed
+	
+	$ ../../BEDTools-Version-2.10.1/bin/mergeBed -i 1x_sim_gain_name.bed -nms > 1x_sim_gain_name.merged
+	$ ../../BEDTools-Version-2.10.1/bin/mergeBed -i 1x_sim_loss_name.bed -nms > 1x_sim_loss_name.merged
+	
+	$ perl nelore_simulation_merged_table_count.pl 1x_sim_gain_name.merged > sim_1_nelore_gain_count.bed
+	$ perl nelore_simulation_merged_table_count.pl 1x_sim_loss_name.merged > sim_1_nelore_loss_count.bed
+	
+# I wrote a script to create a larger comparison table for each file and list results by chromosome
+# I first need to take the "golden standard" dataset (my initial nelore wssd and deletion bed files) and convert them to named bed files
+	$ cat total_nelore_doc_r_file1.bed.final.wssd | awk '{print $1"\t"$2"\t"$3"\t"var}' var=total > total_nelore_doc_gain.bed.named
+	$ cat total_nelore_doc_r_file1.bed.final.deletions.tab | awk '{print $1"\t"$2"\t"$3"\t"var}' var=total > total_nelore_doc_loss.bed.named
+	
+	# Now I can run the program!
+	$ perl nelore_sim_comp_vary_coverage.pl total_nelore_doc_gain.bed.named nelore_sim_1x_r_file1.bed.final.wssd.named nelore_sim_2x_r_file1.bed.final.wssd.named nelore_sim_3x_r_file1.bed.final.wssd.named nelore_sim_4x_r_file1.bed.final.wssd.named nelore_sim_5x_r_file1.bed.final.wssd.named nelore_sim_6x_r_file1.bed.final.wssd.named nelore_sim_7x_r_file1.bed.final.wssd.named nelore_sim_8x_r_file1.bed.final.wssd.named nelore_total_8x_comp.tab
+	# It works well, but I need a way to limit decimal places among numbers

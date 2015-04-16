@@ -1,0 +1,52 @@
+03/15/2014
+# These are the notes for my analysis of MHC fasta contigs for the immune system grant
+
+# First, I need to prepare data from the sequence data that I already have.
+# I'll use John's data and George's data
+
+3850: /seq1/mhc_immune_cattle
+$ samtools faidx Cattle_KIR_complex.fasta
+$ bwa index Cattle_KIR_complex.fasta
+$ mrsfast --index Cattle_KIR_complex.fasta
+
+$ ~/jdk1.7.0/bin/java -jar ~/picard-tools-1.88/CreateSequenceDictionary.jar R=Cattle_KIR_complex.fasta O=Cattle_KIR_complex.fasta.dict
+
+$ cp /POD1_1/users/bickhart/john_sequence_starter_config.txt ./
+$ perl /POD1_1/users/bickhart/bin/run_cnv_caller_pipeline.pl -c john_sequence_starter_config.txt -p 10
+
+3850: /seq1/mhc_immune_cattle/johns_hol
+$ for i in Juniper-Rotate-Jed Lystel-Leduc Maizefield-Bellwood Pawnee-Farm-Arlinda Sweet-Haven-Tradition; do echo $i; perl /POD1_1/users/bickhart/bin/merge_bams_sort_index.pl -l 100 -i ./$i/ -b /POD1_1/users/bickhart/bin/ -o ./$i/$i.merged.sorted.total.bam -p 5 -f 1; done
+$ for i in ./*/*.merged.sorted.total.bam; do echo -n "$i "; done ; echo
+$ samtools mpileup -uf ../Cattle_KIR_complex.fasta ./Glen-Drummond-Dragon/Glen-Drummond-Dragon.merged.sorted.total.bam ./Juniper-Rotate-Jed/Juniper-Rotate-Jed.merged.sorted.total.bam ./Lystel-Leduc/Lystel-Leduc.merged.sorted.total.bam ./Maizefield-Bellwood/Maizefield-Bellwood.merged.sorted.total.bam ./Pawnee-Farm-Arlinda/Pawnee-Farm-Arlinda.merged.sorted.total.bam ./Sweet-Haven-Tradition/Sweet-Haven-Tradition.merged.sorted.total.bam | bcftools view -bvcg - > johns_hol.raw.bcf
+$ bcftools view johns_hol.raw.bcf | vcfutils.pl varFilter -D100 > johns_hol.vcf
+
+# Now I need to create a GTF file for the annotation information that John sent me
+$ cd ~/snpEff/data
+$ mkdir kir_h1
+$ cp /seq1/mhc_immune_cattle/cattle_kir_complex.gtf ./genes.gtf
+$ gzip genes.gtf
+$ cp /seq1/mhc_immune_cattle/Cattle_KIR_complex.fasta ./kir_h1.fa
+$ gzip kir_h1.fa
+
+# Damn, the file format is giving me errors because the SNPeff author didn't think anyone would ever try to use custom annotation for small segments of the genome!
+# Going to try calculate the GMS on the data to try to find useful SNPs
+$ mkdir kir_h1_gms
+$ cp Cattle_KIR_complex.fasta ./kir_h1.fasta
+$ bwa index kir_h1.fasta
+$ samtools faidx kir_h1.fasta
+$ ~/jdk1.7.0/bin/java -Xmx4500m -jar GmsCalculationMapper.jar -i kir_h1.fasta -b kir.bwa_base -s kir.sort -m kir.unsort.map -o kir_h1_gms/kir_h1 -l 36 -f kir.illumina.fq -c seq19
+
+# I had to revise the kir_h1.fasta to remove the extra sequence after the sequence name, but it worked!
+$ cd kir_h1_gms/kir_h1/
+$ sort kir.unsort.map > kir.sorted.map
+$ cat kir.sorted.map | reducer analyzer -l 36 -q A -s 0.01 -i 0 -d 0 -o 0 -t 20 1> kir.reduced.txt 2> kir.reduction_error.log
+
+#OK now its time to select SNPs!
+$ perl ../quick_gms_accessibility_check.pl -i johns_hol.vcf -g ../kir_h1_gms/kir_h1/kir.reduced.txt > johns_hol_sp_check.tab
+
+
+# Time to test my RPSR program to see if it can work effectively on the data
+3850: /seq1/mhc_immune_cattle/johns_hol/Glen-Drummond-Dragon
+$ emacs seq_gap.txt  <- just a dummy text file for the gap alignment
+$ perl /POD1_1/users/bickhart/bin/convert_mrsfast_sams_to_bam.pl -i split_read -r /seq1/mhc_immune_cattle/Cattle_KIR_complex.fasta.fai -b /POD1_1/users/bickhart/bin/ -c 1
+

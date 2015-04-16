@@ -1,0 +1,182 @@
+06/05/2011
+# I am going to use this note file to record the steps and progress on my alignment of all of the reads to the chrunall scaffolds that I will create
+# I am going to check out the script that I used to do this before, modify it, and then give it one last shot.
+# I need to separate the chrunall contigs into 100mb chunks to avoid segmentation faults in mrsfast. 
+
+# Created a script to generate index files and a merged chrunall fasta with headers
+	$ perl merge_chrun_all_contigs.pl chrUn.scaffolds.fa
+	# This script has a clever way of taking a long string and sectioning it with newlines quickly.
+	
+	
+	# I used several one-liners to determine if the index numbers matched up to the sequence; they apparently did. 
+	# I did have to translate the lowercase "n's" to capital "N's" however. 
+	# Now that I'm confident that the indicies are ok, I'm going to upload it to the server and process it.
+	# I will only use up to four processors max at a time (perhaps more over the weekends)
+	
+	$ cp cow4_mask_unall_a.fa cow4_mask_unall_b.fa
+	$ cp cow4_mask_unall_a.fa cow4_mask_unall_c.fa
+	$ cp cow4_mask_unall_a.fa cow4_mask_unall_d.fa
+	$ cp cow4_mask_unall_a.fa cow4_mask_unall_e.fa
+	$ cp cow4_mask_unall_a.fa cow4_mask_unall_f.fa
+	
+	..
+	$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --index cow4_mask_unall_d.fa
+	
+	$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools faidx cow4_mask_unall_a.fa
+
+# Now we're ready to run. The script in the /mnt/data8/dbickhart/chrun/ folder processes gzipped files using the letter scheme I came up with previously
+	# First, I need to put the files into lists:
+		$ ls /mnt/gliu1_usb/dbickhart/breed_doc/angus/fastqs/*.gz > angus_ld_list.txt
+		$ ls /mnt/gliu1_usb/dbickhart/breed_doc/brahman/fastq/*.gz > brahman_ld_list.txt
+		$ ls /mnt/gliu1_usb/dbickhart/breed_doc/gir/fastq/*.gz > gir_ld_list.txt
+		$ ls /mnt/gliu1_usb/dbickhart/breed_doc/holstein/fastqs/*.gz > holstein_ld_list.txt
+		$ ls /mnt/gliu1_usb/dbickhart/breed_doc/limousin/fastq/*.gz > limousin_ld_list.txt
+		$ ls /mnt/gliu1_usb/dbickhart/breed_doc/jersey/fastq/*.gz > jersey_ld_list.txt
+		$ ls /mnt/gliu1_usb/dbickhart/breed_doc/romagnola/fastq/*.gz > romagnola_ld_list.txt
+		$ ls /mnt/gliu1_usb/dbickhart/breed_doc/nelore/fastq/*.gz > nelore_ld_list.txt
+		
+		$ ls /mnt/gliu1_usb/dbickhart/nelore_30x/fastqs/09*/*fq_* | grep -v 0912 > nelore_hd_list_1.txt
+		$ ls /mnt/gliu1_usb/dbickhart/nelore_30x/fastqs/10*/*fq_* | grep -v 1004 >> nelore_hd_list_2.txt
+		$ ls /mnt/gliu1_usb/dbickhart/nelore_30x/fastqs/1004*/*fq_* > nelore_hd_list_3.txt
+		
+	# Now I will run the pipeline on the lists:
+		$ perl mrsfast_cow4_unall_se_letter_wrapper.pl angus_ld_list.txt a angus_ld
+		$ perl mrsfast_cow4_unall_se_letter_wrapper.pl brahman_ld_list.txt b brahman_ld
+		$ perl mrsfast_cow4_unall_se_letter_wrapper.pl gir_ld_list.txt c gir_ld
+		$ perl mrsfast_cow4_unall_se_letter_wrapper.pl holstein_ld_list.txt d holstein_ld
+		$ perl mrsfast_cow4_unall_se_letter_wrapper.pl limousin_ld_list.txt c limousin_ld
+		$ perl mrsfast_cow4_unall_se_letter_wrapper.pl jersey_ld_list.txt d jersey_ld
+		$ perl mrsfast_cow4_unall_se_letter_wrapper.pl nelore_ld_list.txt c nelore_ld
+		$ perl mrsfast_cow4_unall_se_letter_wrapper.pl romagnola_ld_list.txt b romagnola_ld
+		
+		$ perl mrsfast_cow4_unall_se_nocomp_letter_wrapper.pl nelore_hd_list_1.txt a nelore_hd_1
+		$ perl mrsfast_cow4_unall_se_nocomp_letter_wrapper.pl nelore_hd_list_2.txt b nelore_hd_2
+		$ perl mrsfast_cow4_unall_se_nocomp_letter_wrapper.pl nelore_hd_list_3.txt c nelore_hd_3
+		
+		
+	# OK, my initial assessment of the mapping of these reads is that the tandem repeats were not properly masked. I need to do this first
+		$ perl -lane 'if($F[0] =~ /chrUn/){print "$F[0]\t$F[1]\t$F[2]";}' < bosTau4.trf.bed > chrun_trf.bed
+		$ ../BEDTools-Version-2.10.1/bin/maskFastaFromBed -fi chrUn.scaffolds.fa -bed chrun_trf.bed -fo chrun_trf_mask_scaffolds.fa
+		$ perl merge_chrun_all_contigs.pl chrun_trf_mask_scaffolds.fa
+		
+		# Testing to see how many more "N's" were mapped:
+		$ perl -e 'while(<>){if($_ =~ />/){next;}else{$c += ($_ =~ tr/N/N/);}} print "$c\n";' < cow4_mask_unall.fa
+			158798350
+		$ perl -e 'while(<>){if($_ =~ />/){next;}else{$c += ($_ =~ tr/N/N/);}} print "$c\n";' < cow4_mask_trf_unall.fa
+			158798350
+			
+		# So, nope! Already were masked.
+		
+	# Now, I'm going to extend the current repeats by 36bp to try to avoid edging effects. 
+	# I wrote a c executable to attempt to do this (the perl solution took up too much memory)
+		$ perl split_fasta.pl cow4_mask_unall.fa
+		$ ./extend_36_bp chrU1.fa 
+			Number of Ns	6394968
+		# Unfortunately, it did not work exactly the way I wanted it to... I will have to do this using the memory resources of server 3 with my perl script.
+		# Copying the split chrun fastas to server 3
+		# Now to run the script on each fasta sequentially
+			$ perl extend_repeat_mask.pl chrU1.fa 36 chrU1.fa.mask
+			# That didn't work, perhaps I should just note the indicies where the N's are? Make a bed file and use that to remask the genome with bedtools?
+			
+			# Created a script to identify the the locations of repeats in the fasta
+			$ perl extend_repeat_mask.pl cow4_mask_unall_a.fa cow4_mask_unall_reps.bed
+			$ perl -lane '$s = $F[1] - 36; if($s < 0){$s = 0;} $e = $F[2] + 36; print "$F[0]\t$s\t$e";' < cow4_mask_unall_reps.bed > cow4_mask_unall_36_reps.bed
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/maskFastaFromBed -fi cow4_mask_unall_a.fa -bed cow4_mask_unall_36_reps.bed -fo cow4_mask_unall_36.fa
+			
+		# OK, let's test this out on one of the gir sequences just to see if this is better.
+			$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --index cow4_mask_unall_36.fa
+			$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search cow4_mask_unall_36.fa --seqcomp --seq /mnt/gliu1_usb/dbickhart/breed_doc/gir/fastq/BIGI01P.FC42WJC.6.1.15.fq.gz -o /mnt/data8/dbickhart/chrun/BIGI_36_mask_out.sam
+			# 13 million mappings for this masked version, and 22 million for the previous one. I think that I'll use the 36 bp extension masked assembly (it makes sense since I did this for the other chromosomes; I should be consistent)
+			# I will pretend like I did not run the previous commands with the older masked version, so I will keep them updated with new runs.
+			
+			
+# OK, now I will extract the bed files from the bam files and get ready to start optimizing the pipeline
+	# I created a script to automatically extract bed files from each animal from a combination of bam files.
+	$ perl convert_named_bam_to_bed.pl -n  (in the angus_ld folder)
+	
+	# There seems to be quite a bit of mapped reads; I'm guessing that some repeats were not masked in the UCSC assembly. 
+	# Going to try to repeatmask chrUnAll in the meantime on my Ubuntu virtualbox
+		$ ../../RepeatMasker/RepeatMasker -e wublast -pa 4 -s -no_is -species cow -dir . cow4_mask_unall_a.fa
+		# Found 23,000 repeat intervals.
+		# Crap! Going to have to remask the genome
+		$ perl -lane '$e = $F[2] + 36; $s = $F[1] - 36; if($s < 0){ $s = 0;} print "$F[0]\t$F[1]\t$F[2]";' < cow4_mask_unall_a.bed | ../../BEDTools-Version-2.10.1/bin/mergeBed -i stdin > cow4_unall_36_new_mask.bed
+		# Now I have the extended repeat masking bed. Now it's time to remask the genome, calculate the autosomal, non-repetitive sequence, and then see if this is still worthwhile to do
+		$ ../../BEDTools-Version-2.10.1/bin/maskFastaFromBed -fi cow4_mask_unall_a.fa -bed cow4_unall_36_new_mask.bed -fo cow4_unall_36_new_mask.fa
+		
+		$ calculate_base_composition_fasta.pl cow4_mask_unall_a.fa
+			chrU1:	A: 9719371	C: 7042852	G: 7000108	N: 64464682	T: 9668800	X: 2172581	
+			chrU2:	A: 10274076	C: 7452470	G: 7427044	N: 54160765	T: 10235799	X: 10452962	
+			chrU3:	A: 7148519	C: 5145784	G: 5135582	N: 41097465	T: 7120405	X: 34371961	
+			chrU4:	A: 3311182	C: 2346680	G: 2340434	N: 19056577	T: 3310768	X: 69643832	
+			chrU5:	A: 55614	C: 35147	G: 34681	N: 289180	T: 55473	X: 1614182	
+			
+			Total Counts:
+			A:	30508762
+			C:	22022933
+			G:	21937849
+			T:	30391245
+			X:	118255518
+			N:	179068669
+			total autosomal:	104860789	total repetitive:	297324187	perc auto:	 26.07277627397
+			
+		$ calculate_base_composition_fasta.pl cow4_unall_36_new_mask.fa
+			chrU1:	A: 9317140	C: 6735923	G: 6693939	N: 65882845	T: 9265966	X: 2172581	
+			chrU2:	A: 9818890	C: 7110619	G: 7084791	N: 55753620	T: 9782234	X: 10452962	
+			chrU3:	A: 6790870	C: 4872311	G: 4864122	N: 42356518	T: 6763934	X: 34371961	
+			chrU4:	A: 3139065	C: 2220258	G: 2212509	N: 19654091	T: 3139718	X: 69643832	
+			chrU5:	A: 53159	C: 33315	G: 32920	N: 297684	T: 53017	X: 1614182	
+			
+			Total Counts:
+			A:	29119124
+			C:	20972426
+			G:	20888281
+			T:	29004869
+			X:	118255518
+			N:	183944758
+			total autosomal:	99984700	total repetitive:	302200276	perc auto:	 24.8603766839863
+			
+		# OK, so not quite as bad as I thought; UCSC just did a horrible job of repeatmasking (again). 
+		# Now I should really run TRF on it one last time to see if I've caught everything.
+			$ ../../trf404.linux.exe cow4_unall_36_new_mask.fa 2 7 7 80 10 50 500 -m -d
+			# Just for future reference, the inputs to the program can be derived from the following page:
+			http://tandem.bu.edu/trf/trf.unix.help.html
+			
+		$ calculate_base_composition_fasta.pl cow4_unall_36_new_mask.fa.2.7.7.80.10.50.500.mask
+			chrU1:	A: 9234150	C: 6639955	G: 6590757	N: 66244744	T: 9186207	X: 2172581	
+			chrU2:	A: 9739652	C: 7005431	G: 6991767	N: 56119608	T: 9693696	X: 10452962	
+			chrU3:	A: 6732459	C: 4803248	G: 4794389	N: 42609214	T: 6708445	X: 34371961	
+			chrU4:	A: 3107868	C: 2191041	G: 2182976	N: 19775704	T: 3108052	X: 69643832	
+			chrU5:	A: 52990	C: 33219	G: 32851	N: 298343	T: 52692	X: 1614182	
+			
+			Total Counts:
+			A:	28867119
+			C:	20672894
+			G:	20592740
+			T:	28749092
+			X:	118255518
+			N:	185047613
+			total autosomal:	98881845	total repetitive:	303303131	perc auto:	 24.5861608216812
+
+		# Now to copy it back to the server and rerun all that stuff...
+			# replaced the old masked files with the new ones
+			# re-indexing
+			$ for i in cow4_mask_unall_*.fa; do /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --index $i; done
+			# Rerunning everything
+			
+			# George would like me to focus on the high-density nelore data first before anything else. 
+			# I will run that next instead of the hapmap animals. 
+			
+_______________________________
+Nelore test
+_______________________________
+
+# Now, to extract the bed files from the nelore runs:
+	$ for i in *.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> nelore_1_hits.bed; done
+	$ for i in *.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> nelore_2_hits.bed; done
+	$ for i in *.bam; do /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> nelore_3_hits.bed; done
+	
+	$ cat nelore_hd_*/*.bed > nelore_hd_beds/combined_nelore_hd_chrun.bed
+	$ perl combine_bed_hits.pl combined_nelore_hd_chrun.bed combined_nelore_hd
+	
+	# The file is way too big to handle! I have to redesign my script (to read each file sequentially, rather than put the files into memory all at once).
+	# There is another option: Do one subset of the data rather than use it all at once.

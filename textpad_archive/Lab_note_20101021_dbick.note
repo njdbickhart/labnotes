@@ -1,0 +1,171 @@
+2010_10_21 - 2010_10_25
+# Novoalign (on one core) is simply too slow to process the reads for Hydra-sv
+# I need to find another alignment program that is just as/almost as sensitive as novoalign, filters out false-positives, and reports more data
+
+# Here are two options that I have found after a literature search:
+	- Gassst
+		-Provides several filters that reduce false-positive alignment positions
+		-This reduces time spent in the dynamic programming algorithm that seems to increase the time in novoalign
+		-Sensitivity is high
+		-Doesn't generate a permanent index file of the genome; runs off of the raw fasta
+		-Doesn't have a paired end setting, so that's out!
+	- Pass
+		-Highly sensitive gap alignment program
+		-Moderately fast but without the quantity of filters found in Gassst
+		-Has a paired end setting and prints a graph of read length distributions
+		-Produces .gff files and does not produce sam file output
+		
+# I ended the novoalign run in order to test a new setting: -k for calibration. Sadly, it is only available in the licensed version of novoalign!
+
+	# A post on the seqanswers forum suggested to index the reference genome using default settings (without altering the -k and -s options
+	
+	$ ../../novocraft/novoindex -m /mnt/gliu1_usb/dbickhart/blackstar/small/novo_cow4_index /mnt/data110/gliu/cow4.fa
+	
+		# novoindex (2.7) - Universal k-mer index constructor.
+		# (C) 2008 NovoCraft
+		# novoindex -m /mnt/gliu1_usb/dbickhart/blackstar/small/novo_cow4_index /mnt/data110/gliu/cow4.fa
+		# Creating 9 indexing threads.
+		# Building with 14-mer and step of 2 bp.
+		
+	# I had previously built the index with a step of 3 bp.
+	
+	$ ../novocraft/novoalign -d ../blackstar/small/novo_cow4_index -f 080902_2_1_tier2.fq 080902_2_2_tier2.fq -o SAM -r R -i PE 250,50 -H > 080902_2_tier2.sam
+		
+		# novoalign (2.07.00 - Sep 24 2010 @ 13:44:59) - A short read aligner with qualities.
+		# (C) 2008 NovoCraft
+		# Licensed for evaluation, educational, and not-for-profit use only.
+		#  novoalign -d ../blackstar/small/novo_cow4_index -f 080902_2_1_tier2.fq 080902_2_2_tier2.fq -o SAM -r R -i PE 250,50 -H
+		# Interpreting input files as Sanger FASTQ.
+		# Index Build Version: 2.7
+		# Hash length: 14
+		# Step size: 2
+		
+	# That sped up the SAM file generation rate from 2kb/s to ~5kb/s. I might want to try to run fastqc to crop out bad reads from the dataset to reduce the alignment time!
+	
+	# Instead, I am attempting to limit alignment scores for concordant reads by increasing the -t option to 180
+	$ ../novocraft/novoalign -d ../blackstar/small/novo_cow4_index -f 080902_2_1_tier2.fq 080902_2_2_tier2.fq -o SAM -t 180 -r R -i PE 250,50 -H > 080902_2_tier2.sam
+	
+	# Still about the same speed!
+	
+	# So, tips for increasing the speed seem to follow this pattern:
+		- Decrease the step size (this also increases memory footprint though) of the index
+		- Use the -k option and output a file using the -K option for use in later alignments
+		- Increase the kmer size (possibly to 12? also increases the memory footprint)
+		- Though, the novoalign charts (http://www.novocraft.com/wiki/tiki-index.php?page=Novoindex+-+Indexing+the+Reference+Genome&structure=Novocraft+Technologies&page_ref_id=33) suggest that the default
+			14 kmer and 2 step are the optimal rating...
+			
+			
+	# Just received the licensed version of novoalign; going to test it out!
+	$ ../novocraft/novoalign -d ../blackstar/small/novo_cow4_index -f 080902_2_1_tier2.fq 080902_2_2_tier2.fq -o SAM -k -K 080902_cali -r R -i PE 250,50 -H -c 3 > 080902_2_tier2.sam
+		# novoalign (2.07.00MT - Sep 24 2010 @ 13:44:59) - A short read aligner with qualities.
+		# (C) 2008 NovoCraft
+		# Licensed to _Bovine_Functional_Genomics_Laboratory_
+		#  novoalign -d ../blackstar/small/novo_cow4_index -f 080902_2_1_tier2.fq 080902_2_2_tier2.fq -o SAM -k -K 080902_cali -r R -i PE 250,50 -H -c 3
+		# Interpreting input files as Sanger FASTQ.
+		# Index Build Version: 2.7
+		# Hash length: 14
+		# Step size: 2
+		
+	# Novoalign is still running as of 1:45pm 10/24/2010!
+	# Finished at 12:00pm 10/25/2010
+		$ ../samtools-0.1.8/samtools view -bS -o 080902_2_tier2_n.bam 080902_2_tier2.sam
+		$ ../samtools-0.1.8/samtools sort -n 080902_2_tier2_n.bam 080902_2_tier2_n_sort
+		$ ../BEDTools-Version-2.10.0/bin/bamToBed -i 080902_2_tier2_n_sort.bam -tag NM | ../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > 080902_2_tier2_n.bedpe
+		$ ../BEDTools-Version-2.10.0/bin/pairToBed -a 080902_2_tier2_n.bedpe -b ../cow4_repeats_c.bed -type neither | cut -f 1-14 > 080902_2_tier2_n_nor.bedpe
+		$ ../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i 080902_2_tier2_n_nor.bedpe > 080902_2_n_nor_ded.bedpe
+		
+		# Calculate MAD
+		$ ../samtools-0.1.8/samtools view 080902_2_sorted.bam | perl -lane 'print "$F[3]\t$F[7]"' > pos_080902_2.pos
+		$ perl ../blackstar/calculateMAD.pl pos_080902_2.pos
+		# too many zeroes
+		$ perl -lane 'if($F[1] == 0){next;}else{print "$F[0]\t$F[1]";}' < pos_080902_2.pos > p_080902_2.pos
+		$ perl ../blackstar/calculateMAD.pl p_080902_2.pos
+		
+			The median of this dataset is: 88
+			The M.A.D. of this dataset is: 10
+
+		$ ../Hydra-Version-0.5.3/bin/hydra -in 080902_2_n_nor_ded.bedpe -out 080902_2_n_breaks -mld 100 -mno 288 -is -li -ms 3
+		# Mostly just chrUN
+
+		
+
+____________________________________________
+Mosaik comparison time estimate
+____________________________________________
+# Maybe use Mosaik, but without the third tier alignment stage designed for repeats?
+	
+# Testing Mosaik in a new screen to compare sam output. If Mosaik is just as sensitive, then I will use that for the tier 2 alignment.
+	$ perl -e '$c = 1; while(<>){if($_ =~ />chrUn.*/){$c = 0;}elsif($c == 1){print $_;}}' < bosTau4.fa > bosTau4_noUn.fa
+	$ gzip bosTau4_noUn.fa
+	(<>) NOTE: mosaikbuild only converts reference sequences that are gzipped!
+	(<>) I also had to update to version 1.1 of the Mosaik suite for 64-bit linux in order to get the reference genome to map!
+	$ ./MosaikBuild -fr /mnt/gliu1_usb/blackstar/NGS/cow4_ucsc/bosTau4_noUn.fa.gz -oa /mnt/gliu1_usb/dbickhart/mosaik-aligner/mos_cow4_ref.dat
+	$ ./MosaikJump -ia ../mos_cow4_ref.dat -out ../mos_cow4_ref_14 -hs 14
+		
+	$ ./MosaikBuild -q /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_1_tier2.fq -q2 /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_2_tier2.fq -out /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_tier2.dat -st illumina
+	$ sleep 2h; ./MosaikAligner -in /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_tier2.dat -out /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_align.dat -ia ../mos_cow4_ref.dat -hs 14 -mm 4 -mhp 100 -act 20 -j ../mos_cow4_ref_14 -p 3
+		
+	# That last command failed because the jmp file was not prepared in time. I know why:
+		# Mosaik fills up the /tmp/ directory with temporary files
+		# By the time MosaikJump was ready to create the hash tables, /tmp was full
+		# in order to change the output directory for temporary files, I did the followign:
+		$ export MOSAIK_TMP=/mnt/gliu1_usb/dbickhart/mosaik-aligner/tmp
+			
+	$ ./bin/MosaikAligner -in /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_tier2.dat -out /mnt/gliu1_usb/dbickhart/holstein_7x/080902_2_align.dat -ia mos_cow4_ref.dat -hs 14 -mm 4 -mhp 100 -act 20 -j mos_cow4_ref_14 -p 4
+	# Mosaik was much faster
+		Alignment statistics (reads):
+		============================================
+		# unaligned:               2055629 ( 60.0 %)
+		# orphaned:                 910793 ( 26.6 %)
+		# both mates unique:         61398 (  1.8 %)
+		# one mate non-unique:       87508 (  2.6 %)
+		# both mates non-unique:    311310 (  9.1 %)
+		--------------------------------------------
+		total reads:               3426638
+		total reads aligned:       1371009 ( 40.0 %)
+		
+		MosaikAligner CPU time: 9316.470 s, wall time: 2523.909 s
+
+	$ ./bin/MosaikText -in ../holstein_7x/080902_2_align.dat -bam 080902_2_mos.bam
+	$ ../samtools-0.1.8/samtools sort -n 080902_2_mos.bam  080902_2_mos_sort.bam
+	$ ../BEDTools-Version-2.10.0/bin/bamToBed -i 080902_2_mos_sort.bam.bam -tag NM | ../Hydra-Version-0.5.3/scripts/pairDiscordants.py -i stdin -m hydra > 080902_2_tier2_m.bedpe
+	$ ../BEDTools-Version-2.10.0/bin/pairToBed -a 080902_2_tier2_m.bedpe -b ../cow4_repeats_c.bed -type neither | cut -f 1-14 > 080902_2_tier2_m_nor.bedpe
+	$ ../Hydra-Version-0.5.3/scripts/dedupDiscordants.py -i 080902_2_tier2_m_nor.bedpe > 080902_2_m_nor_ded.bedpe
+	$ ../Hydra-Version-0.5.3/bin/hydra -in 080902_2_m_nor_ded.bedpe -out 080902_2_m_breaks -mld 100 -mno 288 -is -li
+
+	
+	$ perl -lane 'if($F[0] eq $F[3]){print $_;}else{next;}' < 080902_2_m_breaks.final
+		chrname	start	end	chr2	start	end	breakID	Ori1	Ori2	edit1	edit2	maps1	maps2	size	#maps	wsupport	finsupport	finwsupport	numUnique	numAnchor	numMultmap
+		chr27   6655775 6655898 chr27   6668983 6669133 420     2       +       -       1.5     1.5     1       2       13359   2       1.5     2       1.5       1       1       0
+		chr7    53598284        53598374        chr7    53600203        53600259        599     2       +       +       1.5     3.5     6       7       1976      2       0.2     2       0.2     0       0       2
+		chr7    61669037        61669077        chr7    61672654        61672708        611     2       +       -       2.5     3       1       2       3672      2       1       2       1       0       2       0
+		chr7    53572583        53572692        chr7    53600558        53600642        613     2       +       -       2.5     2.5     13      1       28060     2       1.5     2       1.5     1       1       0
+		chr9    60261700        60261760        chr9    64844459        64844500        650     2       +       -       1       1.5     313     115     4582801   2       1       2       1       0       2       0
+		chrX    17410400        17410454        chrX    17463488        17463523        652     2       +       -       2.5     2.5     2       1       53124     2       1       2       1       0       2       0
+
+	# Printing only the reads that have fewer than three mappings per pair
+	$ perl -lane 'if($F[12] < 3 && $F[13] < 3){print $_;}' < mos_080902_2_test.final
+		chr10   65554151        65554187        chr2    2094128 2094168 49      2       -       -       3       2       1       1       -63459982       2 2
+		        2       2       2       0       0
+		chr10   50978789        50978825        chr24   63655577        63655678        51      2       -       -       2       3       1       1       12676890   2       1.5     2       1.5     1       1       0
+		chr13   10051192        10051228        chr2    2101309 2101370 194     2       +       -       2.5     3.5     1       1       -7949821        2 2
+		        2       2       2       0       0
+		chr2    68288158        68288196        chr20   68309060        68309098        285     2       -       +       1.5     3       2       2       20941      2       0.2     2       0.2     0       0       2
+		chr2    2101654 2101700 chr21   33921285        33921324        286     3       -       -       1       2       1       1       31819671        3 3
+		        3       3       3       0       0
+		chr2    4865530 4865566 chr24   55266218        55266256        287     2       +       -       2       3       1       1       50400727        2 1.5      2       1.5     1       1       0
+		chr2    6751881 6751923 chr9    3980316 3980354 294     2       +       -       3       3.5     1       1       -2771526        2       1.5     2 1.5      1       1       0
+		chr21   1927962 1927998 chr29   49311788        49311876        300     2       +       +       2.5     2       2       1       47383915        2 1
+		        2       1       0       2       0
+		chr27   6655775 6655898 chr27   6668983 6669133 420     2       +       -       1.5     1.5     1       2       13359   2       1.5     2       1.5
+		        1       1       0
+		chr3    97316710        97316758        chr9    3973692 3973734 488     2       +       +       2       3.5     1       1       -93342975       2 2
+		        2       2       2       0       0
+		chr7    61669037        61669077        chr7    61672654        61672708        611     2       +       -       2.5     3       1       2       3672       2       1       2       1       0       2       0
+		chrX    17410400        17410454        chrX    17463488        17463523        652     2       +       -       2.5     2.5     2       1       53124      2       1       2       1       0       2       0
+
+	$ perl -lane 'if($F[12] < 3 && $F[13] < 3){print $_;}' < novo_080902_2_test.final
+		chr2    2101654 2101700 chr21   33921285        33921324        1       3       -       -       1       2       1       1       31819671        3       3       3       3       3       0   0
+
+	# This is the same as one of the mosaik calls
+			

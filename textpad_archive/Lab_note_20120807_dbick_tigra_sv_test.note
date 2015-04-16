@@ -1,0 +1,255 @@
+08/07/2012
+# These are my notes on the installation and testing of tigra-sv, the SV-oriented local assembler
+
+_________________________________
+Installation
+_________________________________
+
+# Installing Tigra-sv is a huge pain, mostly because I have to get everything from the git repository of the washu group
+# Here is the link to the base directory of the repository
+https://github.com/genome
+
+# I also need to install my own local version of cmake, the alternative makefile creation program
+# Their cmake file is especially painful, because they use custom cmake modules (found in their repository "build-common" folder) in the base cmake file
+# I need to do some extensive manipulation of the file to get it to work properly
+
+# Downloading the following packages and installing:
+https://github.com/Kitware/CMake/
+https://github.com/genome/build-common
+https://github.com/genome/tigra-sv
+
+# Installing Cmake is easy enough
+Lewis: /ibfs7/asg2/bickhartd/Kitware-CMake-e2a5717
+$ ./configure
+$ make
+
+# Installing the custom cmake files and scripts is more painful
+Lewis: /ibfs7/asg2/bickhartd/Kitware-CMake-e2a5717
+$ mkdir build-common
+$ mkdir build-common/bin
+$ mkdir build-common/python
+
+$ cp ../genome-build-common-bd01ad3/bin/* ./build-common/bin    */
+$ cp ../genome-build-common-bd01ad3/python/* ./build-common/python/    */
+$ cp ../genome-build-common-bd01ad3/cmake/* ./Modules/    */
+
+# Now to change some of the variables in the VersionHelper and CmakeLists.txt cmake modules
+# Created direct paths to files in the VersionHelper.cmake file (lines 2 and 3)
+# Created direct paths in CmakeLists.txt as well
+
+# Now to test to see if the changes took hold
+Lewis: /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea
+$ ../Kitware-CMake-e2a5717/bin/cmake CMakeLists.txt
+# It worked, now to cd to the build directories to make the files
+
+Lewis: /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/build/src/exe/tigra-sv
+$ make
+	Scanning dependencies of target tigra-sv
+	[100%] Building CXX object build/src/exe/tigra-sv/CMakeFiles/tigra-sv.dir/main.cpp.o
+	/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp: In constructor âkmergen::kmergen()â:
+	/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp:461: warning: converting to âintâ from âdoubleâ
+	/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp: In member function âvoid walkcontig::walkcontig_doit(int, int, int, float, std::string*, int*, int*)â:
+	/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp:2050: warning: converting to âintâ from âfloatâ
+	/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp: In constructor âtigra::tigra()â:
+	/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp:4529: warning: converting to âintâ from âdoubleâ
+	/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp: In member function âint assemble::AssembleBestSV(std::string, BD_data, int, int)â:
+	/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp:5362: warning: converting to âintâ from âfloatâ
+	Linking CXX executable ../../../../bin/tigra-sv
+	[100%] Built target tigra-sv
+
+# Those warning messages did not happen in my local install, but I see that there is no type-cast in the code at those regions. We will see if that is a problem.
+# I can do a type cast (int) in front of the calculation on those source code lines if there are problems.
+# Now the tigra-sv executable is here:
+/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv
+	./tigra_sv <SV file> <a.bam> <b.bam> ...
+	
+	
+	 Or: ./tigra_sv <SV file> <bam_list_file>
+	
+	Options:
+	        -l INT          Flanking size for assembly [500] bp
+	        -c STR          Only assemble calls on specified chromosome
+	        -R STR          Reference file location with the full path
+	        -q INT          Only assemble reads with mapping quality > [1]
+	        -N INT          Number of mismatches required to be tagged as poorly mapped [5]
+	        -p INT          Ignore cases that have average read depth greater than [1000]
+	        -r              Write local reference to a file with .ref.fa as the suffix
+	        -d              Dump reads to fasta files
+	        -I STR          Save output files into an existing directory
+	        -w INT          Pad local reference by additional [200] bp on both ends
+	        -b              Check when the input format is breakdancer
+	       -M INT          Skip those calls with input size smaller than [3]
+	       -h INT          Maximum node to assemble, by default [100]
+	        -k STR          List of kmer sizes to use as a comma delimited string [15,25]
+	Version: unstable (commit nogit)
+
+_________________________________
+Initial testing
+_________________________________
+
+# I am going to use a recently completed Angus sample (Lewis cluster) to test out the tigra-sv package. 
+# My main concerns:
+	# Mrsfast is not a suitable alignment program for tigra-sv
+	# My merged SV prediction files will not be suitable for tigra-sv input (less information)
+	# The program did not compile correctly
+	
+# My first priority is to create a script that converts merged CNV files into the prediction file
+# Created a preliminary script that ignores any event that doesn't fit within strict criteria
+	Lewis: /ibfs7/asg0/bickhartd/angus_full
+	$ bsub -J merge_test perl /ibfs7/asg2/bickhartd/bin/convert_merge_tab_into_tigra_input.pl ./AN0219/merger/final_dsv_total_merge_AN0219.tab ./AN0342/merger/final_dsv_total_merge_AN0342.tab ./AN0447/merger/final_dsv_total_merge_AN0447.tab
+	
+# It appears that tigra-sv is limited in the number of bams that it can use at any one time (one per sample)
+# I need to create a good script to merge all of the bams into one large sorted, indexed file.
+# This script is a bit hackish, but it should hopefully suffice
+	Lewis: /ibfs7/asg0/bickhartd/angus_full
+	$ bsub -J mergetest -oo mergetest_full.OUT -R "rusage[mem=10000]" perl /ibfs7/asg2/bickhartd/bin/merge_bams_sort_index.pl AN0219 AN0219/merged_sorted_full.bam
+	
+	# There were a few bugs (mostly bam file fidelity issues) but I managed to get the script to work and make a final merged file.
+	# Now to do the other sample bams
+	$ bsub -J mergetest -oo mergetest_full.OUT -R "rusage[mem=10000]" perl /ibfs7/asg2/bickhartd/bin/merge_bams_sort_index.pl AN0342 AN0447/merged_sorted_full.bam   <- I had to move the finished files to the correct folder afterwards
+	$ bsub -J mergetest -oo mergetest_full.OUT -R "rusage[mem=10000]" perl /ibfs7/asg2/bickhartd/bin/merge_bams_sort_index.pl AN0447 AN0447/merged_sorted_full.bam
+	
+	# Now to put the file locations into a text file
+	$ echo "AN0219:/ibfs7/asg0/bickhartd/AN0219/merged_sorted_full.bam" > test_bam_list.txt
+	$ echo "AN0342:/ibfs7/asg0/bickhartd/AN0342/merged_sorted_full.bam" >> test_bam_list.txt
+	$ echo "AN0447:/ibfs7/asg0/bickhartd/AN0447/merged_sorted_full.bam" >> test_bam_list.txt
+	
+# OK, now to test things out on chromosome 1 just to see the memory requirements and to see if there are any problems
+	Lewis: /ibfs7/asg0/bickhartd/angus_full
+	$ bsub -J tigra -oo tigra_chr1_test.OUT -R "rusage[mem=20000]" /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file.tab test_bam_list.txt -c chr1 -R /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -r
+	
+	# Crap! I formatted the input "pcr" sv file wrong! I forgot the "Illumina" field
+	# Reformatting and rerunning
+	$ perl -lane 'print join("\t", @F[0 .. 7]) . "\tIllumina\t" . join("\t", @F[8 .. 10]);' < tigra_sv_input_file.tab  > tigra_sv_input_file_reformat.tab
+	$ bsub -J tigra -oo tigra_chr1_test.OUT -R "rusage[mem=20000]" /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file_reformat.tab test_bam_list.txt -c chr1 -R /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -r
+		#7007 SVs to be assembled from
+		#Bams: AN0219:/ibfs7/asg0/bickhartd/angus_full/AN0219/merged_sorted_full.bam
+		AN0342:/ibfs7/asg0/bickhartd/angus_full/AN0342/merged_sorted_full.bam
+		AN0447:/ibfs7/asg0/bickhartd/angus_full/AN0447/merged_sorted_full.bam
+		
+		chr1.39702.chr1.54733.ITX.15031.+-      a: 50   b: 100
+		Use samtools faidx to fetch fai
+		Reference: 0xdb74940
+		/ibfs7/asg0/bickhartd/angus_full/AN0219/merged_sorted_full.bam
+		/ibfs7/asg0/bickhartd/angus_full/AN0219/merged_sorted_full.bamchr1:39602-40202
+		/home/dbickhar/.lsbatch/1344458083.752896: line 8: 31347 Segmentation fault      (core dumped) /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file_reformat.tab test_bam_list.txt -c chr1 -R /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -r
+
+		# Not good. Perhaps the MrsFAST bams are not compatible with the program?
+		# I have a completed BWA alignment for AN0544, maybe that could work in a test?
+		# Going to check the core dump first; there was probably an uninitialized pointer that I need to deal with
+		
+		$ gdb /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv core.tigra-sv.1344543058.8182
+			warning: no loadable sections found in added symbol-file system-supplied DSO at 0x7fffecfaa000
+			Core was generated by `/ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file_'.
+			Program terminated with signal 11, Segmentation fault.
+			#0  0x000000000040c393 in get_chunk_coordinates(__bam_index_t const*, int, int, int, int*) ()
+		(gdb) backtrace
+			#0  0x000000000040c393 in get_chunk_coordinates(__bam_index_t const*, int, int, int, int*) ()
+			#1  0x000000000045014a in assemble::AssembleBestSV(std::basic_string<char, std::char_traits<char>, std::allocator<char> >, BD_data, int, int) ()
+			#2  0x00000000004541ff in assemble::assemble_func() ()
+			#3  0x000000000040d91f in main ()
+			
+		# So the issue is in the "get_chunk_coordinates" subroutine call at line 4745 in the sourcecode
+		# It is probably bam file related, but it is confusing to try to edit the cmake files to allow for assertions and debugging flags in the code.
+		# I will try to test it on a single group of bam files from AN0544
+# AN0544 TEST
+	# Under George's user name
+	Lewis: /ibfs7/asg0/bickhartd/angus_full
+	$ bsub -J merge_reformat perl /ibfs7/asg2/bickhartd/bin/convert_merge_tab_into_tigra_input.pl ./old_merge/final_dsv_total_merge_AN0544.tab
+	$ echo "AN0544:/ibfs7/asg0/bickhartd/bwaalign/total_merged_clean_sort.bam" > test_bam_list.txt
+	
+	$ bsub -J tigra -oo tigra_chr1_test.OUT -R "rusage[mem=20000]" /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file.tab test_bam_list.txt -c chr1 -R /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -r
+		#1054 SVs to be assembled from
+		#Bams: AN0544:/ibfs7/asg0/bickhartd/bwaalign/total_merged_clean_sort.bam
+		
+		chr1.39702.chr1.54733.ITX.15031.+-      a: 50   b: 100
+		Use samtools faidx to fetch fai
+		Reference: 0x916dcb0
+		/ibfs7/asg0/bickhartd/bwaalign/total_merged_clean_sort.bam
+		/ibfs7/asg0/bickhartd/bwaalign/total_merged_clean_sort.bamchr1:39602-40202
+		/home/gliu/.lsbatch/1344613835.761873: line 8: 28862 Segmentation fault      (core dumped) /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file.tab test_bam_list.txt -c chr1 -R /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -r
+
+		# Well, that didn't work either. 
+		# Maybe it is the environment?
+		
+		# I am going to try to use print statements to see if there is a null reference going into the subroutine or if there is a null pointer within the subroutine itself
+		# Testing outside of the subroutine
+		Lewis: /ibfs7/asg0/bickhartd/angus_full
+		$ bsub -J tigra -oo tigra_chr1_test.OUT -R "rusage[mem=20000]" /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file.tab test_bam_list.txt -c chr1 -R /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -r
+		# Nope, didn't even print. I need to use a debug build
+		
+		# I found a tutorial on changing the compiler flags on cmake. Going to test it out
+		Lewis: /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea
+		$ ../Kitware-CMake-e2a5717/bin/cmake -D CMAKE_BUILD_TYPE=Debug ./
+		$ cd build/src/exe/tigra-sv/
+		$ make VERBOSE=1
+		
+		# Now to test it out to see if I can actually get usable debugging information from gdb on this.
+		Lewis: /ibfs7/asg0/bickhartd/angus_full
+		$ bsub -J tigra -oo tigra_chr1_test.OUT -R "rusage[mem=20000]" /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file.tab test_bam_list.txt -c chr1 -R /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -r
+		
+		$ gdb /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv core.tigra-sv.1344862675.13900
+			#0  0x000000000042cca8 in get_chunk_coordinates (idx=0x1186c3b0, tid=0, beg=39601, end=40202, cnt_off=0x7fffb914be10)
+			    at /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/samtools.h:105
+			105             index = idx->index[tid];
+			(gdb) backtrace
+			#0  0x000000000042cca8 in get_chunk_coordinates (idx=0x1186c3b0, tid=0, beg=39601, end=40202, cnt_off=0x7fffb914be10)
+			    at /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/samtools.h:105
+			#1  0x00000000004734a3 in assemble::ReadBamChr_prep(std::locale::string, std::locale::string, int *, int *, int *, ._94 *, int *) (this=0x7fffb914d550, chr_str=Traceback (most recent call last):
+			  File "/usr/share/gdb/python/libstdcxx/v6/printers.py", line 469, in to_string
+			    return self.val['_M_dataplus']['_M_p'].string (encoding, length = len)
+			OverflowError: signed integer is greater than maximum
+			, bam_name=Traceback (most recent call last):
+			  File "/usr/share/gdb/python/libstdcxx/v6/printers.py", line 469, in to_string
+			    return self.val['_M_dataplus']['_M_p'].string (encoding, length = len)
+			OverflowError: signed integer is greater than maximum
+			, tid=0x7fffb914be1c, beg=0x7fffb914be18, end=0x7fffb914be14, in=0x1186a8f0, n_off=0x7fffb914be10)
+			    at /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp:4746
+			#2  0x0000000000478007 in assemble::AssembleBestSV (this=0x7fffb914d550, prefix=Traceback (most recent call last):
+			  File "/usr/share/gdb/python/libstdcxx/v6/printers.py", line 469, in to_string
+			    return self.val['_M_dataplus']['_M_p'].string (encoding, length = len)
+			OverflowError: signed integer is greater than maximum
+			, SV=..., a=50, b=100) at /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp:5226
+			#3  0x000000000047b07b in assemble::assemble_func (this=0x7fffb914d550)
+			    at /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp:5518
+			#4  0x000000000042da9e in main (argc=8, argv=0x7fffb914d848)
+			    at /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/src/exe/tigra-sv/main.cpp:5644
+			    
+		# From the debugger output, I think that idx might be a problem
+		(gdb) print idx
+			$1 = (const bam_index_t *) 0x1186c3b0
+		# So the reference has been created, but I am not sure if it was initialized
+		# It probably was, but a call to idx->index[iterator] makes the segmentation fault
+		# Here is the bam_index_t struct (from samtools: bam_index.c):
+			struct __bam_index_t {
+				int32_t n;
+				uint64_t n_no_coor; // unmapped reads without coordinate
+				khash_t(i) **index;
+				bam_lidx_t *index2;
+			};
+			
+		(gdb) print idx->index[0]
+			Cannot access memory at address 0x19d2311a
+		# That causes the error
+		# The index should be initialized in the bam_index_load_core subroutine (samtools::bam_index.c)
+		(gdb) print idx->index2[0]
+			$5 = {n = 293898704, m = 0, offset = 0x118f7660}
+		# This index is set, oddly enough
+		# Ah, there is an error in gdb I think:
+		(gdb) print 0x19d2311a
+			$7 = 433205530
+		
+		(gdb) print index
+			$12 = (._100 *) 0x7fffb914be14
+		(gdb) print idx->index
+			$13 = (._100 **) 0x19d2311a
+			
+		# Maybe this is the problem? idx->index is a double pointer yet index is a single pointer.
+		# Given my inexperience with C++ and the undetermined nature of the environment/input files, I might just want to go the "easy" route and use velvet like in sv-merge
+		
+		# One last try before I try to contact the author: without the chromosome argument
+		$ bsub -J tigra -oo tigra_test.OUT -R "rusage[mem=20000]" /ibfs7/asg2/bickhartd/genome-tigra-sv-378b2ea/bin/tigra-sv tigra_sv_input_file.tab test_bam_list.txt -R /ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa -r
+		
+		
+		# NOPE! 
+		# I will attempt to adapt velvet/exonerate as a means of assembly-testing my SVs (just like in SV merge) until (if) I hear back from the author

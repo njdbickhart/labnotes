@@ -1,0 +1,229 @@
+08/13/2012
+# These notes represent my thoughts and commands used to test the viability of Velvet / exonerate in assembly-based confirmation of CNVs
+# I believe that since the SV merge program is written in Perl, I should be better able to parse out exactly how the author validated the assembly
+# It looks like deletions and inversions are the primary target of the assembly here, and for good reason.
+# They're easy.
+
+# I think that I should follow the same guidelines for now, albeit my next focus should be to try to create a validation pathway for transchromosomal alignments
+
+# SV Merge pipeline algorithms
+	# Here is a brief summary of how I think that SV merge uses assembly validation
+	runassembly.pl -> svAssemble.pl (calls localassembly.pm)
+		-------------|-----------
+		|			|
+		Velvet			Exonerate
+		|			|
+		-------------|-----------
+			runAlignParser.pl -> runParser.pl (calls ExonerateParse and MergeSV)
+			
+	# So the "eparse" method within ExonerateParse.pm should give me a hint as to how to reconcile the exonerate and velvet output
+	
+# My plan:
+	1. Create a java program (using the picard api) to extract fastas of sequence from the bams from specific chromosome ranges
+	2. Run Velveth to error correct and prepare the sequence
+	3. Run Velvetg to create the contigs and scaffolds
+	4. Run exonerate (gapped alignment) to align the contigs to the reference genome
+	5. Parse the exonerate alignment to confirm deletions and inversions
+	
+	# Java program to extract fastas from bams
+		# Well, it appears that picard already has a tool to do this, though it only outputs fastas and not fastqs
+		# If velveth requires fastqs for error correction, then we'll see what we can do to create a new program for this
+		
+		# Testing this picard tool on one SV from AN0219 (and the merged bam that I have located in the folder there)
+		
+		# Let's try this SV to see if we can assemble it:
+		Lewis: /ibfs7/asg0/bickhartd/angus_full
+		$ head AN0219/merger/final_dsv_total_merge_AN0219.tab
+		chr1    4149563 4149593 4172485 4172509 del_v_10        9.09497 0.8087463125    null    null    0.617492625
+		
+		
+		$ bsub -J extract_test.OUT -R "rusage[mem=2100] span[hosts=1]" -n 3 "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar -Xmx2g -XX:ParallelGCThreads=2 ~/picard-tools-1.53/ExtractSequences.jar INTERVAL_LIST=test_sv_interval.bed R=/ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa O=test_sv_velvet.fa"
+			[Tue Aug 14 09:10:38 CDT 2012] net.sf.picard.reference.ExtractSequences INTERVAL_LIST=test_sv_interval.bed REFERENCE_SEQUENCE
+			=/ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa OUTPUT=test_sv_velvet.fa    LINE_LENGTH=80 VERBOSITY=INFO QUIET=fal
+			se VALIDATION_STRINGENCY=STRICT COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false
+			[Tue Aug 14 09:10:38 CDT 2012] Executing as dbickhar@c21-35.cluster on Linux 2.6.18-274.7.1.el5 amd64; Java HotSpot(TM) 64-Bi
+			t Server VM 1.7.0-b147
+			[Tue Aug 14 09:10:38 CDT 2012] net.sf.picard.reference.ExtractSequences done. Elapsed time: 0.01 minutes.
+			Runtime.totalMemory()=91684864
+			Exception in thread "main" java.lang.IllegalStateException: Interval list file must contain header.
+			        at net.sf.picard.util.IntervalList.fromReader(IntervalList.java:193)
+			        at net.sf.picard.util.IntervalList.fromFile(IntervalList.java:169)
+			        at net.sf.picard.reference.ExtractSequences.doWork(ExtractSequences.java:75)
+			        at net.sf.picard.cmdline.CommandLineProgram.instanceMain(CommandLineProgram.java:175)
+			        at net.sf.picard.cmdline.CommandLineProgram.instanceMainWithExit(CommandLineProgram.java:118)
+        			at net.sf.picard.reference.ExtractSequences.main(ExtractSequences.java:66)
+        			
+        	# OK, so I thought that the interval file was a simple bed file but I was mistaken. Let's see what silly proprietary format they want here
+        	/* 
+        		Represents a list of intervals against a reference sequence that can be written to and read from a file. 
+        		The file format is relatively simple and reflects the SAM alignment format to a degree. A SAM style header 
+        		must be present in the file which lists the sequence records against which the intervals are described. 
+        		After the header the file then contains records one per line in text format with the following values tab-
+        		separated: - Sequence name - Start position (1-based) - End position (1-based, end inclusive) - Strand 
+        		(either + or -) - Interval name (an, ideally unique, name for the interval)
+        	*/
+        	
+        	# Great, so the header information is delightfully cryptic. Let's just cut and paste the same header from the merged bam here
+        	# Then I need to add the additional information to the bam (strand and a "name")
+        	
+        	# Trying again:
+        	$ bsub -J extract_test.OUT -R "rusage[mem=2100] span[hosts=1]" -n 3 "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar -Xmx2g -XX:ParallelGCThreads=2 ~/picard-tools-1.53/ExtractSequences.jar INTERVAL_LIST=test_sv_interval.bed R=/ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa O=test_sv_velvet.fa VALIDATION_STRINGENCY=SILENT"
+        		[Tue Aug 14 09:19:56 CDT 2012] net.sf.picard.reference.ExtractSequences INTERVAL_LIST=test_sv_interval.bed REFERENCE_SEQUENCE
+			=/ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa OUTPUT=test_sv_velvet.fa VALIDATION_STRINGENCY=SILENT    LINE_LENGT
+			H=80 VERBOSITY=INFO QUIET=false COMPRESSION_LEVEL=5 MAX_RECORDS_IN_RAM=500000 CREATE_INDEX=false CREATE_MD5_FILE=false
+			[Tue Aug 14 09:19:56 CDT 2012] Executing as dbickhar@c24-11.cluster on Linux 2.6.18-274.7.1.el5 amd64; Java HotSpot(TM) 64-Bi
+			t Server VM 1.7.0-b147
+			[Tue Aug 14 09:19:56 CDT 2012] net.sf.picard.reference.ExtractSequences done. Elapsed time: 0.00 minutes.
+			Runtime.totalMemory()=91684864
+			Exception in thread "main" net.sf.picard.PicardException: Invalid interval record contains 4 fields: chr1    4149563    41725
+			09      +       del_v_10
+			        at net.sf.picard.util.IntervalList.fromReader(IntervalList.java:209)
+			        at net.sf.picard.util.IntervalList.fromFile(IntervalList.java:169)
+			        at net.sf.picard.reference.ExtractSequences.doWork(ExtractSequences.java:75)
+			        at net.sf.picard.cmdline.CommandLineProgram.instanceMain(CommandLineProgram.java:175)
+			        at net.sf.picard.cmdline.CommandLineProgram.instanceMainWithExit(CommandLineProgram.java:118)
+        			at net.sf.picard.reference.ExtractSequences.main(ExtractSequences.java:66)
+        			
+        	# My cut and paste job hid the first start interval (wasn't tab based)
+        	$ bsub -J extract_test -oo extract_test.OUT -R "rusage[mem=2100] span[hosts=1]" -n 3 "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar -Xmx2g -XX:ParallelGCThreads=2 ~/picard-tools-1.53/ExtractSequences.jar INTERVAL_LIST=test_sv_interval.bed R=/ibfs7/asg2/bickhartd/reference/umd3_kary_extend_hgap.fa O=test_sv_velvet.fa VALIDATION_STRINGENCY=SILENT"
+        		WARNING 2012-08-14 09:24:33     IntervalList    Ignoring interval for unknown reference: chr1:4149563-4172509
+        		
+        	# Man... so I guess I'll have to create my own program after all.
+        	# Oh well.
+        	
+        	# I have created a quick jar that extracts separate fastqs from a range of sequences in a BAM file.
+        	# Input is controlled by a bed file with the following fields: chr, start, end, name
+        	# I should limit the "name" to be the SV number of the set just for easy parsing later
+        	
+        	# Going to test it out to see if it works
+        	Lewis: /ibfs7/asg0/bickhartd/angus_full
+        	$ emacs test_sv_interval.bed
+        	$ bsub -J extract -oo extract_test.OUT -n 2 -R "rusage[mem=2000] span[hosts=1]" "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /ibfs7/asg2/bickhartd/bin/extractFastqfromBam.jar -I AN0219/merged_sorted_full.bam -O AN0219 -B test_sv_interval.bed"
+        	$ ls -hal AN0219_10_sv.out.fa
+			-rw-rw----+ 1 dbickhar outside 242K Aug 14 15:06 AN0219_10_sv.out.fa
+		$ wc -l AN0219_10_sv.out.fa
+			6496 AN0219_10_sv.out.fa
+			
+		# OK, so the program works. Time to see if we can assemble anything (note: maybe I will have to have an extension of the region by 500bp or so to make any meaningful progress)
+		
+	# Running Velveth to prep the stuff
+		Lewis: /ibfs7/asg0/bickhartd/angus_full
+		$ bsub -J velveth -oo velveth_test.OUT -R "rusage[mem=10000]" /ibfs7/asg2/bickhartd/velvet_1.2.07/velveth vtest 31 -fastq -short AN0219_10_sv.out.fa
+		# I chose the hash length (31) for this one because it is equal to the maxkmerhash length indicated in the manual
+		$ ls -hal vtest/
+			total 280K
+			drwxrwx---+  2 dbickhar outside 4.0K Aug 14 15:37 .
+			drwxrwx---+ 13 dbickhar outside 4.0K Aug 14 15:37 ..
+			-rw-rw----+  1 dbickhar outside  392 Aug 14 15:37 Log
+			-rw-rw----+  1 dbickhar outside  74K Aug 14 15:37 Roadmaps
+			-rw-rw----+  1 dbickhar outside 168K Aug 14 15:37 Sequences
+			
+	# Running Velvetg to assemble the contigs
+		Lewis: /ibfs7/asg0/bickhartd/angus_full
+		$ bsub -J velvetg -oo velvetg_test.OUT -R "rusage[mem=10000]" /ibfs7/asg2/bickhartd/velvet_1.2.07/velvetg vtest -cov_cutoff auto
+		# Note: maybe I have to run this in the velvetg output directory? We'll see
+		# It worked: I have several contigs that I can align using exonerate
+		
+	# Run exonerate to align the contigs
+		Lewis: /ibfs7/asg0/bickhartd/angus_full
+		# Options taken from the sv merge pipeline
+		# the 'ryo' option stands for "roll your own" and allows the customization of output
+		$ bsub -J exonerate -oo exonerate_assemble_test.OUT -R "rusage[mem=2000]" '/ibfs7/asg2/bickhartd/exonerate-2.2.0-x86_64/bin/exonerate --querytype dna --targettype dna --ryo "%S %pi %ql %C\\n" --target /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa --query ./vtest/contigs.fa > ./vtest/exonerate_test.tab'
+			** FATAL ERROR **: Unrecognised symbol 'X' (ascii:88) file:[/ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa] seq:[chr1] pos:[16543]
+			exiting ...
+			
+		# Crap! I'll have to make a different fasta for exonerate alignment
+		$ bsub -J exonerate -oo exonerate_assemble_test.OUT -R "rusage[mem=2000]" '/ibfs7/asg2/bickhartd/exonerate-2.2.0-x86_64/bin/exonerate --querytype dna --targettype dna --ryo "%S %pi %ql %C\\n" --target /ibfs7/asg2/bickhartd/reference/ucsc_light_masked.fa --query ./vtest/contigs.fa > ./vtest/exonerate_test.tab'
+		# That worked, but I need to remove the "vulgar" option to reduce the header information I think
+		$ bsub -J exonerate -oo exonerate_assemble_test.OUT -R "rusage[mem=2000]" '/ibfs7/asg2/bickhartd/exonerate-2.2.0-x86_64/bin/exonerate --querytype dna --targettype dna --showvulgar FALSE --ryo "%S %pi %ql %C\\n" --target /ibfs7/asg2/bickhartd/reference/ucsc_light_masked.fa --query ./vtest/contigs.fa > ./vtest/exonerate_test.tab'
+			# Here's an example of the alignment format
+			C4 Alignment:
+			------------
+			         Query: NODE_9_length_224_cov_9.446428
+			        Target: chr1 [revcomp]
+			         Model: ungapped:dna2dna
+			     Raw score: 866
+			   Query range: 0 -> 175
+			  Target range: 4156879 -> 4156704
+			
+			       1 : AGTTACAACACATGTTGTCAAGGCAAGAGGATTCAGGTGGCCTGCAAGAGGATGTT :      56
+			           ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+			 4156879 : AGTTACAACACATGTTGTCAAGGCAAGAGGATTCAGGTGGCCTGCAAGAGGATGTT : 4156824
+			
+			      57 : TCTGAAGTGTGTGTGTCTCCTCCCCATGGACCTTTATATACTGTCAGTAATTGGCA :     112
+			           ||||||||||||||||||||| ||||||||||||||||||||||||||||||||||
+			 4156823 : TCTGAAGTGTGTGTGTCTCCTTCCCATGGACCTTTATATACTGTCAGTAATTGGCA : 4156768
+			
+			     113 : GAGCATACCATTCATTCCCTGACATAGACAACAAATATGGAAGCAACATTATGAGC :     168
+			           ||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+			 4156767 : GAGCATACCATTCATTCCCTGACATAGACAACAAATATGGAAGCAACATTATGAGC : 4156712
+			
+			     169 : CAGTCAC :     175
+			           |||||||
+ 			 4156711 : CAGTCAC : 4156705
+ 			 
+ 			NODE_9_length_224_cov_9.446428 0 175 + chr1 4156879 4156704 - 866 99.43 254  M 175
+ 			
+ 		# So the bottom part of the alignment is the best place to parse it, I think.
+ 		
+ 		# This is better still, with it only printing the last coordinates
+ 		$ bsub -J exonerate -oo exonerate_assemble_test.OUT -R "rusage[mem=2000]" '/ibfs7/asg2/bickhartd/exonerate-2.2.0-x86_64/bin/exonerate --querytype dna --targettype dna --showvulgar FALSE --ryo "%S %pi %ql %C\\n" --showalignment no --target /ibfs7/asg2/bickhartd/reference/ucsc_light_masked.fa --query ./vtest/contigs.fa > ./vtest/exonerate_test.tab'
+ 		
+ 		# Here is the significance of the -ryo ("roll your own") output format for exonerate:
+ 			%S = "Sugar output" or a list of the following information:
+ 				- query_id
+ 				- query_start
+ 				- query_end
+ 				- query_strand
+ 				- target_id
+ 				- target_start
+ 				- target_end
+ 				- target_strand
+ 				- alignment_score
+ 			%pi = percent identity over the aligned portions
+ 			%ql = query length
+ 			%C = cigar portion
+ 			
+ 	# I realized that SV_merge uses velvet in paired end mode. Going to test paired end assembly output
+ 	Lewis: /ibfs7/asg0/bickhartd/angus_full
+ 	$ head -n 100 ../temp_fqs/AN0544P.01.1_Unique.fastq.ptmp_426 > temp_velvet_AN0544.fq
+ 	$ bsub -J velveth -oo velveth_test.OUT -R "rusage[mem=2000]" /ibfs7/asg2/bickhartd/velvet_1.2.07/velveth vtestpaired 31 -fastq -shortPaired temp_velvet_AN0544.fq
+ 	$ bsub -J velvetg -oo velvetg_test.OUT -R "rusage[mem=2000]" /ibfs7/asg2/bickhartd/velvet_1.2.07/velvetg vtestpaired -cov_cutoff auto -ins_length 400
+ 	
+ 	# Got nothing back. I think that there were too few reads (and they were not able to be assembled!)
+ 	
+################################
+#				#
+#	Running a pipeline	#
+#				#
+################################
+ 
+# I think that I have pasted together a pipeline suitable for running velvet on a series of reads per region, using exonerate to align the output and then interpreting the results
+# I will test it out on Lewis just to see if there are any huge deficeits here. 
+ 
+Lewis: /ibfs7/asg0/bickhartd/angus_full
+$ bsub -J assembletest -oo assembletest.OUT -R "rusage[mem=4000]" "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /ibfs7/asg2/bickhartd/bin/AssembleExonerateSVs.jar -b /ibfs7/asg0/bickhartd/angus_full/AN0544 -u chr1:58975512-58998032 -o /ibfs7/asg0/bickhartd/angus_full/java_exon_test -s 58974512 -e 58999032 -v /ibfs7/asg0/bickhartd/angus_full/java_velvet -i 300 -t ins -r /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa"
+ 
+# The run directory was not important here.
+# Ah, I forgot that the reference cannot have an "X" in the sequence
+$ bsub -J assembletest -oo assembletest.OUT -R "rusage[mem=4000]" "/ibfs7/asg2/bickhartd/jdk1.7.0/bin/java -jar /ibfs7/asg2/bickhartd/bin/AssembleExonerateSVs.jar -b /ibfs7/asg0/bickhartd/angus_full/AN0544 -u chr1:58975512-58998032 -o /ibfs7/asg0/bickhartd/angus_full/java_exon_test -s 58974512 -e 58999032 -v /ibfs7/asg0/bickhartd/angus_full/java_velvet -i 300 -t ins -r /ibfs7/asg2/bickhartd/reference/ucsc_unmasked_umd3.fa"
+
+
+# There are some problems with the runtime command to exonerate. Likely the special characters are being messed up. Extracting a region for use on my linux virtualbox for further debugging
+Lewis: /ibfs7/asg0/bickhartd/angus_full/AN0219
+$ bsub -J samtools -oo samtoolsextract.OUT "/ibfs7/asg2/bickhartd/bin/samtools view merged_sorted_full.bam chr1:35639740-35658766 > chr1_35639740_35658766_region.sam"
+# I just realized that this region is a DOC gain (only confirmed with RD) so let's try another region instead, like from VH
+# Here is a nice an easy area to try to confirm:
+	chr15   19114161        19114329        19115315        19115435        del     12      12.000000
+
+
+$ bsub -J samtools -oo samtoolsextract.OUT "/ibfs7/asg2/bickhartd/bin/samtools view merged_sorted_full.bam chr15:19113161-19116435 > chr15_19113161_19116435_region.sam"
+$ /ibfs7/asg2/bickhartd/bin/samtools view -S -b -o chr15_19113161_19116435_region.bam -t /ibfs7/asg2/bickhartd/reference/umd3_kary_nmask_hgap.fa.fai chr15_19113161_19116435_region.sam
+
+# Now to start working on this locally while I try to debug the exonerate/velvet java program
+C:\SharedFolders\bob_missou_data\test_beds\vtest\chr15
+
+# IMPORTANT NOTE: the correct assembleexoneratesvs java source is on my Ubuntu 12.10 virtualbox (mostly because I designed the system to work on linux)
+# Ran it on the bam file that I created and found a problem: I had designed the program to use paired end sequence for the assembly but that failed! Only 48 reads (24 pairs) were found which was not enough
+# I think that I will have to design a contingency where velvetg and velveth are run in single end mode if paired end mode fails
+

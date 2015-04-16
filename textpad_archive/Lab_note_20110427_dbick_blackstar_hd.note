@@ -1,0 +1,524 @@
+04/27/2011
+# This text file details the command lines and techniques that I used to parse the hiseq blackstar data for the CNV analysis
+
+# Steve gave me access to the blackstar hiseq data: "/mnt/data110/sequence_vault/Blackstar/HiSeq2000/"
+# There are six paired end files in all (12 files total), each about 18 gigs in fastq format!
+# One of the files (after a wc) was found to have 300 million lines or about 75 million reads. 
+
+# I need to split these files up and shorten the reads.
+# In order to do this, I modified the split_fastq.pl script to create new output files every 15 million reads
+# Hopefully that will be sufficient! I calculate that there will be five files per hiseq file at this rate.
+	$ perl split_fastq.pl hiseq_fqs.txt 36
+	
+	# output reads look like this: BTHO11P.SN644110308.19.1.1.fq_0_1
+	# First underscore number is the read "break" iteration (1 - 5 or more)
+	# Second number is the read file derivative (first 36 bases or second)
+	
+	# I truncated the reads by about 28 bases, since the run was for 100 base reads. (100 - (36 + 36))
+	# These bases are often poor quality anyways...
+	# Crap, the second part of the script does not crop the files into 15 million read segements.
+	# I will write a short script to do this.
+	
+	# also, the script bugged out on the last two files; this was because I used a "scalar(@list)" conditional when I shifted indexes off the array in a for loop
+	# ... or not! It looks like it picked up the last files in a separate, singular thread.
+	
+	
+# After this script finishes, I hope to streamline a wrapper script to process all of the files using the cow4 masked reference
+	# First, I need to copy the masked cow4 reference over to my data110 mount point.
+	$ mv cow4_36_noun_rmask.fa cow4_36_noun_rmask_a.fa
+	$ cp cow4_36_noun_rmask_a.fa cow4_36_noun_rmask_b.fa
+	$ cp cow4_36_noun_rmask_a.fa cow4_36_noun_rmask_c.fa
+	...
+	$ cp cow4_36_noun_rmask_a.fa cow4_36_noun_rmask_e.fa
+	# So there will be a total of 5 lettered cow4 indices. One processor per split fastq file.
+	$ for i in cow4*; do /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --index $i; done
+	
+	# Generating a fai file for samtools
+	$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools faidx cow4_36_noun_rmask_a.fa
+	
+	# So there are six iterations of sequence data that I will run. 
+	# I am going to divide them by those iterations (ie. 0 - 5) and run them close to simultaneously (to speed up the process).
+	
+	# Running the wrapper script:
+		$ perl mrsfast_cow4_letter_wrapper.pl iteration_0_list.txt a /mnt/data8/dbickhart/doc_blackstar/iteration_0
+		$ perl mrsfast_cow4_letter_wrapper.pl iteration_1_list.txt b /mnt/data8/dbickhart/doc_blackstar/iteration_1
+		$ perl mrsfast_cow4_letter_wrapper.pl iteration_2_list.txt c /mnt/data8/dbickhart/doc_blackstar/iteration_2
+		$ perl mrsfast_cow4_letter_wrapper.pl iteration_3_list.txt a /mnt/data8/dbickhart/doc_blackstar/iteration_3
+		$ perl mrsfast_cow4_letter_wrapper.pl iteration_4_list.txt b /mnt/data8/dbickhart/doc_blackstar/iteration_4
+		$ perl mrsfast_cow4_letter_wrapper.pl iteration_5_list.txt c /mnt/data8/dbickhart/doc_blackstar/iteration_5	<- this one should be done very quickly
+		
+		
+# Just checking to see how many paired ends are aligning here...
+	$ for i in /mnt/data8/dbickhart/doc_blackstar/iteration_2/*.bam; do echo $i; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | wc; done
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.1_1.bam
+		1203480 15645240 199272962
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.2_1.bam
+		1212110 15757430 200627526
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.2_2.bam
+		1190264 15473432 197059263
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.3_1.bam
+		1207928 15703064 199996227
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.3_2.bam
+		1186784 15428192 196512699
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.4_1.bam
+		1212522 15762786 200687177
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.4_2.bam
+		1189148 15458924 196880315
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.5_1.bam
+		1207986 15703818 199943026
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.5_2.bam
+		1189760 15466880 196949615
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.6_1.bam
+		1215866 15806258 201237777
+		/mnt/data8/dbickhart/doc_blackstar/iteration_2/BTHO11P.SN644110308.19.6_2.bam
+		1196794 15558322 198104523
+		
+	# I believe that the paired end mapping actually reduces the number of reads that can map by using mrsfast
+	# If one "pair" is located within a repeat region, then the entire pair is discarded by the alignment program
+	# Therefore, I will have to realign the reads using the single end mode of mrsfast.
+	
+# Testing the single end run of the first "chopped" fastq file
+	$ /mnt/gliu1_usb/dbickhart/mrsfast-2.3.0.2/mrsfast --search /mnt/data110/dbickhart/reference/cow4_36_noun_rmask_d.fa --seq BTHO11P.SN644110308.19.1.1.fq_0_1 -o ../doc_blackstar/test/BTHO11P.SN644110308.19.1.1.fq_0_1.sam
+		Total Time:                      3034.06
+		Total No. of Reads:             14998183
+		Total No. of Mappings:           1331021
+		Avg No. of locations verified:       433
+		
+	# So, the number of reads should be about half the number of paired end reads
+	# Looks like we had almost double the mappings, which is what I would expect.
+	# Starting the single end runs:
+		$ perl mrsfast_cow4_se_letter_wrapper.pl iteration_0_list.txt c /mnt/data8/dbickhart/doc_blackstar/se_0
+		$ perl mrsfast_cow4_se_letter_wrapper.pl iteration_1_list.txt d /mnt/data8/dbickhart/doc_blackstar/se_1
+		$ perl mrsfast_cow4_se_letter_wrapper.pl iteration_2_list.txt e /mnt/data8/dbickhart/doc_blackstar/se_2
+		$ perl mrsfast_cow4_se_letter_wrapper.pl iteration_3_list.txt c /mnt/data8/dbickhart/doc_blackstar/se_3
+		$ perl mrsfast_cow4_se_letter_wrapper.pl iteration_4_list.txt b /mnt/data8/dbickhart/doc_blackstar/se_4
+		$ perl mrsfast_cow4_se_letter_wrapper.pl iteration_5_list.txt a /mnt/data8/dbickhart/doc_blackstar/se_5
+		
+	# Now to convert the bam files into bed files
+	$ for i in ./*/*.bam; do echo $i; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane '$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' > $i.bed; done
+	
+	# And now I'm going to run the bedtools intersection automation script
+		$ perl bedtools_intersect_larger.pl /mnt/data8/dbickhart/doc_blackstar/window_beds single_end_bed.list
+		# OK, that ate up too much memory, I will have to redesign the script to load one file at a time into memory and then add up the count.
+		# Rewrote the file to take up significantly less memory; trying it now
+		$ perl bedtools_intersect_larger.pl /mnt/data8/dbickhart/doc_blackstar/window_beds single_end_bed.list
+		# I think it worked! Now to start the pipeline:
+		$ perl run_alkan_pipeline.pl --File1 simulation_merged_file1.bed --File2 simulation_merged_file2.bed --File3 simulation_merged_file3.bed --File1_c simulation_merged_file1_c.bed --File3_c simulation_merged_file3_c.bed
+		
+		# Stdev values were way too high!
+		# There was a problem in generating the CN file (use of uninitialized values in statstd.pl)
+		# Going to check to see if I can reduce the number of "hits" by 1/2 to try to correct for the stdev values
+			$ for i in simulation_merged_file*.bed; do perl -lane '$v = $F[3] / 2; print "$F[0]\t$F[1]\t$F[2]\t$v";' < $i > $i.test; done
+			$ perl run_alkan_pipeline.pl --File1 simulation_merged_file1.bed.test --File2 simulation_merged_file2.bed.test --File3 simulation_merged_file3.bed.test --File1_c simulation_merged_file1_c.bed.test --File3_c simulation_merged_file3_c.bed.test
+				Calculating average...
+				Calculating stdev...
+				Average was: 318.062862156453
+				Stdev was; 211.691447823081
+		# I found out what the reason was for the errors with generation of the CN file: my script (bedtools_intersect_larger.pl) had an error. It is now fixed.
+		
+	$ wc simulation_merged_file1.bed.final.wssd
+	    632  1896 14680 simulation_merged_file1.bed.final.wssd	<- same as the intervals from the test run
+	$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a simulation_merged_file1.bed.final.wssd -b /mnt/gliu1_usb/dbickhart/breed_doc/blackstar/newblackstar_fq/mrsfast/blackstar_rem_hits_r/blackstar_wssd_final.bed | wc
+	    560    1680   12990
+	# So, that's good news! My prior attempts identified 88% of the CNVs from the full HiSeq run.	
+	
+	# I am still not happy with the control files... I think that I'll have to alter them for the blackstar run
+	# Let's take the controls and generate GC "normalized" control windows using the pipeline steps
+		$ grep -v chrX simulation_merged_file1_c.bed > simulation_merged_file1_c.bed-auto
+		$ cut -f 4 simulation_merged_file1_c.bed-auto | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl | grep Average | awk '{print $2}'
+			644.965288
+		$ awk '{print $1"-"$2"-"$3"\t"$4}' simulation_merged_file1_c.bed-auto | sort -k 1,1 > simulation_merged_file1_c.bed-auto.merged
+		$ ls /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1_f_controls.bed.merged <- this was a redundant stage of the pipeline
+		$ join /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1_f_controls.bed.merged simulation_merged_file1_c.bed-auto.merged | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > simulation_merged_file1_c.bed-auto.gc.depth
+		$ cat simulation_merged_file1_c.bed-auto.gc.depth | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/partgcdepth.pl > simulation_merged_file1_c.bed-auto.gc.depth-avg
+		$ /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/depthloess_avg.pl -i simulation_merged_file1_c.bed-auto.gc.depth -a simulation_merged_file1_c.bed-auto.gc.depth-avg -e 644.965288 > simulation_merged_file1_c.bed-auto.gc.depth.normalized
+		$ cut -f 5 simulation_merged_file1_c.bed-auto.gc.depth.normalized | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   1609697
+			Minimum 0
+			Maximum 45435.8165987005 <- alright, these are the values we don't want!
+			Average 645.322774
+			Median  632.883982216897
+			Standard Deviation      268.862867
+			Mode(Highest Distributed Value) 0
+	
+		# I'm going to cut all intervals that have a value above 5 stdev's (1989) from the average
+		$ perl -lane 'if ($F[4] > 1989){ print "$F[0]\t$F[1]\t$F[2]";}' < simulation_merged_file1_c.bed-auto.gc.depth.normalized > blackstar_hd_crop_controls.bed
+		$ wc blackstar_hd_crop_controls.bed
+		 2854  8562 67001 blackstar_hd_crop_controls.bed  <- not too many, but they're causing problems!
+		 
+	# I did not have the correct file3 windows for this run, so I will try to intersect them with these windows to remove the bad ones!
+		
+		 
+	# Now, I'm going to reformat the controls and then load them into the pipeline script to run the pipeline again.
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file1_control_rmask.bed -b blackstar_hd_crop_controls.bed -v > /mnt/gliu1_usb/dbickhart/alkan_files/blackstarhd_template_file1_control.bed
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file3_control_rmask.bed -b blackstar_hd_crop_controls.bed -v > /mnt/gliu1_usb/dbickhart/alkan_files/blackstarhd_template_file3_control.bed
+		
+		# OK, so those are done, but now I need to remake the GC control files
+		# Editting GC_control_intervals.pl to accept the new blackstar_hd controls
+		$ perl GC_control_intervals.pl --path ./separate_chrs --name blackstarhd
+		
+		# So the final files are:
+			- /mnt/gliu1_usb/dbickhart/alkan_files/blackstarhd_template_file1_control.bed
+			- /mnt/gliu1_usb/dbickhart/alkan_files/blackstarhd_template_file3_control.bed
+			- /mnt/gliu1_usb/dbickhart/alkan_files/blackstarhd_gc_file1_control.bed
+			- /mnt/gliu1_usb/dbickhart/alkan_files/blackstarhd_gc_file3_control.bed
+			
+		# Now, I will incorporate them into the intersection and pipeline steps and then run the pipeline after the bam file merger.
+		# First, let me just move the old final.wssd file into a new file name before I rerun the bedtools intersect pipeline
+		$ mv simulation_merged_file1.bed.test.final.wssd blackstar_hd_first_try_gains.bed
+		
+		# OK, now it's time to run the bedtools intersection script:
+		$ perl bedtools_intersect_larger.pl /mnt/data8/dbickhart/doc_blackstar/window_beds single_end_bed.list
+		# Finished, so now to rerun the pipeline:
+		$ perl run_alkan_pipeline.pl --File1 simulation_merged_file1.bed --File2 simulation_merged_file2.bed --File3 simulation_merged_file3.bed --File1_c simulation_merged_file1_c.bed --File3_c simulation_merged_file3_c.bed
+			Calculating average...
+			Calculating stdev...
+			Average was: 629.240909261654
+			Stdev was; 356.03701039267 <- still not good! Maybe there were too many zeroes? 
+			
+		# I found out what the problem was: the GC normalization from the control file was bad. 
+		# Perhaps a better way to approach this would be to take a look at the GC control windows and identify just enough GC percentage windows that I need to keep.
+			$ perl -lane 'if ($F[3] < 0.243 || $F[4] < 50){ print "$F[0]\t$F[1]\t$F[2]";}' < simulation_merged_file1_c.bed-auto.gc.depth > discordant_controls_gc.bed
+			$ wc discordant_controls_gc.bed
+			  2494  7482 58367 discordant_controls_gc.bed
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file1_control_rmask.bed -b discordant_controls_gc.bed -v > /mnt/gliu1_usb/dbickhart/alkan_files/blackstarhd_template_file1_control.bed
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a /mnt/gliu1_usb/dbickhart/alkan_files/final_sub_file3_control_rmask.bed -b discordant_controls_gc.bed -v > /mnt/gliu1_usb/dbickhart/alkan_files/blackstarhd_template_file3_control.bed
+			
+			$ perl GC_control_intervals.pl --path ./separate_chrs --name blackstarhd
+			# Trying it again with the cropped files
+			$ perl bedtools_intersect_larger.pl /mnt/data8/dbickhart/doc_blackstar/window_beds single_end_bed.list
+			$ perl run_alkan_pipeline.pl --File1 simulation_merged_file1.bed --File2 simulation_merged_file2.bed --File3 simulation_merged_file3.bed --File1_c simulation_merged_file1_c.bed --File3_c simulation_merged_file3_c.bed
+			# Same exact results as before
+			
+		
+			
+# New strategy!
+	# OK, so the old control files are not working quite as well as I hoped. What I will do is take the file1 windows, identify only the "hits" windows between two ranges, and then remake the control files
+	$ cat simulation_merged_file1.bed | cut -f4 | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		total   1788684
+		Minimum 0	
+		Maximum 11337353
+		Average 799.941993
+		Median  560
+		Standard Deviation      29934.793707
+		Mode(Highest Distributed Value) 337
+		
+	# OK, so my first target is MAX= 2x the average and MIN= 1/2 of the average
+	$ perl -lane 'if ($F[3] < 1600 && $F[3] > 400){print $_;}' < simulation_merged_file1.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a stdin -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v | cut -f4 | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+		total   1044467
+		Minimum 401
+		Maximum 1599
+		Average 763.962558
+		Median  690
+		Standard Deviation      287.678078
+		Mode(Highest Distributed Value) 428
+		
+	# Not the best, but it's a start. Now to try out the sole_gc_normalization.sh pipeline (contains just the GC normalization steps of Alkan's pipeline)
+	$ perl -lane 'if ($F[3] < 1600 && $F[3] > 400){print $_;}' < simulation_merged_file1.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a stdin -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v > testing_file1_control_strat.bed
+	$ sh sole_gc_normalization.sh testing_file1_control_strat.bed
+		...
+		splitting X chromosome
+		Autosome average depth 765.427431
+		Control GC files ready
+		Normalizing control regions
+		Recalculating averages
+		Avg:  765.427523  std:  125.628156  AutoCut:   AutoCut2:   Del:
+		
+	# That worked! 
+	# I checked the gc.depth-avg file and it looks solid; no "single digit" numbers (which plagued the last control file!) and it consistently increases as G+C content increases.
+	
+	
+	# Let's try a different target to see if it makes a difference.
+	# Since the median is a better indication of the "middle" of a series of numbers that have huge fluctuations, let's change our MIN and MAX values off of the median instead.
+	# MAX = 2x the median (560 x 2) MIN = 0.5 x the median (560 / 2)
+		$ perl -lane 'if ($F[3] < 1120 && $F[3] > 280){print $_;}' < simulation_merged_file1.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a stdin -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v | cut -f4 | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   1161808
+			Minimum 281
+			Maximum 1119
+			Average 599.497166
+			Median  557		<- much closer to average this time
+			Standard Deviation      222.839256
+			Mode(Highest Distributed Value) 337
+			
+		$ perl -lane 'if ($F[3] < 1120 && $F[3] > 280){print $_;}' < simulation_merged_file1.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a stdin -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v > testing_file1_control_strat.bed
+		$ sh sole_gc_normalization.sh testing_file1_control_strat.bed
+			
+			splitting X chromosome
+			Autosome average depth 602.141442
+			Control GC files ready
+			Normalizing control regions
+			Recalculating averages
+			Avg:  602.141477  std:  93.365565  AutoCut:  975.603737  AutoCut2:  882.238172  Del:  322.044782
+	
+	# OK, I like the median method more, here's why:
+		# The standard deviation is smaller and the median and average values are closer together in that dataset.
+		# Also, more windows within the file1 bed file are included in the median cutoff value filter
+			$ wc testing_file1_control_strat.bed <- median-based cutoffs
+			 1161808  4647232 32026075 testing_file1_control_strat.bed
+			$ wc testing_file1_control_strat.bed <- average-based cutoffs
+			 1044467  4177868 29024378 testing_file1_control_strat.bed
+			$ wc simulation_merged_file1.bed <- original file
+			 1788684  7154736 49484315 simulation_merged_file1.bed
+		
+	# So, let's test this out for file3
+		$ cat simulation_merged_file3.bed | cut -f4 | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+			total   906779
+			Minimum 0
+			Maximum 11336569
+			Average 171.935336
+			Median  116
+			Standard Deviation      12111.
+			The max: chr16   6856604 6858500 11336569
+		$ perl -lane 'if ($F[3] < 232 && $F[3] > 58){print $_;}' < simulation_merged_file1.bed | /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a stdin -b /mnt/gliu1_usb/dbickhart/alkan_files/WSSD_WGAC_finalmerged_noChrun.bed -v > testing_file3_control_strat.bed
+		$ sh sole_gc_normalization.sh testing_file3_control_strat.bed
+			Avg:  197.864702  std:  22.762621  AutoCut:  288.915186  AutoCut2:  266.152565  Del:  129.576839
+			
+	# Now let's check and see if we can simply "steal" the G+C percentage windows from the rmask_gc_file1 and rmask_gc_file3 bed files.
+		# made a custom perl script to do this
+		$ perl /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/filter_exact_bed.pl -a testing_file1_control_strat.bed -b /mnt/gliu1_usb/dbickhart/alkan_files/rmask_gc_file1.bed -o testing_gc_file1_control.bed
+		# Worked very well: took the exact coordinates and replaced them with G+C percentages in each window.
+		# Bedtools was not an option, since the windows of the two window files overlap significantly. 
+		# So I think that I should rewrite the pipeline to generate control windows denovo
+		
+		# Done! Here is the new shell pipeline script name: cattle_denovo_pipeline.sh
+		# Here is the perl wrapper to tie it all together: alkan_pipeline_no_controls.pl
+		$ perl alkan_pipeline_no_controls.pl --File1 simulation_merged_file1.bed --File2 simulation_merged_file2.bed --File3 simulation_merged_file3.bed
+			Avg:  602.141477  std:  95.425432  AutoCut:  983.843205  AutoCut2:  888.417773  Del:  315.865181   <- better numbers, but lets see how it all turns out...
+			# resulted in ~ 300 deletion calls and 4000 gain calls (not good!)
+			
+			# Testing out the pipeline by using the average instead of the median
+			$ perl alkan_pipeline_no_controls.pl --File1 simulation_merged_file1.bed --File2 simulation_merged_file2.bed --File3 simulation_merged_file3.bed
+				Avg:  764.665161  std:  131.965402  AutoCut:  1292.526769  AutoCut2:  1160.561367  Del:  368.768955 <- still good, but more stringent than above
+				# resulted in ~ 500 deletion calls and 1418 gain calls <- better, but let's test it
+				
+			$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a simulation_merged_file1.bed.final.wssd -b blackstar_hd_first_try_gains.bed -f 0.5 | wc
+    				484    out of 632, and that's reciprocal
+    				
+    			# Let's check the G+C normalization now:
+    				$ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[3]}}, $s[4]);} foreach $k (sort {$a <=> $b}(keys(%h))){$n = 0; foreach $a (@{$h{$k}}){ $n += $a} $n = $n / scalar(@{$h{$k}}); print "$k\t$n\n";}' < simulation_merged_file1_c.bed-auto.gc.depth.normalized | cut -f2 | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+    					total   4608
+					Minimum 252.10951444444
+					Maximum 1664.37783595745	<- only mildly disconcerting
+					Average 763.192966	<- almost the same as the average for the pipeline, so this is good
+					Median  764.311905668372
+					Standard Deviation      68.316654
+					Mode(Highest Distributed Value) 764.66507
+					
+				# I think that the GC normalization worked this time, but lets make a plot to check.
+				$ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[3]}}, $s[4]);} foreach $k (sort {$a <=> $b}(keys(%h))){$n = 0; foreach $a (@{$h{$k}}){ $n += $a} $n = $n / scalar(@{$h{$k}}); print "$k\t$n\n";}' < simulation_merged_file1_c.bed-auto.gc.depth.normalized > gc_norm_check.dat
+				
+				# Now to check the G+C distribution before normalization:
+				$ join temp_gc_file1_control.bed.merged simulation_merged_file1_c.bed-auto.merged | sed s/-/"\t"/g | sed s/" "/"\t"/g | sort -k 1,1 -k 2,2n > before_normalization_merged.gc.depth
+				$ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[3]}}, $s[4]);} foreach $k (sort {$a <=> $b}(keys(%h))){$n = 0; foreach $a (@{$h{$k}}){ $n += $a} $n = $n / scalar(@{$h{$k}}); print "$k\t$n\n";}' < before_normalization_merged.gc.depth | cut -f2 | /mnt/gliu1_usb/dbickhart/alkan_files/wssd-package/statStd.pl
+					total   4608
+					Minimum 400
+					Maximum 1599
+					Average 955.273061
+					Median  1001.68872069953
+					Standard Deviation      337.702154
+					Mode(Highest Distributed Value) 1318
+					
+				$ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[3]}}, $s[4]);} foreach $k (sort {$a <=> $b}(keys(%h))){$n = 0; foreach $a (@{$h{$k}}){ $n += $a} $n = $n / scalar(@{$h{$k}}); print "$k\t$n\n";}' < before_normalization_merged.gc.depth > before_gc_norm.dat
+				# OK, weirdest thing: the GC bias for the Illumina reads appear to go the OPPOSITE of what I'd expect in the control files! 
+				# Going to test out to see if that's the case for the file1.bed file. 
+					$ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[3]}}, $s[4]);} foreach $k (sort {$a <=> $b}(keys(%h))){$n = 0; foreach $a (@{$h{$k}}){ $n += $a} $n = $n / scalar(@{$h{$k}}); print "$k\t$n\n";}' < simulation_merged_file1.bed-auto.gc.depth.normalized > full_after_gc_norm.dat
+					$ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[3]}}, $s[4]);} foreach $k (sort {$a <=> $b}(keys(%h))){$n = 0; foreach $a (@{$h{$k}}){ $n += $a} $n = $n / scalar(@{$h{$k}}); print "$k\t$n\n";}' < simulation_merged_file1.bed-auto.gc.depth > full_before_gc_norm.dat
+					
+					
+				# Still, looks like the GC bias is in the opposite direction! 
+				# Saved files are in the shared folder: corrected_blackstar.ps and full_genome_norm.ps
+				
+	# Tests
+		# So, I am unsure if the GC bias is due to the sequencing platform, my controls, my alignment or some other weird facet of the data
+		# I am going to check the older GA IIx sequences to see if the same bias is there
+		/mnt/gliu1_usb/dbickhart/breed_doc/blackstar/newblackstar_fq/mrsfast/blackstar_rem_hits_r/
+			$ sh sole_gc_normalization.sh blackstar_rem_hits_r_file1_c.bed <- using the GA IIX "rem" GC files
+				splitting X chromosome
+				Autosome average depth 237.370564
+				Control GC files ready
+				Normalizing control regions
+				Recalculating averages
+				Avg:  237.386771  std:  57.765553  AutoCut:  468.448983  AutoCut2:  410.683430  Del:  64.090112
+				
+			# I plotted the blackstar_rem_hits_r_file1_c.bed-auto.gc.depth-avg file in gnuplot and it was more parabolic than the hiseq data.
+			# Checking to see if my perl one-liner influenced the plots.
+			$ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[3]}}, $s[4]);} foreach $k (sort {$a <=> $b}(keys(%h))){$n = 0; foreach $a (@{$h{$k}}){ $n += $a} $n = $n / scalar(@{$h{$k}}); print "$k\t$n\n";}' < blackstar_rem_hits_r_file1_c.bed-auto.gc.depth > gaii_blackstar_before.dat
+			$ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[3]}}, $s[4]);} foreach $k (sort {$a <=> $b}(keys(%h))){$n = 0; foreach $a (@{$h{$k}}){ $n += $a} $n = $n / scalar(@{$h{$k}}); print "$k\t$n\n";}' < blackstar_rem_hits_r_file1_c.bed-auto.gc.depth.normalized > gaii_blackstar_after.dat
+			
+			# Believe it or not, they look the same, apart from the ends. The Hiseq windows had higher GC coverage at the end, but had some windows that were "starting" to go down. 
+			# Higher hit windows at the ends kept the GC normalization from dipping down. 
+			
+			# Going to test to see if the masked cow4 genome is the issue by taking the blackstar umd3 bed files that I've generated from that run
+			# Generating umd3 windows:
+				$ perl split_fasta.pl umd3_full_masked_gap_a.fa
+				$ for i in *.fa; do ../../wssd-package/winmaker $i; done
+				$ cat *.coverage > umd3_template_file1.bed
+				$ cat *.wssd > umd3_template_file2.bed
+				$ cat *.copynumber > umd3_template_file3.bed
+				
+				# Here are the three umd3 windows files:
+					/mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file1.bed
+					/mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file2.bed
+					/mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_template_file3.bed
+					
+				# Now to do the GC percentage association with the windows
+				$ perl GC_intervals.pl --genome umd3_template --path . --name umd3
+				# Now I just need to convert them to alkan's "tab" format
+				$ awk '{print $1"-"$2"-"$3"\t"$4}' umd3_gc_file1.bed | sort -k 1,1 > umd3_gc_file1.bed.tab
+				$ awk '{print $1"-"$2"-"$3"\t"$4}' umd3_gc_file2.bed | sort -k 1,1 > umd3_gc_file2.bed.tab
+				$ awk '{print $1"-"$2"-"$3"\t"$4}' umd3_gc_file3.bed | sort -k 1,1 > umd3_gc_file3.bed.tab
+				
+				# Here are the three umd3 gc window files:
+					/mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_gc_file1.bed.tab
+					/mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_gc_file2.bed.tab
+					/mnt/gliu1_usb/dbickhart/alkan_files/umd3/umd3_windows/umd3_gc_file3.bed.tab
+				
+			# I did not finish the blackstar alignment, so I will instead work on a pooled holstein sample:
+				/mnt/data110/dbickhart/umd3_run/holstein_hd/
+				$ for i in *.fq.bam; do echo $i; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | wc >> holstein_bam_lines.txt; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | perl -lane'$e = $F[3] + 36; print "$F[2]\t$F[3]\t$e";' >> temp.bed; done; sort -k 1,1 temp.bed > holstein_umd3_hits.bed
+				
+				$ perl alkan_pipeline_no_controls.pl --File1 holstein_comb_file1.bed --File2 holstein_comb_file2.bed --File3 holstein_comb_file3.bed --bed --hits holstein_umd3_hits.bed
+				
+		
+	
+# Running the paired end discordancy analysis
+	# In the meantime, I can run mrsfast on --discordant-vh in order to generate the DIVET files that I need
+	# Getting the average insert sizes using my calculate_sam_pe_stats.pl script
+		$ ls ./iteration_*/*.bam > pe_bam_list.txt
+		$ perl calculate_sam_pe_stats.pl pe_bam_list.txt
+			filename	num	average	std	Max	Min
+			./iteration_0/BTHO11P.SN644110308.19.1_1.bam	604246	153.960919890243	114.415644090363	497.207852161332	-189.286012380845
+			...
+			./iteration_5/BTHO11P.SN644110308.19.6_1.bam	138107	149.332177224905	112.305826664198	486.2496572175	-187.58530276769
+			./iteration_5/BTHO11P.SN644110308.19.6_2.bam	135955	149.987407598102	112.556638464838	487.657322992617	-187.682507796413
+			TOTAL	37506780	153.078293977782	114.62491452363	496.953037548672	-190.796449593108
+			
+		# There is just way too much standard deviation here! I'll just settle for a "0" based minimum value. for the meantime.
+		
+	# Running the pipeline:
+		# Here is the perl command that will run mrsfast on all the files:
+			> system("$mrsfast --search $index/cow4_36_noun_rmask_$letter.fa --pe --discordant-vh --seq1 $files{$k}->{$x}->[0] --seq2 $files{$k}->{$x}->[1] --min 0 --max 496 -o $out/$prefix.sam");
+		# Here are the runs:
+			$ perl mrsfast_cow4_letter_wrapper.pl iteration_0_list.txt a /mnt/data8/dbickhart/disc_pem/it_0
+			$ perl mrsfast_cow4_letter_wrapper.pl iteration_1_list.txt b /mnt/data8/dbickhart/disc_pem/it_1
+			$ perl mrsfast_cow4_letter_wrapper.pl iteration_2_list.txt c /mnt/data8/dbickhart/disc_pem/it_2
+			$ sleep 8h; perl mrsfast_cow4_letter_wrapper.pl iteration_3_list.txt d /mnt/data8/dbickhart/disc_pem/it_3
+			$ sleep 8h; perl mrsfast_cow4_letter_wrapper.pl iteration_4_list.txt e /mnt/data8/dbickhart/disc_pem/it_4
+			$ sleep 8h; perl mrsfast_cow4_letter_wrapper.pl iteration_5_list.txt f /mnt/data8/dbickhart/disc_pem/it_5
+			
+		# Here is the combined divet (BTHO11P_combined_unaltered_DIVET.vh)
+			$ wc BTHO11P_combined_unaltered_DIVET.vh
+			  2544085  33073087 293563901 BTHO11P_combined_unaltered_DIVET.vh
+			  
+			# So, about 2.5 million discordant reads... that means that 0.5% of the paired end reads (out of an approximate 480 million paired end reads) are likely discordant.
+			# Ok, not quite so bad as I thought!
+	# Now to fix the DIVET file and then run Variation_hunter
+		$ perl /mnt/gliu1_usb/dbickhart/Variationhunter/sort_unique_divet.pl BTHO11P_combined_unaltered_DIVET.vh > BTHO11P_combined_fixed_DIVET.vh
+		
+		$ /mnt/gliu1_usb/dbickhart/Variationhunter/VariationHunter_SC -i BTHO11P_combined_fixed_DIVET.vh -m 0 -M 496 -p 0.05 -s 6
+		$ wc *.Deletion
+		  152  1368 21793 BTHO11P_combined_fixed_DIVET.vh.SV.Deletion
+		  
+		$ perl convert_divet_to_bed.pl BTHO11P_combined_fixed_DIVET.vh.SV.Deletion | sort -k 1,1 > BTHO11P_disc_PEM_deletions.bed
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/mergeBed -i BTHO11P_disc_PEM_deletions.bed > BTHO11P_disc_PEM_merge_deletions.bed 
+		$ wc BTHO11P_disc_PEM_merge_deletions.bed
+		  100  300 2333 BTHO11P_disc_PEM_merge_deletions.bed
+		$ /mnt/gliu1_usb/dbickhart/BEDTools-Version-2.10.0/bin/intersectBed -a BTHO11P_disc_PEM_merge_deletions.bed -b /mnt/gliu1_usb/dbickhart/breed_doc/blackstar/newblackstar_fq/PEM/blackstar_temp_del.bed | wc
+		  16      48     362   <- so not much of an overlap!
+		
+		
+		
+		
+________________________________
+Blackstar simulation
+________________________________
+
+# My nelore simulation script required a large, merged bam file, so I have to generate one using samtools.
+# First I need to sort each bam file, then merge them all together
+	# sorting steps
+	$ for i in ./se_*/*_1.bam; do prefix=`echo $i | cut -d'_' -f-2`; echo $prefix; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools sort $i $prefix.1_sort; done
+	$ for i in ./se_*/*_2.bam; do prefix=`echo $i | cut -d'_' -f-2`; echo $prefix; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools sort $i $prefix.2_sort; done
+	
+	# Now to merge the sorted bams
+	$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools merge ./simulation/blackstarhd_se_sort.bam ./se*/*sort.bam
+	
+	# Testing to see how many lines there are:
+	$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view blackstarhd_se_sort.bam  | wc
+		~ 156 million reads
+		# that seems really fishy... maybe the samtools sort/merge reduced "redundant" reads?
+		# let's test that out:
+		$ for i in ./se*/*_sort.bam; do echo $i; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | wc >> sort_bam_lined_count.txt; done
+		
+		$ perl -e 'while(<>){chomp; @s = split(/\s/); $t += $s[0];} print "$t\n";' < sort_bam_lined_count.txt
+			150106470  <- nope. looks like it was correct
+			
+		$ for i in ./iteration*/*.bam; do echo $i; /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view $i | wc >> iteration_bam_lined_count.txt; done
+		$ perl -e 'while(<>){chomp; @s = split(/\s/); $t += $s[0];} print "$t\n";' < iteration_bam_lined_count.txt
+			72091098
+		
+		
+	# Now, to check the distribution of reads across chromosomes. 
+	$ /mnt/gliu1_usb/dbickhart/samtools-0.1.8/samtools view blackstarhd_se_sort.bam | perl -e '%t; while(<STDIN>){chomp; @F = split(/\t/); $t{$F[2]} += 1;} foreach $k (sort {$a cmp $b} (keys(%t))){ print "$k\t$t{$k}\n";}'
+		chr1    6409456
+		chr10   5279296
+		chr11   6250772
+		chr12   3659896
+		chr13   5447710
+		chr14   3747998
+		chr15   4463522
+		chr16   15699209
+		chr17   4544859
+		chr18   5305281
+		chr19   5346754
+		chr2    6200735
+		chr20   3177151
+		chr21   6878123
+		chr22   3922236
+		chr23   3426902
+		chr24   3407624
+		chr25   4103254
+		chr26   3482076
+		chr27   3124747
+		chr28   3395697
+		chr29   3455425
+		chr3    6923253
+		chr4    6793576
+		chr5    6087327
+		chr6    5422505
+		chr7    6925064
+		chr8    5967741
+		chr9    4379184
+		chrX    2978653
+	
+	# Very strange! 	
+_________________________________
+In Depth Tests
+_________________________________
+
+# Something doesn't smell right with the Hiseq data...
+# So, after talking with George, I am going to do the following two tests to rule out anything on our end:
+	1. Calculate G+C % for masked genome ( to rule out masking having a noticable effect on G+C bias)
+	2. Calculate Ratios of each base per sequence read position (to see if the read sampling had a G+C bias)
+	
+	Step 1. 
+		# This is easy
+		$ perl -e '%b; while(<>){ chomp; if ($_ =~ />/){ next;} $a = ($_ =~ tr/A/A/); $t = ($_ =~ tr/T/T/); $g = ($_ =~ tr/G/G/); $c = ($_ =~ tr/C/C/); $b{A} += $a; $b{T} += $t; $b{G} += $g; $b{C} += $c;} foreach $k (sort{$a cmp $b}(keys(%b))){ print "$k\:\t$b{$k}\n";}' < cow4_36_noun_rmask_a.fa
+		
+			A:      263180354
+			C:      204832500
+			G:      205178106
+			T:      263680933
+			
+	Step 2.
+		# I created a threaded script that calculates a per-base ratio of each nucleotide at a position within each sequence read
+		# Script name is calculate_nuc_per_position_sequence_reads.pl
+		$ perl calculate_nuc_per_position_sequence_reads.pl -i blackstar_hiseq_list.txt -o hiseq_black_per_base -g
+		
+		# That did a fine job, but the numbers suggest that there is at least a 25% chance of each nucleotide appearing at every base position per sequence file.
+		
+		# Now to check the gaii reads
+		$ perl calculate_nuc_per_position_sequence_reads.pl -i gaii_blackstar_files.list -o gaii_black_per_base -g
+		
+	# Another aspect I did not check: Quality scores
+	# I modified the calculate_nuc_per_position_sequence_reads.pl script to check quality scores instead.
+		$ perl calculate_qs_per_position_sequence_reads.pl -i blackstar_hiseq_list.txt -o hiseq_qual_per_base -g

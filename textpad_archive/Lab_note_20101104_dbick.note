@@ -1,0 +1,155 @@
+2010_11_04 - 2010_11_07
+(<>) Goals:
+	# Get cnv-seq to work with mrsfast
+	# Test two approaches to do this:
+		1. Filter fastq files before mrsfast run
+		2. Filter homopolymeric reads before/after mrsfast run
+		
+# Filtering fastq files using a perl script
+	# writing perl script: filter_fq_file.pl
+	# will generate new fastq files from old ones, but will filter out reads that do not line up above the qs cut-off point
+	# uses multiple threads and batches files
+	
+	# created the script and ran it on the blackstar reads
+	$ perl filter_fq_file.pl --in blackstar_files.txt --cut 19
+
+	# it is based on the one-liner I found at the seqanswers forum:
+		$ cat fastq_file | perl -ne '$t=$_ . <> . <>; $_ = <>; chomp; map{ $score += ord($_)-64} split(""); print "$t$_\n" if ($score/length($_)) > 36; $score= 0'
+		
+	# Ran into some difficulties
+		$ cat 081211_HWI-EAS174_s_1_1_sequence.fq | perl -ne '$t=$_ . <> . <>; $_ = <>; chomp; map{ $score += ord($_)-64} split(""); print "$t$_\n" if ($score/length($_)) > 19; $score= 0' > 081211_1_1.fastq
+		# The above script works
+		# Maybe I just tried to "clean it up" too much
+		
+# Results from the script:
+$ perl filter_fq_file.pl --in blackstar_files.txt --cut 18
+
+081211_HWI-EAS174_s_1_1_sequence.fq Removed 40303 entries from the fastq file!
+081211_HWI-EAS174_s_1_2_sequence.fq Removed 444572 entries from the fastq file!
+081211_HWI-EAS174_s_2_1_sequence.fq Removed 55265 entries from the fastq file!
+081211_HWI-EAS174_s_2_2_sequence.fq Removed 859854 entries from the fastq file!
+081211_HWI-EAS174_s_3_1_sequence.fq Removed 79086 entries from the fastq file!
+081211_HWI-EAS174_s_3_2_sequence.fq Removed 897056 entries from the fastq file!
+081211_HWI-EAS174_s_5_1_sequence.fq Removed 95321 entries from the fastq file!
+081211_HWI-EAS174_s_5_2_sequence.fq Removed 1303428 entries from the fastq file!
+081211_HWI-EAS174_s_6_1_sequence.fq Removed 154791 entries from the fastq file!
+081211_HWI-EAS174_s_6_2_sequence.fq Removed 1243623 entries from the fastq file!
+081211_HWI-EAS174_s_7_1_sequence.fq Removed 77535 entries from the fastq file!
+081211_HWI-EAS174_s_7_2_sequence.fq Removed 771744 entries from the fastq file!
+081211_HWI-EAS174_s_8_1_sequence.fq Removed 38637 entries from the fastq file!
+081211_HWI-EAS174_s_8_2_sequence.fq Removed 406875 entries from the fastq file!
+090116_HWI-EAS174_s_1_sequence.fq Removed 46706 entries from the fastq file!
+090116_HWI-EAS174_s_2_sequence.fq Removed 29830 entries from the fastq file!
+090116_HWI-EAS174_s_3_sequence.fq Removed 24041 entries from the fastq file!
+090116_HWI-EAS174_s_4_sequence.fq Removed 137947 entries from the fastq file!
+090116_HWI-EAS174_s_5_sequence.fq Removed 57408 entries from the fastq file!
+090116_HWI-EAS174_s_6_sequence.fq Removed 63683 entries from the fastq file!
+090116_HWI-EAS174_s_7_sequence.fq Removed 140075 entries from the fastq file!
+090116_HWI-EAS174_s_8_sequence.fq Removed 56311 entries from the fastq file!
+090213_HWI-EAS174_s_5_sequence.fq Removed 57117 entries from the fastq file!
+090213_HWI-EAS174_s_6_sequence.fq Removed 57412 entries from the fastq file!
+090213_HWI-EAS174_s_7_sequence.fq Removed 60754 entries from the fastq file!
+090220_HWI-EAS174_s_1_sequence.fq Removed 262124 entries from the fastq file!
+090220_HWI-EAS174_s_2_sequence.fq Removed 235490 entries from the fastq file!
+090220_HWI-EAS174_s_3_sequence.fq Removed 161008 entries from the fastq file!
+090220_HWI-EAS174_s_4_sequence.fq Removed 19600 entries from the fastq file!
+090223_HWI-EAS174_s_4_sequence.fq Removed 48324 entries from the fastq file!
+090225_HWI-EAS174_s_5_sequence.fq Removed 120955 entries from the fastq file!
+090303_HWI-EAS174_s_4_sequence.fq Removed 104557 entries from the fastq file!
+090313_HWI-EAS174_s_4_sequence.fq Removed 50151 entries from the fastq file!
+	
+# NOTE: obviously, these new "fastq" files cannot be used in paired end analysis since the read counts are off between the "pairs"
+		
+# Now, I have to rerun these files through the mrsfast pipeline for cnv-seq (I will only use two processors so that I can do some other analysis today)
+
+	# I won't delete my previous mrsfast run of cow4, though I might have to eventually.
+	
+	# First, I need to do some cleanup of the mrsfast folder:
+		# UMD3 has a ton of junk files, so I need to remove them
+		# It was, otherwise, a failed run, but I still want to save the "hits" file
+		$ ../../../samtools-0.1.8/samtools view merged.bam | perl -lane 'if($F[2] =~ /\*/){next;}else{print "$F[2]\t$F[3]";}' > umd3_firstrun.hits
+		
+		
+	$ perl create_hits_cnvseq.pl --in blackstar_files.txt --out_dir /mnt/gliu1_usb/dbickhart/blackstar/mrsfast/cow4_crop --thread 2 --mrsFast
+		# This will probably finish over this weekend
+		# In the meantime I will work on the G+C script and modifications to cnv-seq to account for "weight."
+		
+	# There was a problem: I didn't change the mrsfast index file from UMD3 to Cow4! So I had to restart the script after making that change.
+	
+	$ wc merged.hits (cow4_cropped)
+	 	176583790  353167580 2525264658 merged.hits
+	 	
+	$ wc merged.hits (cow4)
+		198598205  397196410 2840012768 merged.hits
+
+	# So, approximately 22014415 hits less than the uncropped dataset. Not sure if that helps or hurts, but I'm going to continue with the UMD3 dataset just to be sure.
+	# Checking to see if the chromosome numbers are the same:
+		$ perl -e '$old = "chf";while(<>){@a=split(/\t/, $_); if($a[0] eq $old){next;}else{print "$a[0]\n"; $old = $a[0];}}' < cow4_cropped.hits
+		# no chrUn, so we're good to go.
+		
+		$ perl cnv-seq.pl --test cow4_cropped.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000
+			genome size used for calculation is 2500000000
+			cow4_cropped.hits: 176583790 reads
+			cow4_mrsfast_sim_norep.hits: 111855275 reads
+			The minimum window size for detecting log2>= 0.6 should be 2666.75965132813
+			The minimum window size for detecting log2<=-0.6 should be 2234.03680792826
+			window size to use is 2666.75965132813 x 1.5 = 4000
+			window size to be used: 4000
+			# generated 51 thousand CNV's
+			
+		$ perl cnv-seq.pl --test cow4_cropped.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000 --bigger-window 5
+			genome size used for calculation is 2500000000
+			cow4_cropped.hits: 176583790 reads
+			cow4_mrsfast_sim_norep.hits: 111855275 reads
+			The minimum window size for detecting log2>= 0.6 should be 2666.75965132813
+			The minimum window size for detecting log2<=-0.6 should be 2234.03680792826
+			window size to use is 2666.75965132813 x 5 = 13334
+			window size to be used: 13334
+			# generated 14 thousand CNV's
+		
+		$ perl cnv-seq.pl --test cow4_cropped.hits --ref cow4_mrsfast_sim_norep.hits --genome-size 2500000000 --bigger-window 8
+			genome size used for calculation is 2500000000
+			cow4_cropped.hits: 176583790 reads
+			cow4_mrsfast_sim_norep.hits: 111855275 reads
+			The minimum window size for detecting log2>= 0.6 should be 2666.75965132813
+			The minimum window size for detecting log2<=-0.6 should be 2234.03680792826
+			window size to use is 2666.75965132813 x 8 = 21334
+			window size to be used: 21334
+			# generated 9 thousand CNV's
+		
+		
+______________________________________________
+Working on G+C bias calling and correction
+______________________________________________
+# Found the following methodology from Bentley, et al. 2008 (http://www.ncbi.nlm.nih.gov/pmc/articles/PMC2581791/?tool=pubmed ):
+	Calculation of Mapped read depth and distribution 
+	For NA07340-X: After aligning the data to the reference sequence for chromosome X, the depth of mapped reads was sampled at every 50th position. 
+	The distribution of this depth is shown by the 'all' histogram in fig 2a. 
+	Then all the positions from this sample were discarded where the reference is not unique on the scale of the read length (as determined by mapping the reference to itself). 
+	The distribution of these uniquely mapped reads is shown by the 'unique' histogram in fig 2a. 
+	Comparison with the Poisson distribution having the same mean shows that there is some extra variance or overdispersion relative to the theoretical minimum.
+	
+	At each of the unique positions the GC content of the reference in a surrounding window of length twice the read length was calculated.  
+	This gives an estimate of the GC content of all the reads that could have overlapped that position. 
+	Then we binned the positions by GC content, and within each bin calculated the mean depth and the 10th and 90th centiles of both the depth and a Poisson distribution with the same mean. 
+	The resulting depth-GC variation is shown in fig 2b, where the lower x-axis represents the proportion of unique reference sequence corresponding to the GC content values on the upper axis. 
+	In this plot, overdispersion at a given GC content is indicated by the Poisson 10th and 90th centile lines lying inside the shaded area at that GC value.
+
+
+# So it was a sliding window, albeit at a 50bp walk and only in unique positions
+
+# I might want to reconsider my script approach to work as a sliding window instead of a fixed, non-overlapping window
+	# It would also be easier to work with individual chromosome fastas than the larger fasta
+	# downloading them now from UCSC; All of the individual chromosome files are in the cow4_ucsc folder in the blackstar directory on server3
+	# The chromosomes are soft-masked; removing soft-masking using this bourne shell command
+		for i in chr*
+		> do
+		> perl -n -e 'if($_ =~ /^>.*/){print $_;next;}else{$_=~ s/[acgt]/N/g; print $_;}' < $i > $i.mask
+		> done
+
+# I believe that I might have a working G+C bin script
+	# Generating some test files to run on my Ubuntu drive
+	(on server3) $ perl -n -e 'if($_ =~ /^chr27/ || $_ =~ /^chr28/ || $_ =~ /^chr29/){print $_;}else{next;}' < merged_norepeats.hits > merged_testing.hits
+	# Also pulled chromosomes 27, 28 and 29 from the masked files I had on server 2
+	# They were soft-masked, so I must hard mask them before working with them.
+		
