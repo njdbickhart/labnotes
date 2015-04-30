@@ -140,3 +140,114 @@ Also, you can run multiple files through fastqc side-by-side.
 # The '*' serves as a wildcard, indicating that all of the files must end in a ".gz" extension
 ~/FastQC/fastqc -t 10 *.gz
 ```
+
+*04/29/2015*
+
+--
+### Testing a pipeline script
+
+I created a larger pipeline that automates the quality control, alignment and SNP/INDEL calling of fastq files by queuing up a large list of them to run on several CPU processor cores at once. Here are my testing notes while I debug (numerous) issues with the prototype of this pipeline. 
+
+#### Pipeline program prerequisites
+
+1. Perl modules
+  * Mouse
+  * Mouse::NativeTraits
+  * Forks::Super
+  * namespace::autoclean
+  * My [perl modules](https://github.com/njdbickhart/perl_toolchain)
+2. [BWA](http://bio-bwa.sourceforge.net/)
+3. [Samtools](http://samtools.sourceforge.net/)
+4. [BCFtools](http://samtools.github.io/bcftools/)
+5. [Fastqc](http://www.bioinformatics.babraham.ac.uk/projects/fastqc/)
+6. [Picard tools](http://broadinstitute.github.io/picard/)
+7. [SNPeff](http://snpeff.sourceforge.net/)
+
+#### Design philosophy
+
+This pipeline was created to automate the processing of fastq files from beginning to (near) end. The user just enters a "spreadsheet" tab-delimited file containing the fastq files paired in rows, and the pipeline will align them to a reference genome, create bam files and call SNPs/INDELs on them. It will also eventually annotate the variants using SnpEFF, and "grep out" the predicted variants with high functional impact for the end user. 
+
+#### Setting up a simulation test run to debug the code
+
+I need to create a very small dataset to process the code so that I can identify any errors that I need to correct from the start. I will do this using the NextSeq fastq files in the qnap NAS folder for our latest run.
+
+> Blade14: /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03
+
+```bash
+# First, to get a subset of reads from the fastq files that I want to work with
+gunzip -c 16_S1_L001_R1_001.fastq.gz | head -n 4000 | gzip > sample_fastq.1.1.fq.gz
+gunzip -c 16_S1_L001_R2_001.fastq.gz | head -n 4000 | gzip > sample_fastq.1.2.fq.gz
+
+# That's the first pair, I'm going to make one more pair to test how the pipeline handles multiple samples
+gunzip -c 25_S4_L001_R1_001.fastq.gz | head -n 4000 | gzip > sample_fastq.2.1.fq.gz
+gunzip -c 25_S4_L001_R2_001.fastq.gz | head -n 4000 | gzip > sample_fastq.2.2.fq.gz
+
+# Now to create the "sample spreadsheet" that I will use in the pipeline
+# I am creating a variable "cwd" to store the current working directory to make this more readable
+cwd=`pwd`; echo -e "$cwd/sample_fastq.1.1.fq.gz\t$cwd/sample_fastq.1.2.fq.gz\tlib1\tsamp1\n" > simulation_spreadsheet.tab
+
+# The '>>' redirect command appends to the end of the file
+cwd=`pwd`; echo -e "$cwd/sample_fastq.2.1.fq.gz\t$cwd/sample_fastq.2.2.fq.gz\tlib2\tsamp2\n" >> simulation_spreadsheet.tab
+
+head simulation_spreadsheet.tab
+	/mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.1.fq.gz     /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.2.fq.gz        lib1       samp1
+	/mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.2.1.fq.gz     /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.2.2.fq.gz        lib2       samp2
+```
+
+Now I'm going to generate a configuration file that states where all of the program executables and other necessary files are located. My pipeline checks for a hidden configuration file within the home directory by default: ~/.mergedpipeline.cnfg
+
+*04/30/2015*
+
+--
+
+I'm going to run the simulation pipeline on this test dataset on a different drive. Reasons: If I read from the NAS and write to the other drive, that spreads the work on the disks and increases the speed by which the pipeline can run. Also, it won't wear out the NAS prematurely!
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/test
+
+```bash
+# Getting the pipeline usage text
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl
+	#perl /home/dbickhart/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs <spreadsheet to be processed> --output <base output folder> --reference <reference genome fasta>
+	#Arguments:
+    	    #--fastqs        A tab-delimited spreadsheet with fastq file locations and read group info
+        	#--output        The base output folder for all bams and vcfs
+        	#--reference     The reference genome fasta file
+
+	#Optional:
+    	    #--config        Override default configuration (searches for ~/.mergedpipeline.cnfg by default)
+    	    #--coords        Reference genome fasta coordinates for threaded SNP calling
+    	    #--threads       Number of threads to fork (default: 1)
+
+# OK, now I'm going to run the pipeline on the simulation dataset
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl \ 
+	--fastqs /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/simulation_spreadsheet.tab \
+	--output sim --reference /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa \
+	--coords /mnt/iscsi/vnx_gliu_7/reference/samtools_chr_segs.txt \
+	--threads 2
+
+```
+
+Let the bug-fest begin! I fixed several bugs related to command line options, and now I'm getting bugs related to fastqc:
+
+> Unknown option: coords
+> Can't locate object method "INFO" via package "simpleLogger" at /home/dbickhart/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl line 288, <IN> line 1.
+
+> Can't locate object method "INFO" via package "simpleLogger" at /home/dbickhart/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl line 288, <IN> line 2.
+
+> Use of uninitialized value in concatenation (.) or string at /home/dbickhart/perl_toolchain/personal_modules/fastqcParser.pm line 73.
+> Use of uninitialized value in concatenation (.) or string at /home/dbickhart/perl_toolchain/personal_modules/fastqcParser.pm line 73.
+Error with pipeline! [FQCPARSE] - Error accessing fastqc_data.txt in folder:  for file: /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.1.fq.gz!
+
+I'm guessing that fastqc is not creating the folder using the naming conventions that I designed in the module.
+
+```bash
+ls /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/
+```
+
+> sample_fastq.1.1.fq_fastqc
+> sample_fastq.1.1.fq_fastqc.zip
+> sample_fastq.1.1.fq.gz
+
+Yup! Looks like I need to rewrite the name parsing for that module.
+
+Damn, I can't use forks with objects, so I'll have to use threads instead. I'll rewrite the code to do this later.
