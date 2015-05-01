@@ -251,3 +251,30 @@ ls /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBi
 Yup! Looks like I need to rewrite the name parsing for that module.
 
 Damn, I can't use forks with objects, so I'll have to use threads instead. I'll rewrite the code to do this later.
+
+*5/01/2015*
+
+--
+
+OK, I'm going to convert my object method parallel processing from "forks" to threads. I haven't used Perl threads in a while. Here's the basic format:
+
+```perl
+	use threads;
+    use threads::shared;
+	...
+	my @dogs :shared;
+	...
+	push @dogs, shared_clone(Dog->new("Labrador",  1));
+
+	while (my ($name, $delay) = each %dog_decls) {
+	    my $dog = Dog->new($name, $delay);
+	    push @dogs, $dog;
+	    threads->create(sub { $dog->hunt });
+	}
+	
+	$_->join for threads->list;
+```
+
+Note: I need to share the container for the objects because perl clones the entire script for each individual thread.
+
+
