@@ -233,3 +233,130 @@ Here are the full list of clones that we can pull for RPCI42 for this region and
 
 I'm missing a BAC that covers chr5:99,450,000-99,665,969 for NKC, and the LRC region is indeterminately covered (one BAC has only a partial mapping to the region!). Not the best start, but it's a start and we have 3 years at least. John will get 4 BACs that overlap or flank the tag SNP -- we can start from there.
 
+--
+
+*05/04/2015*
+
+### CHORI BAC selection for IGC
+
+I have already selected John's chr18 BACs, so now I need to identify the BACs that I need for John Hammond's project. Thankfully, these BACs from the Domino library are incredibly well characterized. So, let's work with the bed file containing their locations on UMD3 that I prepared previously.
+
+> pwd: /home/dbickhart/share/side_projects/john_sequencing/bac_sequencing
+
+Actually, windows remote desktop is far too slow for me to work on my linux virtualbox. Instead, I will use a modification of my java BedTools package to do the intersection.
+
+| Region Name | Clone Name | End Coords | Notes |
+| :--- | :--- | :---: | :--- |
+| MHC | CH240-503O23 | chr23:28,268,254-28,468,033 | |
+| MHC | CH240-264A9 | chr23:28,631,696-28,807,313 | |
+| MHC | CH240-203K5 | chr23:28,672,885-28,900,932 | |
+| LRC | CH240-392A13 | chr18:63,415,417-63,594,513 | The only BAC nearby! |
+| NKC | CH240-239G9 | chr5:99,854,599-100,001,447 | Another flanking BAC! |
+
+
+Damn, not that many. I'm going to have to dig to find some of these. I'll use liftover with far more permissive settings in order to find these locations.
+
+##### Working with difficult BACs for IGC regions
+
+> pwd: /home/dbickhart/share/side_projects/john_sequencing/bac_sequencing
+
+```bash
+# First, 80% minimum match
+../../../umd3_data/liftover/liftOver -minMatch=0.80 bac_placed_coord_sorted.bed ../../../umd3_data/liftover/bosTau4ToBosTau6.over.chain bac_permissive_umd3.bed bac_permissive_umd3.unmapped
+
+wc -l *.bed
+  19189 bac_full_list_ambiguous_sorted.bed
+  11123 bac_full_list_ambiguous_sorted_umd3.bed	<- old file
+    132 bac_oneandunknown_bacsorted.bed
+  14727 bac_permissive_umd3.bed	<- about 3600 more clones mapping
+  18626 bac_placed_coord_sorted.bed
+    431 bac_unknown_bacsorted.bed
+```
+
+Still nothing. OK, the problem is that these regions are not getting proper BAC coverage because they're highly repetitive. Instead, let's try to back-liftover the regions to btau4 and select mapped clones from the list directly. 
+
+UCSC only lifts over from UMD3 -> baylor 7 -> baylor 4. I had to set the list to multiple hits, and give it a "named bed" of the original coordinates. I then took only the coordinates that mapped on placed chromosomes in the region. Minimum query hit of 1000bp worked for LRC. 
+
+> chr18	62990861	62991955	LRC	1
+
+| Region Name | Clone Name | End Coords | Notes |
+| :--- | :--- | :---: | :--- |
+| LRC | CH240-370M3 | chr18:62,794,084-63,033,719 | Only ID'ed from permissive liftover. Btau4 coords |
+
+		
+> Here are the UMD3 coordinates for the 1kb segment
+> chr18	63,129,043	63,130,130
+
+OK, we're going to have to get even more permissive with NKC. I tried a 500bp minimum match, but this is the best I could get:
+
+> chr5	107222161	107223401	NKC	1
+chr5	107211670	107212619	NKC	1
+
+This translates to the 100 Mb region on chromosome 5. Good enough for a flanking BAC, but not good enough to cover the whole region. Maybe I can work with this though, if I get another flanking BAC clone on the other side. I went to the browser and selected the leftmost region before a large gap in sequence: **chr5:99,493,589-99,513,114**. I'll try to lift over this region instead.
+
+OK! That worked! The new coordinates are: 
+**Btau4: chr5:106356067-106375125** 
+
+Note, I shifted the coordinates over by 50kb on both sides to get the next bac clone results:
+
+| Region Name | Clone Name | End Coords | Notes |
+| :--- | :--- | :---: | :--- |
+| NKC | CH240-49I22	| chr5:106,206,907-106,445,457 | Btau4 coords |
+| NKC | CH240-60G5 | chr5:106,309,704-106,537,019 | Btau4 coords |
+| NKC | CH240-274P11 | chr5:106,412,271-106,652,564 | Btau4 coords |
+
+Now, I think that I have a good set of BACs to sequence. Let's list John's remaining BACs and then I'll create a final listing of coordinates and positions.
+
+##### John's BACs (chosen by liftOver)
+
+I had to liftOver John's SNP coordinate to find overlapping BACs (the region is far too shuffled for straight liftOver). The SNP coordinates on Btau4:
+
+> chr18	57082908	57082909
+
+| Region Name | Clone Name | End Coords | Notes |
+| :--- | :--- | :---: | :--- |
+| chr18 |  CH240-389P14 | chr18:56,954,654-57,129,335 | Btau4 coords |
+| chr18 | CH240-234E12 | chr18:57,058,248-57,236,865 | Btau4 coords |
+| chr18 | CH240-280L6 | chr18:57,092,237-57,268,067 | Btau4 coords |
+| chr18 | CH240-34N7 | chr18:57,129,383-57,288,223 | Btau4 coords; Flanking 5' end |
+
+OK, now I've got everything. Time to get the master table together.
+
+---
+
+# Final table of selected BACs for sequencing
+
+|Library | Region Name | Clone Name | End Coords | Notes |
+| :--- | :--- | :--- | :---: | :--- |
+| RPCI-42 | MHC | RPCI42_133J13 | chr23:28,321,536-28,448,607 | The 3' end is a split alignment on this assembly |
+| RPCI-42 | MHC | RPCI42_113K1 | chr23:28,328,466-28,452,390 | |
+| RPCI-42 | MHC | RPCI42_148O8 | chr23:28,343,014-28,548,725 | |
+| RPCI-42 | MHC | RPCI42_122O1 | chr23:28,465,336-28,657,595 | |
+| RPCI-42 | MHC | RP42-164F10 | chr23:28,639,463-28,874,325 | This is probably the smallest overlap region |
+| RPCI-42 | MHC | RPCI42_113O16 | chr23:28,725,589-28,886,699 | This extends 100kb beyond the region |
+| RPCI-42 | LRC | RPCI42_145P10 | chr18:63,005,919-? | The end sequence might not currently be on this assembly |
+| RPCI-42 | LRC | RP42-168O11 | chr18:63288030-63408180 | |
+| RPCI-42 | NKC | RP42-161F13 | chr5:99,665,696-99,780,339 | Shorter than the average BAC... Also earliest one for this region |
+| RPCI-42 | NKC | RPCI42_154D6 | chr5:99,735,207-99,968,671 | |
+| RPCI-42 | NKC | RP42-162P15 | chr5:99,866,305-99,991,606 | This one is 10kb upstream of the region, but it could anchor |
+| RPCI-42 | chr18 | RPCI42_154M1 | chr18:57,371,161-57,531,510 | Flanking 5' region|
+| RPCI-42 | chr18 | RPCI42_118F24 | chr18:57,548,063-57,704,285 | Overlaps SNP |
+| RPCI-42 | chr18 | RPCI42_118B22 | chr18:57,548,064-57,704,269 | Perhaps a clone of the previous region? |
+| RPCI-42 | chr18 | RPCI42_3D15 | chr18:57,657,380-57,806,510 | Flanking 3' region|
+| CHORI-240| MHC | CH240-503O23 | chr23:28,268,254-28,468,033 | |
+| CHORI-240| MHC | CH240-264A9 | chr23:28,631,696-28,807,313 | |
+| CHORI-240| MHC | CH240-203K5 | chr23:28,672,885-28,900,932 | |
+| CHORI-240| LRC | CH240-392A13 | chr18:63,415,417-63,594,513 | The only BAC nearby! |
+| CHORI-240| LRC | CH240-370M3 | chr18:62,794,084-63,033,719 | Only ID'ed from permissive liftover. Btau4 coords |
+| CHORI-240| NKC | CH240-239G9 | chr5:99,854,599-100,001,447 | Another flanking BAC! |
+| CHORI-240| NKC | CH240-49I22	| chr5:106,206,907-106,445,457 | Btau4 coords |
+| CHORI-240| NKC | CH240-60G5 | chr5:106,309,704-106,537,019 | Btau4 coords |
+| CHORI-240| NKC | CH240-274P11 | chr5:106,412,271-106,652,564 | Btau4 coords |
+| CHORI-240| chr18 |  CH240-389P14 | chr18:56,954,654-57,129,335 | Btau4 coords |
+| CHORI-240| chr18 | CH240-234E12 | chr18:57,058,248-57,236,865 | Btau4 coords |
+| CHORI-240| chr18 | CH240-280L6 | chr18:57,092,237-57,268,067 | Btau4 coords |
+| CHORI-240| chr18 | CH240-34N7 | chr18:57,129,383-57,288,223 | Btau4 coords; Flanking 5' end |
+
+28 Total BACs in this list. The LRC region is woefully undercovered. Let me ask John Hammond for suggestions/advice. Perhaps he's found an unplaced contig that has LRC genes? I will also ask him for probe sequence to see if I can map the probe sequence to new coordinates on several assemblies to try to resolve this region.
+
+
