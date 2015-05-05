@@ -359,4 +359,41 @@ OK, now I've got everything. Time to get the master table together.
 
 28 Total BACs in this list. The LRC region is woefully undercovered. Let me ask John Hammond for suggestions/advice. Perhaps he's found an unplaced contig that has LRC genes? I will also ask him for probe sequence to see if I can map the probe sequence to new coordinates on several assemblies to try to resolve this region.
 
+-- 
+
+*05/05/2015*
+
+# Increasing LRC BAC coverage
+
+John Hammond sent me a list of LRC BACs that the pirbright team selected for sequencing, previously. MHC Class I is appropriately covered in this dataset, but we could use more LRC BACs. From [the excel spreadsheet](E:\SharedFolders\grants\immune_gene_cluster_grant\bac_selection\list_of_clones.xlsx) I am going to select clones that have end sequencing and that are on different chromosomes. 
+
+| chromosome | clone |
+| :---: | :---: |
+|4	|CH240-312G3|
+|4|	CH240-342K15|
+4	|CH240-372D22
+4	|CH240-371O5
+4	|CH240-467K1
+4	|CH240-386N21
+10	|CH240-273N20
+18	|CH240-373G10
+18	|CH240-436K15
+18	|CH240-399M16
+18	|CH240-358F12
+18	|CH240-269F7
+18	|CH240-364C4
+18	|CH240-379C3
+X	|CH240-391K10
+X	|CH240-315A1
+X	|CH240-455F3
+1	|CH240-387G13
+1	|CH240-194J1
+1	|CH240-330I21
+1	|CH240-378O5
+18	|CH240-448F6
+18	|CH240-388F19
+18	|CH240-237P10
+
+I'm going to pull the coordinates for each clone and select a few that overlap for each chromosome segment. 
+
 
