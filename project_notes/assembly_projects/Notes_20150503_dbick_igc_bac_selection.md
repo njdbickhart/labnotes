@@ -396,4 +396,163 @@ X	|CH240-455F3
 
 I'm going to pull the coordinates for each clone and select a few that overlap for each chromosome segment. 
 
+--
 
+*05/06/2015*
+
+OK, I'm going to do a multiple grep to try to pull all of the BAC bed coordinates first.
+
+
+None of these Hammond BACs have end sequence coordinates! Here are the commands that I tested:
+
+> pwd: /home/dbickhart/share/side_projects/john_sequencing/bac_sequencing
+
+
+
+```bash
+for i in *.bed; do echo $i; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @h; while(<IN>){chomp; push(@h, $_);} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; foreach $r (@h){ if($_ =~ /$r/){print "$_\n";}}}' hammond_bac_names.txt $i; done
+
+grep '312G3' *.bed
+
+grep -E 'CH240-312G3|CH240-372D22|CH240-386N21|CH240-273N20|CH240-373G10|CH240-436K15|CH240-399M16|CH240-358F12|CH240-269F7|CH240-364C4|CH240-379C3|CH240-391K10|CH240-315A1|CH240-455F3' bac_placed_coord_sorted.bed
+```
+
+OK, so these are BACs that were not end-sequenced by Baylor, but John has evidence that they're in the region. I actually found their end traces on GSS, so I will attempt to blat them against UMD3 to find common regions that I can search against with RCPI-42 BAC end sequences.
+
+| Clone | Accession | top hit | Notes |
+| :--- | :--- | :--- | :--- |
+| CH240-312G3 | [CC483386.1](http://www.ncbi.nlm.nih.gov/nucgss/CC483386.1) | chr4   -   86783363  86783998 | 5' end of BAC has numerous small contigs with gaps
+| CH240-312G3 | [CC483301.1](http://www.ncbi.nlm.nih.gov/nucgss/CC483301.1) | chr4   +   86602948  86603648 |
+| CH240-342K15| [CC503015.1](http://www.ncbi.nlm.nih.gov/nucgss/CC503015.1) | chr4   +   86606727  86607506 | Same as previous BAC
+| CH240-342K15| [CC502926.1](http://www.ncbi.nlm.nih.gov/nucgss/CC502926.1) | chr4   -   86756995  86757779 |
+| CH240-273N20| [BZ838513.1](http://www.ncbi.nlm.nih.gov/nucgss/BZ838513.1) | chr10   -   32704514  32705284| Eh, no real gap or gene problems at first glance
+| CH240-273N20| [BZ838512.1](http://www.ncbi.nlm.nih.gov/nucgss/BZ838512.1) | chr10   +   32525536  32526332|
+| CH240-373G10| [CC524445.1](http://www.ncbi.nlm.nih.gov/nucgss/CC524445.1) | chr18   +   62630898  62631739|
+| CH240-373G10| [CC524352.1](http://www.ncbi.nlm.nih.gov/nucgss/CC524352.1) | chr18   -   62788727  62789121| This is pretty much in the region
+| CH240-391K10| [CC591218.1](http://www.ncbi.nlm.nih.gov/nucgss/CC591218.1) | chrX   +   36590496  36591354 | It's all over the place on X
+| CH240-391K10| [CC591130.1](http://www.ncbi.nlm.nih.gov/nucgss/CC591130.1) | chrX   -   36829187  36831736 | This one is even worse! So all of the X bacs are useful
+
+I will add the chr4 and chrX locations to try to select more regions for NKC in RPCI-42. Here are the locations:
+
+> chr4:86602948-86783998
+> chrX:36590496-36831736
+
+WOW! Check out those coordinates on X!!! [UCSC X chromosome region](http://genome.ucsc.edu/cgi-bin/hgTracks?db=bosTau6&position=chrX%3A36590496-36831736&hgsid=424706521_EdAAYfF9G1BVcOsr6Jlvyha9s30M) is gap central!
+
+> pwd: /home/dbickhart/share/side_projects/john_sequencing/bac_sequencing/RP42
+
+```bash
+samtools view ncbi_everything_genbank_bac_end_sorted.bam chrX:36590496-36831736 | perl -lane 'print "$F[2]\t$F[3]\t$F[0]";'
+```
+>chrX    36595020        RPCI42_141D20.TJ
+chrX    36595085        RPCI42_144K20.TJ
+chrX    36610341        RPCI42_158F10.TV
+chrX    36611259        RP42-65A17
+chrX    36617903        RPCI42_136A22.TJ
+chrX    36629145        RPCI42_152I20.TJ
+chrX    36634511        RPCI42_152I19.TJ
+chrX    36829933        RPCI42_115L7.TJ
+
+All of the above BACs are one-end anchors, so let's select one from each "region" for ordering.
+
+```bash
+samtools view ncbi_everything_genbank_bac_end_sorted.bam chr4:86602948-86783998 | perl -lane 'print "$F[2]\t$F[3]\t$F[0]";'
+```
+
+> chr4    86605254        RPCI42_128C5.TJ
+chr4    86685432        RP42-170I19
+chr4    86710226        RPCI42_132D13.TV
+
+Again, all three are one-end anchors. Let's take all three from this group.
+
+---
+
+# Final panel of BAC clones for ordering
+
+|Library | Region Name | Clone Name | End Coords | Notes |
+| :--- | :--- | :--- | :---: | :--- |
+| RPCI-42 | MHC | RPCI42_133J13 | chr23:28,321,536-28,448,607 | The 3' end is a split alignment on this assembly |
+| RPCI-42 | MHC | RPCI42_113K1 | chr23:28,328,466-28,452,390 | |
+| RPCI-42 | MHC | RPCI42_148O8 | chr23:28,343,014-28,548,725 | |
+| RPCI-42 | MHC | RPCI42_122O1 | chr23:28,465,336-28,657,595 | |
+| RPCI-42 | MHC | RP42-164F10 | chr23:28,639,463-28,874,325 | This is probably the smallest overlap region |
+| RPCI-42 | MHC | RPCI42_113O16 | chr23:28,725,589-28,886,699 | This extends 100kb beyond the region |
+| RPCI-42 | LRC | RPCI42_145P10 | chr18:63,005,919-? | The end sequence might not currently be on this assembly |
+| RPCI-42 | LRC | RP42-168O11 | chr18:63288030-63408180 | |
+| RPCI-42 | LRC | RPCI42_141D20 | chrX:36,595,020-? | |
+| RPCI-42 | LRC | RPCI42_144K20 | chrX:36,595,085-? | |       
+| RPCI-42 | LRC | RPCI42_158F10 | chrX:36,610,341-? | |       
+| RPCI-42 | LRC | RP42-65A17 | chrX:36,611,259-? | |       
+| RPCI-42 | LRC | RPCI42_136A22 | chrX:36,617,903-? | | 
+| RPCI-42 | LRC | RPCI42_115L7 | chrX:36,829,933-? | |  
+| RPCI-42 | LRC | RPCI42_128C5 | chr4:86,605,254-? | |        
+| RPCI-42 | LRC | RP42-170I19 | chr4:86,685,432-? | |           
+| RPCI-42 | NKC | RP42-161F13 | chr5:99,665,696-99,780,339 | Shorter than the average BAC... Also earliest one for this region |
+| RPCI-42 | NKC | RPCI42_154D6 | chr5:99,735,207-99,968,671 | |
+| RPCI-42 | NKC | RP42-162P15 | chr5:99,866,305-99,991,606 | This one is 10kb upstream of the region, but it could anchor |
+| RPCI-42 | chr18 | RPCI42_154M1 | chr18:57,371,161-57,531,510 | Flanking 5' region|
+| RPCI-42 | chr18 | RPCI42_118F24 | chr18:57,548,063-57,704,285 | Overlaps SNP |
+| RPCI-42 | chr18 | RPCI42_118B22 | chr18:57,548,064-57,704,269 | Perhaps a clone of the previous region? |
+| RPCI-42 | chr18 | RPCI42_3D15 | chr18:57,657,380-57,806,510 | Flanking 3' region|
+| CHORI-240| MHC | CH240-503O23 | chr23:28,268,254-28,468,033 | |
+| CHORI-240| MHC | CH240-264A9 | chr23:28,631,696-28,807,313 | |
+| CHORI-240| MHC | CH240-203K5 | chr23:28,672,885-28,900,932 | |
+| CHORI-240| LRC | CH240-392A13 | chr18:63,415,417-63,594,513 | The only BAC nearby! |
+| CHORI-240| LRC | CH240-370M3 | chr18:62,794,084-63,033,719 | Only ID'ed from permissive liftover. Btau4 coords |
+| CHORI-240| LRC | CH240-312G3 | chr4:86,602,948-86,783,998 | John Hammond's BAC. 3' end interesting |
+| CHORI-240| LRC | CH240-391K10| chrX:36,590,496-36,831,736 | John Hammond's BAC. Tons of gaps |
+| CHORI-240| LRC | CH240-315A1 | chrX:?-? | John Hammond's BAC. |
+| CHORI-240| LRC | CH240-455F3 | chrX:?-? | John Hammond's BAC. |
+| CHORI-240| NKC | CH240-239G9 | chr5:99,854,599-100,001,447 | Another flanking BAC! |
+| CHORI-240| NKC | CH240-49I22	| chr5:106,206,907-106,445,457 | Btau4 coords |
+| CHORI-240| NKC | CH240-60G5 | chr5:106,309,704-106,537,019 | Btau4 coords |
+| CHORI-240| NKC | CH240-274P11 | chr5:106,412,271-106,652,564 | Btau4 coords |
+| CHORI-240| chr18 |  CH240-389P14 | chr18:56,954,654-57,129,335 | Btau4 coords |
+| CHORI-240| chr18 | CH240-234E12 | chr18:57,058,248-57,236,865 | Btau4 coords |
+| CHORI-240| chr18 | CH240-280L6 | chr18:57,092,237-57,268,067 | Btau4 coords |
+| CHORI-240| chr18 | CH240-34N7 | chr18:57,129,383-57,288,223 | Btau4 coords; Flanking 5' end |
+
+OK, now that makes 40 total BACs to be ordered. I entered them in the "shopping cart" of the BACPAC website and they validated correctly. I just need to send them off to Pieter to ensure that we have the authority to purchase these under our previous MTA. Here are the clone names (formatted for their verification script):
+
+> RP42-133J13
+RP42-113K1
+RP42-148O8
+RP42-122O1
+RP42-164F10
+RP42-113O16
+RP42-145P10
+RP42-168O11
+RP42-141D20
+RP42-144K20
+RP42-158F10
+RP42-65A17
+RP42-136A22
+RP42-115L7
+RP42-128C5
+RP42-170I19
+RP42-161F13
+RP42-154D6
+RP42-162P15
+RP42-154M1
+RP42-118F24
+RP42-118B22
+RP42-3D15
+CH240-503O23
+CH240-264A9
+CH240-203K5
+CH240-392A13
+CH240-370M3
+CH240-312G3
+CH240-391K10
+CH240-315A1
+CH240-455F3
+CH240-239G9
+CH240-49I22
+CH240-60G5
+CH240-274P11
+CH240-389P14
+CH240-234E12
+CH240-280L6
+CH240-34N7
+
+And here is the [clone ordering page](http://bacpac.chori.org/order_clones.php). 
