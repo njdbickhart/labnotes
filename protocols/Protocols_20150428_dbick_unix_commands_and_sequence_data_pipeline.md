@@ -278,3 +278,23 @@ OK, I'm going to convert my object method parallel processing from "forks" to th
 Note: I need to share the container for the objects because perl clones the entire script for each individual thread.
 
 
+*5/12/2015*
+
+--
+
+Returning to the simulation after adding threading. Hopefully I can run the entire process without too much fuss!
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/test
+
+```bash
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/simulation_spreadsheet.tab --output sim --reference /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa --threads 2 --coords /mnt/iscsi/vnx_gliu_7/reference/samtools_chr_segs.txt
+	Pipeline warning! SNPFORK - Could not create vcf directory!
+	Thread 7 terminated abnormally: Can't locate object method "isHTSlib" via package "SamtoolsExecutable" at /home/dbickhart/perl_toolchain/personal_modules/bamTools.pm line 277.
+	Thread 8 terminated abnormally: Can't locate object method "isHTSlib" via package "SamtoolsExecutable" at /home/dbickhart/perl_toolchain/personal_modules/bamTools.pm line 277.
+	Thread 9 terminated abnormally: Can't locate object method "isHTSlib" via package "SamtoolsExecutable" at /home/dbickhart/perl_toolchain/personal_modules/bamTools.pm line 277.
+	Thread 10 terminated abnormally: Can't locate object method "isHTSlib" via package "SamtoolsExecutable" at /home/dbickhart/perl_toolchain/personal_modules/bamTools.pm line 277.
+	Thread 11 terminated abnormally: Can't locate object method "isHTSlib" via package "SamtoolsExecutable" at /home/dbickhart/perl_toolchain/personal_modules/bamTools.pm line 277.
+	Thread 12 terminated abnormally: Can't locate object method "isHTSlib" via package "SamtoolsExecutable" at /home/dbickhart/perl_toolchain/personal_modules/bamTools.pm line 277.
+```
+
+OK, the Perl script is giving me WAY too much trouble. The reason is that I've hit a wall with the implementation of threads in Perl 5. Perl doesn't have good "thread safety" guidelines -- especially for objects!!!! -- so I'm unable to really debug this further. I guess I'll have to code it in Java after all!
