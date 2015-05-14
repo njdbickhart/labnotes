@@ -4,6 +4,11 @@
 
 These are my notes on processing Ben's liftover coordinates for the Goat assembly. I will try to resolve some of the issues that he has with the files by scripting custom commands to prevent loss of data from GFF to BED and vice versa.
 
+| Contents | Link |
+| :--- | :--- |
+| File locations | [Locations](#Locations) |
+
+
 ## Locations
 Most of the files are located in this directory:
 
@@ -285,3 +290,250 @@ rRNA    |2
 C_gene_segment  |88
 
 Ah ok, so it's just that the gff file is not "grep safe." So my "grep" of **gene** and **CDS** tags were pretty sloppy with respect to the field fidelity. 
+
+*5/14/2015*
+
+--
+
+OK, now to quickly run the liftover on the gnomon results as well. 
+
+> Blade14: /mnt/nfs/nfs2/GoatData/goat_annotation/liftover
+
+```bash
+# Just moving to a new working directory to keep things organized.
+mkdir BGI_gnomon
+cd BGI_gnomon/
+
+# The liftover commands
+liftOver -gff ../ref_CHIR_1.0_gnomon_top_level.gff3 ../NCBI_USDA.over.clean.chain PacBio.gnomon.over.gff PacBio.gnomon.over.gff.unmapped
+liftOver -multiple -gff ../ref_CHIR_1.0_gnomon_top_level.gff3 ../NCBI_USDA.over.clean.chain PacBio.gnomon.over.mult.gff PacBio.gnomon.over.mult.gff.unmapped
+
+``` 
+I just wrote a new script to process the gff file to generate automatic counts of gff tab column entries. Should be much more maintainable than my one-liners. 
+
+```bash
+# Here's how to invoke the script
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f PacBio.gnomon.over.gff -c 2 -e '#' -m
+```
+|Entry          |  Count|
+|:--------------|------:|
+|CDS            | 281020|
+|C_gene_segment |     76|
+|V_gene_segment |    187|
+|cDNA_match     |  16380|
+|exon           | 308851|
+|gene           |  16753|
+|mRNA           |  17924|
+|match          |    290|
+|rRNA           |      1|
+|region         |  44477|
+|tRNA           |   1592|
+|transcript     |   1084|
+
+**Even better: I added multiple file comparison options:**
+```bash
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f PacBio.gnomon.over.gff,PacBio.gnomon.over.mult.gff -c 2 -e '#' -m
+```
+File1:  PacBio.gnomon.over.gff
+File2:  PacBio.gnomon.over.mult.gff
+
+|File1          |  Count|File2          |  Count|
+|:--------------|------:|:--------------|------:|
+|CDS            | 281020|CDS            | 281020|
+|C_gene_segment |     76|C_gene_segment |     76|
+|V_gene_segment |    187|V_gene_segment |    187|
+|cDNA_match     |  16380|cDNA_match     |  16380|
+|exon           | 308851|exon           | 308851|
+|gene           |  16753|gene           |  16753|
+|mRNA           |  17924|mRNA           |  17924|
+|match          |    290|match          |    290|
+|rRNA           |      1|rRNA           |      1|
+|region         |  44477|region         |  44477|
+|tRNA           |   1592|tRNA           |   1592|
+|transcript     |   1084|transcript     |   1084|
+
+
+##### Comparison of liftover gff results
+
+```bash
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f BGI_gnomon/PacBio.gnomon.over.gff,BGI_top_level/CDS_liftover/PacBio.top_level.over.gff -c 2 -e '#' -m
+```
+
+File1:  BGI_gnomon/PacBio.gnomon.over.gff
+File2:  BGI_top_level/CDS_liftover/PacBio.top_level.over.gff
+
+|File1      |  Count|File2          |  Count|
+|:----------|------:|:--------------|------:|
+|CDS        | 406755|CDS            | 281020|
+|exon       | 436058|C_gene_segment |     76|
+|gene       |  38423|V_gene_segment |    187|
+|mRNA       |  43119|cDNA_match     |  16380|
+|transcript |   4188|exon           | 308851|
+|           |       |gene           |  16753|
+|           |       |mRNA           |  17924|
+|           |       |match          |    290|
+|           |       |rRNA           |      1|
+|           |       |region         |  44477|
+|           |       |tRNA           |   1592|
+|           |       |transcript     |   1084|
+
+## Resolution of Unmapped liftover results
+
+The goal here is to take a look at the unmapped results to get basic statistics on what carried over from the BGI annotation, and what didn't. In order to get an eagle-eye view of the situation first, let's count the number of split vs deleted entries.
+
+> Blade14: /mnt/nfs/nfs2/GoatData/goat_annotation/liftover/BGI_top_level/CDS_liftover
+
+```bash
+perl -e '%c; while($h = <>){chomp $h; $h =~ s/\# //g; $g = <>; chomp $g; @s = split(/\t/, $g); $c{$h}->{$s[2]} += 1;} foreach $t (sort{$a cmp $b} keys %c){foreach $n (sort{$a cmp $b} keys %{$c{$t}}){print "$t\t\|$n\t\|". $c{$t}->{$n}; print "\n";}}' < PacBio.top_level.over.gff.unmapped
+```
+
+|liftover | type | count|
+|:--- | :--- | ---:|
+Deleted in new  |CDS    |2295
+Deleted in new  |C_gene_segment |7
+Deleted in new  |V_gene_segment |41
+Deleted in new  |cDNA_match     |186
+**Deleted in new**  |**exon**   |**2731**
+**Deleted in new**  |**gene**   |**103**
+Deleted in new  |mRNA   |33
+Deleted in new  |match  |8
+Deleted in new  |region |6373
+Deleted in new  |tRNA   |19
+Deleted in new  |transcript     |4
+Partially deleted in new        |CDS    |7802
+Partially deleted in new        |C_gene_segment |4
+Partially deleted in new        |D_loop |1
+Partially deleted in new        |V_gene_segment |29
+Partially deleted in new        |cDNA_match     |1097
+**Partially deleted in new**        |**exon**   |**9838**
+**Partially deleted in new**        |**gene**   |**3310**
+Partially deleted in new        |mRNA   |3228
+Partially deleted in new        |match  |25
+Partially deleted in new        |region |23125
+Partially deleted in new        |tRNA   |43
+Partially deleted in new        |transcript     |183
+Split in new    |CDS    |620
+Split in new    |C_gene_segment |1
+Split in new    |V_gene_segment |8
+Split in new    |cDNA_match     |68
+**Split in new**    |**exon**   |**948**
+**Split in new**    |**gene**   |**5623**
+Split in new    |mRNA   |6762
+Split in new    |match  |10
+Split in new    |rRNA   |1
+Split in new    |region |3047
+Split in new    |tRNA   |10
+Split in new    |transcript     |278
+
+OK, lots of split genes and exons. Not as many deleted genes and exons -- **I wonder if Ben also ran LastZ on the "deg" contig file?** Let's start with the split genes/exons. If they lie on contig borders (less likely as there are nearly as many genes as there are contig borders) then they might be evidence for scaffolding. Let's look at exons first, as I can do a BWA MEM on the shorter sequence of them to see finer-tuned alignments.
+
+```bash
+perl -e '%c; while($h = <>){chomp $h; $h =~ s/\# //g; $g = <>; chomp $g; @s = split(/\t/, $g); if($h =~ /Split in new/ && $s[2] eq "exon"){print "$g\n";} $c{$h}->{$s[2]} += 1;}' < PacBio.top_level.over.gff.unmapped | head
+```
+
+> NC_022293.1     Gnomon  exon    110132  110335  .       -       .       ID=id2;Parent=rna0;Dbxref=GeneID:102190458,Genbank:XM_005674738.1;gbkey=mRNA;gene=LOC102190458;product=chloride intracellular channel protein 6-like;transcript_id=XM_005674738.1
+NC_022293.1     Gnomon  exon    4172533 4173007 .       -       .       ID=id671;Parent=rna65;Dbxref=GeneID:102179518,Genbank:XM_005674697.1;gbkey=mRNA;gene=LOC102179518;product=keratin-associated protein 6-2-like;transcript_id=XM_005674697.1
+NC_022293.1     Gnomon  exon    4187183 4187943 .       +       .       ID=id674;Parent=rna66;Dbxref=GeneID:102179810,Genbank:XM_005674698.1;gbkey=mRNA;gene=LOC102179810;product=keratin-associated protein 6-2-like;transcript_id=XM_005674698.1
+NC_022293.1     Gnomon  exon    4753646 4754511 .       -       .       ID=id682;Parent=rna72;Dbxref=GeneID:102181431,Genbank:XM_005674703.1;gbkey=mRNA;gene=LOC102181431;product=keratin-associated protein 13-1-like;transcript_id=XM_005674703.1
+NC_022293.1     Gnomon  exon    24615276        24616184        .       -       .       ID=id1406;Parent=gene113;Dbxref=GeneID:102183454;exon_number=1;gbkey=exon;gene=LOC102183454;part=1%2F1
+
+**NC_022293.1 is chr1 from an NCBI search.** So let's faidx chr1 and start going to town.
+
+> Blade14:/mnt/nfs/nfs2/GoatData/goat_annotation/dbickhart/bwa_comp
+
+```bash
+cp ../../genomes/NCBI_BGI/unmasked/chi_ref_CHIR_1.0_chr1.fa ./
+
+# Getting the BGI sequence for the coordinates
+samtools faidx chi_ref_CHIR_1.0_chr1.fa
+head chi_ref_CHIR_1.0_chr1.fa.fai
+	# gi|541128986|ref|NC_022293.1|   155011307       122     70      71
+
+samtools faidx chi_ref_CHIR_1.0_chr1.fa 'gi|541128986|ref|NC_022293.1|:110132-110335'
+	>gi|541128986|ref|NC_022293.1|:110132-110335
+	CTTCACGAAGAGGGTGATGTCGTGGTCCTGCCCCGGGGCCCCCTCCTCGGACGCCTCGCC
+	GCCCTCCTGGCCGCCGTTCTCGGGCACTGTCCCGCCGCCGCGCTCCGCGCTGCCCTCGCC
+	CGCCCGGTGCCTCCCCCCCCTCCCCCCCCCAGCCACATCCATTAGGCCCCTTGTTCCCAC
+	AACCTGCTGGCTGGGCACCTTGTC
+
+samtools faidx chi_ref_CHIR_1.0_chr1.fa 'gi|541128986|ref|NC_022293.1|:110132-110335' > top_nolift_exon_id2.fa
+
+# Now to pull the PacBio assembly and generate a BWA index for it
+# Actually, it looks like Ben has already done this:
+ls ../../genomes/USDA/USDA_V3.fasta*
+	#../../genomes/USDA/USDA_V3.fasta      ../../genomes/USDA/USDA_V3.fasta.ann  ../../genomes/USDA/USDA_V3.fasta.pac
+	#../../genomes/USDA/USDA_V3.fasta.amb  ../../genomes/USDA/USDA_V3.fasta.bwt  ../../genomes/USDA/USDA_V3.fasta.sa
+
+# OK, BWA MEM time
+# Ben is hitting the mount a bit hard, so disk IO is way too slow
+# copying over to a new share
+cp ../../genomes/USDA/USDA_V3.fasta /mnt/iscsi/vnx_gliu_7/goat_assembly/
+```
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/
+
+```bash
+bwa index USDA_V3.fasta
+samtools faidx USDA_V3.fasta
+
+bwa mem USDA_V3.fasta /mnt/nfs/nfs2/GoatData/goat_annotation/dbickhart/bwa_comp/top_nolift_exon_id2.fa
+	...
+	gi|541128986|ref|NC_022293.1|:110132-110335     16      utg2462        294089  60 80S86M1I37M     *       0       0       GACAAGGTGCCCAGCCAGCAGGTTGTGGGAACAAGGGGCCTAATGGATGTGGCTGGGGGGGGGAGGGGGGGGAGGCACCGGGCGGGCGAGGGCAGCGCGGAGCGCGGCGGCGGGACAGTGCCCGAGAACGGCGGCCAGGAGGGCGGCGAGGCGTCCGAGGAGGGGGCCCCGGGGCAGGACCACGACATCACCCTCTTCGTGAAG      *       NM:i:5  MD:Z:5A4C7T2A101        AS:i:96   XS:i:20 SA:Z:utg3802_len=1658306_reads=6343_status=X_microHet=1.00_covStat=1.00_quiver,1039863,+,129S75M,60,2;
+	gi|541128986|ref|NC_022293.1|:110132-110335     2048    utg3802       1039863 60 129H75M *       0       0       CCTCCCCCCCCTCCCCCCCCCAGCCACATCCATTAGGCCCCTTGTTCCCACAACCTGCTGGCTGGGCACCTTGTC     *       NM:i:2  MD:Z:5T8A60     AS:i:65   XS:i:22 SA:Z:utg2462_len=532208_reads=2354_status=X_microHet=1.00_covStat=1.00_quiver,294089,-,80S86M1I37M,60,5;
+	
+# INTERESTING NOTE: 
+# BWA Mem's SA:Z tags are circular references to MEM split reads!
+```
+
+It's pretty obvious to me that this is a contig break. Here's why: 
+
+**CCTCCCCCCCCTCCCCCCCCC** 
+
+Pretty easy to spot simple repeat and they probably just patched a bandaid over the region without regard for the consequences. When I put the 128 bases that map to utg2462 in a NCBI nr blast, I get these results:
+
+> PREDICTED: Capra hircus chloride intracellular channel protein 6-like (LOC102190458), mRNA
+Sequence ID: ref|XM_005674738.1|Length: 1192Number of Matches: 1
+Related Information
+Gene-associated gene details
+Map Viewer-aligned genomic context
+Range 1: 206 to 333GenBankGraphicsNext MatchPrevious Match
+Alignment statistics for match #1
+Score	Expect	Identities	Gaps	Strand
+237 bits(128)	3e-59	128/128(100%)	0/128(0%)	Plus/Plus
+
+>PREDICTED: Ovis aries musimon chloride intracellular channel protein 6 (LOC101112021), transcript variant X2, mRNA
+Sequence ID: ref|XM_012170865.1|Length: 4828Number of Matches: 1
+Related Information
+Gene-associated gene details
+Range 1: 2046 to 2173GenBankGraphicsNext MatchPrevious Match
+Alignment statistics for match #1
+Score	Expect	Identities	Gaps	Strand
+198 bits(107)	1e-47	121/128(95%)	0/128(0%)	Plus/Plus
+
+Hahaha! A blast with the full sequence against the Non-redundant database shows that the BGI assembly is split among closely related ruminants too! So that explains the discrepancy. **I need to find a way to automate this search by pulling sequence from all of the split exons and by mapping them back to the assembly with BWA mem.**
+
+--
+##### Quick gff conversion
+
+Ben needs a quick modification of a gff file in order to give "dummy" exon coordinates. I need to create a duplicate "exon" coordinate that is the child of the "CDS" coordinate in each case.
+
+> Blade14: /mnt/nfs/nfs2/GoatData/goat_annotation/EVM/working
+
+```bash
+head gene_predictions.gff3
+	utg0    AUGUSTUS_masked gene    12203   13931   0.15    -       .       ID=g1;
+	utg0    AUGUSTUS_masked mRNA    12203   13931   0.15    -       .       ID=g1.t1;Parent=g1
+	utg0    AUGUSTUS_masked stop_codon      12203   12205   .       -       0       Parent=g1.t1;
+	utg0    AUGUSTUS_masked CDS     12203   12653   0.8     -       1       ID=g1.t1.CDS1;Parent=g1.t1
+
+# NOTE: the gff doesn't have '#' header tags like the NCBI version
+# I can easily write a one-liner for this
+perl -lane 'if($F[2] eq "CDS"){$F[8] =~ /ID=(.+);Parent=(.+$)/; $id = $1; $parent = $2; $parent = $id; $id =~ s/CDS/exon/; print join("\t", @F); print "$F[0]\t$F[1]\texon\t$F[3]\t$F[4]\t$F[5]\t$F[6]\t$F[7]\tID=$id;Parent=$parent";}else{print $_;}' < gene_predictions.gff3 | head -n 20
+	utg0    AUGUSTUS_masked gene    12203   13931   0.15    -       .       ID=g1;
+	utg0    AUGUSTUS_masked mRNA    12203   13931   0.15    -       .       ID=g1.t1;Parent=g1
+	utg0    AUGUSTUS_masked stop_codon      12203   12205   .       -       0       Parent=g1.t1;
+	utg0    AUGUSTUS_masked CDS     12203   12653   0.8     -       1       ID=g1.t1.CDS1;Parent=g1.t1
+	utg0    AUGUSTUS_masked exon    12203   12653   0.8     -       1       ID=g1.t1.exon1;Parent=g1.t1.CDS1
+	utg0    AUGUSTUS_masked intron  12654   12730   0.82    -       .       Parent=g1.t1;
+
+# Bingo. Now to make the file.
+```
