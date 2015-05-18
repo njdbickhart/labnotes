@@ -81,3 +81,15 @@ head -n 1 /mnt/cifs/bickhart-qnap/RBaldwin/EA12095_20130418/Batch.2013-04-18/rse
      W22942/3013_12_22_10_L2.LB2     W22942/3036_4_20_11_L2.LB4      W22942/3077_3_7_11_L2.LB16
      W22942/3078_12_22_10_L2.LB13    W22942/3083_6_13_11_L2.LB12     W22942/3085_2_2_11_L2.LB25
 ```
+
+*5/15/2015*
+
+--
+
+Actually, I'm curious to see how the program will run without this division. 
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/rna_seq/RBaldwin/
+
+```bash
+rsem-run-ebseq /mnt/cifs/bickhart-qnap/RBaldwin/EA12095_20130418/Batch.2013-04-18/rsem_gnorm_matrix.txt 3,3,3,3,3,3,3,3,3,3,3,3,3 first_try_disordered
+```
