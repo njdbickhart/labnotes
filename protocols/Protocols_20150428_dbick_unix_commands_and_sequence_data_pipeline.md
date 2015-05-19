@@ -298,3 +298,102 @@ perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs /m
 ```
 
 OK, the Perl script is giving me WAY too much trouble. The reason is that I've hit a wall with the implementation of threads in Perl 5. Perl doesn't have good "thread safety" guidelines -- especially for objects!!!! -- so I'm unable to really debug this further. I guess I'll have to code it in Java after all!
+
+*5/18/2015*
+
+--
+
+Recoding in Java would be a huge pain. Let me try one last time with the pipeline infrastructure that I wrote. This time, It's going to be all forking rather than threading.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/test
+
+```bash
+rm -r sim
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/simulation_spreadsheet.tab --output sim --reference /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa --threads 2 --coords /mnt/iscsi/vnx_gliu_7/reference/samtools_chr_segs.txt
+
+```
+
+*5/19/2015*
+
+--
+
+OK, after some debugging it worked! But there are a few quality of life things that I need to fix: for starters, the thread count needs to be universal for forks::super (that package does a much better job of handling concurrent forks than my package does). Also, I need to set an output directory for fastqc, as the damn default for the program is to write to the same directory as the fastqs. 
+
+Features I'm adding:
+* File counter for log file progress
+* Fastqc output directory
+* Shared fork thread pool
+* htslib samtools merging (for easier bam merging with fewer problems)
+
+I think that I've added these features successfully, but I haven't checked bam merger routines yet. Let me test it.
+
+> Blade14: /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03
+
+```bash
+# I'm going to make more copies of the "first sample" and the "second sample" in order to see how my merger routine works
+gunzip -c 16_S1_L002_R1_001.fastq.gz | head -n 8000 | gzip > sample_fastq.3.1.fq.gz
+gunzip -c 16_S1_L002_R2_001.fastq.gz | head -n 8000 | gzip > sample_fastq.3.2.fq.gz
+
+gunzip -c 17_S2_L003_R1_001.fastq.gz | head -n 4000 | gzip > sample_fastq.4.1.fq.gz
+gunzip -c 17_S2_L003_R2_001.fastq.gz | head -n 4000 | gzip > sample_fastq.4.2.fq.gz
+
+# That should be enough to work with, so two sets of data from each sample to merge
+```
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/test/
+
+```bash
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/simulation_spreadsheet.tab --output sim --reference /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa --threads 2 --coords /mnt/iscsi/vnx_gliu_7/reference/samtools_chr_segs.txt
+
+# Hmm... the htslib RG headers didn't merge properly. Time to test it out:
+bwa mem -R '@RG\tID:samp1.1\tLB:lib1\tPL:ILLUMINA\tSM:samp1' -v 1 -M /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.1.fq.gz /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.2.fq.gz > samp1.1.test.sam
+
+bwa mem -R '@RG\tID:samp1.2\tLB:lib3\tPL:ILLUMINA\tSM:samp1' -v 1 -M /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.3.1.fq.gz /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.3.2.fq.gz > samp1.2.test.sam
+
+samtools view -bS samp1.1.test.sam | samtools sort - samp1.1.test
+samtools index samp1.1.test.bam
+
+samtools view -bS samp1.2.test.sam | samtools sort - samp1.2.test
+samtools index samp1.2.test.bam
+
+for i in *.bam; do samtools view -H $i | grep '@RG'; done
+	@RG     ID:samp1.1      LB:lib1 PL:ILLUMINA     SM:samp1
+	@PG     ID:bwa  PN:bwa  VN:0.7.10-r789  CL:bwa mem -R @RG\tID:samp1.1\tLB:lib1\tPL:ILLUMINA\tSM:samp1 -v 1 -M /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.1.fq.gz /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.2.fq.gz
+	@RG     ID:samp1.2      LB:lib3 PL:ILLUMINA     SM:samp1
+	@PG     ID:bwa  PN:bwa  VN:0.7.10-r789  CL:bwa mem -R @RG\tID:samp1.2\tLB:lib3\tPL:ILLUMINA\tSM:samp1 -v 1 -M /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.3.1.fq.gz /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.3.2.fq.gz
+
+# OK, so there are two separate ID tags for each read group. Now to test the merge
+samtools merge -cp samp1.merged.sorted.bam samp1.1.test.bam samp1.2.test.sam
+
+samtools view -H samp1.merged.sorted.bam | grep '@RG'
+	@RG     ID:samp1.1      LB:lib1 PL:ILLUMINA     SM:samp1
+	@PG     ID:bwa  PN:bwa  VN:0.7.10-r789  CL:bwa mem -R @RG\tID:samp1.1\tLB:lib1\tPL:ILLUMINA\tSM:samp1 -v 1 -M /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.1.fq.gz /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/sample_fastq.1.2.fq.gz
+
+# Nope, it condensed all the IDs down to one. 
+# This worked, and it also condensed down the @PG tag
+samtools merge -p samp1.merged.sorted.bam samp1.1.test.bam samp1.2.test.bam
+
+# I wonder how this works on files that have the same RG ID...
+cp samp1.1.test.bam samp1.3.test.bam
+samtools index samp1.3.test.bam
+samtools merge -p samp1.merged.sorted.bam samp1.1.test.bam samp1.2.test.bam samp1.3.test.bam
+samtools view -H samp1.merged.sorted.bam | grep '@RG'
+	...
+	@RG     ID:samp1.1      LB:lib1 PL:ILLUMINA     SM:samp1
+	@RG     ID:samp1.2      LB:lib3 PL:ILLUMINA     SM:samp1
+	@RG     ID:samp1.1-7AADE6C7     LB:lib1 PL:ILLUMINA     SM:samp1
+	...
+
+# OK, so if the IDs are from different files, then it won't merge them -- it will create a unique tag.
+# One last test:
+samtools merge -cp samp1.merged.sorted.bam samp1.1.test.bam samp1.2.test.bam samp1.3.test.bam
+samtools view -H samp1.merged.sorted.bam | grep '@RG'
+	@RG     ID:samp1.1      LB:lib1 PL:ILLUMINA     SM:samp1
+
+# Nope, condensed! Apparently it condenses down to the sample ID, not the ID tag.
+# I'm going to remove the "-c" option from my merge string in the pipeline.
+
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs /mnt/cifs/bickhart-qnap/NextSeq/150403_NS500432_0006_AH1547BGXX/H1547BGXX/DBickhart-NatDB-2015-04-03/simulation_spreadsheet.tab --output sim --reference /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa --threads 2 --coords /mnt/iscsi/vnx_gliu_7/reference/samtools_chr_segs.txt
+```
+
+I'm happy now. I think that I can run this on the NextSeq samples without too many issues.
