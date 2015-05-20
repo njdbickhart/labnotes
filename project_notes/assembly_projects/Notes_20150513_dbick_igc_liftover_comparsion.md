@@ -4,11 +4,12 @@
 
 These are my notes on processing Ben's liftover coordinates for the Goat assembly. I will try to resolve some of the issues that he has with the files by scripting custom commands to prevent loss of data from GFF to BED and vice versa.
 
-| Contents | Link |
-| :--- | :--- |
-| File locations | [Locations](#Locations) |
+## Table of Contents
+* [Locations](#Locations)
+* [Automating split region resolution](#automate)
 
 
+<a name="Locations"></a>
 ## Locations
 Most of the files are located in this directory:
 
@@ -536,4 +537,36 @@ perl -lane 'if($F[2] eq "CDS"){$F[8] =~ /ID=(.+);Parent=(.+$)/; $id = $1; $paren
 	utg0    AUGUSTUS_masked intron  12654   12730   0.82    -       .       Parent=g1.t1;
 
 # Bingo. Now to make the file.
+```
+
+<a name="automate"></a>
+## Automating split region resolution
+
+*5/20/2015*
+
+--
+I need to generate a script that reads the unmapped liftover coordinates and remaps the split regions to try to find assembly discrepancies. 
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/liftover_comp
+
+```bash
+# First, let's get the files that I need in this directory
+cp /mnt/nfs/nfs2/GoatData/goat_annotation/liftover/BGI_top_level/CDS_liftover/PacBio.top_level.over.gff.unmapped ./
+
+# I need to create an indexable reference genome with chromosome names that match the liftover chromosomes
+# NCBI makes this as painful as possible, sadly
+for i in /mnt/nfs/nfs2/GoatData/goat_annotation/genomes/NCBI_BGI/unmasked/chi_ref_CHIR_1.0_chr*.fa; do perl -e 'while(<>){chomp; if($_ =~ />/){($c) = $_ =~ />gi\|\d+\|ref\|(NC_.+)\| .+/; print ">$c\n";}else{print "$_\n";}}' < $i; done > chir_bgi_pseudo_chr.fa
+
+# The above script should remove the pipes and other silly characters that they use in their scaffold naming scheme
+# Now to get the stats and index the chromosome
+samtools faidx chir_bgi_pseudo_chr.fa
+# NC_005044.2 is chrMt
+bwa index chir_bgi_pseudo_chr.fa
+
+# I'm going to pull all of the unmapped, split exons, generate fastas for them, and then remap them back.
+perl -e '%c; while($h = <>){chomp $h; $h =~ s/\# //g; $g = <>; chomp $g; @s = split(/\t/, $g); ($id) = $s[8] =~ /ID=(.+);Parent/; if($h =~ /Split in new/ && $s[2] eq "exon"){open(IN, "samtools faidx chir_bgi_pseudo_chr.fa $s[0]:$s[3]-$s[4] |"); $fh = <IN>; chomp $fh; if($fh eq ""){next;} print "$fh\_$id\n"; while($line = <IN>){print $line;} close IN;}}' < PacBio.top_level.over.gff.unmapped > split_in_new_exons.fa
+
+# The read names should contain the exon IDs from the gff file. 
+# This will allow me to refer back to the annotation if needed.
+
 ```

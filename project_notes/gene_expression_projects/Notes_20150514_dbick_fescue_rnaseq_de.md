@@ -531,3 +531,11 @@ OK, Let's start segregating the datat to look for group-specific gene expression
 ## Group specific results
 
 The Goal here is to treat the **D** group differently from the **L1** and **L2** groups. So I will attempt to identify DE genes that are common to the **L** types and specific to the **D** group.
+
+
+
+## TODO List
+
+* Generate large supplementary table
+* Generate smaller table of DE genes with fold change
+* Generate FC figures
