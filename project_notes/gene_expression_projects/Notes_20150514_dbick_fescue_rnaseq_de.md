@@ -2,6 +2,16 @@
 ---
 *5/14/2015*
 
+## Table of Contents
+
+* [Initial Information](#initial)
+* [Identifying differentially expressed transcripts](#rsem)
+* [Generating the results](#results)
+* [Running the Analysis](#running)
+* [Interpreting the results](#interpret)
+* [Group Specific Results](#specific)
+
+<a name="initial"></a>
 ## Initial information on files
 
 The files are all located at this address:
@@ -54,6 +64,7 @@ Here is some more documentation of [EBseq](https://www.biostat.wisc.edu/~kendzio
 
 It looks like I have to run [rsem-run-ebseq](http://deweylab.biostat.wisc.edu/rsem/rsem-run-ebseq.html) then run [rsem-control-fdr](http://deweylab.biostat.wisc.edu/rsem/rsem-control-fdr.html) in order to get good differentially expressed transcripts. My only problem: I don't know how to designate samples vs replicates in the rsem-run-ebseq program. I guess I just need to start running trials of the program in order to intimate this.
 
+<a name="rsem"></a>
 ## Identifying differentially expressed transcripts
 
 OK, now that I've install the software, I think that I understand which files need to be loaded in order to identify differentially expressed transcripts. I've gotta just bite the bullet and try to run the program and get the error messages. Hopefully the sample context discovery is sensitive to the sample names. If it is sensitive to the order in the matrix file, I can reformat it using Perl.
@@ -218,7 +229,7 @@ I received three files. Here's a brief description of their contents:
 *05/19/2015*
 
 -- 
-
+<a name="results"></a>
 ## Generating the results
 
 OK, my strategy is to divide up the data into severate categories based on the information that Tony Capuco gave me. There are 9 different conditions, but rather than confuse the pipeline, I prefer to separate the gene expression matrix into three "bitesize" chunks. Here are the conditions:
@@ -341,7 +352,7 @@ mkdir biopsy_D
 mkdir biopsy_L1
 mkdir biopsy_L2
 ```
-
+<a name="running"></a>
 ## Running the analysis
 
 The RSEM pipeline uses 5 iterations of EBSeq, and the authors of EBSeq say that this might not be enough. I'm going to run it with the straight pipeline anyways, as the RSEM pipeline also generates a normalized data matrix that can be plugged into R later for plotting/analysis.
@@ -373,7 +384,7 @@ head -n 1 rsem_L2_biopsy_ordered_matrix.txt
 export PATH=/home/dbickhart/RSEM/:$PATH
 rsem-run-ebseq rsem_L2_biopsy_ordered_matrix.txt 5,4,4 rsem_L2_biopsy.results
 ```
-
+<a name="interpret"></a>
 ## Interpretting the results
 
 OK, the program generates a posterior probability of the likelihood of differential expression (**PPDE**) in the flat "results" file. I'm going conservative and select a **PPDE** of > 95%, which would give me a false discovery rate of ~ 5% (not counting multiple testing). Let's check how many there are in each file.
@@ -509,3 +520,14 @@ dev.off()
 ```
 
 The QQ plots don't look too bad. A little right-skew for **C** and **B**, but other than that, not too shabby.
+
+*5/20/2015*
+
+--
+
+OK, Let's start segregating the datat to look for group-specific gene expression results.
+
+<a name="specific"></a>
+## Group specific results
+
+The Goal here is to treat the **D** group differently from the **L1** and **L2** groups. So I will attempt to identify DE genes that are common to the **L** types and specific to the **D** group.
