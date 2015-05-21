@@ -568,5 +568,223 @@ perl -e '%c; while($h = <>){chomp $h; $h =~ s/\# //g; $g = <>; chomp $g; @s = sp
 
 # The read names should contain the exon IDs from the gff file. 
 # This will allow me to refer back to the annotation if needed.
+bwa mem -M -t 5 /mnt/nfs/nfs2/GoatData/goat_annotation/genomes/USDA/USDA_V3.fasta split_in_new_exons.fa > split_in_new_exons.sam
+
+samtools view -bS split_in_new_exons.sam >  split_in_new_exons.bam
 
 ```
+*5/21/2015*
+
+--
+
+Some really stupid mistakes that BGI made with the annotation:
+
+**NC_022293.1:140352356-140353005_id11935** is a "vegetative cell wall protein, gp1-like" from their annotation, and it was clearly lifted from a mine-drainage metagenomics study. When you look at their assembled sequence, it's clearly a simple repetitive element.
+
+I'm going to filter the alignments to try to get tabular data on each exon region.
+
+```bash
+perl ~/perl_toolchain/sequence_data_scripts/resolveLiftoverDifferences.pl -i split_in_new_exons.bam -o split_in_new_exons_format.tab
+
+# This file has the remapped locations for these regions.
+# Now, I'm going to get some basic stats about the bam, like number of split reads, etc.
+
+samtools view -f '0x100' split_in_new_exons.bam | wc -l
+	125	# This is the number of secondary alignments from the realignment
+samtools view -f '0x100' split_in_new_exons.bam | perl -lane '($h) = $F[5] =~ /(\d+)H/; if($h){print $h;}' | statStd.pl
+	total   125
+	Minimum 13
+	Maximum 5004
+	Average 753.776000   # Average number of Hardclipped bases from alignment
+	Median  377
+	Standard Deviation      1045.663456
+	Mode(Highest Distributed Value) 130
+
+```
+
+## Comparative genomics alignment with Sheep
+
+Since I had such a great success with that one test case, I'm interested in taking ALL the Sheep exon nucleotide sequence, blasting it against BGI, and blasting it against the PacBio assembly. THEN, I plan to see which exons fall out in BGI vs PacBio and vice versa.
+
+>Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/liftover_comp
+
+```bash
+# Downloading the data from Ensembl
+wget ftp://ftp.ensembl.org/pub/release-79/gtf/ovis_aries/Ovis_aries.Oar_v3.1.79.gtf.gz
+wget ftp://ftp.ensembl.org/pub/release-79/fasta/ovis_aries/dna/Ovis_aries.Oar_v3.1.dna.toplevel.fa.gz
+
+# Here is a test script to help me pull the exon fastas from sheep
+head Ovis_aries.Oar_v3.1.79.gtf | perl -ne '@F = split(/\t/); if($F[0] =~ /^#/){next;}else{($i) = $F[8] =~ /exon_id \"(.{15,20})\"\;/; print $i; print "\n";}'
+
+# Now to pull the ovis exon fastas
+samtools faidx Ovis_aries.Oar_v3.1.dna.toplevel.fa
+cat Ovis_aries.Oar_v3.1.79.gtf | perl -ne '@F = split(/\t/); if($F[0] =~ /^#/){next;}elsif($F[2] eq "exon"){($i) = $F[8] =~ /exon_id \"(.{12,20})\"\;/; open(IN, "samtools faidx Ovis_aries.Oar_v3.1.dna.toplevel.fa $F[0]:$F[3]-$F[4] |"); my $h = <IN>; chomp $h; $h =~ s/>//g; $h .= "_" . $i; print ">$h\n"; while(<IN>){print $_;} close IN;;}' > ovis.aries.exon.nuc.fa
+
+# Aligning first to BGI
+bwa mem -M chir_bgi_pseudo_chr.fa ovis.aries.exon.nuc.fa > oar_bgi_exon_align.sam
+samtools view -bS oar_bgi_exon_align.sam > oar_bgi_exon_align.bam
+
+bwa mem -M USDA_V3.fasta ovis.aries.exon.nuc.fa > oar_pacbio_exon_align.sam
+samtools view -bS oar_pacbio_exon_align.sam > oar_pacbio_exon_align.bam
+```
+
+OK, now to calculate the stats of each alignment.
+
+```bash
+# PacBio dataset
+perl ~/perl_toolchain/sequence_data_scripts/getSamFlagStats.pl oar_pacbio_exon_align.bam
+```
+|Flag                     |  Count|
+|:------------------------|------:|
+|TotalReads               | 237632|
+|SegUnmapped              |   9930|
+|ThisSeqReverse           | 113665|
+|SecondaryAlignment       |   3127|
+
+```bash
+# BGI dataset
+perl ~/perl_toolchain/sequence_data_scripts/getSamFlagStats.pl oar_bgi_exon_align.bam
+```
+
+|Flag                     |  Count|
+|:------------------------|------:|
+|TotalReads               | 239552|
+|SegUnmapped              |  19172|
+|ThisSeqReverse           |  38866|
+|SecondaryAlignment       |   5047|
+
+OK, this is good! The PacBio dataset mapped more (~10,000 more mapped) and split fewer exons (~ 2,000 fewer split) from Sheep. Let's create venns to display these differences. I'm going to produce simple lists of the Ensembl exon IDs for each category, and then run my perl script to create the Venn comparison.
+
+```bash
+# Just keeping things tidy
+mkdir venn_comparisons
+samtools view oar_bgi_exon_align.bam | perl -lane 'if(($F[1] & 4) == 4){@b = split(/_/, $F[0]); print $b[1];}' > venn_comparisons/oar_bgi_unmapped_exons.txt
+samtools view oar_bgi_exon_align.bam | perl -lane 'if(($F[1] & 256) == 256){@b = split(/_/, $F[0]); print $b[1];}' > venn_comparisons/oar_bgi_split_exons.txt
+
+samtools view oar_pacbio_exon_align.bam | perl -lane 'if(($F[1] & 4) == 4){@b = split(/_/, $F[0]); print $b[1];}' > venn_comparisons/oar_pacbio_unmapped_exons.txt
+samtools view oar_pacbio_exon_align.bam | perl -lane 'if(($F[1] & 256) == 256){@b = split(/_/, $F[0]); print $b[1];}' > venn_comparisons/oar_pacbio_split_exons.txt
+
+wc -l venn_comparisons/*
+  5047 venn_comparisons/oar_bgi_split_exons.txt
+ 19172 venn_comparisons/oar_bgi_unmapped_exons.txt
+  3127 venn_comparisons/oar_pacbio_split_exons.txt
+  9930 venn_comparisons/oar_pacbio_unmapped_exons.txt
+
+# OK, everything matches up so far! Let's go to town with the Venn!
+
+# First, the split reads
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl venn_comparisons/oar_bgi_split_exons.txt venn_comparisons/oar_pacbio_split_exons.txt
+	File Number 1: venn_comparisons/oar_bgi_split_exons.txt
+	File Number 2: venn_comparisons/oar_pacbio_split_exons.txt
+	Set     Count
+	1       1930
+	1;2     1528
+	2       592
+
+# Important note!!! I forgot that the split reads had mulitple mappings
+# My Venn script reduces down the names to unique entries, so the numbers sum up to be less here
+
+# Now, the unmapped reads
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl venn_comparisons/oar_bgi_unmapped_exons.txt venn_comparisons/oar_pacbio_unmapped_exons.txt
+	File Number 1: venn_comparisons/oar_bgi_unmapped_exons.txt
+	File Number 2: venn_comparisons/oar_pacbio_unmapped_exons.txt
+	Set     Count
+	1       9534
+	1;2     9140
+	2       564
+
+# I added a "printout" function to the venn script that prints the names in each set to text files
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o venn_comparisons/oar_bgi_unmapped_exons.txt venn_comparisons/oar_pacbio_unmapped_exons.txt
+
+# I'm going to work on the BGI exclusive unmapped exons first
+# Let's see how they map in the PacBio file
+samtools view oar_pacbio_exon_align.bam | grep 'ENSOARE00000135090'
+	11:26767193-26767365_ENSOARE00000135090 0       utg3197_len=152401_reads=517_status=X_microHet=1.00_covStat=1.00_quiver 38336   60      8M1I30M1I9M1I83M1I39M     *       0       0       TGCAGGTTCCGGGGGAGGAGGTGGGTACTCACGTTTTTTGGGGGGCCGTGGGGGAGCAGTGTAAGTGATGACTGAGGCGGCTTGGGCCCCCCCTGTGCTGGCCGGCCCACTCCCTGCTCCACCACTGCTGCTGCCCCCATGTACAATGACTGAGGCAGCCGGGGGGGCAAAAG     *       NM:i:7  MD:Z:87T63G7T9  AS:i:126        XS:i:22
+
+# Hmmm, a few insertions in the exon, which is odd, but hopefully not too indicative of the dataset
+	14:55312643-55312930_ENSOARE00000135137 16      utg5374_len=444093_reads=1434_status=X_microHet=1.00_covStat=1.00_quiver        347153  60      93M1I87M1I106M    *       0       0       AGGACACATTGAGCGTGACGGTCCTCTCCGCGCTCACAGAAGCCCTGCGGAAGGTCACCCGGCAGGTGAGGCTTGAGCCGTGATCCTGAGGGCGGGGGGTGAGCAGGATCTCCGAGGAGTTATAGGCCTCCTTGGAGTCCAGTCCCGGGGGTCTGAGGGCAGCCCCGGTCCAGGAGATGGTGGGGGGCGTGGCCCAGTCACAGGCCTCAGGCAGGGAGCATTTGAGGTGGCTGCTGGAGCCGGACTCCAGGGGCTCCTCGATGTGGACATCAGGGGTCCATGTTAGCG    *       NM:i:7  MD:Z:19A53C5A8C56A140   AS:i:247        XS:i:23
+
+# Similar pattern. Maps but a few insertions
+# Let's be fair and test the opposite situation (maps in BGI but not ours)
+samtools view oar_bgi_exon_align.bam | grep 'ENSOARE00000187526'
+	3:858498-858734_ENSOARE00000187526      0       NC_022303.1     103905526       60      195S42M *       0       0       GCGGGGCGCGGCGGGCTCCGCTGGGGGCGCCTCCGGGCGGGCCTCCATGGCCACCCCCTCCAGCGCCTCCAGGAAATCGAAGCTTCGACAGTGGCGCTTATTGAAAGGCGCGGGCACTGCAGGCCGGGCCATGGGGCCCTCACATGGCGGGGGCCTCGACACGGGCCCCGGGGCCGCCACCTTGATGTCCTGGTACACGGTCGACACCAGCAGATCCGGCGGGTCGGTGCGGGTCAT       *       NM:i:0  MD:Z:42 AS:i:42 XS:i:0
+
+# With a cigar score like that, you can hardly call it mapping!
+samtools view oar_bgi_exon_align.bam | grep 'ENSOARE00000053917'
+	15:27555669-27555698_ENSOARE00000053917 0       NC_022307.1     26339931        60      30M     *       0       0       AACCAGACTAAAGAGGTATCCTTCTCTCTC    *       NM:i:0  MD:Z:30 AS:i:30 XS:i:0
+samtools view oar_bgi_exon_align.bam | grep 'ENSOARE00000130790'
+	X:14481160-14481307_ENSOARE00000130790  16      NC_022322.1     114826454       60      148M    *       0       0       CACATTTAATACTCTCTATCCGCACAGGGAGGCCAGACTGTGCCGCAGCAATTAATTTCAGGGCAACGTAAAACTGTGTCAGACCAAAATAACCAACCCGCTTGGCACCACACAATTCTGTGATCTGGAAACAGACAAGAGAAGGGAT      *       NM:i:1  MD:Z:127A20       AS:i:143        XS:i:20
+
+# Those aligned fair and square -- I wonder if the regions are on the deg contig list of Sergey's assembly?
+# Saving the lists
+mv group_1.txt venn_comparisons/bgi_exclusive_unmapped_exons.txt
+mv group_2.txt venn_comparisons/pacbio_exclusive_unmapped_exons.txt
+mv group_1_2.txt venn_comparisons/shared_exclusive_unmapped_exons.txt
+
+# Now for the split reads
+samtools view oar_pacbio_exon_align.bam | grep 'ENSOARE00000105192'
+	14:53127459-53129584_ENSOARE00000105192 0       utg3570_len=2632531_reads=9134_status=X_microHet=1.00_covStat=1.00_quiver       2300967 60      209M1I95M1I454M1I298M2D70M2D75M1I103M1I311M65I62M1I99M86D92M1D187M        *       0       0       (long sequence)        *       NM:i:191        MD:Z:78G406G13C19T54T4G53A194T144G13C68^GG33G31G4^GC36C129G42C4C28A30T77G18G9A5G96C17C1G145^GGGCATGCCTCCGCAGTGGAGAAGCCACTAAGGTACCCTGGGCGTGGGGCGTGGGGTGGAGGCCCGCCTGCCGCACAGTCCTCCGG92^T5T28A112T4G34       AS:i:1682       XS:i:0
+# That shows an 86 bp insertion in the middle of the exon!
+# Let's compare to the BGI alignments
+samtools view oar_bgi_exon_align.bam | grep 'ENSOARE00000105192'
+	14:53127459-53129584_ENSOARE00000105192 0       NC_022310.1     52501884        60      582S477M2D70M2D462M535S *       0       0       (long sequence)        *       NM:i:23 MD:Z:53A177A17T144G13C68^GG33G31G4^GC36C107C22G43C4C28A30T77G18G9A5G56C15 AS:i:898        XS:i:0  SA:Z:NC_022310.1,52500222,+,455M1671S,60,2;NC_022310.1,52503159,+,1847S92M1D187M,60,5;
+	14:53127459-53129584_ENSOARE00000105192 256     NC_022310.1     52500222        60      455M1671H       *       0       0       AGTCAGCCACAACAACAAGGTGAACCTCATGACCAGCGAGAACCTGTCCATCTGCTTCTGGCCCACCCTGATGAGGCCAGACTTCAGCACCATGGACGCCCTCACGGCCACGCGCACCTACCAGACAATCATCGAGCTCTTCATCCAGCAGTGCCCCTTCTTCTTCCACAACCGGCCCATCAGCGAGCCCCCTGGTGCCACGCCCAGCTCCCCCTCTGCCCTGGCCTCCACCGTGCCCTTCCTCACCTCCACGCCCGTCACAAGTCAGCCGTCGCCGCCCCAGTCGCCTCCGCCCACCCCCCAGTCCCCAATGCAGCCGCTGCTCCCCTCCCAACTTCAAGCCGAACACACGCTGTGAGCCCCCGAGGCCTCGGGCTGAAGGAGACAAGGTCTTCTCTCTTGACGGGGTGGCACTGGGCCTTGAACAGAACCAGGCCTGCTGGGGTGGGGCGGGG*NM:i:2  MD:Z:78G32A343  AS:i:445        XS:i:119        SA:Z:NC_022310.1,52501884,+,582S477M2D70M2D462M535S,60,23;NC_022310.1,52503159,+,1847S92M1D187M,60,5;
+	14:53127459-53129584_ENSOARE00000105192 256     NC_022310.1     52503159        60      1847H92M1D187M  *       0       0       GGGTCTCTTTGCACTTTAAGAAGCAGCACCTGTGGTATGTTCGAGGCCGCCTGACAAAGTGAGAGACGCCTCAGAACAGTCTCGGCCACCCCGGCCCCAGACGCTTCCCACTGGCTGTTGGAGGGCGGGCCAGGCCCTGTGCTCACCGACTCTTCCTCTGGATAAGCTGGATGTCGCACTGTCTCTAGTTCTTGTACAGCAAAATAAGGTGCTTGGAAAAACTACATGTCCCCTGCACGCTTCACCGCCTCCTTAAGGACACAAGTCAGAAAACCTAAG     *       NM:i:5  MD:Z:92^T5T28A112T4G34    AS:i:252        XS:i:0  SA:Z:NC_022310.1,52501884,+,582S477M2D70M2D462M535S,60,23;NC_022310.1,52500222,+,455M1671S,60,2;
+
+# OK, in BGI, they have a 455 alignment at 52,500,222, a 1009 alignment at 52,501,884 and a 279 alignment at 52,503,159. 
+# So the alignment is split three ways 
+# NCBI blast assigns this to a Rho GTPase
+
+# One more
+'ENSOARE00000015203' # is split on the same BGI chr, about 1kb apart from its other half
+# In the PacBio assembly, it is all contiguous
+
+# Now, the opposite circumstance again (Pacbio split -- BGI whole)
+'ENSOARE00000139505' # is split on the same PacBio chr, about 200 bp apart from its other half
+'ENSOARE00000139505' # is unmapped on BGI
+
+'ENSOARE00000068956' # is split twice, 200 bp apart again on the same PacBio contig
+# It maps once to BGI, but it is split by hard clipping right in the middle
+
+# Saving the files
+mv group_1.txt venn_comparisons/bgi_exclusive_split_exons.txt
+mv group_2.txt venn_comparisons/pacbio_exclusive_split_exons.txt
+mv group_1_2.txt venn_comparisons/shared_exclusive_split_exons.txt
+```
+
+In general, it looks like the PacBio assembly recovers far more of the sheep exons than the BGI assembly could. Let's test the hypothesis that the PacBio assembly is better here by taking one of the clear competitive test cases : **ENSOARE00000105192**
+
+The signature that I'm looking for here, is the presence of sufficient coverage of reads that have NO significant soft-clipped bases and/or discordant pairing profiles from the test animals that I downloaded from the SRA. I'll pull the fasta sequence from the BGI and PacBio genomes in the area, then align the reads to both and pull out the non-split reads.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/test_animals
+
+```bash
+# Downloading the SRA data I need
+wget wget ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByRun/sra/ERR/ERR405/ERR405776/ERR405776.sra
+```
+
+Now, to generate the test regions so that I can align the reads from the SRA and check fidelity.
+
+| Genome | Coords |
+| :--- | ---: |
+| BGI | NC_022310.1:52,500,222-52,503,438 |
+| PacBio | utg3570_len=2632531_reads=9134_status=X_microHet=1.00_covStat=1.00_quiver:2300967-2303093 | 
+
+```bash
+mkdir test_region
+samtools faidx chir_bgi_pseudo_chr.fa NC_022310.1:52,500,222-52,503,438 > test_region/bgi_ENSOARE00000105192_region.fa
+# NOTE: The BGI region has a huge gap in it!
+samtools faidx USDA_V3.fasta utg3570_len=2632531_reads=9134_status=X_microHet=1.00_covStat=1.00_quiver:2300967-2303093 > pacbio_ENSOARE00000105192_region.fa
+
+cd test_region/
+bwa index bgi_ENSOARE00000105192_region.fa
+bwa index pacbio_ENSOARE00000105192_region.fa
+```
+
+I'll have to wait for the SRA data to finish downloading. In the meantime, here's a summary table of comparative gene mappings (total exons: 234505):
+
+| O. aries exons | Exclusive PacBio | Exclusive BGI | Shared |
+| :--- | :--- | :--- | :--- |
+| Total Mappings| 9,534 | 564 | 225,365 |
+| Unmapped | 564 | 9,534 | 9,140 |
+| Split Exons | 592 | 1,930 | 1,528 |
