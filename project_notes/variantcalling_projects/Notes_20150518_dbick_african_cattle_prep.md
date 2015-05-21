@@ -54,3 +54,18 @@ perl -lane 'print "$F[0]\t$F[1]\t$F[-1].lib1\t$F[-1]";' < temp_test_starter.txt 
 # OK, that accounts for the new format that I need for my pipeline. Time to see if it actually works!
 perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs C5FVPACXX_flowcell_spreatarter.tab --output C5FVPACXX --reference ../reference/umd3_kary_unmask_ngap.fa --coords ../reference/samtools_chr_segs.txt --threads 10
 ```
+
+*5/21/2015*
+
+--
+
+OK, due to an issue with the pipeline, the merger didn't go ahead because I changed the version of samtools while it was running. Instead, let's try to use the log file to replicate the steps for the merger.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/african_cattle
+
+```bash
+# This pulls the appropriate merger lines from the log file and uses them to generate new commands
+grep 'sammerge' C5FVPACXX/MergedBamPipeline.1431978899.log | perl -ne '$_ =~ s/.+ \| sammerge \- //g; $_ =~ s/-h 1/-p/; chomp;  print "$_\n"; system($_);'
+
+# That should merge the bams, then index them
+```
