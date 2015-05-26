@@ -788,3 +788,35 @@ I'll have to wait for the SRA data to finish downloading. In the meantime, here'
 | Total Mappings| 9,534 | 564 | 225,365 |
 | Unmapped | 564 | 9,534 | 9,140 |
 | Split Exons | 592 | 1,930 | 1,528 |
+
+*5/22/2015*
+
+--
+
+OK, the files downloaded, its time to decompress them and then start the alignment. 
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/test_animals
+
+```bash
+~/sratoolkit.2.4.5-2-ubuntu64/bin/fastq-dump ERR405776.sra
+
+# This file is pretty damn big, but I'm not sure if I want to split it
+rm ERR405776.sra
+```
+
+OK, this will take a long time, but hopefully I can run the unmapped read filtering simultaneously here.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/liftover_comp/test_region
+
+```bash
+# Running with 5 threads and piping to a samtools process that will filter unmapped reads by default
+bwa mem -M -t 5 bgi_ENSOARE00000105192_region.fa ../../test_animals/ERR405776.fastq | samtools view -bS -F 4 - > bgi_ERR405776.bam
+
+bwa mem -M -t 5 pacbio_ENSOARE00000105192_region.fa ../../test_animals/ERR405776.fastq | samtools view -bS -F 4 - > pacbio_ERR405776.bam
+
+samtools sort bgi_ERR405776.bam bgi_ERR405776.sorted
+samtools sort pacbio_ERR405776.bam pacbio_ERR405776.sorted
+
+samtools index pacbio_ERR405776.sorted.bam
+samtools index bgi_ERR405776.sorted.bam
+```

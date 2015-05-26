@@ -68,4 +68,46 @@ OK, due to an issue with the pipeline, the merger didn't go ahead because I chan
 grep 'sammerge' C5FVPACXX/MergedBamPipeline.1431978899.log | perl -ne '$_ =~ s/.+ \| sammerge \- //g; $_ =~ s/-h 1/-p/; chomp;  print "$_\n"; system($_);'
 
 # That should merge the bams, then index them
+# Now to cleanup after the merger
+rm C5FVPACXX/*/*.nodup.bam*
 ```
+*5/22/2015*
+
+--
+OK, my goal is to reorganize the files and merge the appropriate ones. I'll create a new directory to keep things tidy, then I'll call the SNPs and INDELs with Samtools using individual commands.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/african_cattle
+
+```bash
+mkdir merged_bams
+
+for i in Ndama177 Ndama180 Ndama186 Ndama188 Ndama190 Ndama199 NS1-01 NS1-02 NS1-04 NS1-05 NS1-07 NS1-09; do echo $i; samtools merge -p -@ 10 merged_bams/${i}.combined.merged.bam C5FVPACXX/$i/$i.merged.bam $i/${i}.rehead.merged.sorted.bam; done
+
+# Not all of the bams were "rehead," so I had to start again
+for i in Ndama180 Ndama186 Ndama188 Ndama190 Ndama199 NS1-01 NS1-02 NS1-04 NS1-05 NS1-07 NS1-09; do echo $i; samtools merge -p -@ 10 merged_bams/${i}.combined.merged.bam C5FVPACXX/$i/$i.merged.bam $i/${i}.merged.sorted.bam; done
+
+cp Ndama199/Ndama199.merged.sorted.bam ./merged_bams/
+for i in merged_bams/*.bam; do echo $i; samtools index $i; done
+
+perl ~/perl_toolchain/sequence_data_scripts/samtoolsSNPFork.pl -r /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -i merged_bams/Ndama177.combined.merged.bam,merged_bams/Ndama180.combined.merged.bam,merged_bams/Ndama186.combined.merged.bam,merged_bams/Ndama188.combined.merged.bam,merged_bams/Ndama190.combined.merged.bam,merged_bams/Ndama199.merged.sorted.bam,merged_bams/NS1-01.combined.merged.bam,merged_bams/NS1-02.combined.merged.bam,merged_bams/NS1-04.combined.merged.bam,merged_bams/NS1-05.combined.merged.bam,merged_bams/NS1-07.combined.merged.bam,merged_bams/NS1-09.combined.merged.bam -o merged_bams/african_cattle_full.vcf -n 10 -s /mnt/iscsi/vnx_gliu_7/reference/samtools_chr_segs.txt -t 1
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f merged_bams/african_cattle_full.vcf.samtools.filtered.vcf -c 5 -m -o merged_bams/african_cattle_qual_count.md5 -e '#'
+# Most of the quality scores were below 999. I'm only going to stick with high quality data here then.
+
+# Going to filter out all variants below 990 QS
+perl -lane 'if($F[0] eq "##fileformat=VCFv4.2"){print $_; print "##Filter=<ID=lowQD,Description\"low quality score\">";}elsif($F[0] =~ /^#/){print $_;}else{if($F[5] < 990){$F[6] = "lowQD"; print join("\t", @F);}else{print $_;}}' < merged_bams/african_cattle_full.vcf.samtools.filtered.vcf > merged_bams/african_cattle_full.samtools.lowqdfiltered.vcf
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f merged_bams/african_cattle_full.samtools.lowqdfiltered.vcf -c 6 -m -e '#'
+```
+
+|Entry |    Count|
+|:-----|--------:|
+|PASS  |  3931708|
+|lowQD | 16848363|
+
+OK, this is a more reasonable number of pass filter variants. Time to automate RAPTR-SV on these bams.
+
+```bash
+mkdir raptr_sv_full
+
+for i in Ndama177 Ndama180 Ndama186 Ndama188 Ndama190 Ndama199 NS1-01 NS1-02 NS1-04 NS1-05 NS1-07 NS1-09; do echo $i; bam="merged_bams/${i}.combined.merged.bam"; outgroup="raptr_sv_full/{$i}.preprocess"; ~/jdk1.8.0_05/bin/java -jar ~/RAPTR-SV/store/RAPTR-SV.jar preprocess -i $bam -o $outgroup -r ../reference/umd3_kary_nmask_hgap.fa -t 10 -s 100000 -p ../tmp/; done

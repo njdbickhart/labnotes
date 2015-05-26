@@ -539,3 +539,122 @@ The Goal here is to treat the **D** group differently from the **L1** and **L2**
 * Generate large supplementary table
 * Generate smaller table of DE genes with fold change
 * Generate FC figures
+
+*5/22/2015*
+
+--
+
+My goals here are to try to produce the tables for the publication. The larger supplementary table, the smaller summary table and the fold change figures as well. 
+
+*5/26/2015*
+
+OK, after some testing, I was able to write a script to format the EBseq results to a tab-delimited format. I will then take the formatted results and modify them in excel to give Randy and Tony the condensed results.
+
+> Blade 14: /mnt/iscsi/vnx_gliu_7/rna_seq/RBaldwin
+
+```bash
+mkdir tab_output
+perl ~/perl_toolchain/sequence_data_scripts/combineEBSeqResultsToTab.pl -c biopsy_D/rsem_D_biopsy.results.condmeans -f biopsy_D/rsem_D_biopsy.results -o tab_output/rsem_biopsy_D.tab
+
+perl ~/perl_toolchain/sequence_data_scripts/combineEBSeqResultsToTab.pl -c biopsy_L1/rsem_L1_biopsy.results.condmeans -f biopsy_L1/rsem_L1_biopsy.results -o tab_output/rsem_biopsy_L1.tab
+
+perl ~/perl_toolchain/sequence_data_scripts/combineEBSeqResultsToTab.pl -c biopsy_L2/rsem_L2_biopsy.results.condmeans -f biopsy_L2/rsem_L2_biopsy.results -o tab_output/rsem_biopsy_L2.tab
+```
+
+That was the easy part. I can create a new excel file with multiple spreadsheets to handle this larger supplementary table. Now I just need to manually pick out the portions that are likely to be the most interesting and generate the smaller table that Randy requested. I can do this by selecting the common genes that are present using my VENN comparison script, and then I should be able to select a few (10?) winners for further analysis.
+
+```bash
+cp -r tab_output /mnt/nfs/nfs2/dbickhart/rnaseq/
+
+# Now to start the VENN comparison. I want the ENSGENE IDs that are >= 95% confidence, found in both the L1 and L2
+# datasets, but are NOT found in the D dataset. I am also going to focus on patterns 2, 3 and 4
+cd analysis
+
+mkdir venns
+# Starting with pattern 2
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o rsem_L1_biopsy.Pattern2.ensgene rsem_L2_biopsy.Pattern2.ensgene
+	File Number 1: rsem_L1_biopsy.Pattern2.ensgene
+	File Number 2: rsem_L2_biopsy.Pattern2.ensgene
+	Set     Count
+	1       18
+	2       18
+
+# Whoops! They're more different than I thought! Let's try the other patterns first
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl rsem_L1_biopsy.Pattern3.ensgene rsem_L2_biopsy.Pattern3.ensgene
+	File Number 1: rsem_L1_biopsy.Pattern3.ensgene
+	File Number 2: rsem_L2_biopsy.Pattern3.ensgene
+	Set     Count
+	1       5
+	1;2     1	# Only one!
+	2       112
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl rsem_L1_biopsy.Pattern4.ensgene rsem_L2_biopsy.Pattern4.ensgene
+	File Number 1: rsem_L1_biopsy.Pattern4.ensgene
+	File Number 2: rsem_L2_biopsy.Pattern4.ensgene
+	Set     Count
+	1       210
+	1;2     51	# OK, thats far more, and it is the pattern of expression expected
+	2       84
+
+# OK, so pattern 4 has the most number of shared genes. Let's save that and work with it. I will also prepare 
+# a comparison with the entire >= 95% confidence list. Two comparisons, one small table.
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o rsem_L1_biopsy.Pattern4.ensgene rsem_L2_biopsy.Pattern4.ensgene
+mv group_1_2.txt rsem_L1_L2_biopsy.Pattern4.ensgene
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o rsem_L1_L2_biopsy.Pattern4.ensgene rsem_D_biopsy.Pattern4.ensgene
+	File Number 1: rsem_L1_L2_biopsy.Pattern4.ensgene
+	File Number 2: rsem_D_biopsy.Pattern4.ensgene
+	Set     Count
+	1       49
+	1;2     2
+	2       48
+
+	Group: 1 in output file: group_1.txt
+	Group: 1;2 in output file: group_1_2.txt
+	Group: 2 in output file: group_2.txt
+
+mv group_1.txt venns/rsem_L1_L2_specific.Pattern4.ensgene
+
+# OK, now to repeat the process with the whole gene list
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o rsem_L1_biopsy.95.ensgene rsem_L2_biopsy.95.ensgene
+	File Number 1: rsem_L1_biopsy.95.ensgene
+	File Number 2: rsem_L2_biopsy.95.ensgene
+	Set     Count
+	1       176
+	1;2     112
+	2       172
+
+	Group: 1;2 in output file: group_1_2.txt
+	Group: 2 in output file: group_2.txt
+	Group: 1 in output file: group_1.txt
+
+mv group_1_2.txt rsem_L1_L2_biopsy.95.ensgene
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o rsem_L1_L2_biopsy.95.ensgene rsem_D_biopsy.95.ensgene
+	File Number 1: rsem_L1_L2_biopsy.95.ensgene
+	File Number 2: rsem_D_biopsy.95.ensgene
+	Set     Count
+	1       96
+	1;2     16
+	2       215
+
+	Group: 1;2 in output file: group_1_2.txt
+	Group: 2 in output file: group_2.txt
+	Group: 1 in output file: group_1.txt
+
+mv group_1.txt venns/rsem_L1_L2_specific.95.ensgene
+cp -r venns /mnt/nfs/nfs2/dbickhart/rnaseq/
+
+```
+
+So, if I focus on pattern specific expression just for Pattern4, I get 49 genes present in L1 and L2 but NOT in D. If I cast a wide net and select all genes, regardless of pattern (L1 U L2 && !D), then I get 96. Let's download them and select the specific information from the table to create a smaller entry.
+
+I'm going to run DAVID on the pattern4 set first, just because I'm curious.
+
+The DAVID results were not strong, but likely because there were so few genes and many fell within "ion binding" categories (there are so many in the genome). I saved the results files, regardless. Now to make the tables.
+
+In order to make the smaller table, I'm going to select the L1/L2 Pattern4 specific transcripts for the table.
+
+```bash
+for i in `cat venns/rsem_L1_L2_specific.Pattern4.ensgene`; do grep $i ../tab_output/rsem_biopsy_L*.tab; done > ../tab_output/rsem_L1_L2_specific_pattern4.tab
+
+cp ../tab_output/rsem_L1_L2_specific_pattern4.tab /mnt/nfs/nfs2/dbickhart/rnaseq/tab_output/
+```
