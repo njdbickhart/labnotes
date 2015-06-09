@@ -7,7 +7,8 @@ These are my notes on processing Ben's liftover coordinates for the Goat assembl
 ## Table of Contents
 * [Locations](#Locations)
 * [Automating split region resolution](#automate)
-
+* [Splitting Misassemblies](#misassembly)
+* [Scaffolding the genome with RH data](#superscaffold)
 
 <a name="Locations"></a>
 ## Locations
@@ -820,3 +821,58 @@ samtools sort pacbio_ERR405776.bam pacbio_ERR405776.sorted
 samtools index pacbio_ERR405776.sorted.bam
 samtools index bgi_ERR405776.sorted.bam
 ```
+
+*6/9/2015*
+
+--
+
+<a name="misassembly"></a>
+## Splitting misassemblies
+
+I will generate a list of the conflict regions, then generate smaller windows and count the coverage. Even though I have a program that will call RD CNVs, I just want RD within window regions. I will also run RAPTR-SV on the bam and generate a list of split reads/discordant reads in the area.
+
+> Blade14: /mnt/nfs/nfs2/GoatData/testanimal
+
+```bash
+# Indexing the fasta file for RAPTR-SV preprocessing
+mrsfast --index /mnt/nfs/nfs2/GoatData/goat_annotation/repeatmasker/USDA_V3_noheader.fasta
+
+# running preprocess
+~/jdk1.8.0_05/bin/java -jar ~/RAPTR-SV/store/RAPTR-SV.jar preprocess -i ERR405776.1.USDA_V3_noheader_sorted.bam -r /mnt/nfs/nfs2/GoatData/goat_annotation/repeatmasker/USDA_V3_noheader.fasta -o ERR405776.preprocess -t 10 -p /mnt/iscsi/vnx_gliu_7/tmp/
+
+
+```
+
+I am also going to generate depth of coverage maps using BEDTools to check the number of reads coinciding with different genomic regions.
+
+> Blade14: /mnt/nfs/nfs2/GoatData/testanimal
+
+```bash
+# First thing first, let's generate fixed width windows at about 5x the read length (100 bp x 5 = 500)
+perl -lane 'for($x = $F[1]; $x < $F[2]; $x += 500){$e = $x + 500; if($e > $F[2]){next;} print "$F[0]\t$x\t$e";}' < GOAT_break_point_1pb-2bng.bed > GOAT_fixedwin_500_1pb_2bng.bed
+
+# That generated only 184 windows out of 29 initial regions that Ben supplied me
+# OK, time to test out bedtools coverage features
+bedtools coverage -abam ERR405776.1.USDA_V3_noheader_sorted.bam -b GOAT_fixedwin_500_1pb_2bng.bed  > GOAT_fixedwin_500_1pb_2bng_coverage.bed
+
+# OK, that finished successfully! Let's find the regions with no coverage
+perl -lane 'if($F[6] < 0.15){print "$F[0]:$F[1]-$F[2] \| $F[3] \| $F[4] \| $F[5] \| $F[6]";}' < GOAT_fixedwin_500_1pb_2bng_coverage.bed
+
+```
+
+| Region | Reads | BasesWithOneRead | Length | percentCov|
+| --- | --- | --- | --- | --- | --- |
+utg32281:19021041-19021541 | 0 | 0 | 500 | 0.0000000
+utg32281:19023041-19023541 | 0 | 0 | 500 | 0.0000000
+utg49095:334981-335481 | 0 | 0 | 500 | 0.0000000
+utg512:2667500-2668000 | 0 | 0 | 500 | 0.0000000
+utg512:2668000-2668500 | 0 | 0 | 500 | 0.0000000
+utg56637:1321260-1321760 | 0 | 0 | 500 | 0.0000000
+utg56637:1322260-1322760 | 0 | 0 | 500 | 0.0000000
+
+Not too bad -- only about 4 regions with zero coverage in this individual. I'm going to check the RAPTR-SV results when they finish.
+
+<a name="superscaffold"></a>
+## Assembly superscaffolding
+
+I need to arrange all of the data so that I can prepare a mapping script to associate everything.
