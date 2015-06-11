@@ -875,4 +875,130 @@ Not too bad -- only about 4 regions with zero coverage in this individual. I'm g
 <a name="superscaffold"></a>
 ## Assembly superscaffolding
 
-I need to arrange all of the data so that I can prepare a mapping script to associate everything.
+I need to arrange all of the data so that I can prepare a mapping script to associate everything. I downloaded Brian's RH map connections as well as the agp file provided by BioNano. I'm going to make a script to associate everything by creating a multi-node tree with the agp scaffolds and then using each ordered row of the RH map as a "seed" to associate the tree.
+
+Let's get some stats before I start.
+
+> pwd /home/dbickhart/share/goat_assembly_paper/super_scaffolding
+
+```bash
+# Total number of agp entries is 634
+grep -v '^#' goat_hybrid_T11_agp_log.txt | cut -f6 | sort | uniq | wc -l
+	634	<- number of PacBio contigs mapping
+grep -v '^#' goat_hybrid_T11_agp_log.txt | cut -f1 | sort | uniq | wc -l
+	190	<- number of super scaffolds in the file
+
+```
+
+OK, this is a fraction of what I was expecting. Still, let's attempt to associate things into contiguous segments. I'll have to lean allot more on Brian's RH map data than I originally thought.
+
+*6/11/2015*
+
+--
+
+OK, Alex confirmed that the "log.txt" files were not the agp file. I need to use different files.
+
+After some extensive troubleshooting, I created a script that orders the superscaffolds according to Brian's RH map data. HOWEVER, some of Brian's RH mappings are screwy (an artifact from the Pseudo chromosome generation?). 
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/super_scaffolding
+
+```bash 
+perl ../../programs_source/Perl/perl_toolchain/assembly_scripts/scaffold_rh_with_agp.pl -a goat_hybrid_T11.agp -r RHmap_to_PacBio-v3_contigs.txt -o test_scaffolding.agp
+
+# OK, let's see how much is in each chromosome
+perl -e '%h; while(<>){chomp; @s = split(/\t/); $h{$s[0]} += $s[7] - $s[6];} foreach $k (sort { $a <=> $b} keys(%h)){print "$k \| $h{$k}\n";}' < test_scaffolding.agp
+```
+|chr | bases |
+| :---: | ---:|
+X | 329821826
+1 | 62945324
+2 | 41357636
+3 | 33336728
+4 | 86593242
+5 | 42473303
+6 | 56678247
+7 | 2284874
+8 | 3173322
+9 | 28307637
+10 | 10846163
+11 | 18939495
+12 | 75930835
+13 | 43476811
+14 | 23713847
+15 | 6741600
+16 | 7235453
+17 | 15140848
+18 | 57774417
+19 | 20039146
+21 | 54226720
+22 | 43354396
+23 | 11620440
+25 | 1670858
+26 | 52802896
+27 | 2512626
+28 | 18145455
+29 | 29754507
+
+
+X is way too big, and there's a huge disparity in chr base counts (4 is the largest?) which suggests that several of the pacBio contigs did not get properly represented. Let me check to make sure that this isn't a huge bug for me.
+
+```bash
+# going to use my venn script
+perl -lane 'if($F[0] eq "1"){print $F[5];}' < test_scaffolding.agp > scaffold_chr1_pacbio.txt
+
+perl -lane 'if($F[1] eq "1" && !($F[5] =~ /\*/ || $F[5] =~ /\#N\/A/)){@q = split(/\_/, $F[5]); print $q[0];}' < RHmap_to_PacBio-v3_contigs.txt > scaffold_chr1_rh.txt
+
+wc -l scaffold*                        
+   32 scaffold_chr1_pacbio.txt
+ 3152 scaffold_chr1_rh.txt
+ 3184 total
+
+# Now to start venning it up
+perl ../../programs_source/Perl/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o scaffold_chr1_rh.txt scaffold_chr1_pacbio.txt
+	File Number 1: scaffold_chr1_rh.txt
+	File Number 2: scaffold_chr1_pacbio.txt
+	Set     Count
+	1       44
+	1;2     29
+	2       3
+```
+
+OK, so there's some novel stuff that the BioNano scaffolding picked up and some unplaced contigs in the chr1 RH map that weren't previously scaffolded. Hmmm... I think that I have a bug. utg60833 should be in a super scaffold but is not in the final product.
+
+OK, I think I fixed the bug!
+
+```bash
+perl -e '%h; while(<>){chomp; @s = split(/\t/); $h{$s[0]} += $s[7] - $s[6];} foreach $k (sort { $a <=> $b} keys(%h)){print "$k \| $h{$k}\n";}' < test_scaffolding.agp
+```
+|chr | bases |
+| :---: | ---:|
+X | 381273647
+1 | 160112686
+2 | 143874760
+3 | 117787620
+4 | 108540982
+5 | 117967352
+6 | 143255931
+7 | 120026749
+8 | 106220469
+9 | 90009732
+10 | 129588938
+11 | 130121548
+12 | 85296952
+13 | 96614769
+14 | 97364675
+15 | 76655307
+16 | 132995674
+17 | 78626678
+18 | 120189696
+19 | 87312697
+20 | 65473465
+21 | 78555439
+22 | 67536290
+23 | 79976819
+24 | 121558206
+25 | 204580609
+26 | 49071063
+27 | 39370563
+28 | 40208383
+29 | 45036832
