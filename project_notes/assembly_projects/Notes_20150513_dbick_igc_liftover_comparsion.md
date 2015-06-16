@@ -1002,3 +1002,149 @@ X | 381273647
 27 | 39370563
 28 | 40208383
 29 | 45036832
+
+*6/12/2015*
+
+--
+
+Now I want to highlight regions that really need some attention from both the RH map and the assembly in general.
+
+One thought that I've had: some of the PacBio Contigs may be used more than once. Let's count the incidence. 
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/super_scaffolding
+
+```bash
+perl ../../programs_source/Perl/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f test_scaffolding.agp -c 5 | perl -lane 'if($F[1] > 1){print $_;}' | wc -l
+	403
+
+# OK! that's the problem! Let's try to narrow it down on a chromosome by chromosome basis
+# Here's an example of how I'm going to do this:
+perl -lane 'if($F[0] == 1){print $_;}' < test_scaffolding.agp | perl ../../programs_source/Perl/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 5 | perl -lane 'if($F[1] > 1){print $_;}' | wc -l
+	0	<- chr1 is ok! 
+
+# I'm going to do this by hand and get a table going
+```
+
+|chr | conflicts
+| :--- | ---: |
+|1 | 0 |
+2 | 0
+3 | 0
+4 | 0
+5 | 15
+6 | 8
+7 | 0
+8 | 0
+9 | 0
+10 | 0
+11 | 10
+12 | 0
+13 | 3
+14 | 0
+15 | 0
+16 | 0
+17 | 0
+18 | 3
+19 | 0
+20 | 0
+21 | 0
+22 | 3
+23 | 0
+24 | 8
+25 | 6
+26 | 0
+27 | 0
+28 | 0
+29 | 0
+X | 146
+
+Total count was 227 on an individual chromosome basis, so there are some contigs that span more than one chromosome. Let's get lists so that Brian can investigate the regions more easily.
+
+```bash
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 X; 
+	do 
+		echo $i; perl -e 'chomp (@ARGV); open(IN, "< $ARGV[1]"); while(<IN>){ chomp; @F = split(/\t/); if($F[0] eq $ARGV[0]){print "$_\n";}} close IN;' $i  test_scaffolding.agp | perl ../../programs_source/Perl/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 5 | perl -lane 'if($F[1] > 1){print $_;}' > mult_maps_${i}.tab; 
+	done
+find ./ -empty -type f -delete
+````
+
+So, there should be a bunch of listings of conflicts for every chromosome. Now to get the list of regions that are exclusively trans-chromosomal (ie. map ONLY to two or more chromosomes).
+
+``` bash
+cat mult_maps_*.tab | cut -f1 | sort | uniq | wc -l
+	202 <- contigs that map to one or more chrs
+
+cat mult_maps_*.tab | cut -f1 | sort | uniq > mult_maps_flat_list.txt
+# Now to remove them from the master list of conflicts
+perl ../../programs_source/Perl/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f test_scaffolding.agp -c 5 | perl -lane 'if($F[1] > 1){print $_;}' > mult_maps_ALL.tab
+cat mult_maps_ALL.tab | cut -f1 | sort | uniq > mult_maps_flat_all_list.txt
+
+# OK, now to venn the list
+perl ../../programs_source/Perl/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o mult_maps_flat_all_list.txt mult_maps_flat_list.txt
+	File Number 1: mult_maps_flat_all_list.txt
+	File Number 2: mult_maps_flat_list.txt
+	Set     Count
+	1       201
+	1;2     202
+
+# Perfect! No unique listings in group 2
+mv group_1.txt mult_maps_flat_list_unique_multchr.txt
+```
+
+Before I package this up, let's take a closer look at the data so that I can interpet what's going on.
+
+```bash
+# I'm going for a simple case off the bat. Let's look at chr25 first.
+grep 'utg1887' test_scaffolding.agp
+	25      114499  806241  0       W       utg1887 1       691743  -       Super-Scaffold_495
+	25      114499  806241  0       W       utg1887 1       691743  -       Super-Scaffold_495
+
+# Hmm... my first thoughts are that this is a bug. Let's view the context with "less" though.
+# Just what I thought, superscaffold495 is duplicated because it was split by superscaffold178
+# Let's pull the original RH map to see what's going on.
+```
+
+Contig order
+
+| agp | rh map | comments|
+| --- | --- | ---: | 
+utg1887	| utg1887 | start pattern for both
+utg7773 | utg7773
+utg6682 | utg6682
+utg8182 | *	| weird break point
+utg7831 | utg9368 | rh map insertion -- not in agp
+utg7738 | utg49918 | rh map insertion -- superscaff178, 15203536bp
+utg523 | utg7831 | begin agp insertion
+utg49918 | utg8863
+utg56266 | utg7738
+utg51385 | utg1704
+utg1696 | utg32569
+utg23247 | utg1704
+utg1887 |  utg1262 | repeat pattern agp
+utg7773 | utg23247
+utg6682 | 
+utg8182 | 
+
+
+Conclusion: mismapping of utg49918 screwed up my algorithm, inserting a new superscaff and then duplicating superscaff495. utg49918 maps better to chr26. I'm going to make a script to pull the contig names for an easier comparison.
+
+The script is: [compare_rh_with_agp.pl](https://github.com/njdbickhart/perl_toolchain/blob/master/assembly_scripts/compare_rh_with_agp.pl)
+
+Here's an example usage:
+
+```bash
+# This pulls the problem contigs -- I'm selecting the first contig for this example
+head mult_maps_25.tab
+perl ../../programs_source/Perl/perl_toolchain/assembly_scripts/compare_rh_with_agp.pl -a test_scaffolding.agp -r RHmap_to_PacBio-v3_contigs.txt -c 25 -p utg1887 -l 15
+```
+
+It pulls lines from both files around the "problem contig" that is present in both areas. Since the RH map has multiple mappings per contig, it condenses them down to contiguous regions before printing out. The "problem contig" is flanked by box brackets to help the user distinguish it better. 
+
+Let's grab another problem region just to test out the program again.
+
+```bash
+head mult_maps_11.tab
+perl ../../programs_source/Perl/perl_toolchain/assembly_scripts/compare_rh_with_agp.pl -a test_scaffolding.agp -r RHmap_to_PacBio-v3_contigs.txt -c 11 -p utg1182 -l 15
+```
+
+OK, problem solved! Two markers had no PacBio mapping locations in between utg1182 on the RH map, so my software duplicated the region.
