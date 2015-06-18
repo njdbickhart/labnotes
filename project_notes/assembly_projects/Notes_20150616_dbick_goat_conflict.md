@@ -328,3 +328,14 @@ utg6 | 12655751 | 12656751 | 24 | no hard-clipping
 
 I am going to err on the side of caution with the "needed closer inspection" contigs and try to split them anyways. Let's create a bed file with the split locations so that I can generate the split fastas for Alex to rescaffold.
 
+I'm going to go to town with a perl one-time script designed to pull the regions from the fasta file using the fai information. Here is the script: [splitFastaWBreakpointBed.pl](https://github.com/njdbickhart/perl_toolchain/blob/master/sequence_data_scripts/splitFastaWBreakpointBed.pl)
+
+```bash
+# Creating the bed file for the program
+vim breakpoint_regions.file
+perl -ne '@F = split(/\s+\|\s+/); print "$F[0]\t$F[1]\t$F[2]\n";' < breakpoint_regions.file > breakpoint_regions.bed
+perl ~/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f ../Goat-Genome-Assembly/Papadum-v3/papadum-v3s.ctg.fa -b breakpoint_regions.bed -o goat_split_19ctg_assembly.fa
+
+samtools faidx goat_split_19ctg_assembly.fa
+gzip goat_split_19ctg_assembly.fa
+```
