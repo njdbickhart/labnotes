@@ -290,7 +290,7 @@ mv *.coverage.bed ./coverage_regions/
 
 # OK, now to pull regions that have less than 20% coverage of bases within the 500bp windows
 cd coverage_regions/
-coverage_regions]$ for i in *.bed; do echo $i; perl -lane 'if($F[6] < 0.2){print $_;}' < $i; done
+for i in *.bed; do echo $i; perl -lane 'if($F[6] < 0.2){print $_;}' < $i; done
 ```
 
 #### Obvious examples:
@@ -387,5 +387,55 @@ perl -lane 'my $name = "$F[0]_$F[1]_$F[2]";
 	system("samtools view -b ERR405776.1.USDA_V3_noheader_sorted.bam $ucsc > $name.temp.bam"); 
 	system("bedtools coverage -abam $name.temp.bam -b $name.regions.bed > $name.coverage.bed");' < breakpoint_regions_new.bed
 
+rm utg*.temp.bam
+rm utg*.regions.bed
 
+# Now to pull the regions that have less than 20% coverage
+for i in *coverage.bed; do echo $i; perl -lane 'if($F[6] < 0.2){print $_;}' < $i; done
+```
+
+**Refined coordinates**
+
+| Scaff | start | end | type | confirmed |
+| :--- | ---: | ---: | :--- | :--- | 
+utg443 | 1676022 | 1676027 | yellow small | REMOVE
+utg443 | 1730200 | 1730205 | yellow small | confirm
+utg443 | 1950600 | 1950605 | yellow small | confirm
+utg751 | 4353500 | 4354000 | red small | confirm
+utg1746 | 111736 | 112118 | red	| confirm
+utg23187 | 1317750 | 1317755 | blue | confirm
+utg23285 | 5797000 | 5798380 | blue  | confirm
+utg23407 | 7526750 | 7527250 | yellow small | confirm
+utg23417 | 119400 | 119550 | yellow small | confirm
+utg2076 | 688521 | 690011 | red	| confirm
+utg28063 | 129600 | 133100 | red | confirm
+utg32563 | 5565000 | 5566300 | red | confirm
+utg3647 | 2006266 | 2007232 | yellow (maybe?) | confirm
+utg41967 | 231290 | 231592 | blue | confirm	
+utg49095 | 334820 | 336000 | blue | confirm
+
+```bash
+# I resaved the breakpoint_regions_new.file file with the updated coordinates above
+perl -ne '@F = split(/\s+\|\s+/); print "$F[0]\t$F[1]\t$F[2]\n";' < breakpoint_regions_new.file > breakpoint_regions_saved.bed
+
+# Now to combine all of the regions, rerun my script, and then gzip the resulting fasta file
+cat breakpoint_regions_saved.bed breakpoint_regions_saved.bed > final_ctg_breakpoints.bed
+perl ~/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f ../Goat-Genome-Assembly/Papadum-v3/papadum-v3s.ctg.fa -b final_ctg_breakpoints.bed -o goat_split_28ctg_assembly.fa
+
+# Just making sure that everything is in order...
+samtools faidx goat_split_28ctg_assembly.fa
+# Nope! It's not! There was a problem with the two breakpoint files that I think have to do with carriage returns
+dos2unix breakpoint_regions_saved.bed
+dos2unix breakpoint_regions.bed
+cat breakpoint_regions_saved.bed breakpoint_regions.bed > final_ctg_breakpoints.bed
+
+# Let's try it again
+perl ~/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f ../Goat-Genome-Assembly/Papadum-v3/papadum-v3s.ctg.fa -b final_ctg_breakpoints.bed -o goat_split_36ctg_assembly.fa
+samtools faidx goat_split_36ctg_assembly.fa
+gzip goat_split_36ctg_assembly.fa
+
+wc -l goat_split_36ctg_assembly.fa.fai
+	3110 goat_split_36ctg_assembly.fa.fai
+# 36 split events + 3074 = 3110, so we're good.
+```
 
