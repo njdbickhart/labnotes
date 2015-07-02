@@ -339,3 +339,53 @@ perl ~/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f ../Go
 samtools faidx goat_split_19ctg_assembly.fa
 gzip goat_split_19ctg_assembly.fa
 ```
+
+*7/2/2015*
+
+--
+
+Ben and Brian have finalized the list of regions to split. I am just going to double check their work, create a full, final list of split regions, and then create the split fasta for Alex.
+
+Here are the regions from Ben's excel file (GOAT_confilcts_break_contig.xlsx).
+
+| Scaff | start | end | type |
+| :--- | ---: | ---: | :--- |
+utg443 | 1676022 | 1676027 | yellow small
+utg443 | 1730200 | 1730205 | yellow small
+utg443 | 1950600 | 1950605 | yellow small
+utg751 | 4353500 | 4353505 | red small
+utg1746 | 110150 | 112000 | red
+utg23187 | 1317750 | 1317755 | blue
+utg23285 | 5797500 | 5797505 | blue
+utg23407 | 7526750 | 7526755 | yellow small
+utg23417 | 119545 | 119550 | yellow small
+utg2076 | 688021 | 690011 | red
+utg28063 | 129100 | 132700 | red
+utg32563 | 5565000 | 5566300 | red
+utg3647 | 2006550 | 2006950 | yellow (maybe?)
+utg41967 | 231500 | 231505 | blue
+utg49095 | 334820 | 336000 | blue
+
+> Blade14: /mnt/nfs/nfs2/GoatData/testanimal
+
+```bash
+# Creating a new breakpoints file so that I can keep this analysis separate
+vim breakpoint_regions_new.file
+
+# Repeating the automation steps listed previously
+perl -ne '@F = split(/\s+\|\s+/); print "$F[0]\t$F[1]\t$F[2]\n";' < breakpoint_regions_new.file > breakpoint_regions_new.bed
+
+perl -lane 'my $name = "$F[0]_$F[1]_$F[2]"; 
+	print STDERR $name; 
+	my $ucsc = "$F[0]:$F[1]-$F[2]"; 
+	open(OUT, "> $name.regions.bed"); 
+	for($x = $F[1]; $x < $F[2]; $x += 500){
+		$e = $x + 500; 
+		print OUT "$F[0]\t$x\t$e";
+	} 
+	close OUT; 
+	system("samtools view -b ERR405776.1.USDA_V3_noheader_sorted.bam $ucsc > $name.temp.bam"); 
+	system("bedtools coverage -abam $name.temp.bam -b $name.regions.bed > $name.coverage.bed");' < breakpoint_regions_new.bed
+
+
+
