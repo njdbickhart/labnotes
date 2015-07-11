@@ -154,6 +154,8 @@ perl ../../../programs_source/Perl/perl_toolchain/assembly_scripts/assemblyScaff
 # It is actually quite fragmented! There are clear inversions and segregated fragments here! Perhaps BioNano superscaffolds could resolve this?
 ```
 
+Using my [venn comparison script](https://github.com/njdbickhart/perl_toolchain/blob/master/bed_cnv_fig_table_pipeline/nameListVennCount.pl) was very handy here.
+
 My thoughts: the venn components are clearly important for identifying which chromosome "cluster" the Lachesis data should be compared against. Also, the inter-chromosome associations are clearly biasing the clustering data. This is clearly important biological data, but it interferes with the scaffolding. 
 
 There may be a way to associate superscaffolds in a node-based way to resolve these issues. 
