@@ -47,7 +47,7 @@ In my above terms, "simple" means a single base extension. I do not expect many 
 
 I will also filter away any "heterozygous" INDELs as these might just be genuine assembly fork sites.
 
-I created a script that automates data collection and filters the VCF simultaneously
+I created a script that automates data collection and filters the VCF simultaneously. The script is locate [here](https://github.com/njdbickhart/perl_toolchain/blob/master/assembly_scripts/pacbioINDELCompFilter.pl) in my perl_toolchain repository.
 
 > Blade14: /mnt/nfs/nfs2/GoatData/Ilmn
 
@@ -83,5 +83,7 @@ Simple_HOM_DEL|  7653
 Complex_INS   |  48,844
 Complex_DEL   |  7274
 **Total_INDELS**  |  **3,024,096**
+
+NOTE: "Total_INDELS" are only the filtered counts from the original INDEL estimates (no hets, no alignment issues, etc).
 
 Correcting the simple homopolymeric insertions would reduce the INDEL count down to 244,961, with 73% of those remaining INDELs being simple, one-base insertions compared to the Illumina data.
