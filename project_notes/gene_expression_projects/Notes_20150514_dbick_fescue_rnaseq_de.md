@@ -10,6 +10,7 @@
 * [Running the Analysis](#running)
 * [Interpreting the results](#interpret)
 * [Group Specific Results](#specific)
+* [Dissecting more useful information](#dissect)
 
 <a name="initial"></a>
 ## Initial information on files
@@ -658,3 +659,117 @@ for i in `cat venns/rsem_L1_L2_specific.Pattern4.ensgene`; do grep $i ../tab_out
 
 cp ../tab_output/rsem_L1_L2_specific_pattern4.tab /mnt/nfs/nfs2/dbickhart/rnaseq/tab_output/
 ```
+
+<a name="dissect"></a>
+## Dissecting more useful information
+
+*8/19/2015*
+
+I need to prepare several distinct gene lists so that genes that are barely approaching significance can be identified and tabulated for each dataset. Here are the goals:
+
+* Identify genes above 90% PPDE rather than 95% PPDE
+* Isolate Patterns 2, 3 and 4 instead of just Pattern4
+* Prepare individual timepoint gene lists instead of just L1_L2
+* Prepare pairwise timepoint comparison lists
+
+Much of this will mirror the commands I listed above, albeit on a more extensive scale.
+
+> Blade 14: /mnt/iscsi/vnx_gliu_7/rna_seq/RBaldwin
+
+```bash
+# going to create a new folder for zipping
+mkdir gene_lists
+
+# Within the "analysis" folder in this directory (/mnt/iscsi/vnx_gliu_7/rna_seq/RBaldwin/analysis) I already
+# have the different expression patterns separated, but I think that they're >= 95% PPDE
+# I'll have to start from scratch
+mkdir gene_lists/raw_gene_lists
+
+# Dry time
+perl -lane 'if($F[-1] > 0.90 && $F[-2] ne "\"Pattern1\"" && $F[-2] ne "\"Pattern5\""){$F[-2] =~ s/\"//g; open(OUT, ">> gene_lists/raw_gene_lists/rsem_D_biopsy.$F[-2].ensgene"); ($g) = $F[0] =~ m/\".*(ENSBTAG.+)\"/; print OUT "$g"; close OUT;}' < biopsy_D/rsem_D_biopsy.results
+# Lactation 1 time
+perl -lane 'if($F[-1] > 0.90 && $F[-2] ne "\"Pattern1\"" && $F[-2] ne "\"Pattern5\""){$F[-2] =~ s/\"//g; open(OUT, ">> gene_lists/raw_gene_lists/rsem_L1_biopsy.$F[-2].ensgene"); ($g) = $F[0] =~ m/\".*(ENSBTAG.+)\"/; print OUT "$g"; close OUT;}' < biopsy_L1/rsem_L1_biopsy.results
+# Lactation 2 time
+perl -lane 'if($F[-1] > 0.90 && $F[-2] ne "\"Pattern1\"" && $F[-2] ne "\"Pattern5\""){$F[-2] =~ s/\"//g; open(OUT, ">> gene_lists/raw_gene_lists/rsem_L2_biopsy.$F[-2].ensgene"); ($g) = $F[0] =~ m/\".*(ENSBTAG.+)\"/; print OUT "$g"; close OUT;}' < biopsy_L2/rsem_L2_biopsy.results
+
+wc -l gene_lists/raw_gene_lists/*
+  233 gene_lists/raw_gene_lists/rsem_D_biopsy.Pattern2.ensgene
+    4 gene_lists/raw_gene_lists/rsem_D_biopsy.Pattern3.ensgene
+   59 gene_lists/raw_gene_lists/rsem_D_biopsy.Pattern4.ensgene
+   21 gene_lists/raw_gene_lists/rsem_L1_biopsy.Pattern2.ensgene
+   11 gene_lists/raw_gene_lists/rsem_L1_biopsy.Pattern3.ensgene
+  340 gene_lists/raw_gene_lists/rsem_L1_biopsy.Pattern4.ensgene
+   23 gene_lists/raw_gene_lists/rsem_L2_biopsy.Pattern2.ensgene
+  125 gene_lists/raw_gene_lists/rsem_L2_biopsy.Pattern3.ensgene
+  176 gene_lists/raw_gene_lists/rsem_L2_biopsy.Pattern4.ensgene
+  992 total
+
+# Not too different from the previous lists! Just a bit larger
+# Now let's do the pairwise comparisons
+
+```
+Pairwise comparisons will follow the following schema:
+
+* L1 vs D
+* L2 vs D
+* L1 vs L2
+
+```bash
+# Making the directory
+mkdir gene_lists/comparisons
+
+# I've written a nested shell loop to process them all
+for d in 'L1_vs_D' 'L2_vs_D' 'L1_vs_L2'; 
+	do 
+	echo $d; 
+	for i in 2 3 4; 
+		do 
+		echo $i; 
+		first=`echo $d | cut -d'_' -f1`; 
+		second=`echo $d | cut -d'_' -f3`; 
+		comp=`echo gene_lists/comparisons/rsem_${d}_pattern${i}_shared_gene.list`; 
+		perl /home/dbickhart/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o gene_lists/raw_gene_lists/rsem_${first}_biopsy.Pattern${i}.ensgene gene_lists/raw_gene_lists/rsem_${second}_biopsy.Pattern${i}.ensgene; 
+		mv group_1_2.txt $comp; 
+	done; 
+done
+
+# NOTE: there were allot of comparisons that did not result in a usable file
+wc -l gene_lists/comparisons/*
+   3 gene_lists/comparisons/rsem_L1_vs_D_pattern4_shared_gene.list
+   1 gene_lists/comparisons/rsem_L1_vs_L2_pattern3_shared_gene.list
+  59 gene_lists/comparisons/rsem_L1_vs_L2_pattern4_shared_gene.list
+   2 gene_lists/comparisons/rsem_L2_vs_D_pattern3_shared_gene.list
+   2 gene_lists/comparisons/rsem_L2_vs_D_pattern4_shared_gene.list
+
+# Pattern4, L1_vs_L2 is still the winner here. Pattern2 had no shared gene lists
+```
+
+OK, there could also be a list of genes that were above the significance threshold but were classified under different patterns. Let's create a list of intersecting genes regardless of pattern profile. By "regardless of pattern profile" I mean any pattern that is not Pattern1 or Pattern5 still! 
+
+```bash
+# combining the previously separated pattern files
+cat gene_lists/raw_gene_lists/rsem_D_biopsy.Pattern*.ensgene | sort | uniq > gene_lists/raw_gene_lists/rsem_D_biopsy.allpat.ensgene
+cat gene_lists/raw_gene_lists/rsem_L1_biopsy.Pattern*.ensgene | sort | uniq > gene_lists/raw_gene_lists/rsem_L1_biopsy.allpat.ensgene
+cat gene_lists/raw_gene_lists/rsem_L2_biopsy.Pattern*.ensgene | sort | uniq > gene_lists/raw_gene_lists/rsem_L2_biopsy.allpat.ensgene
+
+# OK, now to do the comparisons
+for d in 'L1_vs_D' 'L2_vs_D' 'L1_vs_L2'; 
+	do 
+	echo $d; 
+	first=`echo $d | cut -d'_' -f1`; 
+	second=`echo $d | cut -d'_' -f3`; 
+	comp=`echo gene_lists/comparisons/rsem_${d}_allpat_shared_gene.list`; 
+	perl /home/dbickhart/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o gene_lists/raw_gene_lists/rsem_${first}_biopsy.allpat.ensgene gene_lists/raw_gene_lists/rsem_${second}_biopsy.allpat.ensgene; 
+	mv group_1_2.txt $comp; 
+done
+
+wc -l gene_lists/comparisons/rsem_*allpat*.list
+  18 gene_lists/comparisons/rsem_L1_vs_D_allpat_shared_gene.list
+ 104 gene_lists/comparisons/rsem_L1_vs_L2_allpat_shared_gene.list
+  19 gene_lists/comparisons/rsem_L2_vs_D_allpat_shared_gene.list
+ 141 total
+
+# L1_vs_L2 is still the winner!
+```
+
+I think that I just need to reformat the excel spreadsheet to just show the significant PPDE genes and then I'm done here.
