@@ -10,6 +10,7 @@ These are my notes on mapping the pacbio contigs back to the Lachesis scaffolds 
 * [Preparation](#preparation)
 * [Order File Alignment](#order)
 * [Summary Table of Results](#summary)
+* [Oriented RH map assignments](#orient)
 
 <a name="preparation"></a>
 ## Preparation
@@ -419,3 +420,104 @@ group30 | Chr19,Chr2 | Chr19:2; Chr2:1 | Hard to tell!
 In light of this information, it's clear that group1 is a chimeric scaffold derived from inter-chromosome interactions from several autosomes. Also, the two groups that have the X chromosome contigs COULD be the two sex chromosomes, but it is difficult to scaffold them from there! Another possibility is that the scaffolding "forked" once it reached the PAR and that one cluster is part of the X and the other is a chimeric Y + X? 
 
 Ivan and Shawn will know best how to reanalyze the data.
+
+<a name="orient"></a>
+## Oriented RH map assignments
+
+OK, I have simple contig order lists, but I don't have the contigs assigned in terms of their orientation on the RH map. I will write a quick one-shot perl script to do this.
+
+Here's the script (it's so singular in purpose that it's not worth archiving in my github repository):
+
+```perl
+#!/usr/bin/perl
+# This is a one shot script designed to quickly interrogate and order the pacbio contigs on the RH map
+# Output format:
+#	chr	contigname	start	end	orientation["+", "-", "?"]
+
+use strict;
+
+my $output = "ordered_rh_map_contigs.tab";
+my $input = "RHmap_to_PacBio-v3_contigs.txt";
+
+open(my $IN, "< $input") || die "Could not find input file!\n";
+open(my $OUT, "> $output");
+my $header = <$IN>;
+my @current;
+my %data; # {chr}->[]->[contigname, min, max, orient]
+my $chrcontig = "0"; my $curchr = "0";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	if($segs[5] =~ /^\*/){next;}
+	if($segs[5] =~ /\#N\/A/){next;}
+	
+	# get the simple contig name
+	my @ctgsegs = split(/\_/, $segs[5]);
+	$segs[5] = $ctgsegs[0];
+	
+	if($segs[5] ne $chrcontig && $chrcontig ne "0" && scalar(@current) > 0){
+		# new contig, and we have data to sort through
+		push(@{$data{$curchr}}, determineOrder(\@current));
+		@current = ();
+	}elsif($segs[5] ne $chrcontig && scalar(@current) == 0){
+		# new contig and there's only one entry for it!
+		push(@{$data{$curchr}}, [$chrcontig, $segs[6], $segs[6], "?"]);
+	}
+	
+	push(@current, \@segs);
+	$chrcontig = $segs[5];
+	$curchr = $segs[1];
+}
+if(scalar(@current) >= 1){
+	push(@{$data{$curchr}}, determineOrder(\@current));
+}
+
+foreach my $chr (sort {$a <=> $b} keys(%data)){
+	foreach my $row (@{$data{$chr}}){
+		print {$OUT} "$chr\t" . $row->[0] . "\t" . $row->[1] . "\t" . $row->[2] . "\t" . $row->[3] . "\n";
+	}
+}
+
+close $IN;
+close $OUT;
+	
+exit;
+
+sub determineOrder{
+	my ($array) = @_;
+	my $min = 20000000;
+	my $max = 0;
+	my $orient = ($array->[0]->[6] - $array->[1]->[6] < 0)? "+" : "-";
+	# I'm using empty string concatenation and redundant math to ensure that the Perl interpreter
+	# Doesn't just store the address of the array in memory
+	my $ctgname = $array->[0]->[5] . "";
+	foreach my $v (@{$array}){
+		if($v->[6] < $min){
+			$min = $v->[6] + 1 - 1;
+		}
+		if($v->[6] > $max){
+			$max = $v->[6] + 1 - 1;
+		}
+	}
+	return [$ctgname, $min, $max, $orient];
+}
+```
+
+I ran this on my local virtualbox installation:
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/super_scaffolding
+
+```bash
+perl generate_oriented_rhmap_contigs.pl
+
+# Gzipping original RHmap file just in case
+gzip RHmap_to_PacBio-v3_contigs.txt
+```
+
+The output file has the following columns:
+
+1. Chromosome
+2. PacBio contig abbreviation
+3. minimum alignment position (start coordinate)
+4. maximum alignment position (end coordinate)
+5. Orientation (can be "+", "-" or "?" if there is only one point of reference)
