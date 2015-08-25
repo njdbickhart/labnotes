@@ -596,6 +596,12 @@ perl ../../programs_source/Perl/perl_toolchain/sequence_data_scripts/splitFastaW
 
 # Now to set the old fai file in a new, sorted location
 mv bng_split_gap.fa.fai bng_split_gap.fa.fai.bak
-sort -k1,1 bng_split_gap.fa.fai.bak > bng_split_gap.fa.fai.bak.sorted
+sort -k1,1 bng_split_gap.fa.fai.bak | cut -f1,2 > bng_split_gap.fa.fai.bak.sorted
 
 samtools faidx bng_split_gap.fa
+sort -k1,1 bng_split_gap.fa.fai | cut -f1,2 > bng_retest.fa.fai.sorted
+
+diff bng_retest.fa.fai.sorted bng_split_gap.fa.fai.bak.sorted
+# Nothing -- so we're good!
+```
+
