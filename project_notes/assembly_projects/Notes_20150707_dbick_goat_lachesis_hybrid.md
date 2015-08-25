@@ -521,3 +521,81 @@ The output file has the following columns:
 3. minimum alignment position (start coordinate)
 4. maximum alignment position (end coordinate)
 5. Orientation (can be "+", "-" or "?" if there is only one point of reference)
+
+<a name="gap"></a>
+## Gap information scan
+
+*8/24/2015*
+
+I need to pull information from the assemblies so that gap regions and lengths can be easily determined. I'm going to write a Java program to pull this from the fasta quickly.
+
+--
+
+*8/25/2015*
+
+OK, I wrote the program [GetMaskBedFasta](https://github.com/njdbickhart/GetMaskBedFasta) and ran it from my IDE in console mode. It produced 10,712 gap regions, and 10,520 of which were greater than 100bp in length.
+
+Example settings for running the program:
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/bng_scaffolds
+
+```bash
+java -jar GetMaskBedFasta.jar -f Goat333HybScaffolds1242contigs0723.fasta -o bng_gaps.bed -s bng_stats.tab
+```
+
+I'm going to try splitting the BNG superscaffolds to help Shawn with the Lachesis alignment in the meantime. I'll select only the gap regions that are larger than 100 bp (larger than the read length?) and I've updated my fasta splitting script, [splitFastaWBreakpointBed.pl](https://github.com/njdbickhart/perl_toolchain/blob/master/sequence_data_scripts/splitFastaWBreakpointBed.pl), so that it does not pull gap sequence from the beginning and ends of scaffold sequence.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/bng_scaffolds
+
+```bash
+# Going to extract only the gap regions above 100 bp
+perl -lane 'if($F[2] - $F[1] > 100){print $_;}' < bng_gaps.bed > bng_gaps_above100bp.bed
+
+perl ../../programs_source/Perl/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f Goat333HybScaffolds1242contigs0723.fasta -o bng_split_gap.fa -b bng_gaps_above100bp.bed
+
+# Using samtools to get summary statistics from the split fasta
+samtools faidx bng_split_gap.fa
+
+wc -l *.fai
+  2349 bng_split_gap.fa.fai			<-774 more segments than the original BNG super scaffolds
+  1575 Goat333HybScaffolds1242contigs0723.fasta.fai
+
+tail *.fai
+==> bng_split_gap.fa.fai <==
+...
+utg40992        23779   2,657,212,952      23779   23780	<- a loss of 39 megabases
+
+==> Goat333HybScaffolds1242contigs0723.fasta.fai <==
+...
+utg40992        23779   2,696,524,662      23779   23780
+```
+
+OK, there were far fewer split regions than I expected, but this can be attributed to close gaps in the scaffolds that probably corresponded to nickase binding sites? I'll check to confirm:
+
+```bash
+# From bng_gaps_above100bp.bed
+	Super-Scaffold_1        2673354 2677638
+	Super-Scaffold_1        2677646 2682610
+
+# So the extract region would be Super-Scaffold_1:2677638-2677646
+samtools faidx Goat333HybScaffolds1242contigs0723.fasta Super-Scaffold_1:2677638-2677646
+	>Super-Scaffold_1:2677638-2677646
+	NGCTCTTCN
+
+# From Alex's email, the nickase site is: GCTCTTC, so that's a site!
+```
+
+I think that I'm ready to gzip this and send it to Shawn.
+
+Wait... getting a bed file with the exact split coordinates would help substantially, I think. Let's modify the perl script and run it again to get the right coordinates.
+
+```bash
+perl ../../programs_source/Perl/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f Goat333HybScaffolds1242contigs0723.fasta -o bng_split_gap.fa -b bng_gaps_above100bp.bed -s bng_split_gap_coords.bed
+
+# The bng_split_gap_coords.bed file will contain the coordinates that the split fasta entry has on the original scaffold
+
+# Now to set the old fai file in a new, sorted location
+mv bng_split_gap.fa.fai bng_split_gap.fa.fai.bak
+sort -k1,1 bng_split_gap.fa.fai.bak > bng_split_gap.fa.fai.bak.sorted
+
+samtools faidx bng_split_gap.fa
