@@ -11,6 +11,7 @@ These are my notes on mapping the pacbio contigs back to the Lachesis scaffolds 
 * [Order File Alignment](#order)
 * [Summary Table of Results](#summary)
 * [Oriented RH map assignments](#orient)
+* [Gap information scan](#gap)
 
 <a name="preparation"></a>
 ## Preparation
@@ -605,3 +606,172 @@ diff bng_retest.fa.fai.sorted bng_split_gap.fa.fai.bak.sorted
 # Nothing -- so we're good!
 ```
 
+--
+
+*8/26/2015*
+
+Just generating some quick summary statistics on the split assembly.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/bng_scaffolds
+
+```bash
+# Calculating contig N50
+perl ../../programs_source/Perl/perl_toolchain/assembly_scripts/calculateContigN50.pl bng_split_gap.fa
+	N50 length:     1309271228
+	N50 value:      12,149,468
+	L50 value:      58
+```
+
+#### Initial check for 2kb gap split cutoff
+
+Alex mentioned that a 100bp cutoff would be too stringent. Let's try a 2kb gap cutoff and see if that appreciably improves the statistics.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/bng_scaffolds
+
+```bash
+perl -lane 'if($F[2] - $F[1] > 2000){print $_;}' < bng_gaps.bed > bng_gaps_above2kb.bed
+
+wc -l bng_gaps*
+  10520 bng_gaps_above100bp.bed
+   9329 bng_gaps_above2kb.bed
+  10712 bng_gaps.bed
+
+# OK, that was a substantial decrease. Let's make the split fasta now
+perl ../../programs_source/Perl/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f Goat333HybScaffolds1242contigs0723.fasta -o bng_split_2kb_gap.fa -b bng_gaps_above2kb.bed -s bng_split_2kb_gap_coords.bed
+
+samtools faidx bng_split_2kb_gap.fa
+
+wc -l *.fai
+  2583 bng_split_2kb_gap.fa.fai
+  2349 bng_split_gap.fa.fai
+  1242 bng_unscaffolded_pacbio.fai
+  1575 Goat333HybScaffolds1242contigs0723.fasta.fai
+
+# Hmm... that made more segments! How is that possible?
+# Let's look at the data
+grep -P 'Super-Scaffold_336\.' *.fai | perl -lane '$F[0] =~ s/\:/\|/g; pop(@F); pop(@F); print join("|", @F);'
+```
+
+| File | Scaffold | ScaffLen | total Bases |
+| :--- | :--- | :--- | ---: |
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.1|**177701**|22
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.2|**155403**|180707
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.3|869399|338723
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.4|1523|1222634
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.5|80668|1224205
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.6|3279|1306240
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.7|72515|1309596
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.8|103326|1383342
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.9|1765|1488413
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.10|1773|1490231
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.11|**326432**|1492057
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.12|1856|1823953
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.13|**105876**|1825863
+bng_split_2kb_gap.fa.fai|Super-Scaffold_336.14|198|1933527
+bng_split_gap.fa.fai|Super-Scaffold_336.1|**177701**|293574308
+bng_split_gap.fa.fai|Super-Scaffold_336.2|**154708**|293754993
+bng_split_gap.fa.fai|Super-Scaffold_336.3|96051|293912302
+bng_split_gap.fa.fai|Super-Scaffold_336.4|554331|294009976
+bng_split_gap.fa.fai|Super-Scaffold_336.5|148739|294573568
+bng_split_gap.fa.fai|Super-Scaffold_336.6|69431|294724808
+bng_split_gap.fa.fai|Super-Scaffold_336.7|78872|294795419
+bng_split_gap.fa.fai|Super-Scaffold_336.8|72515|294875628
+bng_split_gap.fa.fai|Super-Scaffold_336.9|102867|294949374
+bng_split_gap.fa.fai|Super-Scaffold_336.10|**326432**|295053979
+bng_split_gap.fa.fai|Super-Scaffold_336.11|**105876**|295385875
+
+Bold values are the same as in the previous file. It seems obvious that smaller distances between nickase sites allowed my scripts's internal "100bp" length filter for splitting to kick in. Hell, the end of the chromosome filter failed for the 2kb gap file because there was 200bp uninterrupted!
+
+Calculating the N50:
+
+```bash
+perl ../../programs_source/Perl/perl_toolchain/assembly_scripts/calculateContigN50.pl bng_split_2kb_gap.fa
+N50 length:     1316999836
+N50 value:      14,451,513
+L50 value:      47
+```
+
+#### Implementation of minimum size filter for scaffolds
+
+Hmm, despite the increase in number of fragments, the N50 went up by 2Mb! Let's try improving the Perl script so that the minimum size filter is customizable.
+
+```bash
+# 2kb minimum size filter
+perl ../../programs_source/Perl/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f Goat333HybScaffolds1242contigs0723.fasta -o bng_split_2kb_2kbf_gap.fa -b bng_gaps_above2kb.bed -s bng_split_2kb_2kbf_gap_coords.bed -m 2000
+
+samtools faidx bng_split_2kb_2kbf_gap.fa
+
+wc -l *.fai
+  2146 bng_split_2kb_2kbf_gap.fa.fai
+  2583 bng_split_2kb_gap.fa.fai
+  2349 bng_split_gap.fa.fai
+  1242 bng_unscaffolded_pacbio.fai
+  1575 Goat333HybScaffolds1242contigs0723.fasta.fai
+  9895 total
+
+perl -lane 'print $F[1];' < bng_split_2kb_2kbf_gap.fa.fai | statStd.pl
+	total   2146
+	Minimum 435
+	Maximum 66863457
+	Average 1220070.247903
+	Median  58891.5
+	Standard Deviation      4774317.508145
+	Mode(Highest Distributed Value) 21821
+
+# I wanted to see if the smaller size contigs contained a copious amount of N's
+samtools faidx Goat333HybScaffolds1242contigs0723.fasta Super-Scaffold_880:11738277-11741706
+>Super-Scaffold_880:11738277-11741706
+	# all N's apart from a nickase site that breaks up the distance
+
+# N50 size calculation
+perl ../../programs_source/Perl/perl_toolchain/assembly_scripts/calculateContigN50.pl bng_split_2kb_2kbf_gap.fa
+	N50 length:     1316999836
+	N50 value:      14,451,513
+	L50 value:      47
+```
+
+So, the 2kb split contains far more contigs with only "N's" due to nickase site interruptions. Here is a table with the scaffold N50 values:
+
+| filter criteria | N50 | 
+| :--- | ---: |
+100bp gap, 100bp min | 12,149,468
+2kb gap, 100bp min | 14,451,513
+2kb gap, 2kb min | 14,451,513
+
+#### Implementation of 'N' ratio filter for smaller split contigs
+
+Let's see if we can filter the 2kb gap split file by removing segments that have mostly N's. I rewrote the [splitFastaWBreakpointBed.pl](https://github.com/njdbickhart/perl_toolchain/blob/master/sequence_data_scripts/splitFastaWBreakpointBed.pl) script again to accommodate an N base filter.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/bng_scaffolds
+
+```bash
+# 2kb gaps, 1000bp min size filter, 50% N base filter
+perl ../../programs_source/Perl/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f Goat333HybScaffolds1242contigs0723.fasta -o bng_split_2kb_1kbf_50n_gap.fa -b bng_gaps_above2kb.bed -s bng_split_2kb_1kbf_50n_gap_coords.bed -m 1000 -n 0.5
+
+samtools faidx bng_split_2kb_1kbf_50n_gap.fa
+
+wc -l *.fai
+  2075 bng_split_2kb_1kbf_50n_gap.fa.fai
+  2146 bng_split_2kb_2kbf_gap.fa.fai
+  2583 bng_split_2kb_gap.fa.fai
+  2349 bng_split_gap.fa.fai
+  1242 bng_unscaffolded_pacbio.fai
+  1575 Goat333HybScaffolds1242contigs0723.fasta.fai
+
+perl ../../programs_source/Perl/perl_toolchain/assembly_scripts/calculateContigN50.pl bng_split_2kb_1kbf_50n_gap.fa
+	N50 length:     1316999836
+	N50 value:      14451513
+	L50 value:      47
+
+perl -lane 'print $F[1];' < bng_split_2kb_1kbf_50n_gap.fa.fai | statStd.pl
+	total   2075
+	Minimum 1501
+	Maximum 66863457
+	Average 1261708.550843
+	Median  61520
+	Standard Deviation      4849948.272566
+	Mode(Highest Distributed Value) 51884
+
+```
+
+OK, so ultimately this looks to be the best split fasta. Let's package it up and send it to Alex and Shawn.
