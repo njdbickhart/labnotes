@@ -2,7 +2,18 @@
 ---
 *05/03/2015*
 
-### IGC BAC selection coordinate refinement
+## Table of Contents
+* [IGC BAC selection coordinate refinement](#coordrefine)
+* [BAC clone selection ](#firstroundsel)
+* [RPCI-42 BAC selection summary table and notes](#rpcisel)
+* [CHORI BAC selection for IGC](#chorisel)
+* [Initial table of selected BACs for sequencing](#initialtable)
+* [Increasing LRC BAC coverage](#increaselrc)
+* [Final panel of BAC clones for ordering](#finalresults)
+
+
+<a name="coordrefine"></a>
+## IGC BAC selection coordinate refinement
 
 George Liu remembers that many of the BAC plates for the RPCI42 and CHORI-240 cell lines were dropped in the move. I will be selecting BAC clones that cover three regions that contain the IGCs of interest and reordering them from CHORI bacpac:
 
@@ -21,7 +32,8 @@ These coordinates were approximated from the maps that John Hammond provided, an
 
 I enlarged the search window for the MHC class I receptor because the BOLA refseq annotation extended out past the initial region that was highlighted in John's figures. 
 
-### BAC clone selection 
+<a name="firstroundsel"></a>
+## BAC clone selection 
 
 I have downloaded the RPCI BAC end sequences from NCBI, but I need to get the approximate coordinates for each pairing. I'm going to try using BWA MEM as a first-pass alignment -- I know it isn't going to be the best alignment, but it's fast and automated.
 
@@ -209,7 +221,8 @@ So we've got two clones that overlap the SNP, and two clones that flank it on ei
 
 --
 
-### RPCI-42 BAC selection summary table and notes
+<a name="rpcisel"></a>
+## RPCI-42 BAC selection summary table and notes
 
 Here are the full list of clones that we can pull for RPCI42 for this region and project
 
@@ -237,7 +250,8 @@ I'm missing a BAC that covers chr5:99,450,000-99,665,969 for NKC, and the LRC re
 
 *05/04/2015*
 
-### CHORI BAC selection for IGC
+<a name="chorisel"></a>
+## CHORI BAC selection for IGC
 
 I have already selected John's chr18 BACs, so now I need to identify the BACs that I need for John Hammond's project. Thankfully, these BACs from the Domino library are incredibly well characterized. So, let's work with the bed file containing their locations on UMD3 that I prepared previously.
 
@@ -324,7 +338,8 @@ OK, now I've got everything. Time to get the master table together.
 
 ---
 
-# Final table of selected BACs for sequencing
+<a name="initialtable"></a>
+## Initial table of selected BACs for sequencing
 
 |Library | Region Name | Clone Name | End Coords | Notes |
 | :--- | :--- | :--- | :---: | :--- |
@@ -363,7 +378,8 @@ OK, now I've got everything. Time to get the master table together.
 
 *05/05/2015*
 
-# Increasing LRC BAC coverage
+<a name="increaselrc"></a>
+## Increasing LRC BAC coverage
 
 John Hammond sent me a list of LRC BACs that the pirbright team selected for sequencing, previously. MHC Class I is appropriately covered in this dataset, but we could use more LRC BACs. From [the excel spreadsheet](E:\SharedFolders\grants\immune_gene_cluster_grant\bac_selection\list_of_clones.xlsx) I am going to select clones that have end sequencing and that are on different chromosomes. 
 
@@ -445,13 +461,13 @@ WOW! Check out those coordinates on X!!! [UCSC X chromosome region](http://genom
 samtools view ncbi_everything_genbank_bac_end_sorted.bam chrX:36590496-36831736 | perl -lane 'print "$F[2]\t$F[3]\t$F[0]";'
 ```
 >chrX    36595020        RPCI42_141D20.TJ
-chrX    36595085        RPCI42_144K20.TJ
-chrX    36610341        RPCI42_158F10.TV
-chrX    36611259        RP42-65A17
-chrX    36617903        RPCI42_136A22.TJ
-chrX    36629145        RPCI42_152I20.TJ
-chrX    36634511        RPCI42_152I19.TJ
-chrX    36829933        RPCI42_115L7.TJ
+>chrX    36595085        RPCI42_144K20.TJ
+>chrX    36610341        RPCI42_158F10.TV
+>chrX    36611259        RP42-65A17
+>chrX    36617903        RPCI42_136A22.TJ
+>chrX    36629145        RPCI42_152I20.TJ
+>chrX    36634511        RPCI42_152I19.TJ
+>chrX    36829933        RPCI42_115L7.TJ
 
 All of the above BACs are one-end anchors, so let's select one from each "region" for ordering.
 
@@ -459,15 +475,16 @@ All of the above BACs are one-end anchors, so let's select one from each "region
 samtools view ncbi_everything_genbank_bac_end_sorted.bam chr4:86602948-86783998 | perl -lane 'print "$F[2]\t$F[3]\t$F[0]";'
 ```
 
-> chr4    86605254        RPCI42_128C5.TJ
-chr4    86685432        RP42-170I19
-chr4    86710226        RPCI42_132D13.TV
+>chr4    86605254        RPCI42_128C5.TJ
+>chr4    86685432        RP42-170I19
+>chr4    86710226        RPCI42_132D13.TV
 
 Again, all three are one-end anchors. Let's take all three from this group.
 
 ---
 
-# Final panel of BAC clones for ordering
+<a name="finalresults"></a>
+## Final panel of BAC clones for ordering
 
 |Library | Region Name | Clone Name | End Coords | Notes |
 | :--- | :--- | :--- | :---: | :--- |
@@ -514,7 +531,7 @@ Again, all three are one-end anchors. Let's take all three from this group.
 
 OK, now that makes 40 total BACs to be ordered. I entered them in the "shopping cart" of the BACPAC website and they validated correctly. I just need to send them off to Pieter to ensure that we have the authority to purchase these under our previous MTA. Here are the clone names (formatted for their verification script):
 
-> RP42-133J13
+RP42-133J13
 RP42-113K1
 RP42-148O8
 RP42-122O1
