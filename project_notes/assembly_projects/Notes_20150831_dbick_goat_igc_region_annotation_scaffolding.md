@@ -8,6 +8,7 @@ I just learned from Ben that the INDELs that we corrected via PILON completely b
 
 ## Table of Contents
 * [Summary statistics](#stats)
+* [RH marker mapping statistics](#rhmap)
 
 <a name="stats"></a>
 ## Summary statistics
@@ -150,10 +151,125 @@ Cigar string:
 
 Identical! So that means that the inclusion of the degenerate contigs in Steve's papadumv4 most likely impacted the correction of the contig. So, it's not a deterministic correction unless you have the same input and output data.
 
+Let's try working with a split contig to see how it aligns.
+
+```bash
+grep -P 'utg3\t' /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v3/papadum-v3s.ctg.fa.fai
+	utg3    17184534        4329481 60      61
+grep -P 'utg3\.\d' /mnt/nfs/nfs2/GoatData/BioNano_conflict_res/goat_split_36ctg_assembly.fa.fai
+	utg3.1  2172189 189943872       60      61
+	utg3.2  15011003        192152273       60      61
+
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v3/papadum-v3s.ctg.fa utg3:1-17184534 > v3_utg3_test.fa
+samtools faidx /mnt/nfs/nfs2/GoatData/BioNano_conflict_res/goat_split_36ctg_assembly.fa utg3.1:1-2172189 > v4_utg3.1_test.fa
+samtools faidx /mnt/nfs/nfs2/GoatData/BioNano_conflict_res/goat_split_36ctg_assembly.fa utg3.2:1-15011003 > v4_utg3.2_test.fa
+
+bwa index v3_utg3_test.fa
+bwa mem v3_utg3_test.fa v4_utg3.1_test.fa > v3_v4_utg3.1.sam
+bwa mem v3_utg3_test.fa v4_utg3.2_test.fa > v3_v4_utg3.2.sam
+```
+
+Data for 3.1 and 3.2:
+
+| Split contig | Cigar | MD:Z tag | 
+| :--- | :--- | :--- | 
+utg3.1 | 2172189M | MD:Z:2172189
+utg3.2 | 15011003M | MD:Z:15011003
+
+No changes. Not even a SNP! So I guess my split fasta script works correctly.
+
+
 #### End side project
 
 To recap:
-* Both the split contig fasta and the original v3 assembly fasta had the same exact sequence for utg0
+* Both the split contig fasta and the original v3 assembly fasta had the same exact sequence for utg0 and the split fasta matched utg3 perfectly with its two halves
 * The v3 pilon correction without the degenerate contigs had 82 fewer deleted bases and 41 more inserted bases than the v4 pilon corrected assembly
 * The only notable differences in these two assemblies for utg0 is the fact that v4 had degenerate contigs present.
 
+<a name="rhmap"></a>
+## RH marker mapping statistics
+
+I want to see if we can identify how good the PILON correction is based on the number of RH markers that map. I'll start with raw counts today and then I'll work on orienting everything with the RH map as soon as possible.
+
+Let's prepare the files for alignment:
+> Blade14: /mnt/nfs/nfs2/GoatData/Pilon
+
+```bash
+bwa index papadum-v3-pilon.fa &
+bwa index papadum-v4s-pilon.fa &
+bwa index Goat333HybScaffolds1242contigs0723.fa &
+```
+
+--
+
+*9/2/2015*
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/rh_map
+
+```bash
+bwa mem /mnt/nfs/nfs2/GoatData/Pilon/Goat333HybScaffolds1242contigs0723.fa /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta > Goat333HybScaffolds1242contigs0723.RH.sam 2> Goat333HybScaffolds1242contigs0723.error &
+
+bwa mem /mnt/nfs/nfs2/GoatData/Pilon/papadum-v3-pilon.fa /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta > papadum-v3-pilon.RH.sam 2> papadum-v3-pilon.error &
+
+bwa mem /mnt/nfs/nfs2/GoatData/Pilon/papadum-v4s-pilon.fa /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta > papadum-v4s-pilon.fa.RH.sam 2> papadum-v4s-pilon.fa.error &
+
+for i in *.sam; do echo $i; base=`basename $i | cut -d'.' -f1`; echo $base; samtools view -bS $i | samtools sort -o ${base}.RH.bam -T ${base}.RH.bam.pre -@ 4 -; done
+for i in *.bam; do samtools index $i; done
+
+# Now to do samtools flagstats to get the information on the mappings
+```
+
+| BAM name | Total Reads | Mapped Reads | Perc mapped |
+| :--- | :--- | :--- | :--- | 
+Goat333HybScaffolds1242contigs0723.RH.bam | 45,632 | 42,975 | 94.18%
+papadum-v3-pilon.RH.bam | 45,632 | 43,137 | 94.53%
+papadum-v4s-pilon.RH.bam | 45,632 | 43,218 | 94.71%
+
+So, the corrected assembly with the degenerate contigs improved the mappings by 0.19%. Let's see if it's the same reads though!
+
+```
+# I'm going to pull the mapped and unmapped readnames and store them as text files, then use my venn script to see the overlap
+samtools view -f 4 Goat333HybScaffolds1242contigs0723.RH.bam | perl -lane 'print "$F[0]";' | sort > Goat333HybScaffolds1242contigs0723.probes.unmapped
+samtools view -f 4 papadum-v3-pilon.RH.bam | perl -lane 'print "$F[0]";' | sort > papadum-v3-pilon.probes.unmapped
+samtools view -f 4 papadum-v4s-pilon.RH.bam | perl -lane 'print "$F[0]";' | sort > papadum-v4s-pilon.probes.unmapped
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl  Goat333HybScaffolds1242contigs0723.probes.unmapped papadum-v3-pilon.probes.unmapped papadum-v4s-pilon.probes.unmapped
+```
+
+**Unmapped read name count**
+File Number 1: Goat333HybScaffolds1242contigs0723.probes.unmapped
+File Number 2: papadum-v3-pilon.probes.unmapped
+File Number 3: papadum-v4s-pilon.probes.unmapped
+
+Set |    Count
+:--- | :--- 
+1   |    171
+1;2 |    82
+1;2;3 |  2404
+2;3  |   9
+3    |   1
+
+So, papadum-v4s-pilon had the fewest unique unmapped probes. Let's check the mapped probes.
+
+```bash
+samtools view -F 4 Goat333HybScaffolds1242contigs0723.RH.bam | perl -lane 'print "$F[0]";' | sort > Goat333HybScaffolds1242contigs0723.probes.mapped
+samtools view -F 4 papadum-v3-pilon.RH.bam | perl -lane 'print "$F[0]";' | sort > papadum-v3-pilon.probes.mapped
+samtools view -F 4 papadum-v4s-pilon.RH.bam | perl -lane 'print "$F[0]";' | sort > papadum-v4s-pilon.probes.mapped
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl  Goat333HybScaffolds1242contigs0723.probes.mapped papadum-v3-pilon.probes.mapped papadum-v4s-pilon.probes.mapped
+```
+
+**Mapped read name count**
+File Number 1: Goat333HybScaffolds1242contigs0723.probes.mapped
+File Number 2: papadum-v3-pilon.probes.mapped
+File Number 3: papadum-v4s-pilon.probes.mapped
+
+Set  |   Count
+:--- | :---
+1    |   9
+1;2   |  1
+1;2;3 |  42959
+2;3   |  171
+3     |  82
+
+There were 9 probes that mapped better to the original, uncorrected Irys scaffolds, but this is not nearly as many that uniquely map to v4s. I think that v4s is the winner.
