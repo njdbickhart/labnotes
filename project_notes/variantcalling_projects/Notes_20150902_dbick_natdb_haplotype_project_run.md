@@ -17,6 +17,7 @@ ls /mnt/cifs/bickhart-qnap/NextSeq/150818_NS500432_0013_AH1513BGXX/H1513BGXX/DBi
 ```
 
 Now, I used VIM to process the spreadsheet. It needs the following ordered columns for each line (delimited by tabs):
+
 1. Fastq for read1
 2. Fastq for read2
 3. Library name
