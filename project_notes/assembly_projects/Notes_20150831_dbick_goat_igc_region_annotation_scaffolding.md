@@ -273,3 +273,15 @@ Set  |   Count
 3     |  82
 
 There were 9 probes that mapped better to the original, uncorrected Irys scaffolds, but this is not nearly as many that uniquely map to v4s. I think that v4s is the winner.
+
+
+#### Side project: determining the fidelity of the lachesis clusters
+
+I want to test the Lachesis data, so let's index it with BWA and run the alignment from there.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/rh_map
+
+```bash
+# In the folder with the Lachesis scaffolds: goat_sds_31_scaffolds_complete.fasta
+bwa index goat_sds_31_scaffolds_complete.fasta 2> /dev/null &
+
