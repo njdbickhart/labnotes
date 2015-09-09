@@ -83,6 +83,8 @@ That should be enough to get started
 
 I need to prepare everything first, run the preprocess step and then identify if I need to scale this back because of the shear number of scaffolds.
 
+
+#### Setting up necessary files
 > Blade14: /mnt/iscsi/vnx_gliu_7/bird_data
 
 ```bash
@@ -96,4 +98,31 @@ gunzip fasta/MorganFinal1KbReplicate_v3.fa.gz
 
 # moving into the fasta directory briefly to index the fasta with mrsfast
 mrsfast --index MorganFinal1KbReplicate_v3.fa
+
+# there were some gaps in the scaffolds -- identifying them for the clustering step
+~/jdk1.8.0_05/bin/java -jar ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -f MorganFinal1KbReplicate_v3.fa -o MorganFinal1KbReplicate_v3.gaps.bed -s MorganFinal1KbReplicate_v3.gaps.stats
+
+perl -e '$c = 0; $s = 0; <>;  while(<>){chomp; @s = split(/\t/); $c++; $s += $s[7];} print ($s / $c); print "\n";' < MorganFinal1KbReplicate_v3.gaps.stats
+	11.1033588494158	<- 11.1% of the assembly, on average, is comprised of gaps
 ```
+
+One note from the gap analysis: if needed, I can remove most scaffolds that are mostly comprised of gaps if the number of scaffolds is too high.
+
+#### Running the RAPTR-SV pipeline
+> Blade14: /mnt/iscsi/vnx_gliu_7/bird_data
+
+```bash
+~/jdk1.8.0_05/bin/java -Xmx40g -jar ~/RAPTR-SV/store/RAPTR-SV.jar preprocess -i sj.cor_trimmed_paired_mapping.sorted.final.bam -o raptr/sj.cor_trimmed.raptr.preprocess -r fasta/MorganFinal1KbReplicate_v3.fa -g -t 10 -p ../tmp
+
+# Damn! Samtools HTSLIB merger generated thousands of read groups. I'm going to treat both libraries as one for now
+~/jdk1.8.0_05/bin/java -Xmx40g -jar ~/RAPTR-SV/store/RAPTR-SV.jar preprocess -i sj.cor_trimmed_paired_mapping.sord.final.bam -o raptr/sj.cor_trimmed.raptr.preprocess -r fasta/MorganFinal1KbReplicate_v3.fa -t 10 -p ../tmp
+	[MAIN] Setting temporary file directory to: ../tmp
+	[MAIN] Setting ForkJoin thread ceiling to: 10
+	[METADATA] Identified more than one read length in BAM! Using most frequent sampled read length to filter split reads: 124
+	[PREPROCESS] Read input file and calculated sample thresholds.
+	Sample: D Avg Ins size: 1648.8695 Stdev Ins size: 1918.163622644829
+
+# Hmm... read length sampling suggests way too much of a distribution stdev. I might have to clean up the header afterall
+# I'm going to pull the nightly build of samtools from github and try using that for the merger instead.
+# NOTE: I needed to pull the nightly build of htslib as well!
+samtools sort -m 2G -o sj.cor_trimmed_paired_mapping.resorted.bam -T sj.cor.temp -@ 10 /mnt/nfs/nfs2/dbickhart/bird_data/sj.cor_trimmed_paired_mapping.bam
