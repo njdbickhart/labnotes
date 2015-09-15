@@ -6,12 +6,15 @@ These are my notes on the assembly/association of BAC clones/contigs to their mo
 
 ## Table of Contents
 * [First batch unitig assignments](#firstbatch)
-* [Initial BAC end mapping information table](#bacend)
+	* [Initial BAC end mapping information table](#bacend)
 * [Unitig clone association and statistics](#unitigassoc)
-* [First batch unitig association data tables](#unitigtables)
+	* [First batch unitig association data tables](#unitigtables)
 * [Sub alignments to interrogate individual regions](#subaligns)
 * [Reassembly without circularization](#reassembly)
-* [New Assembly alignments table](#newassembletable)
+	* [New Assembly alignments table](#newassembletable)
+* [Subsequent unitig alignments](#subsequent)
+	* [Subsequent unitig assignment table](#subsequentassign)
+	* [9/15/2015 updated information table](#915summaries)
 
 <a name="firstbatch"></a>
 ## First batch unitig assignments
@@ -408,3 +411,110 @@ CH240-389p14 | chr18:57,436,394-57,586,436 | 150,042 | 190,538 | chr18:57,436,09
 CH240-49i22 | chr5:99,323,438-99,499,162 | 175,724 | 205,556 |  chr5:99,323,438-99,512,899 | 189,461 | 191,014
 CH240-503o23 | chr23:28,253,056-28,445,603 | 192,547 | 207,270 | chr23:28,253,676-28,445,603 | 191,927 | 193,890
 RP42-170i19 | chr4:86,526,740-86,686,045 | 159,305 | 175,603 | chr4:86,526,740-86,686,044 | 159,304 | 161,302
+
+<a name="subsequent"></a>
+## Subsequent unitig alignments
+*9/15/2015*
+
+Tim sent me three more unitigs from a batch of four pooled BACs. Here is the information on the BACs from [my previous notes file](https://github.com/njdbickhart/labnotes/blob/master/project_notes/assembly_projects/Notes_20150503_dbick_igc_bac_selection.md):
+
+
+|Library | Region Name | Clone Name | End Coords | Notes |
+| :--- | :--- | :--- | :---: | :--- |
+| RPCI-42 | chr18 | RPCI42_154M1 | chr18:57,371,161-57,531,510 | Flanking 5' region|
+| RPCI-42 | LRC | RPCI42_145P10 | chr18:63,005,919-? | The end sequence might not currently be on this assembly |
+| RPCI-42 | MHC | RPCI42_133J13 | chr23:28,321,536-28,448,607 | The 3' end is a split alignment on this assembly |
+| RPCI-42 | NKC | RPCI42_154D6 | chr5:99,735,207-99,968,671 | |
+
+Let's get started on assigning the unitig ids to the BAC clones so that Tim can start polishing them. One problem: Tim sent me fasta files this time. I'll update my script to determine file format and process entries appropriately.
+
+> pwd: /home/dbickhart/share/grants/immune_gene_cluster_grant/assemblies/tim_assemblies_2015_9_15
+
+```bash
+# unitig 170
+# RPCI42_133J13
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14397_unitig_170_Vector_Trim.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14397_unitig_170_alignment.tab
+...
+Longest aligments:      chr     start   end     length
+                        chr23   28,321,453        28,518,608        197,155
+                        chr2    134262461       134263461       1000
+                        chr4    112685209       112686209       1000
+                        chr13   17090722        17090855        133
+                        chr5    38979253        38979313        60
+
+# Interesting, so this is the MHC BAC. The 3' split end of my initial alignment suggested otherwise!
+
+# unitig 174
+# RPCI41_154D6
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14397_unitig_174_quiver_Vector_Trim.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14397_unitig_174_alignment.tab
+...
+Longest aligments:      chr     start   end     length
+                        chr5    99,736,625        99,969,406        232,781
+                        chr17   50062891        50063009        118
+                        chr2    34746550        34746649        99
+                        chr7    98140412        98140479        67
+
+# unitig 1
+# RPCI42_154M1
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14397_unitig_1_vector_trimmed.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14397_unitig_1_alignment.tab
+...
+Longest aligments:      chr     start   end     length
+                        chr18   57371117        57532624        161507
+                        *       0       1000    1000
+                        chr27   22286043        22286293        250
+                        chr1    78760548        78760659        111
+                        chrX    44952057        44952154        97
+                        chr4    3045190 3045260 70
+
+# NOTE: from the chr18 alignment file:
+	LIB14397_unitig_1_vector_trimmed        2000    10000   *       0       1000    0;0;0;0;0;0;0;0
+# that's a 8kb region that is not on the reference genome. Also the whole thing is rearranged on the genome 
+
+# Let's get the fasta lengths
+for i in *.fasta; do echo $i; samtools faidx $i; done
+for i in *.fai; do head $i; done
+	LIB_14397_unitig_170_Vector_Trim        167,891  35      80      82
+	LIB13497_unitig_174|quiver_Vector_Trim  155,313  41      80      82
+	LIB14397_unitig_1_vector_trimmed        160,202  35      80      82
+```
+
+Let's assign the unitigs to BAC clone IDs.
+
+<a name="subsequentassign"></a>
+#### BAC clone assignments
+
+| Fasta file | BAC ID | IGC | Map coordinates | Map Len | Unitig len | Difference| 
+| :--- | :--- | :--- | :--- | ---: | ---: | ---: |
+LIB14397_unitig_170_Vector_Trim | RPCI42_133J13 | MHC | chr23:28,321,453-28,518,608 | 197,155 | 167,891 | -29,264
+LIB14397_unitig_174_Vector_Trim | RPCI41_154D6 | NKC | chr5:99,736,625-99,969,406 | 232,781 | 155,313 | -77,468
+LIB14397_unitig_1_vector_trim | RPCI42_154M1 | chr18 | chr18:57,371,117-57,532,624 | 161,507 | 160,202 | -1.305
+
+
+OK, now I'm going to tabulate all finished unitigs so far just so that I have a picture of which regions of the genome have been covered.
+
+<a name="915summaries"></a>
+#### 9/15/2015 current completed clones
+
+| BAC ID | IGC | Map Chr | Map Start | Map End | Map Len | Unitig Len | Difference|
+| :--- | :--- | :--- | ---: | ---: | ---: |---: | ---: |
+RPCI42_154M1 | chr18 | chr18 | 57,371,117 | 57,532,624 | 161,507 | 160,202 | -1.305
+CH240-389p14 | chr18 | chr18 | 57,436,092 | 57,586,436 | 150,344 | 176,236 | 25,892
+CH240-49i22 | NKC |chr5 | 99,323,438 | 99,512,899 | 189,461 | 191,014 | 1,553
+RPCI41_154D6 | NKC | chr5 | 99,736,625 | 99,969,406 | 232,781 | 155,313 | -77,468
+CH240-503o23 | MHC | chr23 | 28,253,676 | 28,445,603 | 191,927 | 193,890 | 1,963
+RPCI42_133J13 | MHC | chr23 | 28,321,453 | 28,518,608 | 197,155 | 167,891 | -29,264
+RPCI42-170i19 | LRC | chr4 | 86,526,740 | 86,686,044 | 159,304 | 161,302 | 1,998
+
+#### 9/15/2015 current clone fastas/fastqs
+
+| fasta file | BAC ID | IGC |
+| :--- | :--- | :---
+LIB14397_unitig_170_Vector_Trim.fasta | RPCI42_133J13 | MHC 
+CH240-503o23.fastq | CH240-503o23 | MHC
+LIB14397_unitig_174_quiver_Vector_Trim.fasta | RPCI41_154D6 | NKC
+CH240-49i22.fastq | CH240-49i22 | NKC 
+LIB14397_unitig_1_vector_trimmed.fasta | RPCI42_154M1 | chr18 
+CH240-389p14.fastq | CH240-389p14 | chr18
+RP42-170i19.fastq | RPCI42-170i19 | LRC
+
+

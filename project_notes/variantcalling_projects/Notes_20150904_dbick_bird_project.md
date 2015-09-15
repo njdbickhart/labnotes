@@ -6,6 +6,7 @@ These are my commands and notes on the CNV calling on a wild bird dataset.
 
 ## Table of Contents
 * [BAM file summary statistics](#stats)
+* [Annotation entries](#annotation)
 * [Running RAPTR-SV](#raptr)
 
 <a name="stats"></a>
@@ -76,7 +77,93 @@ perl -e 'my $start = 0; while(<>){if($_ =~ /\##FASTA/){$start = 1;}elsif($start)
 # Gzipping it for transfer
 gzip MorganFinal1KbReplicate_v3.fa
 ```
-That should be enough to get started
+Now, let's pull out the repeatmasker entries in the gff and use that to mask the fasta.
+
+> blade14: /mnt/iscsi/vnx_gliu_7/bird_data
+
+```bash
+perl -lane 'if($F[0] =~ /^#/ || $F[0] eq ""){next;} if($F[1] eq "repeatmasker"){print "$F[0]\t$F[3]\t$F[4]";}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | sortBedFileSTDIN.pl | mergeBed -i stdin > fasta/sj.corr.repeatmasker.bed
+
+wc -l fasta/sj.corr.repeatmasker.bed
+	629631 fasta/sj.corr.repeatmasker.bed
+
+# masking the fasta using the repeatmasker information
+~/bedtools-2.17.0/bin/maskFastaFromBed -fi fasta/MorganFinal1KbReplicate_v3.fa -bed fasta/sj.corr.repeatmasker.bed -fo fasta/MorganFinal1KbReplicate_v3.repeatmasked.fa
+
+# Indexing with mrsfast
+mrsfast --index fasta/MorganFinal1KbReplicate_v3.repeatmasked.fa
+
+```
+<a name="annotation"></a>
+## Annotation entries
+
+I need to pull the annotation from the gff, but it looks like Chris used several different prediction methods. Thankfully, my annotation program will let me use each one individually. Let's separate them from the GFF file into individual BED files.
+
+> blade14: /mnt/iscsi/vnx_gliu_7/bird_data/
+
+```bash
+mkdir annotation
+
+# Now to pull individual sets from the second column identifier
+# Maker is going to be a super-set of the other methods, most likely.
+# I've noticed that augustus has "match" and "match_part" annotations
+perl -lane 'if($F[1] eq "augustus_masked" && $F[2] eq "match"){print $_;}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | wc -l
+	21,301 <- match annotations
+perl -lane 'if($F[1] eq "augustus_masked" && $F[2] eq "match_part"){print $_;}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | wc -l
+	170,277 <- match part annotations
+perl -lane 'if($F[1] eq "augustus_masked" && $F[2] eq "expressed_sequence_match"){print $_;}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | wc -l
+	0 <- expressed sequence match annotations
+
+# Let's pull both match and matchpart annotations and put them in the same bed
+# Ok, this is why I hate gffs. 
+# The match_part entries have the ID within the "TARGET=" tag, and the match entries have the ID within the "NAME=" tag
+perl -lane 'if($F[1] eq "augustus_masked" ){ $name; if($F[2] eq "match"){ ($name) = $F[8] =~ /Name=(.+)/;}elsif($F[2] eq "match_part"){($name) = $F[8] =~ /Target=(\S+)/;} print "$F[0]\t$F[3]\t$F[4]\t$name";}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | sortBedFileSTDIN.pl > annotation/augustus_morgan_annotation.bed
+
+# now protein2genome
+grep 'protein2genome' /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 2
+	Entry   Count
+	match_part      674697
+	protein_match   201272
+
+perl -lane 'if($F[1] eq "protein2genome" ){ $name; if($F[2] eq "protein_match"){ ($name) = $F[8] =~ /Name=(.+)/;}elsif($F[2] eq "match_part"){($name) = $F[8] =~ /Target=(\S+)/;} print "$F[0]\t$F[3]\t$F[4]\t$name";}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | sortBedFileSTDIN.pl > annotation/protein2genome_morgan_annotation.bed
+
+# now cdna2genome
+grep 'cdna2genome' /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 2                                                                                	Entry   Count
+	expressed_sequence_match        51390
+	match_part      284894
+
+perl -lane 'if($F[1] eq "cdna2genome" ){ $name; if($F[2] eq "expressed_sequence_match"){ ($name) = $F[8] =~ /Name=(.+)/;}elsif($F[2] eq "match_part"){($name) = $F[8] =~ /Target=(\S+)/;} print "$F[0]\t$F[3]\t$F[4]\t$name";}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | sortBedFileSTDIN.pl > annotation/cdna2genome_morgan_annotation.bed
+
+# Finally, maker
+grep 'maker' /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 2
+	Entry   Count
+	CDS     144940
+	exon    146180
+	five_prime_UTR  777
+	gene    17132
+	mRNA    17132
+	three_prime_UTR 828
+
+# OK, I want to be selective here. I think that the gene ID is going to be best here
+perl -lane 'if($F[1] eq "maker" && $F[2] eq "gene"){ ($name) = $F[8] =~ /Name=(.+)/; print "$F[0]\t$F[3]\t$F[4]\t$name";}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | sortBedFileSTDIN.pl > annotation/maker_gene_morgan_annotation.bed
+# NOTE: the maker gene IDs are unique. This is key for my annotation program
+
+# Let's see if we can get any info from the blastx searches
+grep 'blastx' /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | grep -v 'tblastx' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 2
+	Entry   Count
+	match_part      903631
+	protein_match   168210
+grep 'tblastx' /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 2
+	Entry   Count
+	match_part      975400
+	translated_nucleotide_match     50006
+
+# Let's only pull out the complete entries from these two files
+perl -lane 'if($F[1] eq "blastx" && $F[2] eq "protein_match"){ ($name) = $F[8] =~ /Name=(.+)/; print "$F[0]\t$F[3]\t$F[4]\t$name";}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff > annotation/blastx_morgan_annotation.bed
+perl -lane 'if($F[1] eq "tblastx" && $F[2] eq "translated_nucleotide_match"){ ($name) = $F[8] =~ /Name=(.+)/; print "$F[0]\t$F[3]\t$F[4]\t$name";}' < /mnt/nfs/nfs2/dbickhart/bird_data/MorganFinal1KbReplicate_v3.gff.real.gff > annotation/tblastx_morgan_annotation.bed
+
+
+```
 
 <a name="raptr"></a>
 ## Running RAPTR-SV
@@ -126,3 +213,10 @@ One note from the gap analysis: if needed, I can remove most scaffolds that are 
 # I'm going to pull the nightly build of samtools from github and try using that for the merger instead.
 # NOTE: I needed to pull the nightly build of htslib as well!
 samtools sort -m 2G -o sj.cor_trimmed_paired_mapping.resorted.bam -T sj.cor.temp -@ 10 /mnt/nfs/nfs2/dbickhart/bird_data/sj.cor_trimmed_paired_mapping.bam
+
+# rerunning on the resorted, repeatmasked data
+~/jdk1.8.0_05/bin/java -jar ~/RAPTR-SV/store/RAPTR-SV.jar preprocess -i sj.cor_trimmed_paired_mapping.resorted.bam -o raptr/sj.cor_resorted.raptr.preprocess -r fasta/MorganFinal1KbReplicate_v3.repeatmasked.fa -g -t 10 -p ../tmp
+	Sample: 3436b63b-fe72-471e-8018-58e591fe2e60 Avg Ins size: 3401.7501 Stdev Ins size: 1781.3147379026404
+	Sample: e83dd82e-8ff0-4ea6-9b38-25c34eef94e8 Avg Ins size: 384.0294 Stdev Ins size: 179.4941774866667
+
+```
