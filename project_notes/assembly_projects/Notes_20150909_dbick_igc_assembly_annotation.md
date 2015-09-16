@@ -15,6 +15,8 @@ These are my notes on the assembly/association of BAC clones/contigs to their mo
 * [Subsequent unitig alignments](#subsequent)
 	* [Subsequent unitig assignment table](#subsequentassign)
 	* [9/15/2015 updated information table](#915summaries)
+* [LIB14370 reassembly and LIB14398](#lib14398)
+	* [9/16/2015 BAC clone assignments table](#916assign)
 
 <a name="firstbatch"></a>
 ## First batch unitig assignments
@@ -518,3 +520,158 @@ CH240-389p14.fastq | CH240-389p14 | chr18
 RP42-170i19.fastq | RPCI42-170i19 | LRC
 
 
+<a name="lib14398"></a>
+## LIB14370 reassembly and LIB14398
+*9/16/2015*
+
+Tim just sent me a reassembly of LIB14370 and fresh assemblies from LIB14398. Time to run them through the pipeline! Here is a table with the information from the possible clones present in each library:
+
+
+|Library | Region Name | Clone Name | End Coords | Notes |
+| :--- | :--- | :--- | :---: | :--- |
+| LIB14370| chr18 | CH240-280L6 | chr18:57,092,237-57,268,067 | Btau4 coords |
+| LIB14370| LRC | CH240-315A1 | chrX:?-? | John Hammond's BAC. |
+| LIB14370| MHC | CH240-203K5 | chr23:28,672,885-28,900,932 | |
+| LIB14370| NKC | CH240-60G5 | chr5:106,309,704-106,537,019 | Btau4 coords |
+| LIB14398 | chr18 | RPCI42_118B22 | chr18:57,548,064-57,704,269 | Perhaps a clone of the previous region? |
+| LIB14398 | LRC | RPCI42_158F10 | chrX:36,610,341-? | | 
+| LIB14398 | MHC | RP42-164F10 | chr23:28,639,463-28,874,325 | This is probably the smallest overlap region |
+| LIB14398 | NKC | RP42-162P15 | chr5:99,866,305-99,991,606 | This one is 10kb upstream of the region, but it could anchor |
+
+Let's confirm the LIB14370 BAC clones first.
+
+> pwd: /home/dbickhart/share/grants/immune_gene_cluster_grant/assemblies/tim_assemblies_2015_9_16
+
+```bash
+# Reformatting file names
+mv LIB14370_unitig_0_vector_removed\ \(reversed\).fasta LIB14370_unitig_0_vector_removed.reversed.fasta
+mv LIB14398_unitig_1_quiver\ Vector\ Trim\ Correct.fasta LIB14398_unitig_1_quiver.Vector.Trim.Correct.fasta
+mv LIB14398_unitig_303_quiver\ Vector\ Trim.fasta LIB14398_unitig_303_quiver.Vector.Trim.fasta
+mv LIB14398_unitig_304_quiver\ Vector\ Trim.fasta LIB14398_unitig_304_quiver.Vector.Trim.fasta
+mv LIB14398_unitig_305_quiver\ Vector\ Trim.fasta LIB14398_unitig_305_quiver.Vector.Trim.fasta
+
+# Running the script 
+# LIB14370 unitig 0
+# CH240-60G5
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14370_unitig_0_vector_removed.reversed.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14370_unitig_0_alignment.tab
+Longest aligments:      chr     start   end     length
+                        chr7    287987  93131872        92843885
+                        chr2    113622162       135045833       21423671
+                        chr5    99,414,367        99,598,079        183,712
+                        chrX    117736744       117737744       1000
+                        chr12   36425788        36426030        242
+                        chr25   37654020        37654161        141
+                        chr11   42636910        42637032        122
+                        chr21   21526843        21526925        82
+                        chr4    114059447       114059516       69
+                        chr15   32360586        32360653        67
+# NOTE: a big region aligns to chr7: chr7:287987-328313
+
+# LIB14370 unitig 1
+# CH240-203K5
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14370_unitig_1_vector_removed.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14370_unitig_1_alignment.tab
+Longest aligments:      chr     start   end     length
+                        chr23   28658467        28879843        221376
+
+```
+
+That takes care of the two LIB14370 BACs. Now for the LIB14398 fastas.
+
+```bash
+# LIB14398 unitig 1
+# ??? RPCI42-158F10 ???
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14398_unitig_1_quiver.Vector.Trim.Correct.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14398_unitig_1_alignment.tab
+Longest aligments:      chr     start   end     length
+                        chr6    11012378        109301020       98288642
+                        chr1    61698266        141467321       79769055
+                        chr2    15325811        75960123        60634312
+                        chr26   1859254 50914589        49055335
+                        chr9    13962581        61714403        47751822
+                        chr10   55070357        89321734        34251377
+                        chr4    87132856        120808645       33675789
+                        chr3    30720844        64203128        33482284
+                        chr15   13661141        38104564        24443423
+                        chr19   4809828 27029205        22219377
+                        chr8    62150690        82306998        20156308
+                        chrX    28951203        38113119        9161916
+                        chr27   7237420 7326623 89203
+                        chr29   3112932 3113932 1000
+                        chr20   7210838 7211838 1000
+                        chr5    117482198       117483198       1000
+                        chr17   75157566        75158566        1000
+                        chr24   47878351        47878628        277
+                        chr12   46949367        46949603        236
+                        chr21   31347313        31347547        234
+# whoa! Lots of sub alignments!
+# Multiple alignments to ChrX. Perhaps this is 158F10?
+
+# LIB14398 unitig 303
+# RPCI42-162P15
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14398_unitig_303_quiver.Vector.Trim.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14398_unitig_303_alignment.tab
+Longest aligments:      chr     start   end     length
+                        chr5    99866245        99992251        126006
+                        *       0       19      19
+
+# LIB14398 unitig 304
+# RPCI42-164F10
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14398_unitig_304_quiver.Vector.Trim.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14398_unitig_304_alignment.tab
+Longest aligments:      chr     start   end     length
+                        chr23   28639414        28875025        235611
+                        chr25   8307420 8308420 1000
+                        chr19   15064618        15064853        235
+                        chr2    100186249       100186425       176
+                        chr26   10584263        10584356        93
+                        chrX    78903585        78903653        68
+                        chr16   482053  482108  55
+                        chr4    82271956        82272005        49
+
+# LIB14398 unitig 305
+# ??? RPCI42-118B22
+perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14398_unitig_305_quiver.Vector.Trim.fasta -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o LIB14398_unitig_305_alignment.tab
+Longest aligments:      chr     start   end     length
+                        chr1    20951590        121426804       100475214
+                        chr8    12875963        106688402       93812439
+                        chr16   5146193 55925864        50779671
+                        chr5    29133095        77358583        48225488
+                        chrX    74404074        117644572       43240498
+                        chr18   40333778        62181863        21848085
+                        chr11   48330265        68737026        20406761
+                        chr19   35058372        53681355        18622983
+                        chr7    11532433        25614615        14082182
+                        chr23   27321674        27322674        1000
+                        chr13   3668010 3669010 1000
+                        chr9    96985020        96986020        1000
+                        chr26   32458140        32459140        1000
+                        chr2    16512761        16512877        116
+                        chr24   13511406        13511488        82
+                        chr12   61193920        61193996        76
+                        chr20   52944082        52944157        75
+                        chr10   87992202        87992246        44
+# This looks like the chr18 bac clone, but there are tons of sub alignments.
+
+# Fasta lengths
+for i in *.fasta; do echo $i; samtools faidx $i; done
+for i in *.fai; do head $i; done
+	LIB14370_unitig_0_vector_removed_(reversed)     219,086  46      80      82
+	LIB14370_unitig_1_vector_removed        219,572  35      80      82
+	LIB14398_unitig_1|quiver_Vector_Trim_Correct    160,898  47      80      82
+	LIB13498_unitig_303|quiver_Vector_Trim  126,020  41      80      82
+	LIB14398_unitig_304|quiver_Vector_Trim  210,457  41      80      82
+	LIB14398_unitig_305|quiver_Vector_Trim  163,368  41      80      82
+```
+
+Two of the LIB14398 clones have multiple alignments across the entire genome. It's hard to determine if these alignments are due to reference assembly errors or if they're problems with the PacBio assemblies. I'll have to test them on real animals with my cigar parsing script.
+
+<a name="#916assign"></a>
+#### 9/16/2015 BAC clone assignments
+
+| Fasta file | BAC ID | IGC | Map coordinates | Map Len | Unitig len | Difference| 
+| :--- | :--- | :--- | :--- | ---: | ---: | ---: |
+LIB14370_unitig_0_vector_removed.reversed | CH240-60G5 | NKC | chr5:99,414,367-99,598,079 | 183,712 | 219,086 | 35,374
+LIB14370_unitig_1_vector_removed | CH240-203K5 | MHC | chr23:28,658,467-28,879,843 | 221,376 | 219,572 | -1,804  
+LIB14398_unitig_1_quiver.Vector.Trim  | RPCI42-158F10? | LRC | ??? | ??? | 160,898 | N/A
+LIB14398_unitig_303_quiver.Vector.Trim | RPCI42-162P15 | NKC | chr5:99,866,245-99,992,251 | 126,006 | 126,020 | 14
+LIB14398_unitig_304_quiver.Vector.Trim | RPCI42-164F10 | MHC | chr23:28,639,414-28,875,025 | 235,611 | 210,457 | -25,154
+LIB14398_unitig_305_quiver.Vector.Trim | RPCI42-118B22? | chr18 | ??? | ??? | 163,368 | N/A
+
+In order to keep everything straight, I'm going to keep a Google Drive spreadsheet. I'll keep the link off of this note file in order to prevent just anyone from getting access to my drive account files.
