@@ -17,6 +17,7 @@ These are my notes on the assembly/association of BAC clones/contigs to their mo
 	* [9/15/2015 updated information table](#915summaries)
 * [LIB14370 reassembly and LIB14398](#lib14398)
 	* [9/16/2015 BAC clone assignments table](#916assign)
+* [Checking assembly quality with WGS reads](#qualcheck)
 
 <a name="firstbatch"></a>
 ## First batch unitig assignments
@@ -675,3 +676,48 @@ LIB14398_unitig_304_quiver.Vector.Trim | RPCI42-164F10 | MHC | chr23:28,639,414-
 LIB14398_unitig_305_quiver.Vector.Trim | RPCI42-118B22? | chr18 | ??? | ??? | 163,368 | N/A
 
 In order to keep everything straight, I'm going to keep a Google Drive spreadsheet. I'll keep the link off of this note file in order to prevent just anyone from getting access to my drive account files.
+
+<a name="qualcheck"></a>
+## Checking assembly quality with WGS reads
+*9/21/2015*
+
+I want to see if Illumina WGS reads map consistently across the contigs or if there are hard clipping or soft clipping issues. I've written [a script](https://github.com/njdbickhart/perl_toolchain/blob/master/assembly_scripts/wgsCigarAssemblyMap.pl) that will help process the data and reduce it down to problem regions. I'm going to take some of the NextSeq500 data that I've generated for this project to test on the contigs. I'll start with a MHC contig (the MHC contigs appear to be the best assembled) as a test.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/immune_grant/assembly_wgs_align
+
+```bash
+# I need to prepare the contig
+cp /mnt/nfs/nfs2/dbickhart/LIB14397_unitig_170_Vector_Trim.fasta ./RPCI42_133J13.MHC.unitig.fa
+# I altered the internal fasta header to the BAC clone name.
+ls -hal /mnt/cifs/bickhart-qnap/NextSeq/150818_NS500432_0013_AH1513BGXX/H1513BGXX/DBickhart-NatDB-2015-08-18/DBUB-01/Oman_S1_L001_R1_001.fastq.gz
+-rwxr-xr-x. 1 dbickhart bickhart-users 3.7G Aug 26 17:48 /mnt/cifs/bickhart-qnap/NextSeq/150818_NS500432_0013_AH1513BGXX/H1513BGXX/DBickhart-NatDB-2015-08-18/DBUB-01/Oman_S1_L001_R1_001.fastq.gz
+
+# I realize that I did not allow for multiple fastq alignments, so I'm going to have to rewrite the script to process 
+# as much additional data as possible.
+# Let's start with a one fastq alignment just to see if that works sufficiently.
+perl ~/perl_toolchain/assembly_scripts/wgsCigarAssemblyMap.pl -r RPCI42_133J13.MHC.unitig.fa -f /mnt/cifs/bickhart-qnap/NextSeq/150818_NS500432_0013_AH1513BGXX/H1513BGXX/DBickhart-NatDB-2015-08-18/DBUB-01/Oman_S1_L001_R1_001.fastq.gz -o RPCI42_133J13.oman.single.bam -b RPCI42_133J13.oman.single.bed
+
+# It worked, but there were lots of clipped bases! Going to try a non-Nextseq library
+perl ~/perl_toolchain/assembly_scripts/wgsCigarAssemblyMap.pl -r RPCI42_133J13.MHC.unitig.fa -f /mnt/cifs/bickhart-qnap/100_bulls_fqs/sra_submission/retry/BTHO08_D0FC0ACXX_CGATGT_L004_R1_001.fastq.gz -o RPCI42_133J13.BTHO08.single.bam -b RPCI42_133J13.BTHO08.single.bed
+
+# Let's check the samtool flagstats
+samtools flagstat RPCI42_133J13.BTHO08.single.bam
+	656759 + 0 in total (QC-passed reads + QC-failed reads)
+	0 + 0 secondary
+	4441 + 0 supplementary
+	0 + 0 duplicates
+	656759 + 0 mapped (100.00%:-nan%)
+```
+
+I may need to remove supplementary alignments from consideration in the future (or treat them differently to avoid biasing the clipping detection). I will also want to add a read depth count and a concatenated region length column to the BED file so that I can grep out summary stats much easier. Still, this shows that there are some issues here that we need to take care of.
+
+#### Proposed pipeline for polishing these regions into final assembly patches
+
+* Tim will requiver the unitigs
+* I will polish the unitigs using Holstein/Hereford sequence data with PILON
+	* We do not have Illumina WGS data from the individual BACs to correct these regions -- should we invest in sequencing these?
+	* Alternative:
+		* Add the contigs to the end of a whole-genome fasta file from the UMD3 assembly with the target regions removed.
+		* Align the data to the fasta, process the BAM to remove the assembled chromosomes and reads that aligned to the assembled chromosomes
+		* Run the data through PILON
+* We will then send the data to John Hammond's group for annotation and further polishing

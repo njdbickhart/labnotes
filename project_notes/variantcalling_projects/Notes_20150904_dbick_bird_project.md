@@ -8,6 +8,7 @@ These are my commands and notes on the CNV calling on a wild bird dataset.
 * [BAM file summary statistics](#stats)
 * [Annotation entries](#annotation)
 * [Running RAPTR-SV](#raptr)
+* [Running CNVNator on the bird data](#cnvnator)
 
 <a name="stats"></a>
 ## BAM file summary statistics
@@ -195,6 +196,7 @@ perl -e '$c = 0; $s = 0; <>;  while(<>){chomp; @s = split(/\t/); $c++; $s += $s[
 
 One note from the gap analysis: if needed, I can remove most scaffolds that are mostly comprised of gaps if the number of scaffolds is too high.
 
+<a name="raptr"></a>
 #### Running the RAPTR-SV pipeline
 > Blade14: /mnt/iscsi/vnx_gliu_7/bird_data
 
@@ -220,3 +222,45 @@ samtools sort -m 2G -o sj.cor_trimmed_paired_mapping.resorted.bam -T sj.cor.temp
 	Sample: e83dd82e-8ff0-4ea6-9b38-25c34eef94e8 Avg Ins size: 384.0294 Stdev Ins size: 179.4941774866667
 
 ```
+
+There was a problem with the split read alignment portion -- I think that there were NO alignments selected for reprocessing for some reason. I'll create a dummy bam file and proceed regardless.
+
+```bash
+samtools view -b -H raptr/sj.cor_resorted.raptr.preprocess.e83dd82e-8ff0-4ea6-9b38-25c34eef94e8.anchor.bam > raptr/sj.cor_resorted.raptr.preprocess.e83dd82e-8ff0-4ea6-9b38-25c34eef94e8.dummysplit.bam
+# Then I added the split read file to the preprocess list, and removed the other read group from consideration
+
+# OK, going to attempt this without the split reads
+~/jdk1.8.0_05/bin/java -jar ~/RAPTR-SV/store/RAPTR-SV.jar cluster -s raptr/sj.cor_resorted.raptr.preprocess.flat -g fasta/MorganFinal1KbReplicate_v3.gaps.bed -o raptr/sj.cor_resorted.raptr.cluster -t 10 -p ../tmp/
+
+```
+<a name="cnvnator"></a>
+#### Running CNVNator on the bird data
+
+I was able to get CNVNator to work! I had to compile within my cnvnator directory on blade14, and here are the environmental variables that I needed to set:
+
+> $LD_LIBRARY_PATH = /usr/lib64/:/usr/lib64/root/
+
+> $ROOTSYS = /usr/lib64/root/
+
+Because the system is "headless" with respect to X11 libraries, I cannot install a default ROOT package. Since CNVNator doesn't really use the X11 libraries from ROOT, these are optional to include, but the install fails early if it doesn't find them. Now to use my newly compiled CNVNator executable to call cnvs on this bam.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/bird_data
+
+```bash
+# Creating histogram
+~/CNVnator_v0.2.7/src/cnvnator -root cnvnator/sj.corr.combined.root -genome fasta/MorganFinal1KbReplicate_v3.fa -tree sj.cor_trimmed_paired_mapping.resorted.bam
+
+# Damn, I'm getting a segmentation fault and a stack trace
+The lines below might hint at the cause of the crash.
+If they do not help you then please submit a bug report at
+http://root.cern.ch/bugs. Please post the ENTIRE stack trace
+from above as an attachment in addition to anything else
+that might help us fixing this issue.
+===========================================================
+#5  0x00000031cb48636a in strlen () from /usr/lib64/libc.so.6
+#6  0x0000003ad8195a85 in TString::TString(char const*) () from /usr/lib64/root/libCore.so.5.34
+#7  0x00007f76020a6305 in TH1::FFT(TH1*, char const*) () from /usr/lib64/root/libHist.so.5.34
+#8  0x0000000000423fd4 in HisMaker::produceTrees(std::string*, int, std::string*, int, bool) ()
+#9  0x0000000000407f04 in main ()
+===========================================================
+
