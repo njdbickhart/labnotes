@@ -12,6 +12,7 @@ These are my notes on mapping the pacbio contigs back to the Lachesis scaffolds 
 * [Summary Table of Results](#summary)
 * [Oriented RH map assignments](#orient)
 * [Gap information scan](#gap)
+* [Pilon error correction](#pilon)
 
 <a name="preparation"></a>
 ## Preparation
@@ -775,3 +776,53 @@ perl -lane 'print $F[1];' < bng_split_2kb_1kbf_50n_gap.fa.fai | statStd.pl
 ```
 
 OK, so ultimately this looks to be the best split fasta. Let's package it up and send it to Alex and Shawn.
+
+<a name="pilon"></a>
+## Pilon error correction
+*9/24/2015*
+
+Given that Pilon is a dependency-free JAR and given that we need error-corrected fasta sequence for Ben to do the annotation, I'm going to try to run Pilon on the Lachesis data so that he can begin work as soon as possible.
+
+From the help menu of Pilon, here's a list of options that I want to use to generate output that can be parseable later:
+
+* INPUTS:
+	* --genome genome.fasta
+	  *	The input genome we are trying to improve, which must be the reference used
+	  *	for the bam alignments.  At least one of --frags or --jumps must also be given.
+	* --frags frags.bam
+	  * A bam file consisting of fragment paired-end alignments, aligned to the --genome
+	  * argument using bwa or bowtie2.  This argument may be specifed more than once.
+* OUTPUTS:
+	* --output
+	  * Prefix for output files
+	* --changes
+	  * If specified, a file listing changes in the <output>.fasta will be generated.
+	* --vcf
+	  * If specified, a vcf file will be generated
+	* --tracks
+	   * This options will cause many track files (*.bed, *.wig) suitable for viewing in
+	   * a genome browser to be written.
+* CONTROL:
+	* --diploid
+	  * Sample is from diploid organism; will eventually affect calling of heterozygous SNPs
+	* --fix fixlist
+	  * A comma-separated list of categories of issues to try to fix:
+	  * "bases": try to fix individual bases and small indels;
+
+
+I'll also output all files to a separate directory on my ISCI mount on Blade14. 
+
+**NOTE:** I am not using the deg contigs in this correction. We're likely to get issues with the repetitive regions, but due to time constraints, I'm willing to get a "good" assembly in lieu of a "almost perfect" assembly.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/pilon
+
+```bash
+# first, to align the Papadum illumina reads to the Lachesis data to generate the fragment bam
+bwa mem -R '@RG\tID:ilmn250\tLB:ilmn250papadum\tSM:papadum' /mnt/nfs/nfs2/GoatData/Lachesis/Lachesis_assembly.fasta /mnt/nfs/nfs2/GoatData/Ilmn/250bp_S1_L001_R1_001.fastq.gz /mnt/nfs/nfs2/GoatData/Ilmn/250bp_S1_L001_R2_001.fastq.gz > lachesis_ilm_250bp.sam &
+bwa mem -R '@RG\tID:ilmn400\tLB:ilmn400papadum\tSM:papadum' /mnt/nfs/nfs2/GoatData/Lachesis/Lachesis_assembly.fasta /mnt/nfs/nfs2/GoatData/Ilmn/400bp_S2_L001_R1_001.fastq.gz /mnt/nfs/nfs2/GoatData/Ilmn/400bp_S2_L001_R2_001.fastq.gz > lachesis_ilm_400bp.sam
+
+# convert to bam and sort
+samtools view -bS lachesis_ilm_250bp.sam | samtools sort -T lachesis_ilm_250 -o lachesis_ilm_250bp.sorted.bam -
+samtools view -bS lachesis_ilm_400bp.sam | samtools sort -T lachesis_ilm_400 -o lachesis_ilm_400bp.sorted.bam -
+
+samtools index lachesis_ilm_250bp.sorted.bam & samtools index lachesis_ilm_400bp.sorted.bam
