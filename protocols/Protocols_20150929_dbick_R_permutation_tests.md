@@ -302,3 +302,69 @@ intersectBed -a ensegene.1.81.unique.bed -b all_cnvs.bed | less
 ```
 
 The problematic region is [here](http://genome.ucsc.edu/cgi-bin/hgTracks?db=bosTau6&position=chr10%3A23180741-25173443&hgsid=442136149_dzdZINHHQr3Nv998N8qGGAraOeo4) and there are tons of gaps along with lots of predicted (but not fully annotated) genes. They all have hits to "T-cell receptor" genes, but most of the data for this comes from ESTs, not sequence homology.
+
+Another test, let's try the circular chromosome permutation test.
+
+```R
+pt.all.ensgene.test <- permTest(A=cnvs.all, B=genes.ensgene, ntimes=1000, randomize.function=circularRandomizeRegions, genome=umd3.genome, evaluate.function=numOverlaps)
+pt.all.ensgene.test
+	P-value: 0.134865134865135
+	Z-score: 1.0005
+	Number of iterations: 1000
+	Alternative: greater
+	Evaluation of the original region set: 182
+	Evaluation function: numOverlaps
+	Randomization function: circularRandomizeRegions
+
+# No help. Let's try masking out that region of chr10
+mask <- toGRanges(data.frame(chr=c("chr10"), start=c(23180741), end=c(25173443)))
+pt.all.ensgene.test <- permTest(A=cnvs.all, B=genes.ensgene, ntimes=1000, randomize.function=circularRandomizeRegions, genome=umd3.genome, evaluate.function=numOverlaps, mask=mask)
+
+# Oops! guess I had to remove the regions from the bed as well!
+```
+
+One final test: Writing my own custom sampling function. George wants to take the lengths and randomize the start and end coordinates, not sample from a distribution.
+
+```R
+# Note: I can pull the list of widths from the GRanges objects by using the IRanges "width" function
+width(ranges(cnvs.all))
+
+# CODE:
+# Here is the randomize function that I wrote
+randomizeLengths <- function(A, genome, mask = NULL, max.mask.overlap = NULL, max.retries = 10, verbose = TRUE, ...){
+    A <- toGRanges(A)
+    gam <- getGenomeAndMask(genome, mask)
+	
+    distWidth <- function(width) {
+        chr <- sample(seqnames(gam$genome), size=1)
+        chr.len <- end(gam$genome[seqnames(gam$genome) == as.character(chr)])
+		start <- sample.int(chr.len, size=1)
+		end <- start + width
+		while(end > chr.len){
+			start <- sample.int(chr.len, size=1)
+			end <- start + width
+		}
+
+		return(data.frame(chr=chr, start=start, end=end))
+    }
+    rand.A <- lapply(width(ranges(A)), distWidth)
+    rand.A <- do.call(rbind, rand.A)
+	cat(".")
+    return(toGRanges(rand.A))
+}
+
+# Running the randomize function using the permutation test
+pt.all.ensgene.test <- permTest(A=cnvs.all, B=genes.ensgene, ntimes=1000, randomize.function=randomizeLengths, genome=umd3.genome, evaluate.function=numOverlaps)
+
+pt.all.ensgene.test
+	P-value: 0.295704295704296
+	Z-score: 0.4547
+	Number of iterations: 1000
+	Alternative: greater
+	Evaluation of the original region set: 182
+	Evaluation function: numOverlaps
+	Randomization function: randomizeLengths
+
+# It was even worse, Oh well! 
+
+```
