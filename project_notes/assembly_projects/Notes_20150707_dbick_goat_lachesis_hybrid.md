@@ -13,6 +13,7 @@ These are my notes on mapping the pacbio contigs back to the Lachesis scaffolds 
 * [Oriented RH map assignments](#orient)
 * [Gap information scan](#gap)
 * [Pilon error correction](#pilon)
+* [Penultimate assembly correction and splitting](#penultimate)
 
 <a name="preparation"></a>
 ## Preparation
@@ -826,3 +827,208 @@ samtools view -bS lachesis_ilm_250bp.sam | samtools sort -T lachesis_ilm_250 -o 
 samtools view -bS lachesis_ilm_400bp.sam | samtools sort -T lachesis_ilm_400 -o lachesis_ilm_400bp.sorted.bam -
 
 samtools index lachesis_ilm_250bp.sorted.bam & samtools index lachesis_ilm_400bp.sorted.bam
+
+# merging
+samtools merge -@ 10 lachesis_ilm_merged.sorted.bam lachesis_ilm_250bp.sorted.bam lachesis_ilm_400bp.sorted.bam
+
+```
+
+We discovered that the Lachesis fasta did not contain super-scaffolds, so we ended up aborting the error correction. Steve has done error correction on the deg + super-scaffold + unscaffolded contigs -- I just need to calculate the stats and then split the fasta.
+
+<a name="penultimate"></a>
+## Penultimate assembly correction and splitting
+*10/1/2015*
+
+Steve's fasta is located in this directory:
+
+> Blade14: /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4BNG/
+
+```bash
+# Calling the gaps first 
+~/jdk1.8.0_05/bin/java -jar ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4BNG/papadum-v4bng-pilon.fa -o /mnt/iscsi/vnx_gliu_7/goat_assembly/papadum-v4bng-pilon.gaps.bed -s /mnt/iscsi/vnx_gliu_7/goat_assembly/papadum-v4bng-pilon.gaps.stats
+
+# I'm concerned that Steve may have done several batches, and may not have included the deg contigs in this fasta
+# I'll test this by fasta length
+head papadum-*.fai
+	==> papadum-v4bng-pilon.fa.fai <==
+	Scaffold_1      32985612        12      80      81
+	Scaffold_2      40642650        33397957        80      81
+	Scaffold_4      20284375        74548653        80      81
+
+	==> papadum-v4bng-pilon.full.fa.fai <==
+	Scaffold_1      32985612        12      80      81
+	Scaffold_2      40642650        33397957        80      81
+	Scaffold_4      20284375        74548653        80      81
+
+# Hmmm... by bp count, they look the same. Let's assume that they are and ask Steve later.
+```
+
+I've now got to remove gaps under 2kb from the bed file, and then I should be able to split the fasta file correctly.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly
+
+```bash
+# Getting all gaps above 2kb
+perl -lane 'if($F[2] - $F[1] > 2000){print $_;}' < papadum-v4bng-pilon.gaps.bed > papadum-v4bng-pilon.gaps.gt2kb.bed
+wc -l papadum-v4bng-pilon.gaps*.bed
+  8593 papadum-v4bng-pilon.gaps.bed
+  7491 papadum-v4bng-pilon.gaps.gt2kb.bed
+ 16084 total
+
+# splitting >=2kb gaps, with 2kb minimum post-split contig size, with < 50% N content per contig
+perl ~/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4BNG/papadum-v4bng-pilon.fa -o papadum-v4bng-pilon-split2kbgap.fa -b papadum-v4bng-pilon.gaps.gt2kb.bed -s papadum-v4bng-pilon-split2kbgap.original.coords.bed -m 2000 -n 0.5
+
+# Checking the quality
+samtools faidx papadum-v4bng-pilon-split2kbgap.fa
+
+# The stats hold up so far. Let's work on the RH map now.
+```
+
+#### Remapping RH probes onto the corrected assembly
+
+
+
+```bash
+# indexing the genome
+bwa index papadum-v4bng-pilon-split2kbgap.fa
+
+# Creating the bam
+bwa mem papadum-v4bng-pilon-split2kbgap.fa /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta | samtools view -bS - | samtools sort -T papadum.tmp -o rh_map/papadum-v4bng-pilon-split2kbgap.bam -
+samtools index rh_map/papadum-v4bng-pilon-split2kbgap.bam
+
+# Now to start the ordering
+perl ~/perl_toolchain/assembly_scripts/probeMappingRHOrdering.pl rh_map/RHmap_to_PacBio-v3_contigs.txt rh_map/papadum-v4bng-pilon-split2kbgap.bam rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.out
+
+# I wrote a one-shot script to remove much of the tedium of editing out the spurious probe alignments
+perl remove_spurious_probe_rh.pl < rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.out > rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.edit.out
+
+wc -l rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.out rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.edit.out
+ 1316 rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.out
+ 1002 rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.edit.out
+
+# Another one-shot script to condense down the headings
+perl condense_rh_remappings_order.pl < rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.edit.out > rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.edit2.out
+
+# I still need to edit several specific areas where the RH map has inversions compared to the Irys scaffolds. I'll label each one:
+
+# Area 1
+4       Scaffold_81.1   12999   1975874 +
+4       Scaffold_81.2   124622  296935  -
+4       Scaffold_81.1   2267514 2327076 -
+4       Scaffold_81.2   473386  5106527 +
+4       Scaffold_81.3   237540  10449679        +
+4       Scaffold_99.1   8399    13467629        -
+4       Scaffold_1403   17805   29726120        -
+
+# Area 2
+5       Scaffold_199.1  57520   2802112 +
+5       Scaffold_199.2  47349   170676  -
+5       Scaffold_199.1  2861132 2969615 -
+5       Scaffold_205.1  1552    79311   -
+5       utg9423 12294   12294   ?
+5       Scaffold_199.2  253034  1021784 -
+
+# Area 3
+21      Scaffold_1771.1 159885  963969  -
+21      Scaffold_1965   1151128 1395957 +
+21      Scaffold_1771.1 21495   73684   +
+21      Scaffold_1965   13686   1078812 -
+
+# Area 4
+29      Scaffold_59.2   4429    9932553 -
+29      Scaffold_59.1   867713  3388273 -
+29      Scaffold_7.2    17688252        17756202        +
+29      Scaffold_59.1   46596   837928  +
+29      Scaffold_7.2    795790  17648713        -
+29      Scaffold_7.1    3147    628237  -
+
+# Just as a side-note, the X chromosome is completely bloated with probes/mappings
+```
+
+Here is are the two one-shot scripts:
+
+> remove_spurious_probe_rh.pl
+
+```perl
+#!/usr/bin/perl
+
+@store;
+while(<>){
+        chomp;
+        my @s = split(/\t/, $_);
+        push(@store, \@s);
+}
+print join("\t", @{$store[1]});
+print "\n";
+for($x = 1; $x < scalar(@store) - 1; $x++){
+        if($store[$x]->[4] eq "\?"){
+                ($b1) = $store[$x-1]->[1] =~ /(Scaffold.+)\.\d+/;
+                ($b2) = $store[$x+1]->[1] =~ /(Scaffold.+)\.\d+/;
+                if($b2 eq $b1){next;}
+        }
+        print join("\t", @{$store[$x]});
+        print "\n";
+}
+print join("\t", @{$store[-1]});
+print "\n";
+```
+
+> condense_rh_remappings_order.pl
+
+```perl
+#!/usr/bin/perl
+
+my @store;
+while(<>){
+        chomp;
+        my @s = split(/\t/, $_);
+        push(@store, \@s);
+}
+
+my $prevvalue = "NA"; my $prevchr;
+my @sign;
+my @values;
+for(my $i = 0; $i < scalar(@store); $i++){
+        if($prevvalue eq "NA"){
+                $prevvalue = $store[$i]->[1];
+                $prevchr = $store[$i]->[0];
+                push(@sign, $store[$i]->[4]);
+                push(@values, ($store[$i]->[2], $store[$i]->[3]));
+                next;
+		}elsif($prevvalue ne $store[$i]->[1]){
+                my ($min, $max) = getMinandMax(@values);
+                my $sign = getConsensusSign(@sign);
+                print "$prevchr\t$prevvalue\t$min\t$max\t$sign\n";
+                @values = ();
+                @sign = ();
+        }
+        $prevvalue = $store[$i]->[1];
+        $prevchr = $store[$i]->[0];
+        push(@sign, $store[$i]->[4]);
+        push(@values, ($store[$i]->[2], $store[$i]->[3]));
+}
+my ($min, $max) = getMinandMax(@values);
+my $sign = getConsensusSign(@sign);
+print "$prevchr\t$prevvalue\t$min\t$max\t$sign\n";
+
+exit;
+
+sub getConsensusSign{
+        my (@s) = @_;
+        my $sign = "NA";
+        foreach my $b (@s){
+                if($b eq "+" || $b eq "-"){
+                        $sign = $b;
+                }elsif($sign eq "NA" && $b eq "\?"){
+                        $sign = "?";
+                }
+        }
+        return $sign;
+}
+
+sub getMinandMax{
+        my (@s) = @_;
+        @s = sort{$a <=> $b} @s;
+        return $s[0], $s[-1];
+}
+```
