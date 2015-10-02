@@ -1032,3 +1032,101 @@ sub getMinandMax{
         return $s[0], $s[-1];
 }
 ```
+
+#### Testing if there are gap regions that are masked by nickase sites
+
+```bash
+perl -e '$prevchr = "NA"; $prevlen = 0; $prevstart = 0; while(<>){chomp; @s = split(/\t/); $len = $s[2] - $s[1]; if($len < 2000){if($len + $prevlen < 2000 && $prevchr eq $s[0] && $s[1] - $prevstart < 5000){print "$prevchr\t$prevstart\t$s[0]\t$s[1]\t$s[2]\t$len\n";}} $prevchr = $s[0]; $prevstart = $s[1]; $prevlen = $len;}' < papadum-v4bng-pilon.gaps.bed | wc -l
+30
+
+# OK, so there are 30 cases of this happening. Let's see if this impacts the output fasta:
+perl -e '$prevchr = "NA"; $prevlen = 0; $prevstart = 0; while(<>){chomp; @s = split(/\t/); $len = $s[2] - $s[1]; if($len < 2000){if($len + $prevlen < 2000 && $prevchr eq $s[0] && $s[1] - $prevstart < 5000){print "$prevchr\t$prevstart\t$s[0]\t$s[1]\t$s[2]\t$len\n";}} $prevchr = $s[0]; $prevstart = $s[1]; $prevlen = $len;}' < papadum-v4bng-pilon.gaps.bed > papadum-v4bng-pilon.gaps.nickase.problems
+
+grep Scaffold_348 papadum-v4bng-pilon.gaps.nickase.problems
+	Scaffold_348    117431  Scaffold_348    117611  119354  1743
+	Scaffold_348    2501404 Scaffold_348    2501509 2502751 1242
+
+grep Scaffold_348 papadum-v4bng-pilon-split2kbgap.original.coords.bed
+	Scaffold_348.1  1       119362
+	Scaffold_348.2  160777  238774
+	Scaffold_348.3  893773  1002703
+	Scaffold_348.4  1723544 1989144
+	Scaffold_348.5  2147326 2860068
+
+# Unfortunately both are contained within the split contigs
+```
+--
+*10/2/2015*
+
+OK, time to fix these smaller gap regions. I can do this quickly with the gap bed file.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly
+
+```bash
+# Concatenating gap regions that are separated by only a few bases
+perl concatenate_smallgaps_gapbed.pl < papadum-v4bng-pilon.gaps.bed > papadum-v4bng-pilon.gaps.concat.bed
+
+# Removing gaps less than 2kb
+perl -lane 'if($F[2] - $F[1] > 2000){print $_;}' < papadum-v4bng-pilon.gaps.concat.bed > papadum-v4bng-pilon.gaps.concat.gt2kb.bed
+
+wc -l papadum-v4bng-pilon.gaps.bed papadum-v4bng-pilon.gaps.concat.bed papadum-v4bng-pilon.gaps.concat.gt2kb.bed
+  8593 papadum-v4bng-pilon.gaps.bed
+  1170 papadum-v4bng-pilon.gaps.concat.bed
+   897 papadum-v4bng-pilon.gaps.concat.gt2kb.bed
+
+# A fair reduction in gap intervals! Let's check against the prior gt2kb gap file
+perl ~/bin/table_bed_length_sum.pl papadum-v4bng-pilon.gaps.concat.gt2kb.bed papadum-v4bng-pilon.gaps.gt2kb.bed papadum-v4bng-pilon.gaps.bed
+FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+papadum-v4bng-pilon.gaps.concat.gt2kb.bed       897     78,854,636        87909.2931995541        161683.087789662        48157   2015    1985589
+papadum-v4bng-pilon.gaps.gt2kb.bed      7491    77,786,831        10384.0383126418        21937.0894821001        6175    2001    720841
+papadum-v4bng-pilon.gaps.bed    8593    79,000,302        9193.56476201559        20717.7018212084        5348    0       720841
+
+# OK, so we've got an increase of 1mb of gaps compared to the prior entry, but not that large of a difference overall
+
+# Beginning work on preparing the fasta
+perl ~/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4BNG/papadum-v4bng-pilon.fa -o papadum-v5bng-pilon-split2kbgap.fa -b papadum-v4bng-pilon.gaps.concat.gt2kb.bed -s papadum-v5bng-pilon-split2kbgap.original.coords.bed -m 2000 -n 0.5
+
+# Checking scaffold counts
+samtools faidx papadum-v5bng-pilon-split2kbgap.fa
+wc -l *.fai
+   2084 papadum-v4bng-pilon-split2kbgap.fa.fai
+   2091 papadum-v5bng-pilon-split2kbgap.fa.fai	<- about 7 more split contigs
+  33767 USDA_V3.fasta.fai
+
+# BWA alignment
+bwa index papadum-v5bng-pilon-split2kbgap.fa
+bwa mem papadum-v5bng-pilon-split2kbgap.fa /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta | samtools view -bS - | samtools sort -T papadum.tmp -o rh_map/papadum-v5bng-pilon-split2kbgap.bam -
+
+samtools index rh_map/papadum-v5bng-pilon-split2kbgap.bam
+
+# Now the RH map probe ordering
+perl ~/perl_toolchain/assembly_scripts/probeMappingRHOrdering.pl rh_map/RHmap_to_PacBio-v3_contigs.txt rh_map/papadum-v5bng-pilon-split2kbgap.bam rh_map/papadum-v5bng-pilon-split2kbgap.rhorder.out
+
+perl remove_spurious_probe_rh.pl < rh_map/papadum-v5bng-pilon-split2kbgap.rhorder.out > rh_map/papadum-v5bng-pilon-split2kbgap.rhorder.edit.out
+perl condense_rh_remappings_order.pl < rh_map/papadum-v5bng-pilon-split2kbgap.rhorder.edit.out > rh_map/papadum-v5bng-pilon-split2kbgap.rhorder.edit2.out
+
+wc -l rh_map/*out
+   765 rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.edit2.out
+  1000 rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.edit.out
+  1316 rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.out
+   783 rh_map/papadum-v5bng-pilon-split2kbgap.rhorder.edit2.out
+  1009 rh_map/papadum-v5bng-pilon-split2kbgap.rhorder.edit.out
+  1325 rh_map/papadum-v5bng-pilon-split2kbgap.rhorder.out
+
+# Now the manual editing
+# area 1
+4       Scaffold_81
+
+# area 2
+5       Scaffold_199
+5       utg9423
+5       Scaffold_205
+
+# area 3
+21      Scaffold_1771
+21      Scaffold_1965
+
+# area 4
+29      Scaffold_59
+29      Scaffold_7
+```
