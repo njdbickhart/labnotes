@@ -174,3 +174,156 @@ chr28 |  35297000    |    35297499 | 23 | 22 | 37
 Everything looks fine! Even better, excellent! But the duplication isn't being called somehow. Let's check inside the routine. 
 
 OK, it looks like there's modification of start and end coordinates within a subroutine. Because Java passes by identity, there's an issue here! I changed the Ttest to give the CDF rather than the density value -- let's see if that works instead!
+
+I'm really confused with the "GetMeanSigma" function. I'm not sure how the values were fitted there. I've recompiled CNVnator to get those values.
+
+```bash
+~/CNVnator_v0.3/src/cnvnator -root test2.root -genome unaltered_sim_refgenome.fa -tree test1.altered_sv.bam
+~/CNVnator_v0.3/src/cnvnator -root test2.root -genome unaltered_sim_refgenome.fa -his 500
+~/CNVnator_v0.3/src/cnvnator -root test2.root  -stat 500
+getMeanSigma:   mean:   102.231 sigma:  14.9362 After corr:     mean:   103.44  sigma:  11.5275
+getMeanSigma, round2:   103.433 11.313  minfit: 80.3846 maxfit: 126.495
+Average RD per bin (1-22) is 103.433 +- 11.313 (before GC correction)
+...
+Correcting counts by GC-content for 'chr28' ...
+getMeanSigma:   mean:   102.231 sigma:  14.9362 After corr:     mean:   103.44  sigma:  11.5275
+getMeanSigma, round2:   103.433 11.313  minfit: 80.3846 maxfit: 126.495
+Zero value of GC average.
+Bin 7146 with center 3.57275e+06 is not corrected.
+Correcting counts by GC-content for 'chr29' ...
+getMeanSigma:   mean:   102.231 sigma:  14.9362 After corr:     mean:   103.44  sigma:  11.5275
+getMeanSigma, round2:   103.433 11.313  minfit: 80.3846 maxfit: 126.495
+Zero value of GC average.
+Bin 50448 with center 2.52238e+07 is not corrected.
+Zero value of GC average.
+Bin 92731 with center 4.63652e+07 is not corrected.
+Zero value of GC average.
+Bin 92903 with center 4.64512e+07 is not corrected.
+Zero value of GC average.
+Bin 95317 with center 4.76582e+07 is not corrected.
+Making statistics for chr28 after GC correction ...
+Making statistics for chr29 after GC correction ...
+getMeanSigma:   mean:   103.163 sigma:  15.098  After corr:     mean:   104.443 sigma:  11.6203
+getMeanSigma, round2:   104.424 11.3559 minfit: 81.2025 maxfit: 127.684
+Average RD per bin (1-22) is 104.424 +- 11.3559 (after GC correction)
+...
+
+
+~/CNVnator_v0.3/src/cnvnator -root test2.root  -eval 500
+~/CNVnator_v0.3/src/cnvnator -root test2.root  -partition 500
+~/CNVnator_v0.3/src/cnvnator -root test2.root -call 500 > test1.altered.cnvnator.500.calls
+
+# I removed the sex chromosome fit error listings
+```
+
+
+```c++
+// Root commands
+TFile file("test2.root")
+file.ls()
+TDirectory *d = (TDirectory*)file.Get("bin_500")
+d->cd()
+d->ls()
+TH1 *his = (TH1*)d->Get("rd_p_GC_500")
+TF1 *fg = new TF1("fb", "gaus(0)", 0, 10)
+double mean = his->GetMean()
+mean
+(double)1.03162798582732051e+02
+double sigma = his->GetRMS()
+sigma
+(double)1.50979568939763453e+01
+double constant = his->GetEntries() * 0.4/sigma
+constant
+(double)5.18313839081243077e+03
+
+fg->SetParameters(constant, mean, 0.5*sigma)
+fg->SetParLimits(1, 0, 3 * mean)
+fg->SetParLimits(2, 0, 3 * sigma)
+his->Fit(fg, "qN")
+ his->Draw()
+double min_fit = fg->GetParameter(1) - 2.0*fg->GetParameter(2)
+double max_fit = fg->GetParameter(1) + 2.0*fg->GetParameter(2)
+his->Fit(fg, "qN", "", min_fit, max_fit)
+```
+
+OK! I figured it out! I used the Apache commons Gaussian fitter function after "binning" the signal into rounded integer read count bins. Now I'm getting similar standard deviation values in the mean shift algorithm and during SV segmentation. This is also improving my e value estimates and is catching more true positives. 
+
+Let's test how many we've gotten over the base CNVnator algorithm.
+
+```bash
+grep 'chr28' test1.altered.jarms.callscnvs.bed | cut -f1,2,3,4 | intersectBed -a chr28.initialsvs.bed -b stdin
+chr28   7962001 7962887 TAND
+chr28   13321161        13322000        TAND
+chr28   38523501        38524500        TAND
+
+perl -lane '($c, $s, $e) = $F[1] =~ /(chr.+):(\d+)-(\d+)/; if($c eq "chr28"){print "$c\t$s\t$e\t$F[0]";}' < test1.altered.cnvnator.500.calls | intersectBed -a chr28.initialsvs.bed -b stdin
+chr28   35296501        35297411        DEL
+chr28   44928150        44929771        DEL
+
+# Interestingly, if I use the 100 bin wins, I get this:
+perl -lane '($c, $s, $e) = $F[1] =~ /(chr.+):(\d+)-(\d+)/; if($c eq "chr28"){print "$c\t$s\t$e\t$F[0]";}' < test1.altered.cnvnator.calls | intersectBed -a chr28.initialsvs.bed -b stdin
+chr28   7960546 7962887 TAND
+chr28   17103516        17104500        TAND
+chr28   35296401        35297400        DEL
+chr28   38522662        38524563        TAND
+chr28   44928201        44929771        DEL
+
+grep 'chr29' test1.altered.jarms.callscnvs.bed | cut -f1,2,3,4 | intersectBed -a chr29.initialsvs.bed -b stdin
+chr29   1749117 1750206 DEL
+chr29   20259148        20262500        DEL
+chr29   21823225        21826779        DEL
+chr29   22600501        22601457        TAND
+chr29   23690522        23697000        DEL
+chr29   40319001        40322301        DEL
+
+perl -lane '($c, $s, $e) = $F[1] =~ /(chr.+):(\d+)-(\d+)/; if($c eq "chr29"){print "$c\t$s\t$e\t$F[0]";}' < test1.altered.cnvnator.500.calls | intersectBed -a chr29.initialsvs.bed -b stdin
+chr29   1749117 1750206 DEL
+chr29   20259148        20262500        DEL
+chr29   21823225        21826779        DEL
+chr29   23690522        23697000        DEL
+chr29   40318824        40322301        DEL
+
+# And the 100 bp bins
+perl -lane '($c, $s, $e) = $F[1] =~ /(chr.+):(\d+)-(\d+)/; if($c eq "chr29"){print "$c\t$s\t$e\t$F[0]";}' < test1.altered.cnvnator.calls | intersectBed -a chr29.initialsvs.bed -b stdin
+chr29   1749117 1750206 DEL
+chr29   17213201        17213600        DEL
+chr29   19499451        19500286        DEL
+chr29   19623001        19624000        DEL
+chr29   20259201        20262500        DEL
+chr29   21823225        21826779        DEL
+chr29   22599062        22601400        TAND
+chr29   23690522        23697180        DEL
+chr29   34373733        34375000        TAND
+chr29   36237119        36238580        TAND
+chr29   40318824        40322300        DEL
+
+wc -l test1.altered.cnvnator.500.calls test1.altered.cnvnator.calls test1.altered.jarms.callscnvs.bed
+  426 test1.altered.cnvnator.500.calls	<- this had 8 lines dedicated to my rewrite of the source code.
+  580 test1.altered.cnvnator.calls
+   53 test1.altered.jarms.callscnvs.bed
+ 1059 total
+```
+
+So, chr29 was the best for my implementation, and I had weird results with the chr28 comparisons. I think that my gc correction may be causing the difference here.
+
+Some c modifications to debug further:
+
+```cpp
+// testtwo
+if(ret < 0.05){
+        cerr<<"ttwo:\t"<<ret<<"\t"<<preret<<"\t"<<ndf<<"\t"<<scale<<"\t";
+        cerr<<m1<<"\t"<<s1<<"\t"<<n1<<"\t"<<m2<<"\t"<<s2<<"\t"<<n2<<endl;
+  }
+
+//evalue
+if (ret < 0.05){
+        cerr<<"Eval:\t"<<ret<<"\t"<<start<<"\t"<<end<<"\t"<<mean<<"\t"<<sigma<<"\t"<<aver;
+        for(int i = start; i <= end; i++){
+                cerr<<"\t"<<rd[i];
+        }
+        cerr<<endl;
+  }
+```
+
+I actually found out that I had not set the "potential deletion" region correctly! Oops! Fixed it and the data looks better.
+

@@ -264,3 +264,18 @@ that might help us fixing this issue.
 #9  0x0000000000407f04 in main ()
 ===========================================================
 
+```
+
+<a name="jarms"></a>
+## JaRMS data collection
+
+OK, I got frustrated with CNVNator and I wrote my own program. Let's see how this works.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/bird_data
+
+```bash
+# Threads aren't fully implemented yet in this version, but I don't want to limit the innate fork-join pool
+~/jdk1.8.0_05/bin/java -Xmx56g -jar ~/JaRMS/store/JaRMS.jar call -i sj.cor_trimmed_paired_mapping.resorted.bam -f fasta/MorganFinal1KbReplicate_v3.repeatmasked.fa -o sj.cor.jarms.calls.bed -t 10
+
+# NOTE: I need better temp file directory handling. I use the output directory path literal instead of a proper directory
+```
