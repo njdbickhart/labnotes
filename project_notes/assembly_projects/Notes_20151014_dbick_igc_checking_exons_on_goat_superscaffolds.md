@@ -83,7 +83,7 @@ samtools flagstat cattle_igc_goat_align.bam
 # So there are 35 that have multiple mappings
 # Lots have aligned to the super-reads -- let's see if we can find alternative mappings
 
-
+samtools view cattle_igc_goat_align.bam | perl -e '%h; while(<>){chomp; @s = split(/\t/); $s[0] =~ s/\_\d{1,3}$//; $h{$s[0]}->{$s[2]} = 1;} foreach my $contig (keys %h){foreach my $chr (keys %{$h{$contig}}){ print "$contig\t$chr\n";}}' | less
 ENSBTAT00000007438      Scaffold_154.1
 ENSBTAT00000007438      Scaffold_94.1
 
