@@ -94,3 +94,136 @@ ENSBTAT00000007743      Scaffold_134.1
 ENSBTAT00000013665      Scaffold_22.3
 ENSBTAT00000013665      Scaffold_22.1
 ```
+
+Let's put this into a formalized script and generate a summary file. I've written a script that goes along with this pipeline [here](https://github.com/njdbickhart/perl_toolchain/blob/master/assembly_scripts/identifyCrossContigExonAlignments.pl).
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/annotation
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/identifyCrossContigExonAlignments.pl -b cattle_igc_goat_align.bam -o cattle_igc_goat_align.summary
+
+ENSBTAT00000013665      Scaffold_22.1   7       Scaffold_22.3   2,4,5,6,7,7
+```
+
+Let's do this with the human annotations now. Unfortunately, the UCSC genome browser doesn't handle all annotations in a uniform format. I'm going to have to convert their file by changing the first column to the actual ensembl gene IDs.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/igc_annotation
+
+```bash
+# Converting with the UCSC conversion database text file
+perl -e '%c; chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $s[1] =~ s/\.\d{1,3}//; $c{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($c{$s[0]})){$s[0] = $c{$s[0]};} print "1\t" . join("\t", @s); print "\n";} close IN;' humanknownToEnsembl.txt humanknownGene.txt > human_ensgeneconverted.txt
+
+# Now I can run my script!
+perl -e '<>; while(<>){chomp; @s = split(/\t/); print "$s[1]\n";}' < hg_ensid_immune_response.txt > hg_enstrans_immune_response.txt
+
+perl ../../programs_source/Perl/perl_toolchain/bed_cnv_fig_table_pipeline/generateExonFastaFromUCSCTable.pl -b human_ensgeneconverted.txt -f hg38.fa -e hg_enstrans_immune_response.txt -o human_ensgene_immune.fa
+```
+
+Now to transfer everything to the server so that I can do the alignment and subsequent summary.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/annotation
+
+```bash
+# Aligning the exons
+bwa mem ../papadum-v5bng-pilon-split2kbgap.fa human_ensgene_immune.fa | samtools view -bS - | samtools sort -T human.temp -o human_igc_goat_align.bam -
+
+# Now to summarize them.
+perl ~/perl_toolchain/assembly_scripts/identifyCrossContigExonAlignments.pl -b human_igc_goat_align.bam -o human_igc_goat_align.summary
+
+
+# Quite allot of exons were completely unmapped. It would be interesting to see how many were unmapped in our assembly
+# Vs the BGI assembly.
+bwa index chi_ref_CHIR_1.0_all.fa
+bwa mem chi_ref_CHIR_1.0_all.fa human_ensgene_immune.fa | samtools view -bS - | samtools sort -T human.temp -o human_igc_goat_chi_align.bam -
+perl ~/perl_toolchain/assembly_scripts/identifyCrossContigExonAlignments.pl -b human_igc_goat_chi_align.bam -o human_igc_goat_chi_align.summary
+
+bwa mem chi_ref_CHIR_1.0_all.fa cattle_enstranscript_immune_response.fa | samtools view -bS - | samtools sort -T cattle.temp -o cattle_igc_goat_chi_align.bam -
+perl ~/perl_toolchain/assembly_scripts/identifyCrossContigExonAlignments.pl -b cattle_igc_goat_chi_align.bam -o cattle_igc_goat_chi_align.summary
+
+```
+
+From a brief scan of the chinese and pacbio assemblies, I can see that there are discrepencies in the number of scaffolds that contain the IGCs. Let's count them up.
+
+```bash
+# First, let's get a listing of the number of unique scaffold mappings (by exons) and unmapped regions
+for i in *.summary; do echo $i; perl -lane '%h; %ccount; for($x = 1; $x < scalar(@F); $x += 2){$contig = $F[$x]; $exons = $F[$x + 1]; @s = split(/,/, $exons); if($contig ne "unmapped"){$h{"mapped"} += scalar(@s); $ccount{$contig} = 1;}else{$h{"unmapped"} += scalar(@s);}} if(!exists($h{"mapped"})){ $h{"mapped"} = 0;} if(!exists($h{"unmapped"})){$h{"unmapped"} = 0;} print "$F[0]\t" . (scalar(keys(%ccount))) . "\t$h{mapped}\t$h{unmapped}"; %h = (); %ccount = ();' < $i > $i.stats; done
+```
+
+Here are the columns of the stats files:
+
+* Ensembl ID
+* Number of mappable contigs that contain the ID
+* Number of exons on mappable contigs
+* Number of exons that were unmapped
+
+```bash
+# Summarizing the number of scaffolds that contain the exons
+cat cattle_igc_goat_align.summary.stats | cut -f2 | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+	total   655
+	Minimum 0
+	Maximum 7
+	Average 1.129771
+	Median  1
+	Standard Deviation      0.521656
+	Mode(Highest Distributed Value) 1
+
+cat cattle_igc_goat_chi_align.summary.stats | cut -f2 | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+	total   655
+	Minimum 1
+	Maximum 15
+	Average 1.325191
+	Median  1
+	Standard Deviation      1.070693
+	Mode(Highest Distributed Value) 1
+
+# Interesting, so the BGI assembly has more exon distribution, but the PacBio assembly actually has completely unmapped genes.
+# Let's see what gene that was for fairness sake
+cat cattle_igc_goat_align.summary.stats | perl -lane 'if($F[1] == 0){print $_;}'
+	ENSBTAT00000066072      0       0       1
+# Checking the BGI assembly
+grep 'ENSBTAT00000066072' cattle_igc_goat_chi_align.summary.stats
+	ENSBTAT00000066072      1       1       0
+
+# So one exon out of everything. Let's see the gene alignment
+samtools view cattle_igc_goat_chi_align.bam | grep 'ENSBTAT00000066072'
+ENSBTAT00000066072_1    0       gi|541128976|ref|NC_022303.1|   103748862       60      710S176M ...
+
+# Pretty heavily soft-clipped, but let's count this as a victory for BGI. 
+# Let's make a count of transcripts
+for i in *.stats; do echo -n -e "$i\t"; perl -e '$c = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if($s[1] == 1){$c++;} $t++;} print "$c\t$t\n";' < $i; done
+
+# OOPs! I need to align to the "pseudo chromosome" assembly as well!
+bwa index chi_ref_CHIR_1.0_chrall.fa
+bwa mem chi_ref_CHIR_1.0_chrall.fa human_ensgene_immune.fa | samtools view -bS - | samtools sort -T human.temp -o human_igc_goat_chichr_align.bam -
+bwa mem chi_ref_CHIR_1.0_chrall.fa cattle_enstranscript_immune_response.fa | samtools view -bS - | samtools sort -T cattle.temp -o cattle_igc_goat_chichr_align.bam -
+
+perl ~/perl_toolchain/assembly_scripts/identifyCrossContigExonAlignments.pl -b human_igc_goat_chichr_align.bam -o human_igc_goat_chichr_align.summary
+perl ~/perl_toolchain/assembly_scripts/identifyCrossContigExonAlignments.pl -b cattle_igc_goat_chichr_align.bam -o cattle_igc_goat_chichr_align.summary
+
+# Let's make a count of transcripts
+for i in *.stats; do echo -n -e "$i\t"; perl -e '$c = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if($s[1] == 1){$c++;} $t++;} print "$c\t$t\n";' < $i; done
+```
+#### Ensembl transcripts that are placed on only one scaffold per assembly
+
+| Stat file | Assembly | transcripts on one scaffold | total transcripts| ratio placed |
+| :--- | :--- | ---: | ---: | ---: |
+cattle_igc_goat_align.summary.stats  | PacBio |   601  |   655 | 0.917
+cattle_igc_goat_chi_align.summary.stats | CHI_1.0 |  544  |   655 |  0.831
+cattle_igc_goat_chichr_align.summary.stats | CHI_1.0  |   606  |   655 | 0.925
+human_igc_goat_align.summary.stats  | PacBio |    475  |   581 |  0.818
+human_igc_goat_chi_align.summary.stats | CHI_1.0 |  394  |   581 |  0.678
+human_igc_goat_chichr_align.summary.stats | CHI_1.0 |   469  |   581 |  0.807
+
+So, on a per-scaffold basis, PacBio is much better than CHI_1.0. Only the Pseudochromosomes save the data here. Now let's tabulate the number of super-scaffolds that have transcript mappings
+
+```bash
+perl -e '%h = ("scaffold" => 0, "contig" => 0); $t = 0; while(<>){chomp; @s = split(/\t/); $scaffold = 0; $contig = 0; $t++; for($i = 1; $i < scalar(@s); $i += 2){if($s[$i] =~ /Scaffold/){$scaffold = 1;}elsif($s[$i] ne "unmapped"){$contig = 1;}} if($scaffold){$h{"scaffold"} +=1;}elsif($contig){$h{"contig"} += 1;}} print "$h{scaffold}\t$h{contig}\t$t\n";' < cattle_igc_goat_align.summary
+perl -e '%h = ("scaffold" => 0, "contig" => 0); $t = 0; while(<>){chomp; @s = split(/\t/); $scaffold = 0; $contig = 0; $t++; for($i = 1; $i < scalar(@s); $i += 2){if($s[$i] =~ /Scaffold/){$scaffold = 1;}elsif($s[$i] ne "unmapped"){$contig = 1;}} if($scaffold){$h{"scaffold"} +=1;}elsif($contig){$h{"contig"} += 1;}} print "$h{scaffold}\t$h{contig}\t$t\n";' < human_igc_goat_align.summary
+```
+
+| dataset | scaffold mappings | contig mappings | total | ratio scaffold |
+| :--- | ---: | ---: | ---: | ---: |
+cattle ensid | 624  |   30  |    655 | 0.952
+human ensid | 523  |   8    |   581  | 0.900
+
+Finally, I'm going to create bed files of the alignments so that I can create R plots using [Sushi](https://www.bioconductor.org/packages/release/bioc/html/Sushi.html). 
