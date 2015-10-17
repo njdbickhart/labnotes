@@ -227,3 +227,12 @@ cattle ensid | 624  |   30  |    655 | 0.952
 human ensid | 523  |   8    |   581  | 0.900
 
 Finally, I'm going to create bed files of the alignments so that I can create R plots using [Sushi](https://www.bioconductor.org/packages/release/bioc/html/Sushi.html). 
+
+```bash
+# Creating the bed files with a one-liner
+samtools view cattle_igc_goat_align.bam | perl -lane 'if($F[2] =~ /\*/){next;} $orient = ($F[1] & 0x10)? -1 : 1; $F[0] =~ s/\.\d{1,3}//; $end = length($F[9]); print "$F[2]\t$F[3]\t$end\t$F[0]\t\.\t$orient\texon";' > cattle_igc_goat_align.bed
+samtools view cattle_igc_goat_chi_align.bam | perl -lane 'if($F[2] =~ /\*/){next;} $orient = ($F[1] & 0x10)? -1 : 1; $F[0] =~ s/\.\d{1,3}//; $end = length($F[9]); print "$F[2]\t$F[3]\t$end\t$F[0]\t\.\t$orient\texon";' > cattle_igc_goat_chi_align.bed
+
+samtools view human_igc_goat_align.bam | perl -lane 'if($F[2] =~ /\*/){next;} $orient = ($F[1] & 0x10)? -1 : 1; $F[0] =~ s/\.\d{1,3}//; $end = length($F[9]); print "$F[2]\t$F[3]\t$end\t$F[0]\t\.\t$orient\texon";' > human_igc_goat_align.bed
+samtools view human_igc_goat_chi_align.bam | perl -lane 'if($F[2] =~ /\*/){next;} $orient = ($F[1] & 0x10)? -1 : 1; $F[0] =~ s/\.\d{1,3}//; $end = length($F[9]); print "$F[2]\t$F[3]\t$end\t$F[0]\t\.\t$orient\texon";' > human_igc_goat_chi_align.bed
+```
