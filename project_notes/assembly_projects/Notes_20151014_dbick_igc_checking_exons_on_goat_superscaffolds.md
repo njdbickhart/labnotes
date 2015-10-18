@@ -283,3 +283,14 @@ I think that the NCBI pipe ("|") characters are screwing things up here. I'll go
 # Preparing the extra and showseq file for the complement component gene
 echo -e "seqname\tlength\tbegin\tend\nScaffold_330.3\t39000\t1170000\t1209000\nutg3912\t5000\t1700\t2200" > ENSBTAT00000022979.pacbio.seq
 grep 'ENSBTAT00000022979' cattle_igc_goat_align.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]\tblue\t-10";' > ENSBTAT00000022979.pacbio.extra
+perl ~/share/test_software/parasight_v7.6/parasight.pl -showseq ENSBTAT00000022979.pacbio.seq -extra ENSBTAT00000022979.pacbio.extra
+
+# I used "fitlongline" and printed the screen to a postscript file
+
+grep 'ENSBTAT00000022979' cattle_igc_goat_chi_align.bed | perl -e '%h; while(<>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){if($h{$s[0]}->[0] > $s[1]){$h{$s[0]}->[0] = $s[1];} if($h{$s[0]}->[1] < $s[2]){$h{$s[0]}->[1] = $s[2];}}else{ push(@{$h{$s[0]}}, ($s[1], $s[2]));}} foreach $k (keys(%h)){$m = $h{$k}->[0] - 1000; if($m < 0){$m = 0;} $x = $h{$k}->[1] + 1000; $l = $x - $m; print "$k\t$l\t$m\t$x\n";}' > ENSBTAT00000022979.bgi.seq
+grep 'ENSBTAT00000022979' cattle_igc_goat_chi_align.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]\tred\t-10";' > ENSBTAT00000022979.bgi.extra
+ps2pdf ENSBTAT00000022979.bgi.ps ENSBTAT00000022979.bgi.pdf
+ps2pdf ENSBTAT00000022979.pacbio.ps ENSBTAT00000022979.pacbio.pdf
+```
+
+Now, I need to edit the files using inkscape and then I'm done!
