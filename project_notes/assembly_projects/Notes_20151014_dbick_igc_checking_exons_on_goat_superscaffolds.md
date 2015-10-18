@@ -236,3 +236,50 @@ samtools view cattle_igc_goat_chi_align.bam | perl -lane 'if($F[2] =~ /\*/){next
 samtools view human_igc_goat_align.bam | perl -lane 'if($F[2] =~ /\*/){next;} $orient = ($F[1] & 0x10)? -1 : 1; $F[0] =~ s/\.\d{1,3}//; $end = length($F[9]); print "$F[2]\t$F[3]\t$end\t$F[0]\t\.\t$orient\texon";' > human_igc_goat_align.bed
 samtools view human_igc_goat_chi_align.bam | perl -lane 'if($F[2] =~ /\*/){next;} $orient = ($F[1] & 0x10)? -1 : 1; $F[0] =~ s/\.\d{1,3}//; $end = length($F[9]); print "$F[2]\t$F[3]\t$end\t$F[0]\t\.\t$orient\texon";' > human_igc_goat_chi_align.bed
 ```
+
+#### Target genes
+| Ens transcript ID | Gene name | Description | Comments |
+| :--- | :--- | :--- | :--- |
+ENSBTAT00000007129 | NLRC5 | Involved in Cytokine response | Full contig in all assemblies; PacBio has more mapped exons 
+ENSBTAT00000022979 | C3-201 | Complement component 3 | Nearly full contig in PacBio; 14 scaffolds contain exons in BGI
+ENSBTAT00000011795 | MHCI JSP.1 | MHC class I receptor | Spread across 4 scaffolds BGI
+
+OK, time to draw the plots in R using Sushi.
+
+```R
+library(Sushi)
+base.cattle.pacbio <- read.table("cattle_igc_goat_align.bed", header=FALSE)
+colnames(base.cattle.pacbio) <- c("chrom","start","stop","gene","score","strand","type")
+
+base.cattle.bgi <- read.table("cattle_igc_goat_chi_align.bed", header=FALSE)
+colnames(base.cattle.bgi) <- c("chrom","start","stop","gene","score","strand","type")
+
+# Starting with the best example first: the complement component 3 gene
+ENSBTAT00000022979.cattle.pacbio <- base.cattle.pacbio[base.cattle.pacbio$gene == "ENSBTAT00000022979", ]
+ENSBTAT00000022979.cattle.bgi <- base.cattle.bgi[base.cattle.bgi$gene == "ENSBTAT00000022979", ]
+
+# Important note: chrom, gene and score all need to be character types!
+ENSBTAT00000022979.cattle.pacbio$chrom <- as.character(ENSBTAT00000022979.cattle.pacbio$chrom)
+ENSBTAT00000022979.cattle.pacbio$gene <- as.character(ENSBTAT00000022979.cattle.pacbio$gene)
+ENSBTAT00000022979.cattle.pacbio$score <- as.character(ENSBTAT00000022979.cattle.pacbio$score)
+
+pg <- plotGenes(ENSBTAT00000022979.cattle.pacbio, "Scaffold_330.3", 1170000, 1209000, plotgenetype="arrow", bentline=FALSE,fontsize=1.2, arrowlength = 0.025, labeltext=TRUE)
+labelgenome("Scaffold_330.3", 1170000, 1209000, n=3, scale="Kb")
+dev.copy2pdf(file="ENSBTAT00000022979.cattle.pacbio.pdf", useDingbats=FALSE)
+
+# The BGI copy is harder to plot -- I'm going to try to use par to try to plot multiple chromosomes
+ENSBTAT00000022979.cattle.bgi$chrom <- as.character(ENSBTAT00000022979.cattle.bgi$chrom)
+ENSBTAT00000022979.cattle.bgi$gene <- as.character(ENSBTAT00000022979.cattle.bgi$gene)
+
+# Well, the figure margins are too large, so I'll have to print them out separately and concatenate later
+pg <- plotGenes(ENSBTAT00000022979.cattle.bgi, "gi|541128980|ref|NC_022299.1|", 14272000, 14306000, plotgenetype="arrow", bentline=FALSE,fontsize=1.2, arrowlength = 0.025, labeltext=TRUE)
+labelgenome("gi|541128980|ref|NC_022299.1|", 14272000, 14306000, n=3, scale="Kb")
+dev.copy2pdf(file="ENSBTAT00000022979.cattle.bgi.1.pdf", useDingbats=FALSE)
+```
+
+I think that the NCBI pipe ("|") characters are screwing things up here. I'll go with the nuclear option and draw a [parasight](http://eichlerlab.gs.washington.edu/jeff/parasight/) image instead.
+
+```bash
+# Preparing the extra and showseq file for the complement component gene
+echo -e "seqname\tlength\tbegin\tend\nScaffold_330.3\t39000\t1170000\t1209000\nutg3912\t5000\t1700\t2200" > ENSBTAT00000022979.pacbio.seq
+grep 'ENSBTAT00000022979' cattle_igc_goat_align.bed | perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]\tblue\t-10";' > ENSBTAT00000022979.pacbio.extra
