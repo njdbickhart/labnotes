@@ -9,6 +9,8 @@ These are my commands and notes on the CNV calling on a wild bird dataset.
 * [Annotation entries](#annotation)
 * [Running RAPTR-SV](#raptr)
 * [Running CNVNator on the bird data](#cnvnator)
+* [Running JaRMS on the bird data](#jarms)
+* [Summary of current results](#summary1)
 
 <a name="stats"></a>
 ## BAM file summary statistics
@@ -279,3 +281,135 @@ OK, I got frustrated with CNVNator and I wrote my own program. Let's see how thi
 
 # NOTE: I need better temp file directory handling. I use the output directory path literal instead of a proper directory
 ```
+
+Damn, I think that the program hangs on contigs that have zero reads (ie. the nearly completely repeatmasked regions). I was able to parse my binary file with the GC corrected read depth, so let's try to call CNVs off of the data we've got.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/bird_data
+
+```bash
+#	Let's get the mean and stdev of the GC corrected data
+# From the log file:
+grep 'mean' JaRMS.call.2015_10_19_12_43_09.0.0.log
+	Oct 19,2015 12:43 -- INFO -- jarms.modes.CallMode -> SingleThreadRun -- [CALLMODE] Unadjusted RD values: mean-> 1259.5969244443722 sd-> 5427.133162033951
+
+# OK, CNVnator takes 1/2 the mean and 2 * the mean to get the values needed for the stdev estimate
+# Because of several huge outliers, I'm going to do that as well
+perl -lane 'if($F[3] < (1259 / 2) || $F[3] > (1259 * 2)){next;}else{ print $F[3];}' < sj.cor.jarms.calls.bed.gccorr.corr.bed | statStd.pl
+total   1655880
+	Minimum 629.5015845566844
+	Maximum 2517.9903990167227
+	Average 1261.007442
+	Median  1186.76349951635
+	Standard Deviation      391.614905
+	Mode(Highest Distributed Value) 998.0583212449338
+
+# OK, let's now try to co-opt Can Alkan's scripts to get the CNV windows
+# Duplication cutoff = 2435.837442
+perl ~/wssd-package/wssd_picker.pl -f sj.cor.jarms.calls.bed.gccorr.corr.bed -w 7 -s 6 -c 2435 -b 3 -n 1 -o sj.cor.jarms.calls.gccorr.dups.bed
+wc -l sj.cor.jarms.calls.gccorr.dups.bed
+	273 sj.cor.jarms.calls.gccorr.dups.bed
+
+# OK! Let's see how many bases this comprises
+perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[2] - $s[1];} print "$c\n";' < sj.cor.jarms.calls.gccorr.dups.bed
+1,146,647	<- about 1% of the data
+
+# Now for the deletions
+# Deletion cutoff = 479
+perl ~/wssd-package/wssd_picker.pl -f sj.cor.jarms.calls.bed.gccorr.corr.bed -w 7 -s 6 -c 479 -m -b 3 -n 1 -o sj.cor.jarms.calls.gccorr.dels.bed
+wc -l sj.cor.jarms.calls.gccorr.dels.bed
+	11136 sj.cor.jarms.calls.gccorr.dels.bed
+
+# I knew there would be quite a few. Let's remove the repeat-masked regions first
+subtractBed -a sj.cor.jarms.calls.gccorr.dels.bed -b fasta/sj.corr.repeatmasker.bed | perl -lane 'if($F[2] - $F[1] < 200){next;}else{print $_;}' > sj.cor.jarms.calls.gccorr.dels.norpt.bed
+wc -l sj.cor.jarms.calls.gccorr.dels.norpt.bed
+	22982 sj.cor.jarms.calls.gccorr.dels.norpt.bed
+
+cat sj.cor.jarms.calls.gccorr.dels.norpt.bed | perl ~/bin/bed_length_sum.pl
+        Interval Numbers:       22982
+        Total Length:           36816588
+        Length Average:         1601.97493690714
+        Length Median:          1084
+        Min Length:             2926
+        Max Length:             3999
+        Length Stdev:           1556.22709580478
+
+# Let's see how these stack up compared to the sex chromosomes
+cat sj.cor.jarms.calls.gccorr.dels.norpt.bed | cut -f1 | sort | uniq > deletion_chrs.txt
+wc -l deletion_chrs.txt
+	7070 deletion_chrs.txt
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl deletion_chrs.txt /mnt/nfs/nfs2/dbickhart/bird_data/Morgan_ZW_scaffolds.csv
+File Number 1: deletion_chrs.txt
+File Number 2: /mnt/nfs/nfs2/dbickhart/bird_data/Morgan_ZW_scaffolds.csv
+Set     Count
+1       6608
+1;2     462
+2       1088
+
+# Not very convincing
+# Let's compare this to the dups
+cat sj.cor.jarms.calls.gccorr.dups.bed | cut -f1 | sort | uniq > dup_chrs.txt
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl dup_chrs.txt /mnt/nfs/nfs2/dbickhart/bird_data/Morgan_ZW_scaffolds.csv
+File Number 1: dup_chrs.txt
+File Number 2: /mnt/nfs/nfs2/dbickhart/bird_data/Morgan_ZW_scaffolds.csv
+Set     Count
+1       215
+1;2     15
+2       1535
+
+# Fewer, at least!
+# I've thought of a way to estimate the likelihood of RD windows being derived from the Z/W chromosome scaffolds
+# First, let's get the statistics on the ZW scaffolds
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]}) && $s[3] > 0){print join("\t", @s); print "\n";}} close IN;' /mnt/nfs/nfs2/dbickhart/bird_data/Morgan_ZW_scaffolds.csv sj.cor.jarms.calls.bed.gccorr.corr.bed > putative_zw_scaffolds.gccorr.rd.bed
+
+cat putative_zw_scaffolds.gccorr.rd.bed | cut -f4 | statStd.pl
+	total   140710
+	Minimum 0.8756060903062457
+	Maximum 3621139.9085821067
+	Average 909.008232
+	Median  552.614753483193
+	Standard Deviation      17523.841203
+	Mode(Highest Distributed Value) 15.109298926334505
+
+# The average value is lower, but there are some contigs that have significantly heightened estimates of read depth.
+# These are likely repetitive fragments common to the sex chromosomes -- if birds are anything like mammals here.
+```
+
+Just to give Chris something to use, I'm going to intersect the duplication regions (ie. the WSSDs) with gene locations.
+
+```bash
+# Annotation of WSSD regions
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d annotation/genedb.list -i sj.cor.jarms.calls.gccorr.dups.bed -o sj.cor.jarms.wssd
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d annotation/genedb.list -i sj.cor.jarms.calls.gccorr.dups.bed -o sj.cor.jarms.wssd -t
+
+# Now, annotation of the deletions...
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d annotation/genedb.list -i sj.cor.jarms.calls.gccorr.dels.norpt.bed -o sj.cor.jarms.dels
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d annotation/genedb.list -i sj.cor.jarms.calls.gccorr.dels.norpt.bed -o sj.cor.jarms.dels -t
+```
+<a name="summary1"></a>
+## Summary of current results
+
+#### Methods
+All data was processed in the following stepwise manner:
+
+1. Created a set of non-overlapping, 500 bp windows for each scaffold
+2. Calculated global mean and stdev from a fitted Guassian distribution
+3. Estimated G+C % effect on read depth values
+4. Normalized G+C % effects on read depth values
+5. Reestimated mean and stdev -- fitted values from simplistic mean cutoff
+6. Established cutoffs for duplications and deletions
+	1. Duplication cutoff read depth: > 2435
+	2. Deletion cutoff read depth: < 479
+7. Called CNVs if, out of 7 consecutive windows, 6 windows were higher or lower than the cutoffs
+8. Removed Deletion windows that intersected with repeat-masked regions
+8. Annotated CNVs with gene lists that were provided in the original gff file
+
+#### List of files and descriptions
+
+| File | Description|
+| :--- | :--- |
+sj.cor.jarms.dels_regions.tab | tab delimited list of deletions or potential sites of misassembly/misalignment
+sj.cor.jarms.wssd_regions.tab | tab delimited list of predicted Segmental Duplications
+sj.cor.jarms.wssd_anno.xls | excel spreadsheet with gene intersections of the Segmental Duplications
+sj.cor.jarms.dels_anno.xls | excel spreadsheet with gene intersections of the misassemblies/deletions
+
