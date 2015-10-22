@@ -5,6 +5,7 @@
 These are my notes on the assembly/association of BAC clones/contigs to their most likely physical map locations.
 
 ## Table of Contents
+* [Established protocol for assignment](#protocol)
 * [First batch unitig assignments](#firstbatch)
 	* [Initial BAC end mapping information table](#bacend)
 * [Unitig clone association and statistics](#unitigassoc)
@@ -18,6 +19,21 @@ These are my notes on the assembly/association of BAC clones/contigs to their mo
 * [LIB14370 reassembly and LIB14398](#lib14398)
 	* [9/16/2015 BAC clone assignments table](#916assign)
 * [Checking assembly quality with WGS reads](#qualcheck)
+* [LIBs 14413, 14414, 14427, 14435 and 14436](#1022assign)
+
+<a name="protocol"></a>
+## Established protocol for assignment
+
+Since there are many additional clones that need to be identified, I'm going to consolidate my methods of identification and assignment in this subheading:
+
+* First, remove any illegal characters (ie spaces) from the contig fasta headers
+* Second, run [the alignment script](https://github.com/njdbickhart/perl_toolchain/blob/master/assembly_scripts/alignUnitigSectionsToRef.pl) to the UMD3.1 reference genome
+* Then identify putative read clipping issues with [the cigar assembly script](https://github.com/njdbickhart/perl_toolchain/blob/master/assembly_scripts/wgsCigarAssemblyMap.pl)
+* Finally, assign contigs to different IGCs according to chromosome and segment regions
+	* chr18:57,092,237-58,268,067	<- John's chr18
+	* chr23:28,672,885-28,900,932	<- The MHC
+	* chr5:106,309,704-106,537,019	<- The NKC
+	* chr4, chrX or others			<- The LRC
 
 <a name="firstbatch"></a>
 ## First batch unitig assignments
@@ -721,3 +737,244 @@ I may need to remove supplementary alignments from consideration in the future (
 		* Align the data to the fasta, process the BAM to remove the assembled chromosomes and reads that aligned to the assembled chromosomes
 		* Run the data through PILON
 * We will then send the data to John Hammond's group for annotation and further polishing
+
+<a name="1022assign"></a>
+## LIBs 14413, 14414, 14427, 14435 and 14436 
+*10/22/2015*
+
+OK, I'm going to follow the protocol and assign the unitigs to their proper groupings. Here are the potential BAC clones for each library:
+
+| Library | BAC clones |
+| :--- | :--- |
+LIB14413 | CH240-234E12
+ | RP42-168O11
+ | CH240-264A9
+ | CH240-274P11
+LIB14414 | RP42-161F13
+ | RP42-148O8
+ | RP42-128C5
+ | RP42-118F24
+LIB14427 |  RP42-141D20
+ | RP42-122O1
+ | A14-309A12
+LIB14435 | RPCI42_3D15
+ | RPCI42_144K20
+ | RPCI42_113K1
+ | CH240_239G9
+LIB14436 | RPCI42_65A17
+ | RPCI42_113O16
+ | A14_102F7
+
+
+Now to generate alignments for each one.
+
+> pwd:
+
+```bash
+for i in *.fasta; do echo $i; perl ~/share/programs_source/Perl/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f $i -r ../../../../umd3_data/umd3_kary_unmask_ngap.fa -o $i.tab; done
+LIB14413_unitig_154_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr23   28614422        28785263        170841
+                        *       0       1000    1000
+                        
+LIB14413_unitig_1_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chrX    4662955 134696791       130033836
+                        chr1    20951590        121426804       100475214
+                        chr16   17571761        65676141        48104380
+                        chr18   40333799        63630134        23296335
+                        chr7    24121627        39066543        14944916
+                        chr10   82467333        87992246        5524913
+                        chr26   28647035        32459140        3812105
+                        chr4    85882139        85883139        1000
+                        chr15   25930890        25931890        1000
+                        chr13   78628163        78629163        1000
+                        chr11   74810900        74811085        185
+                        chr25   18354194        18354347        153
+                        chr12   69851580        69851706        126
+                        chr23   27321674        27321789        115
+                        chr17   47473590        47473653        63
+                        chr19   53681295        53681355        60
+
+LIB14413_unitig_2_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr13   35427857        57047958        21620101
+                        chr18   61978624        65463091        3484467
+                        chr4    64449373        66263898        1814525
+                        chr23   7067877 7068877 1000
+                        chr28   28363765        28364765        1000
+                        chr7    63039325        63040325        1000
+                        chr5    29312096        29313096        1000
+                        chr29   41439198        41440198        1000
+                        chr16   40034949        40035274        325
+                        chr15   8589677 8589720 43
+
+LIB14414_unitig_264_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr8    27950257        96515699        68565442
+                        chr6    15479372        79562217        64082845
+                        chrX    21358088        83560593        62202505
+                        chr15   2920040 58288153        55368113
+                        chr10   23898683        61537638        37638955
+                        chr26   12526084        47529469        35003385
+                        chr12   39479005        61286067        21807062
+                        chr27   13794570        23416736        9622166
+                        chr23   28332412        30366738        2034326
+                        chr17   67216748        67218144        1396
+                        chr13   41072691        41073691        1000
+                        chr7    28559734        28560106        372
+                        chr28   38183221        38183492        271
+                        chr3    9713003 9713274 271
+                        chr21   59622907        59623037        130
+
+LIB14414_unitig_266.fasta
+Longest aligments:      chr     start   end     length
+                        chr4    3045260 86606200        83560940
+                        *       0       1000    1000
+                        chr25   26283554        26283653        99
+                        chrX    44952057        44952154        97
+                        chr5    73041637        73041727        90
+
+LIB14414_unitig_273.fasta
+Longest aligments:      chr     start   end     length
+                        chr1    20951590        153283269       132331679
+                        chr7    21914287        112018248       90103961
+                        chr16   5146193 63895884        58749691
+                        chrX    101793354       136245924       34452570
+                        chr24   13511406        42825012        29313606
+                        chr18   40333977        62955483        22621506
+                        chr9    96985020        96986020        1000
+                        chr15   25930890        25931890        1000
+                        chr17   66030015        66031015        1000
+
+LIB14414_unitig_274.fasta
+Longest aligments:      chr     start   end     length
+                        chrX    44952057        102634651       57682594
+                        chr5    99666648        99835254        168606
+                        chr9    85666900        85667900        1000
+                        *       0       1000    1000
+                        chr4    3045190 3045260 70
+
+LIB14427_unitig_0_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr1    7148592 127201451       120052859
+                        chr10   27134743        84318053        57183310
+                        chr8    14358641        62205205        47846564
+                        chrX    29052171        74982359        45930188
+                        chr6    63588411        109298777       45710366
+                        chr9    49471423        91667522        42196099
+                        chr21   13304036        17238966        3934930
+                        chr25   21050200        21213370        163170
+                        chr14   32312424        32465121        152697
+                        chr19   20333995        20356319        22324
+                        chr13   51102522        51103522        1000
+
+LIB14427_unitig_1_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr5    99599939        99832107        232168
+                        chr9    75020382        75021382        1000
+                        chr22   12921357        12921607        250
+                        chr2    66606400        66606514        114
+                        *       0       51      51
+                        chr23   24044013        24044056        43
+                        chr13   23606310        23606348        38
+
+LIB14427_unitig_4_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr18   15356024        63458434        48102410
+                        chr23   28465313        28774127        308814
+                        chr2    89152069        89153069        1000
+                        chr5    33742780        33743780        1000
+                        chr16   26985094        26985374        280
+                        chr9    48591015        48591060        45
+
+LIB14435_unitig_87_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr4    28536077        117530536       88994459
+                        chr5    99806650        99987840        181190
+                        chr7    98140412        98140479        67
+
+LIB14435_unitig_91_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr13   17090722        37229993        20139271
+                        chr23   28328510        28518608        190098
+                        chr4    112685209       112686209       1000
+                        chr2    134262528       134263528       1000
+                        chr19   40064607        40065607        1000
+                        chr8    104989269       104989571       302
+                        chr7    36586196        36586293        97
+
+LIB14435_unitig_94_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr1    20951590        121426804       100475214
+                        chr3    8083814 92740401        84656587
+                        chrX    74404074        134697683       60293609
+                        chr18   15236467        62961880        47725413
+                        chr16   17961425        55925864        37964439
+                        chr11   74810900        74811900        1000
+                        chr4    69969728        69970728        1000
+                        chr26   32458140        32459140        1000
+
+LIB14435_unitig_95.fasta
+Longest aligments:      chr     start   end     length
+                        chr9    17515181        98205201        80690020
+                        chrX    35721518        115309627       79588109
+                        chr3    4018422 49724896        45706474
+                        chr1    61716885        102627543       40910658
+                        chr5    82379069        118257779       35878710
+                        chr24   21689436        44597027        22907591
+                        chr13   4846617 27198055        22351438
+                        chr19   11466665        20348729        8882064
+                        chr8    82303979        90885123        8581144
+                        chr17   34084917        34230351        145434
+                        *       0       1000    1000
+
+LIB14436_unitig_0_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr4    18186944        120803728       102616784
+                        chr8    2502330 89494877        86992547
+                        chr10   33079014        87464311        54385297
+                        chr9    9202630 61713398        52510768
+                        chrX    29034784        75906050        46871266
+                        chr18   3298199 48371014        45072815
+                        chr6    11013458        54382458        43369000
+                        chr19   11478548        30797585        19319037
+                        chr17   49622599        68728727        19106128
+                        chr12   26644016        43195410        16551394
+                        chr1    136023882       151871914       15848032
+                        chr22   12571292        12572292        1000
+                        chr14   33671085        33672085        1000
+
+LIB14436_unitig_1_vector_trim.fasta
+Longest aligments:      chr     start   end     length
+                        chr5    99618522        99720504        101982
+                        chr2    66606400        66606514        114
+                        chr11   5445340 5445400 60
+                        chr23   24044013        24044056        43
+                        *       0       41      41
+                        chr13   23606308        23606348        40
+
+```
+
+Let's process this data into the assignment table now:
+
+| Library | Unitig | IGC |BAC clones | Mapping location |
+| :--- | :--- | :--- | :---| :--- |
+LIB14413 | unitig_1 {POOR} |chr18 | CH240-234E12 | chr18:57529167-57689456
+LIB14413 | unitig_2| LRC |RP42-168O11 | chr18:61978624-65463091
+LIB14413 | unitig_154 | MHC |CH240-264A9 | chr23:28614422-28785263
+LIB14413 | ? | NKC |CH240-274P11
+LIB14414 | unitig_274 | NKC | RP42-161F13 | chr5:99666648-99835254
+LIB14414 | unitig_264 | MHC | RP42-148O8 | chr23:28332412-30366738
+LIB14414 | unitig_266 | LRC | RP42-128C5 | chr4:86604200-86465809
+LIB14414 | unitig_273 | chr18 | RP42-118F24 | chr18:57566638-57705186
+LIB14427 | unitig_0 | LRC | RP42-141D20 | chrX:35727824-35994279
+LIB14427 | unitig_4 | MHC | RP42-122O1 | chr23:28465313-28658340
+LIB14427 | unitig_1 | ? | ?A14-309A12? | chr5:99600086-99832107
+LIB14435 | unitig_94 | chr18 | RPCI42_3D15 | chr18:57607122-57805762
+LIB14435 | unitig_95 | LRC | RPCI42_144K20 | chrX:35795605-37447993
+LIB14435 | unitig_91 | MHC | RPCI42_113K1 | chr23:28328510-28473812
+LIB14435 | unitig_87 | NKC | CH240_239G9 | chr5:99806650-99987840
+LIB14436 | unitig_0 | LRC | RPCI42_65A17 | chrX:35722498-36835346
+LIB14436 | ? | MHC | RPCI42_113O16 |
+LIB14436 | unitig_1| ? | ?A14_102F7? | chr5:99618522-99718503
