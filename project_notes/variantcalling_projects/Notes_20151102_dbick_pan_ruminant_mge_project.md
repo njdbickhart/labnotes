@@ -142,3 +142,91 @@ intersectBed -b BIBR02.jarms.callscnvs.bed -a BIBR02.jarms.400cnvs.bed -v | bed_
 # Let's automate this for now and then take care of the issues later.
 for i in `ls -d B?????`; do echo $i; ~/jdk1.8.0_05/bin/java -jar ~/JaRMS/store/JaRMS.jar call -i $i/${i}.rg.rd.full.sorted.merged.bam -f ../reference/umd3_kary_unmask_ngap.fa -o ${i}.auto.jarms -t 2 -w 500; done
 ```
+
+The deadline is approaching, so I need to get some very preliminary results in order to pad my abstract. I think that I'm going to take the JaRMS calls that have finished for the Indicus animals and compare them to the RAPTR-SV results I previously generated (March 2 2015). My hope is to tie tandem dups with predicted duplication regions -- non-duplicated tandem repeat signatures indicate assembly shuffling.
+
+Let's talk about the signatures I'm looking for:
+
+* Genomic region rearrangement - tandem dups without RD signal, or trans-chr alignments
+* MEI - transchr or maxdist repetitive reads
+* Genomic deletion  deletion present in all individuals
+
+OK, some summary statistics before I begin:
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run
+
+```bash
+wc -l raptr-sv/finalfilter/BI*.tand.bed
+   166 raptr-sv/finalfilter/BIBR02.finalfilter.raptr.tand.bed
+   616 raptr-sv/finalfilter/BIBR03.finalfilter.raptr.tand.bed
+   132 raptr-sv/finalfilter/BIBR04.finalfilter.raptr.tand.bed
+   615 raptr-sv/finalfilter/BIBR05.finalfilter.raptr.tand.bed
+  1447 raptr-sv/finalfilter/BIBR07.finalfilter.raptr.tand.bed
+   268 raptr-sv/finalfilter/BIBR08.finalfilter.raptr.tand.bed
+   130 raptr-sv/finalfilter/BIBR09.finalfilter.raptr.tand.bed
+    75 raptr-sv/finalfilter/BIGI01.finalfilter.raptr.tand.bed
+   348 raptr-sv/finalfilter/BIGI02.finalfilter.raptr.tand.bed
+   415 raptr-sv/finalfilter/BIGI05.finalfilter.raptr.tand.bed
+   109 raptr-sv/finalfilter/BIGI06.finalfilter.raptr.tand.bed
+  1085 raptr-sv/finalfilter/BIGI07.finalfilter.raptr.tand.bed
+   347 raptr-sv/finalfilter/BIGI08.finalfilter.raptr.tand.bed
+  6723 raptr-sv/finalfilter/BINE01.finalfilter.raptr.tand.bed
+   376 raptr-sv/finalfilter/BINE04.finalfilter.raptr.tand.bed
+   187 raptr-sv/finalfilter/BINE07.finalfilter.raptr.tand.bed
+   203 raptr-sv/finalfilter/BINE09.finalfilter.raptr.tand.bed
+   352 raptr-sv/finalfilter/BINE10.finalfilter.raptr.tand.bed
+    61 raptr-sv/finalfilter/BINE12.finalfilter.raptr.tand.bed
+   187 raptr-sv/finalfilter/BINE13.finalfilter.raptr.tand.bed
+   250 raptr-sv/finalfilter/BINE23.finalfilter.raptr.tand.bed
+ 14092 total
+
+# So, BINE1 is pretty bad. Let's focus on Brahman for the abstract
+# Let's go through my analysis pipeline
+intersectBed -a raptr-sv/finalfilter/BIBR02.finalfilter.raptr.tand.bed -b BIBR02.auto.jarmscnvs.bed | wc -l
+	23
+grep 'duplication' BIBR02.auto.jarmscnvs.bed | wc -l
+	5075
+wc -l raptr-sv/finalfilter/BIBR02.finalfilter.raptr.tand.bed
+	166 raptr-sv/finalfilter/BIBR02.finalfilter.raptr.tand.bed
+
+# That leaves about 143 tandem events unaccounted for
+# Let's confirm by checking their supporting read counts
+# I noticed that "3" was the mode for this sample
+intersectBed -a raptr-sv/finalfilter/BIBR02.finalfilter.raptr.tand.bed -b BIBR02.auto.jarmscnvs.bed -v | perl -lane 'if($F[4] > 3){print $_;}' | wc -l
+	36 <- 36 candidate rearrangements
+
+# Let's get the numbers for the rest of the samples
+for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09; do echo -en "$i\t"; intersectBed -a raptr-sv/finalfilter/${i}.finalfilter.raptr.tand.bed -b ${i}.auto.jarmscnvs.bed -v | perl -lane 'if($F[4] > 3){print $_;}' | wc -l; done
+BIBR02  36
+BIBR03  Error: The requested bed file (BIBR03.auto.jarmscnvs.bed) could not be opened. Exiting!
+0
+BIBR04  32
+BIBR05  95
+BIBR07  Error: The requested bed file (BIBR07.auto.jarmscnvs.bed) could not be opened. Exiting!
+0
+BIBR08  76
+BIBR09  32
+
+# Weird! The BIBR03 and BIBR07 files have idx files... oh well. I'll debug later.
+# Let's print out the data to text files so I can intersect them
+for i in BIBR02 BIBR03 BIBR04 BIBR05 BIBR07 BIBR08 BIBR09; do echo -en "$i\n"; intersectBed -a raptr-sv/finalfilter/${i}.finalfilter.raptr.tand.bed -b ${i}.auto.jarmscnvs.bed -v | perl -lane 'if($F[4] > 3){print $_;}' > temp.${i}.unsupported.tand; done
+
+# Ok, I'm testing by grepping out chromosomes and comparing by eye. Here are some I've found
+# chr2
+temp.BIBR02.unsupported.tand:chr2       65185285        65185604        TANDEM  4.0
+temp.BIBR04.unsupported.tand:chr2       65185274        65185584        TANDEM  4.0
+temp.BIBR08.unsupported.tand:chr2       65185312        65185642        TANDEM  8.0
+
+# chr4
+temp.BIBR02.unsupported.tand:chr4       6117380 6117469 TANDEM  11.0
+temp.BIBR04.unsupported.tand:chr4       6117387 6117469 TANDEM  5.0
+temp.BIBR08.unsupported.tand:chr4       6117381 6117467 TANDEM  9.0
+
+# chr10
+temp.BIBR02.unsupported.tand:chr10      26147295        26148209        TANDEM  5.0
+temp.BIBR04.unsupported.tand:chr10      26147248        26148178        TANDEM  6.0
+temp.BIBR08.unsupported.tand:chr10      26147232        26148206        TANDEM  4.0
+```
+
+Hmm, I just realized that many of these were smaller regions that would not be detected by JaRMS at a 500bp window size anyways...
+
