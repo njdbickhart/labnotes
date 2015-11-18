@@ -10,6 +10,7 @@ These are my notes on generating runtime reports for Paul to compare with his va
 	* [Program runtime table](#runtime)
 * [Testing alignment accuracy](#accuracy)
 	* [Alignment accuracy table](#accuracytab)
+* [Testing BWA runtime with a repeatmasked reference genome](#repeatmask)
 
 <a name="format"></a>
 ## Formatting the data
@@ -183,3 +184,37 @@ ONECORRECT  |    222690 | 0.0655
 MISSED | 211971 | 0.0623
 
 Nice! Let's send this data to Paul for his abstract.
+
+<a name="repeatmask"></a>
+## Testing BWA runtime with a repeatmasked reference genome
+*11/18/2015*
+
+In order to provide a better usage case scenario, I wanted to run the same test, but with a repeat-masked genome. Basically, BWA using as little information as needed for accurate alignment of the regions that "matter" (to the coding region crowd).
+
+I'm going to thoroughly mask the umd3 reference using the UCSC provided bed files, then I'll test to make sure that all of the lower-case bases (soft masked) are correctly "N'ed" out.
+
+> 3850: /seq1/reference
+
+```bash
+# Bedtools masking using UCSC repeat coords
+~/bedtools2/bin/maskFastaFromBed -fi umd3_kary_unmask_ngap.fa -bed umd3_ucsc_combined_repeat.bed -fo umd3_kary_hmask_ngap.fa
+
+# Testing the completeness of the masking
+perl -ne 'if($_ =~ tr/agt/agt/){print $_;}' < umd3_kary_hmask_ngap.fa | head
+	NNNNNNNNNNNNNNNNNNNNNaccagtcagaatagtcataatcaaaaact
+	acgaataattNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN
+	NNNNNNNNNNNNNNNNNNNNNNNNNNNNNctttccaacaaattgtgctga
+	gacaactgagtgtgtgtgtgtgtgcgtgagtgtgtgtgtgtgcgcgcgcN
+
+# OK, only four lines? That's pretty good. I'm going to ignore them for now and proceed with the alignment
+# First, index the genome
+bwa index umd3_kary_hmask_ngap.fa
+```
+
+Now to run the pipeline on the updated fasta file. Since I'm leaving for the day pretty soon, I'm going to schedule the running in about 3 hours so that it completes overnight.
+
+> 3850: /seq1/bickhart/paul_alignment
+
+```bash
+sleep 3h; perl ~/perl_toolchain/simulations/runBWAAlignmentResourceTest.pl -f segments_revised.1.fq -r segments_revised.2.fq -l segments_test_rmask.log -g /seq1/reference/umd3_kary_hmask_ngap.fa -o segments_revised_rmask
+```
