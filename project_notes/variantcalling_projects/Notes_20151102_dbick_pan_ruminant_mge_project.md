@@ -230,3 +230,12 @@ temp.BIBR08.unsupported.tand:chr10      26147232        26148206        TANDEM  
 
 Hmm, I just realized that many of these were smaller regions that would not be detected by JaRMS at a 500bp window size anyways...
 
+## JaRMS on Goat and Buffalo
+
+This is my first-pass test of JaRMS on the Goat and Buffalo samples. Let's see how it performs.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams
+
+```bash
+for i in `ls */*.bam`; do name=`echo $i | cut -d'/' -f1`; echo $name; ~/jdk1.8.0_05/bin/java -jar ~/JaRMS/store/JaRMS.jar call -i $i -f ../../reference/umd3_kary_unmask_ngap.fa -o ${name}.jarms -t 5 -w 500; done
+```
