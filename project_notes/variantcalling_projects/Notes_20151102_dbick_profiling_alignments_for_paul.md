@@ -11,6 +11,8 @@ These are my notes on generating runtime reports for Paul to compare with his va
 * [Testing alignment accuracy](#accuracy)
 	* [Alignment accuracy table](#accuracytab)
 * [Testing BWA runtime with a repeatmasked reference genome](#repeatmask)
+	* [Program repeatmask runtime table](#rmaskruntime)
+	* [Repeatmask Alignment accuracy table](#rmaskaccuracytab)
 
 <a name="format"></a>
 ## Formatting the data
@@ -175,13 +177,13 @@ Finished loading key
 Finished processing bam file
 ```
 <a name="accuracytab"></a>
-#### Alignment accuracy table
+#### Alignment accuracy table (updated with correct bam)
 
 |Class | Read count | Percentage |
 |:--- | :--- | :--- |
-CORRECT | 2965364 | 0.8722
-ONECORRECT  |    222690 | 0.0655
-MISSED | 211971 | 0.0623
+CORRECT | 7,734,911 | 0.8721
+ONECORRECT  |    581,695 | 0.0656
+MISSED | 553,084 | 0.0624
 
 Nice! Let's send this data to Paul for his abstract.
 
@@ -217,4 +219,65 @@ Now to run the pipeline on the updated fasta file. Since I'm leaving for the day
 
 ```bash
 sleep 3h; perl ~/perl_toolchain/simulations/runBWAAlignmentResourceTest.pl -f segments_revised.1.fq -r segments_revised.2.fq -l segments_test_rmask.log -g /seq1/reference/umd3_kary_hmask_ngap.fa -o segments_revised_rmask
+
+cat segments_test_rmask.log
+	ALIGN   bwa mem /seq1/reference/umd3_kary_hmask_ngap.fa segments_revised.1.fq segments_revised.2.fq > segments_revised_rmask.sam        9078    0
+	BAM     samtools view -bS segments_revised_rmask.sam > segments_revised_rmask.bam       309     0
+	SORT    samtools sort -T temp.sam -o segments_revised_rmask.sort.bam segments_revised_rmask.bam 456     0
+	INDEX   samtools index segments_revised_rmask.sort.bam  30      0
+	CALL    samtools mpileup -go segments_revised_rmask.bcf -f /seq1/reference/umd3_kary_hmask_ngap.fa segments_revised_rmask.sort.bam      5689    0
+	FILTER  bcftools call -vmO z -o segments_revised_rmask.vcf.gz segments_revised_rmask.bcf        384     0
 ```
+
+Strangely, the "calling" step took far longer (perhaps it is a consequence of the partial alignment bug that I found before?). Here is a table of the runtimes:
+
+<a name="rmaskruntime"></a>
+#### Program repeatmask runtime table
+
+| Program stage | Description | Time (in real seconds) |
+| :--- | :--- | ---: |
+| ALIGN | Read alignment to reference | 9078 |
+| BAM | Conversion to binary format | 309 | 
+| SORT | Sort reads in binary file | 456 |
+| INDEX | Index the binary file for fast lookup | 30 | 
+| CALL | Get all (unfiltered) variant sites | 5689 |
+| FILTER | Remove variant site artifacts and get final calls | 384 |
+| **TOTAL**| --- | **15,946 = 4.429 hours**|
+
+Now to check read accurracy and alignment counts.
+
+```bash
+# Running on the repeatmasked, sorted bam
+perl ~/perl_toolchain/simulations/testBWAAlignmentAccuracy.pl -i segments_revised.sort.other.bam -t original_segments_names.tab -o segments_alignment_accuracy_rmask.tab
+```
+
+<a name="rmaskaccuracytab"></a>
+#### Repeatmask Alignment accuracy table
+
+|Class | Read count | Percentage |
+|:--- | :--- | :--- |
+CORRECT | 2,351,213 | 0.2651
+ONECORRECT  |    3,258,382 | 0.3674
+MISSED | 3,260,095 | 0.3676
+
+Finally, I just need to get the number of completely unmapped pairs.
+
+```bash
+samtools idxstats segments_revised_rmask.sort.bam
+	...
+	*       0       0       2,966,398
+```
+
+Let's gather all of the data in one location.
+
+## Alignment test summary
+
+| Program stage | Description | Time (in real seconds) |
+| :--- | :--- | ---: |
+| ALIGN | Read alignment to reference | 9078 |
+| BAM | Conversion to binary format | 309 | 
+| SORT | Sort reads in binary file | 456 |
+| INDEX | Index the binary file for fast lookup | 30 | 
+| CALL | Get all (unfiltered) variant sites | 5689 |
+| FILTER | Remove variant site artifacts and get final calls | 384 |
+| **TOTAL**| --- | **15,946 = 4.429 hours**|
