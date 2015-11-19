@@ -274,16 +274,21 @@ samtools idxstats segments_revised_rmask.sort.bam
 	*       0       0       2,966,398
 ```
 
-Let's gather all of the data in one location.
+Let's gather all of the data in one location. I need to get accurate times for the initial variant calling step (no repeatmasking) though!
+
+```bash
+perl ~/perl_toolchain/simulations/runBWAAlignmentResourceTest.pl -f segments_revised.1.fq -r segments_revised.2.fq -l segments_revised_accurate.log -g ../../reference/umd3_kary_unmask_ngap.fa -o segments_revised
+
+```
 
 ## Alignment test summary
 
-| Program stage | Description | Time (in real seconds) |
-| :--- | :--- | ---: |
-| ALIGN | Read alignment to reference | 9078 |
-| BAM | Conversion to binary format | 309 | 
-| SORT | Sort reads in binary file | 456 |
-| INDEX | Index the binary file for fast lookup | 30 | 
-| CALL | Get all (unfiltered) variant sites | 5689 |
-| FILTER | Remove variant site artifacts and get final calls | 384 |
-| **TOTAL**| --- | **15,946 = 4.429 hours**|
+| Program stage | Description | Unmasked Time (sec) |Rmask Time (sec) |
+| :--- | :--- | ---: | ---: |
+| ALIGN | Read alignment to reference | 37,752 | 9078 |
+| BAM | Conversion to binary format | 357 | 309 | 
+| SORT | Sort reads in binary file | 516 | 456 |
+| INDEX | Index the binary file for fast lookup | 33 | 30 | 
+| CALL | Get all (unfiltered) variant sites | 11,275 | 5689 |
+| FILTER | Remove variant site artifacts and get final calls | 804 | 384 |
+| **TOTAL**| --- | **50,737 = 14.09 hours**| **15,946 = 4.429 hours**|
