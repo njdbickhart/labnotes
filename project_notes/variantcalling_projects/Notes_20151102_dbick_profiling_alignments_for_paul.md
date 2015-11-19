@@ -209,6 +209,12 @@ perl -ne 'if($_ =~ tr/agt/agt/){print $_;}' < umd3_kary_hmask_ngap.fa | head
 	gacaactgagtgtgtgtgtgtgtgcgtgagtgtgtgtgtgtgcgcgcgcN
 
 # OK, only four lines? That's pretty good. I'm going to ignore them for now and proceed with the alignment
+# Let's calculate the percentage of repeatmasking here:
+~/jdk1.8.0_45/bin/java -jar ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ../../reference/umd3_kary_hmask_ngap.fa -o umd3_kary_hmask_ngap.gap.bed -s umd3_kary_hmask_ngap.gap.stats
+
+perl -e '<>; $c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[2];} print "$c\n";' < umd3_kary_hmask_ngap.gap.stats
+	1,216,216,639 	<- which is 46.77% of the genome
+
 # First, index the genome
 bwa index umd3_kary_hmask_ngap.fa
 ```
