@@ -1130,3 +1130,21 @@ wc -l rh_map/*out
 29      Scaffold_59
 29      Scaffold_7
 ```
+
+## Lachesis read depth error correction
+
+I need to calculate the read depth of the Lachesis scaffolds and subtract obvious deletion sites from gap regions.
+
+Let's use JaRMS to try to find these deletion regions. Here are the files I need:
+
+* /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Lachesis-2015-10-22-min/papadum-v5lachesis.full.fa
+* /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat250-PBv4lachesis.bam
+* /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.bam
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/lachesis/test_coverage
+
+```bash
+~/jdk1.8.0_05/bin/java -jar ~/JaRMS/store/JaRMS.jar call -i /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat250-PBv4lachesis.bam -i /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.bam -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Lachesis-2015-10-22-min/papadum-v5lachesis.full.fa -o papadum_pbv4_lachesis_jarms -t 5 -w 100
+
+# Hopefully things don't blow up!
+```
