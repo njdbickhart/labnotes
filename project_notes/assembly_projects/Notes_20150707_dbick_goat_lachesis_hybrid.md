@@ -1147,4 +1147,213 @@ Let's use JaRMS to try to find these deletion regions. Here are the files I need
 ~/jdk1.8.0_05/bin/java -jar ~/JaRMS/store/JaRMS.jar call -i /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat250-PBv4lachesis.bam -i /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.bam -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Lachesis-2015-10-22-min/papadum-v5lachesis.full.fa -o papadum_pbv4_lachesis_jarms -t 5 -w 100
 
 # Hopefully things don't blow up!
+# OK, things blew up. I'm going to have to use the "interpret" function
+~/jdk1.8.0_05/bin/java -jar ~/JaRMS/store/JaRMS.jar interpret -i papadum_pbv4_lachesis_jarms.gccorr.tmp -o papadum_pbv4_gccorr_windows.bed
+
+# Now to eliminate the degenerate contigs
+grep -v 'dtg' papadum_pbv4_gccorr_windows.bed > papadum_pbv4_gccorr_nodeg.bed
+
+# Correcting the start coordinate errors from the gccorr module (gotta fix this later)
+perl -lane '$F[1] -= 99; print join("\t", @F);' < papadum_pbv4_gccorr_nodeg.bed > corrected
+mv corrected papadum_pbv4_gccorr_nodeg.bed
+
+# getting just the Lachesis clusters
+grep 'Lachesis' papadum_pbv4_gccorr_nodeg.bed > papadum_pbv4_gccorr_only_lachesis.bed
+
+# Just like with the bird data, I'm going to pass them through Alkan's segmentation algorithm
+cat papadum_pbv4_gccorr_only_lachesis.bed | cut -f4 | statStd.pl
+	total   25880541
+	Minimum 0.0
+	Maximum 56241.49243645622		<- wow! There is one big window then!
+	Average 29.557580
+	Median  29.809064995042757
+	Standard Deviation      17.575781
+	Mode(Highest Distributed Value) 29.186489089417787
+
+# We'll search for windows under the average - 1.5 stdevs (4 reads)
+# Also, 4 windows with at least 3 windows under the cutoff value
+perl ~/wssd-package/wssd_picker.pl -f papadum_pbv4_gccorr_only_lachesis.bed -w 4 -s 3 -c 4 -b 3 -n 5 -i 1 -m -o papadum_pbv4_gccorr_only_lachesis.dels.bed
+
+wc -l papadum_pbv4_gccorr_only_lachesis.dels.bed
+	6606 papadum_pbv4_gccorr_only_lachesis.dels.bed
+
+# Quite a few events! Let's remove the gaps
+sed 1d papadum_pbv4_gccorr_only_lachesis.dels.bed > temp
+mv temp papadum_pbv4_gccorr_only_lachesis.dels.bed
+mergeBed -i papadum_pbv4_gccorr_only_lachesis.dels.bed > papadum_pbv4_gccorr_only_lachesis.dels.merged.bed
+
+~/jdk1.8.0_05/bin/java -jar ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -f papadum_v5lachesis.full.fa -o papadum_v5lachesis.gaps.bed -s papadum_v5lachesis.gaps.stats
+intersectBed -a papadum_pbv4_gccorr_only_lachesis.dels.merged.bed -b papadum_v5lachesis.gaps.bed -v > papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed
+
+wc -l papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed
+	4879 papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed
+
+# Some! Were removed!
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed
+        Interval Numbers:       4879
+        Total Length:           3905121
+        Length Average:         800.393728222997
+        Length Median:          499
+        Length Stdev:           755.241372796992
+        Smallest Length:        299
+        Largest Length:         8799
+
+# Also most were small. Let's check this against Serge's data
 ```
+
+Serge's files are located in these locations:
+> /mnt/nfs/nfs2/GoatData/Sergey201511
+
+* out.rg.bam
+* out.rg.bam.vcf
+* out.splitters.rg.bam
+* runLumpy.sh
+* run.sh
+* sort.sh
+
+Let's check to see if the file stats match up to Serge's email (sometimes the files might be different!).
+
+```bash
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -e '#' -f /mnt/nfs/nfs2/GoatData/Sergey201511/out.rg.bam.vcf -c 4 -m | head -n 25
+```
+
+|Entry                                                      | Count|
+|:----------------------------------------------------------|-----:|
+|DEL                                                      |  1152|
+|DUP                                                      |    54|
+|INV                                                      |     4|
+|N[Lachesis_group0__33_contigs__length_157380104:100058933[ |     1|
+|N[Lachesis_group0__33_contigs__length_157380104:116548985[ |     1|
+|N[Lachesis_group0__33_contigs__length_157380104:116549078[ |     1|
+|N[Lachesis_group0__33_contigs__length_157380104:137582245[ |     1|
+|N[Lachesis_group0__33_contigs__length_157380104:59946576[  |     1|
+|N[Lachesis_group0__33_contigs__length_157380104:65261217[  |     1|
+|N[Lachesis_group10__21_contigs__length_94630891:62519055[  |     1|
+|N[Lachesis_group10__21_contigs__length_94630891:81453433[  |     1|
+|N[Lachesis_group10__21_contigs__length_94630891:88355619[  |     1|
+|N[Lachesis_group11__32_contigs__length_91726360:3755997[   |     1|
+|N[Lachesis_group11__32_contigs__length_91726360:84181818[  |     1|
+|N[Lachesis_group12__41_contigs__length_87347178:42284630[  |     1|
+|N[Lachesis_group12__41_contigs__length_87347178:73180301[  |     1|
+|N[Lachesis_group12__41_contigs__length_87347178:73548433[  |     1|
+|N[Lachesis_group12__41_contigs__length_87347178:73548460[  |     1|
+|N[Lachesis_group12__41_contigs__length_87347178:73548684[  |     1|
+|N[Lachesis_group13__19_contigs__length_83084112:22889562[  |     1|
+|N[Lachesis_group13__19_contigs__length_83084112:31075263[  |     1|
+|N[Lachesis_group13__19_contigs__length_83084112:31754806[  |     1|
+|N[Lachesis_group13__19_contigs__length_83084112:70714264[  |     1|
+...
+
+The rest were all of the "BND" events, which appear to be "paired" complex rearrangements or transchromosomal events. Let's use a Lumpy script in order to get the BEDPE readout of these events.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/lachesis/test_coverage
+
+```bash
+python ~/lumpy/scripts/vcfToBedpe -i /mnt/nfs/nfs2/GoatData/Sergey201511/out.rg.bam.vcf -o out.rg.bam.bedpe
+# Gave a traceback and error:
+	Traceback (most recent call last):
+  File "/home/dbickhart/lumpy/scripts/vcfToBedpe", line 448, in <module>
+    sys.exit(main())
+  File "/home/dbickhart/lumpy/scripts/vcfToBedpe", line 443, in main
+    vcfToBedpe(args.input, args.output)
+  File "/home/dbickhart/lumpy/scripts/vcfToBedpe", line 315, in vcfToBedpe
+    if int(var.info[ev]) > 0:
+	KeyError: 'PE'
+```
+
+So, the VCF does not have a "PE" key and the script assumes that it does! Time to change it.
+
+Modified code:
+
+> lines 313 - 318
+```python
+ev_list = list()
+            for ev in ['PE', 'SR']:
+                if ev in var.info:
+                        if int(var.info[ev]) > 0:
+                                ev_list.append(ev)
+            evtype = ','.join(ev_list)
+```
+
+Also
+
+> lines 326 - 329
+```python
+format_dict = dict(zip(format_list, gt.split(':')))
+                format_dict['PE'] = int(format_dict.get('PE', 0))
+                format_dict['SR'] = int(format_dict.get('SR',0))
+                format_dict['SU'] = int(format_dict.get('SU',0))
+```
+
+OK, now the script worked.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/lachesis/test_coverage
+
+```bash
+python ~/lumpy/scripts/vcfToBedpe -i /mnt/nfs/nfs2/GoatData/Sergey201511/out.rg.bam.vcf -o out.rg.bam.bedpe
+
+# Retrieving deletions
+perl -lane 'if($F[10] eq "DEL"){print "$F[0]\t$F[1]\t$F[5]";}' < out.rg.bam.bedpe > serge_lumpy_dels.bed
+# Retrieving dups
+perl -lane 'if($F[10] eq "DUP"){print "$F[0]\t$F[1]\t$F[5]";}' < out.rg.bam.bedpe > serge_lumpy_dups.bed
+
+# Getting only the BND events
+perl -lane 'if($F[10] eq "BND"){print $_;}' < out.rg.bam.bedpe > serge_lumpy_bnds.bedpe
+
+# Getting only the same scaffold BND events (inversions)
+perl -lane 'if($F[0] eq $F[3]){print $_;}' < serge_lumpy_bnds.bedpe > serge_lumpy_bnds.same.bedpe
+# Getting all other BNDs
+perl -lane 'if($F[0] ne $F[3]){print $_;}' < serge_lumpy_bnds.bedpe > serge_lumpy_bnds.trans.bedpe
+
+wc -l *.bed*
+	   944 serge_lumpy_bnds.bedpe
+       136 serge_lumpy_bnds.same.bedpe
+       808 serge_lumpy_bnds.trans.bedpe
+      1152 serge_lumpy_dels.bed
+        54 serge_lumpy_dups.bed
+
+```
+
+Let's gather some summary stats. Deletions first (they're easier).
+
+```bash
+# Deletions -- JaRMs vs Lumpy SR
+intersectBed -a papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed -b serge_lumpy_dels.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | mergeBed -i stdin | wc -l
+	1318
+
+# Deletions -- Lumpy SR vs JaRMs
+intersectBed -a serge_lumpy_dels.bed -b papadum_v5lachesis.gaps.bed -v | intersectBed -a stdin -b papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | mergeBed -i stdin | wc -l
+	185
+
+intersectBed -a serge_lumpy_dels.bed -b papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | mergeBed -i stdin | wc -l
+	1318
+
+# Hmmm... the gaps are acting very strangely here
+intersectBed -a serge_lumpy_dels.bed -b papadum_v5lachesis.gaps.bed -v | wc -l
+	944
+
+# Checking the size of deletions that were not detected by JaRMs
+intersectBed -a serge_lumpy_dels.bed -b papadum_v5lachesis.gaps.bed -v | intersectBed -a stdin -b papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed -v | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       762
+        Total Length:           1539129
+        Length Average:         2019.85433070866
+        Length Median:          1201
+        Length Stdev:           3632.39573243275
+        Smallest Length:        6
+        Largest Length:         47826
+
+# Some are very small INDELs, but allot are within our range of detection (ie > 400 bp).
+# Could be repetitive mappings, but let's see
+# The first interval was repetitive, but the second had some discrepencies:
+
+perl -lane 'if($F[0] eq "Lachesis_group0__33_contigs__length_157380104" && $F[2] >= 41479008 && $F[1] <= 41482513){print $_;}' < papadum_pbv4_gccorr_windows.bed | less
+Lachesis_group0   41479099        41479099        2.051157503712246
+Lachesis_group0   41479199        41479199        10.354122099489176
+Lachesis_group0   41479299        41479299        0.9728829696472595
+Lachesis_group0   41479399        41479399        6.008097420602061
+
+# We'll accept that my read depth signal was very good and move on from there.
+```
+
+I really want to test to see if the BNDs align with Shawn's RH map inversions. Let's write a script to identify the regions that we need to check.
+

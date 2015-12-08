@@ -17,3 +17,7 @@ wget ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByRun/sra/ERR/ERR977/ERR
 All SRA accessions follow the same scheme on the NCBI ftp site:
 
 > ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByRun/sra/{SRR|ERR|DRR}/{first 6 characters of accession}/{accession}/{accession}.sra
+
+```bash
+bwa mem -t 10 -M /mnt/nfs/nfs2/dbickhart/pig/pig_03Aug2015_1Wx8C.fasta ERR977386.fastq.gz > pig_03Aug2015_ERR977386.sam
+```
