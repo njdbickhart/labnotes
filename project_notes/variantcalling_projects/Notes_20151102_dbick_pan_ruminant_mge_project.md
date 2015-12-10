@@ -41,6 +41,7 @@ OK, I had to remove the error message profiling (open3 wasn't working with BWA f
 * Annotate genomic regions and identify gene families under expansion/contraction
 * Focus on the transcriptional regulation regions with MEI discovery
 * Additionally SNPs and INDELs in the regulatory regions
+* Identify cis-regulatory elements that are conserved/altered between cattle/goat/buffalo
 * Also focus on gene deletions
 * Identify individual diversity profiles and remove them as potential CNV "noise"
 * TARGET: PNAS if I can get enough data
@@ -238,4 +239,63 @@ This is my first-pass test of JaRMS on the Goat and Buffalo samples. Let's see h
 
 ```bash
 for i in `ls */*.bam`; do name=`echo $i | cut -d'/' -f1`; echo $name; ~/jdk1.8.0_05/bin/java -jar ~/JaRMS/store/JaRMS.jar call -i $i -f ../../reference/umd3_kary_unmask_ngap.fa -o ${name}.jarms -t 5 -w 500; done
+
+wc -l *.bed
+    5941 AG280.jarmscnvs.bed
+    5875 AG304.jarmscnvs.bed
+    8814 AG306.jarmscnvs.bed
+   25795 ITWB10.jarmscnvs.bed
+   26677 ITWB11.jarmscnvs.bed
+   26853 ITWB12.jarmscnvs.bed
+   24230 ITWB13.jarmscnvs.bed
+   21375 ITWB14.jarmscnvs.bed
+   25063 ITWB15.jarmscnvs.bed
+   21298 ITWB1.jarmscnvs.bed
+   23390 ITWB2.jarmscnvs.bed
+   23708 ITWB3.jarmscnvs.bed
+   23884 ITWB4.jarmscnvs.bed
+   22783 ITWB5.jarmscnvs.bed
+   17310 ITWB6.jarmscnvs.bed
+   23141 ITWB7.jarmscnvs.bed
+   24781 PC1.jarmscnvs.bed
+  350918 total
+
+# Quite a few more calls in Buffalo! Might be a dataset bias... but we can't focus on that for now
+```
+
+## RAPTR-SV on new Goat and Buffalo bams
+
+I need to generate the RAPTR-SV calls for Goat and Buffalo. Let's do this in an automated fashion for now.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams
+
+```bash
+for i in `ls */*.bam`; do name=`echo $i | cut -d'/' -f1`; echo $name; ~/jdk1.8.0_05/bin/java -Xmx50g -jar ~/RAPTR-SV/store/RAPTR-SV.jar preprocess -i $i -o ${name}.raptr.preprocess -r ../../reference/umd3_kary_nmask_hgap.fa -t 10 -p ../../tmp/; done
+
+```
+
+## TFBS preparation
+
+I want to see the impact of variants on TFBSs, so I better do the liftover from btau4 to umd3. Hopefully, I maintain at least 90% of the sites!
+
+Liftover should be pretty easy to manage at this point. Here's the
+
+> Blade14:  /mnt/iscsi/vnx_gliu_7/ruminant_project
+
+```bash
+/home/dbickhart/bin/liftOver cattle_bc_tfbs_btau4.bed bosTau4ToBosTau6.over.chain cattle_bc_tfbs_umd3_liftover.bed cattle_bc_tfbs_umd3_liftover.unmapped 
+
+wc -l cattle_bc_tfbs_btau4.bed cattle_bc_tfbs_umd3_liftover.bed cattle_bc_tfbs_umd3_liftover.unmapped
+  379333 cattle_bc_tfbs_btau4.bed
+  377281 cattle_bc_tfbs_umd3_liftover.bed
+    4104 cattle_bc_tfbs_umd3_liftover.unmapped
+
+# Well! That's better than I hoped!
+# Just taking a brief look at the unmapped coordinates quickly
+grep '#Deleted' cattle_bc_tfbs_umd3_liftover.unmapped | wc -l
+	1676
+grep '#Partially' cattle_bc_tfbs_umd3_liftover.unmapped | wc -l
+	349
+
+# OK, I didn't want those sites in any case, it looks like!
 ```
