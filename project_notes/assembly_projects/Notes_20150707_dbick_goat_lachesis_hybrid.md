@@ -14,6 +14,7 @@ These are my notes on mapping the pacbio contigs back to the Lachesis scaffolds 
 * [Gap information scan](#gap)
 * [Pilon error correction](#pilon)
 * [Penultimate assembly correction and splitting](#penultimate)
+* [Lachesis read depth error correction](#rderrorcorr)
 
 <a name="preparation"></a>
 ## Preparation
@@ -1131,6 +1132,7 @@ wc -l rh_map/*out
 29      Scaffold_7
 ```
 
+<a name="rderrorcorr"></a>
 ## Lachesis read depth error correction
 
 I need to calculate the read depth of the Lachesis scaffolds and subtract obvious deletion sites from gap regions.
