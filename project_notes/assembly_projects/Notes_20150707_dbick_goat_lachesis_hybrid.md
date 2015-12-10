@@ -1357,3 +1357,156 @@ Lachesis_group0   41479399        41479399        6.008097420602061
 
 I really want to test to see if the BNDs align with Shawn's RH map inversions. Let's write a script to identify the regions that we need to check.
 
+The [script](https://github.com/njdbickhart/perl_toolchain/blob/master/assembly_scripts/identifyLachesisProbPoints.pl) should process the lachesis orderings and provide context for each scaffold in the overall clusters. Clusters are only denoted based on their number, so I need to convert them to their actual names later. I also made sure that the coordinates account for the 5 lowercase "n's" in between the scaffolds.
+
+> Blade 14: /mnt/iscsi/vnx_gliu_7/goat_assembly/lachesis/test_coverage
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/identifyLachesisProbPoints.pl -i lachesis_ordering.txt -f ../../papadum-v5bng-pilon-split2kbgap.fa.fai -o lachesis_problem_regions.bed -l lachesis_cluster_contig_coords.bed
+
+# OK, I've got the problem regions sorted out, but let's get the windows that I want to search for defects
+# We'll start with 20kb windows near the breakpoints (and the secondary chr points?)
+perl -lane '$s1 = $F[1] - 20000; $e1 = $F[1] + 20000; if($s1 < 0){$s1 = 0;} $s2 = $F[2] - 20000; $e2 = $F[2] + 20000; print "$F[0]\t$s1\t$e1\n$F[0]\t$s2\t$e2";' < lachesis_problem_regions.bed > lachesis_problem_regions_2kb_windows.clusters.bed
+
+# Now to add the actual cluster names to the file
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^Lachesis.+/){$s[0] =~ /Lachesis_group(\d+)__.+/; $h{$1} = $s[0];}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/_/, $s[0]); $name = $h{$b[1]}; $s[0] = $name; print join("\t", @s); print "\n";}' papadum_v5lachesis.full.fa.fai lachesis_problem_regions_2kb_windows.clusters.bed > lachesis_problem_regions_2kb_windows.fixed.bed
+
+# Alright, it's intersection time!
+wc -l lachesis_problem_regions_2kb_windows.fixed.bed
+	170 lachesis_problem_regions_2kb_windows.fixed.bed	<- 170 total windows
+
+intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed -wa | uniq | wc -l
+	100	<- JaRMs identified problems in read depth
+
+intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b serge_lumpy_bnds.same.bedpe -wa | uniq | wc -l
+	4	<- Lumpy SV calls on same Lachesis cluster
+
+intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b serge_lumpy_bnds.trans.bedpe -wa | uniq | wc -l
+	15	<- Lumpy SV calls on different Lachesis clusters
+
+intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b serge_lumpy_bnds.bedpe -wa | uniq | wc -l    
+	19	<- Lumpy SV BND calls regardless of cluster orientation (sum of above numbers)
+
+intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b serge_lumpy_dels.bed -wa | uniq | wc -l
+	70	<- Lumpy Del calls
+intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b serge_lumpy_dups.bed -wa | uniq | wc -l
+	66	<- Lumpy Dup calls
+cat serge_lumpy_dels.bed serge_lumpy_dups.bed | perl ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b stdin -wa | uniq | wc -l
+	94	<- Combined Lumpy Dup and Dels
+
+intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b serge_lumpy_bnds.bedpe -wa | uniq > lumpy_bnds_overlap_20kb_wins.bed
+cat serge_lumpy_dels.bed serge_lumpy_dups.bed | perl ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin | intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b stdin -wa | uniq | intersectBed -a stdin -b lumpy_bnds_overlap_20kb_wins.bed -wa | uniq | wc -l
+	8	<- BND + Del + Dup identified breakpoints
+```
+
+I'm skeptical about this -- let's see if there is an enrichment of read depth loss/BND events near the ends of each contig as well!
+
+```bash
+perl -lane '$s1 = $F[1] - 20000; $e1 = $F[1] + 20000; if($s1 < 0){$s1 = 0;} $s2 = $F[2] - 20000; $e2 = $F[2] + 20000; print "$F[0]\t$s1\t$e1\n$F[0]\t$s2\t$e2";' < lachesis_cluster_contig_coords.bed > lachesis_cluster_contig_coords_20kb_wins.bed
+wc -l lachesis_cluster_contig_coords_20kb_wins.bed
+	3052 lachesis_cluster_contig_coords_20kb_wins.bed
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^Lachesis.+/){$s[0] =~ /Lachesis_group(\d+)__.+/; $h{$1} = $s[0];}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/_/, $s[0]); $name = $h{$b[1]}; $s[0] = $name; print join("\t", @s); print "\n";}' papadum_v5lachesis.full.fa.fai lachesis_cluster_contig_coords_20kb_wins.bed > lachesis_cluster_contig_coords_20kb_wins.fixed.bed
+
+# OK! Intersection time here too!
+intersectBed -a lachesis_cluster_contig_coords_20kb_wins.fixed.bed -b papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed -wa | uniq | wc -l
+	1636 <- JaRMs
+
+intersectBed -a lachesis_cluster_contig_coords_20kb_wins.fixed.bed -b serge_lumpy_bnds.same.bedpe -wa | uniq | wc -l
+	175	<- Lumpy bnd same
+intersectBed -a lachesis_cluster_contig_coords_20kb_wins.fixed.bed -b serge_lumpy_bnds.trans.bedpe -wa | uniq | wc -l
+	198	<- Lumpy bnd trans
+intersectBed -a lachesis_cluster_contig_coords_20kb_wins.fixed.bed -b serge_lumpy_bnds.bedpe -wa | uniq | wc -l
+	363	<- Lumpy bnd total
+
+intersectBed -a lachesis_cluster_contig_coords_20kb_wins.fixed.bed -b serge_lumpy_dels.bed -wa | uniq | wc -l  
+	1484
+intersectBed -a lachesis_cluster_contig_coords_20kb_wins.fixed.bed -b serge_lumpy_dups.bed -wa | uniq | wc -l
+	1257
+
+# Hmmm... not helping! Let's try within 10kb to see if that changes things
+# Also, I'm going to make a shell script instead of typing this all out at once
+
+# 2kb wins
+perl -lane '$s1 = $F[1] - 2000; $e1 = $F[1] + 2000; if($s1 < 0){$s1 = 0;} $s2 = $F[2] - 2000; $e2 = $F[2] + 2000; print "$F[0]\t$s1\t$e1\n$F[0]\t$s2\t$e2";' < lachesis_cluster_contig_coords.bed > lachesis_cluster_contig_coords_2kb_wins.bed
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^Lachesis.+/){$s[0] =~ /Lachesis_group(\d+)__.+/; $h{$1} = $s[0];}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/_/, $s[0]); $name = $h{$b[1]}; $s[0] = $name; print join("\t", @s); print "\n";}' papadum_v5lachesis.full.fa.fai lachesis_cluster_contig_coords_2kb_wins.bed > lachesis_cluster_contig_coords_2kb_wins.fixed.bed
+
+sh bed_intersection_script.sh lachesis_cluster_contig_coords_2kb_wins.fixed.bed
+JaRMs
+1030
+lumpy bnd same
+145
+lumpy bnd trans
+162
+lumpy bnd all
+303
+lumpy dels
+1444
+lumpy dups
+1248
+combined lumpy dups dels
+1904
+BND + Del + Dup shared calls
+203
+
+perl -lane '$s1 = $F[1] - 2000; $e1 = $F[1] + 2000; if($s1 < 0){$s1 = 0;} $s2 = $F[2] - 2000; $e2 = $F[2] + 2000; print "$F[0]\t$s1\t$e1\n$F[0]\t$s2\t$e2";' < lachesis_problem_regions.bed > lachesis_problem_regions_actual_2kb_windows.bed
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^Lachesis.+/){$s[0] =~ /Lachesis_group(\d+)__.+/; $h{$1} = $s[0];}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/_/, $s[0]); $name = $h{$b[1]}; $s[0] = $name; print join("\t", @s); print "\n";}' papadum_v5lachesis.full.fa.fai lachesis_problem_regions_actual_2kb_windows.bed > lachesis_problem_regions_actual_2kb_windows.fixed.bed
+
+sh bed_intersection_script.sh lachesis_problem_regions_actual_2kb_windows.fixed.bed
+JaRMs
+68
+lumpy bnd same
+3
+lumpy bnd trans
+12
+lumpy bnd all
+15
+lumpy dels
+65
+lumpy dups
+63
+combined lumpy dups dels
+86
+BND + Del + Dup shared calls
+7
+
+# I'm still getting the same issues!
+# How about a 2kb window with the first 500 bases occluded?
+perl -lane '$s1 = $F[1] + 500; $e1 = $F[1] + 2000; if($s1 < 0){$s1 = 0;} if($e1 < 500){$e1 = 500;} $s2 = $F[2] - 2000; $e2 = $F[2] - 500; print "$F[0]\t$s1\t$e1\n$F[0]\t$s2\t$e2";' <lachesis_cluster_contig_coords.bed > lachesis_cluster_contig_coords_2kb_occlude.bed
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^Lachesis.+/){$s[0] =~ /Lachesis_group(\d+)__.+/; $h{$1} = $s[0];}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/_/, $s[0]); $name = $h{$b[1]}; $s[0] = $name; print join("\t", @s); print "\n";}' papadum_v5lachesis.full.fa.fai lachesis_cluster_contig_coords_2kb_occlude.bed > lachesis_cluster_contig_coords_2kb_occlude.fixed.bed
+
+sh bed_intersection_script.sh lachesis_cluster_contig_coords_2kb_occlude.fixed.bed                             JaRMs
+590
+lumpy bnd same
+0
+lumpy bnd trans
+2
+lumpy bnd all
+2
+lumpy dels
+1349
+lumpy dups
+1230
+combined lumpy dups dels
+1832
+BND + Del + Dup shared calls
+1
+```
+
+No clear pattern, and the occlusion strategy didn't really improve things.
+
+Let's try to show the match up with Lumpy and JaRMs using a VENN diagram
+
+```python
+import pybedtools
+lumpy = pybedtools.BedTool('serge_lumpy_dels.bed')
+jarms = pybedtools.BedTool('papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed')
+(lumpy + jarms).count()
+	228
+(lumpy - jarms).count()
+	924
+(jarms - lumpy).count()
+	3561
+```
+
+Not the best overlap, but it's because of the different resolution sizes of the techniques and the different biases they have (ie. JaRMs works only on aligned reads and has GC bias, split read alignment can have misalignments giving false signal)
