@@ -1512,3 +1512,140 @@ jarms = pybedtools.BedTool('papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed')
 ```
 
 Not the best overlap, but it's because of the different resolution sizes of the techniques and the different biases they have (ie. JaRMs works only on aligned reads and has GC bias, split read alignment can have misalignments giving false signal)
+
+Serge has sent me the coordinates of the pbJelly filled gaps. PbJelly could provide the context that allows us to filter away the spurious SV calls and focus on the real events. Let's check the overlap of these filled gaps with the problem regions.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/lachesis/test_coverage
+
+```bash
+# I've gotta convert the format here so that my bed files are comparable
+grep -v 'na' Lachesis_assembly.gapInfo.bed | perl -lane '$F[0] =~ s/(.+)\|.+/$1/; print "$F[0]\t$F[1]\t$F[2]\t$F[3]";' > lachesis_pbjelly_corrected_gaps.bed
+
+# Now the intersections
+intersectBed -a lachesis_pbjelly_corrected_gaps.bed -b lachesis_problem_regions_actual_2kb_windows.fixed.bed | wc -l
+	145 out of 175 (82%)
+
+# Hmm... that's a huge proportion!
+intersectBed -a lachesis_pbjelly_corrected_gaps.bed -b lachesis_cluster_contig_coords_2kb_wins.fixed.bed | wc -l
+	2990 out of 3052 (97.9%)
+
+# Now against the other calls
+sh bed_intersection_script.sh lachesis_pbjelly_corrected_gaps.bed
+JaRMs
+0
+lumpy bnd same
+62
+lumpy bnd trans
+68
+lumpy bnd all
+128
+lumpy dels
+865
+lumpy dups
+708
+combined lumpy dups dels
+1119
+BND + Del + Dup shared calls
+86
+
+# OK, that removes allot, but there are no JaRMs call overlaps... interesting
+```
+
+Serge sent me a category tab file with the types of gaps that pbJelly filled (or couldn't fill!). Let's take a look at the gap classes:
+
+```bash
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f gap_fill_status.txt -c 1 -m
+```
+#### pbJelly gap types
+
+|Entry         | Count|
+|:-------------|-----:|
+|doubleextend  |     5|
+|filled        |   840|
+|minreadfail   |   383|
+|nofillmetrics |    16|
+|overfilled    |   827|
+|singleextend  |   622|
+
+The following classes are safe and probably won't reveal flaws: **filled** and **overfilled.** However, **doublextend,** **nofillmetrics** and **singleextend** are likely targets. The **minreadfail** is a definite problem region.
+
+Let's break apart the bed file and prepare it for intersection.
+
+```bash
+# I need to also prepare the contig names for association
+perl -lane 'if($F[0] =~ /(ref.+)\.(\d+)e\d+\_ref.+\.(\d+)e\d+/){$d = "$1\_$2\_$3"; print "$d\t$F[1]";}' < gap_fill_status.txt > gap_fill_converted_status.txt
+wc -l gap_fill_converted_status.txt
+	1746 gap_fill_converted_status.txt
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f gap_fill_converted_status.txt -c 1 -m
+```
+
+|Entry        | Count|
+|:------------|-----:|
+|doubleextend |     5|
+|filled       |   765|
+|minreadfail  |   148|
+|overfilled   |   827|
+|singleextend |     1|
+
+```bash
+# Now, splitting the gapfilled bed file
+perl -e 'chomp(@ARGV); %err; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] eq "minreadfail" || $s[1] eq "singleextend" || $s[1] eq "doubleextend"){$err{$s[0]} = 1;}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($err{$s[3]})){ next;}else{print "$_\n";}}' gap_fill_converted_status.txt lachesis_pbjelly_corrected_gaps.bed > lachesis_pbjelly_true_corrected_gaps.bed
+perl -e 'chomp(@ARGV); %err; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] eq "minreadfail" || $s[1] eq "singleextend" || $s[1] eq "doubleextend"){$err{$s[0]} = 1;}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($err{$s[3]})){ next;}else{print "$_\n";}}' gap_fill_converted_status.txt lachesis_pbjelly_corrected_gaps.bed | wc -l
+	1601
+
+perl -e 'chomp(@ARGV); %err; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] eq "minreadfail" || $s[1] eq "singleextend" || $s[1] eq "doubleextend"){$err{$s[0]} = 1;}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($err{$s[3]})){ print "$_\n";}}' gap_fill_converted_status.txt lachesis_pbjelly_corrected_gaps.bed > lachesis_pbjelly_uncorrected_gaps.bed
+perl -e 'chomp(@ARGV); %err; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] eq "minreadfail" || $s[1] eq "singleextend" || $s[1] eq "doubleextend"){$err{$s[0]} = 1;}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($err{$s[3]})){ print "$_\n";}}' gap_fill_converted_status.txt lachesis_pbjelly_corrected_gaps.bed | wc -l         
+	154
+
+# I realized that these are gap regions, and I filtered them out from JaRMs output! Let's add them back in
+intersectBed -a papadum_pbv4_gccorr_only_lachesis.dels.merged.bed -b papadum_v5lachesis.gaps.bed -wa | uniq > papadum_pbv4_gccorr_only_lachesis.dels.gaps.bed
+
+# OK, let's see the overlaps
+sh bed_gap_intersection_script.sh lachesis_pbjelly_uncorrected_gaps.bed
+JaRMs
+130
+lumpy bnd same
+2
+lumpy bnd trans
+3
+lumpy bnd all
+5
+lumpy dels
+62
+lumpy dups
+29
+combined lumpy dups dels
+76
+BND + Del + Dup shared calls
+2
+
+sh bed_gap_intersection_script.sh lachesis_pbjelly_true_corrected_gaps.bed
+JaRMs
+681
+lumpy bnd same
+60
+lumpy bnd trans
+65
+lumpy bnd all
+123
+lumpy dels
+803
+lumpy dups
+679
+combined lumpy dups dels
+1043
+BND + Del + Dup shared calls
+84
+
+# JaRMs hits almost all of them, but let's see what ones it misses
+intersectBed -a lachesis_pbjelly_uncorrected_gaps.bed -b papadum_pbv4_gccorr_only_lachesis.dels.gaps.bed -v | head
+	Lachesis_group10__21_contigs__length_94630891   5007925 5007931 ref0000018_3_4
+
+cluster_10      4979950 5007925 utg41548
+cluster_10      5007930 62519049        Scaffold_91.3
+
+# There are some fluctuations in read depth, but they aren't 4 consecutive windows.
+# Let's bite the bullet and run a combined Lumpy run
+samtools view -b -F 1294 /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.bam > Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.discpe.bam
+samtools view -h /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.bam | ~/lumpy/scripts/extractSplitReads_BwaMem -i stdin | samtools view -Sb - > Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.sr.bam
