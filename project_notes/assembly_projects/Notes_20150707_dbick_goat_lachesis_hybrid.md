@@ -1649,3 +1649,10 @@ cluster_10      5007930 62519049        Scaffold_91.3
 # Let's bite the bullet and run a combined Lumpy run
 samtools view -b -F 1294 /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.bam > Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.discpe.bam
 samtools view -h /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.bam | ~/lumpy/scripts/extractSplitReads_BwaMem -i stdin | samtools view -Sb - > Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.sr.bam
+
+# Making the histo
+samtools view /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v5lachesis-full/bwa-out/Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.bam | head -n 500000 | ~/lumpy/scripts/pairend_distro.py -r 101 -X 4 -N 10000 -o Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.histo
+Removed 6 outliers with isize >= 636
+mean:408.08304983       stdev:54.122420943
+
+~/lumpy/bin/lumpy -mw 4 -tt 0 -sr id:papadum,bam_file:Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.sr.bam,back_distance:10,weight:1,min_mapping_threshold:20 -pe id:papadum,bam_file:Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.discpe.bam,histo_file:Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.histo,mean:408,stdev:54,read_length:101,min_non_overlap:101,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20 > Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.lumpy.vcf
