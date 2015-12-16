@@ -15,6 +15,10 @@ These are my notes on mapping the pacbio contigs back to the Lachesis scaffolds 
 * [Pilon error correction](#pilon)
 * [Penultimate assembly correction and splitting](#penultimate)
 * [Lachesis read depth error correction](#rderrorcorr)
+* [Filling gaps with pbJelly](#pbjelly)
+	* [Associating pbJelly filled gaps with SV signal](#pbjellysv)
+	* [Known problem site gap fill status](#probsitegapfill)
+	* [The columns of the perl_associated_named_gap_file.gap.sorted.bed](#gapfilecols)
 
 <a name="preparation"></a>
 ## Preparation
@@ -1513,6 +1517,9 @@ jarms = pybedtools.BedTool('papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed')
 
 Not the best overlap, but it's because of the different resolution sizes of the techniques and the different biases they have (ie. JaRMs works only on aligned reads and has GC bias, split read alignment can have misalignments giving false signal)
 
+<a name="pbjelly"></a>
+## Filling gaps with pbJelly
+
 Serge has sent me the coordinates of the pbJelly filled gaps. PbJelly could provide the context that allows us to filter away the spurious SV calls and focus on the real events. Let's check the overlap of these filled gaps with the problem regions.
 
 > Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/lachesis/test_coverage
@@ -1656,3 +1663,155 @@ Removed 6 outliers with isize >= 636
 mean:408.08304983       stdev:54.122420943
 
 ~/lumpy/bin/lumpy -mw 4 -tt 0 -sr id:papadum,bam_file:Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.sr.bam,back_distance:10,weight:1,min_mapping_threshold:20 -pe id:papadum,bam_file:Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.discpe.bam,histo_file:Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.histo,mean:408,stdev:54,read_length:101,min_non_overlap:101,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20 > Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.lumpy.vcf
+
+# It turns out that the output is NOT a vcf! It's a Bedpe!
+# Counting the number of events
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.lumpy.vcf -c 10 -m
+```
+
+|Entry            | Count|
+|:----------------|-----:|
+|TYPE:DELETION    |  1115|
+|TYPE:DUPLICATION |   477|
+|TYPE:INTERCHROM  |  2514|
+|TYPE:INVERSION   |   505|
+
+This is pretty close to Serge's data. Let's see the intersection.
+
+```bash
+# Flat intersection (not caring about SV type)
+intersectBed -a Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.lumpy.vcf -b out.rg.bam.bedpe | wc -l
+547	
+# Removal of pbjelly ID'd gap fills
+intersectBed -a Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.lumpy.vcf -b lachesis_pbjelly_true_corrected_gaps.bed -v | intersectBed -a stdin -b out.rg.bam.bedpe | wc -l
+374
+```
+
+So there is a difference -- the signatures of read pairing are not necessarily correlated with misassemblies here. Let's try to see if corrected gaps that were "overfilled" match up more frequently with "deletions" because of the "overfilling."
+
+```bash
+# Creating overfilled-only gap file
+perl -e 'chomp(@ARGV); %err; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] eq "minreadfail" || $s[1] eq "singleextend" || $s[1] eq "doubleextend" || $s[1] eq "filled"){$err{$s[0]} = 1;}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($err{$s[3]})){ next;}else{print "$_\n";}}' gap_fill_converted_status.txt lachesis_pbjelly_corrected_gaps.bed > lachesis_pbjelly_overfilled_corrected_gaps.bed
+
+# Testing the intersection again -- should be 374 if perfect
+intersectBed -a Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.lumpy.vcf -b lachesis_pbjelly_overfilled_corrected_gaps.bed -v | intersectBed -a stdin -b out.rg.bam.bedpe | wc -l
+398
+```
+<a name="pbjellysv"></a>
+### Associating pbJelly filled gaps with SV signal
+
+That's most of them! Great! So only a few "filled" gaps (24) had intersected with Illumina-based RP variant signals. I want to take the unfilled gaps and identify how often they intersect. From there, we'll break the signal and "eyeball" whether or not it coincides with large inversions or "hitchhiking" contigs.
+
+```bash
+# First the bed intersection
+cat serge_lumpy_dels.lt20kb.bed serge_lumpy_dups.bed papadum_pbv4_gccorr_only_lachesis.dels.gaps.bed | perl ~/bin/sortBedFileSTDIN.pl | intersectBed -a lachesis_pbjelly_uncorrected_gaps.bed -b stdin -c > filter_pbjelly_uncorrected_bed_intersect_count.bed
+
+# Now the bedpe intersection
+cat Goat-Ilmn-HiSeq-Goat400-PBv4lachesis.lumpy.vcf serge_lumpy_bnds.bedpe | intersectBed -a lachesis_pbjelly_uncorrected_gaps.bed -b stdin -c > filter_pbjelly_uncorrected_bedpe_intersect_count.bed
+
+# Just a NOTE! Combined, the illumina and pacbio split reads had 15 intersections (10 for illumina, 5 for pacbio)
+# The two intersection sets did not overlap
+
+# Combining the two count columns
+cat filter_pbjelly_uncorrected_bed* | perl -e '%h; while(<STDIN>){chomp; @s = split(/\t/); $b = "$s[0]-$s[1]-$s[2]-$s[3]"; $h{$b} += $s[4];} foreach $k (sort {$a cmp $b} keys(%h)){@n = split(/\-/, $k); print join("\t", @n) . "\t$h{$k}\n";}' > filter_pbjelly_uncorrected_combined_intersect_count.bed
+
+# Now, the total number of uncorrected gaps that have some evidence that they need to be split
+perl -lane 'if($F[4]){print $_;}' < filter_pbjelly_uncorrected_combined_intersect_count.bed | wc -l
+136
+# Total count of uncorrected gaps:
+wc -l filter_pbjelly_uncorrected_combined_intersect_count.bed
+154 filter_pbjelly_uncorrected_combined_intersect_count.bed
+
+# Intersections of the calls against known problem regions:
+perl -lane 'if($F[4]){print $_;}' < filter_pbjelly_uncorrected_combined_intersect_count.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b stdin | wc -l
+12 out of 85 <- intersections are low here
+
+# Intersections of the unfilled gaps with no support from SV callers
+perl -lane 'if(!$F[4]){print $_;}' < filter_pbjelly_uncorrected_combined_intersect_count.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | intersectBed -a lachesis_problem_regions_2kb_windows.fixed.bed -b stdin | wc -l
+1 out of 85 <- ok, so the SV support is pretty reliable 
+
+# Preparing the intersection data that will allow me to do "eyeball" comparisons
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^Lachesis.+/){$s[0] =~ /Lachesis_group(\d+)__.+/; $h{$1} = $s[0];}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/_/, $s[0]); $name = $h{$b[1]}; $s[0] = $name; print join("\t", @s); print "\n";}' papadum_v5lachesis.full.fa.fai lachesis_cluster_contig_coords.bed > lachesis_cluster_contig_coords.fixed.bed
+
+perl -lane 'if($F[4]){print $_;}' < filter_pbjelly_uncorrected_combined_intersect_count.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b stdin | wc -l
+91	<- thats less than I expected
+# I understand why -- the gap region is not included in the contig coords file that I have. 
+# I need to extend the end of each contig by 5
+# Also, the coordinates on the problem gap regions are likely based on the pbJelly final fasta
+
+cat lachesis_cluster_contig_coords.fixed.bed | perl -lane '$F[2] += 3; print join("\t", @F);' > lachesis_cluster_contig_coords.fixed.extend.bed
+cat filter_pbjelly_uncorrected_combined_intersect_count.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | intersectBed -a lachesis_cluster_contig_coords.fixed.extend.bed -b stdin -wb | uniq > filtered_problem_region_evidence.bed  <- 185 events (from cross overlap)
+```
+
+I think I'm going about this incorrectly. Let's get a gap bed file and determine intersections iteratively from that. I'll use the following datasets:
+
+* BND calls for inversion detection
+* Unfilled gaps for problem sites
+* filled gaps for confirmation
+
+I wrote a [script](https://github.com/njdbickhart/perl_toolchain/blob/master/sequence_data_scripts/LachesisGapDecisionCheck.pl) to automate these associations and to print them out to a hierarchical bed file.
+
+```bash
+perl ~/perl_toolchain/sequence_data_scripts/LachesisGapDecisionCheck.pl -c lachesis_cluster_contig_coords.fixed.bed -g lachesis_pbjelly_corrected_gaps.bed -b serge_lumpy_bnds.bedpe -f lachesis_pbjelly_true_corrected_gaps.bed -u lachesis_pbjelly_uncorrected_gaps.bed -o perl_associated_named_gap_file
+
+# Now to sort and interleave the gaps with the original coordinates!
+cat perl_associated_named_gap_file.gap.tab lachesis_cluster_contig_coords.fixed.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > perl_interleaved_sorted_anmed_gap_file.gap.tab
+```
+
+Criteria for visual inspection
+* BNG scaffolds flanking unfilled gap
+	* If scaffolds are portions of the same (ie. Scaffold175.1 + Scaffold175.2) the gap between them is unresolved
+	* If scaffolds are different, then break at the scaffold side
+		* If it matches the RH map order, place an "uknown size" gap in between
+* Unfilled gaps flanking contig
+	* remove from chromosome order
+* Unfilled gaps near contigs
+	* break based on position of gap
+* Noteable inversion near 
+
+Ultimately, use the RH map to guide assembly. 
+
+I'm going to associate the sv information as well, and then do a quick screen.
+
+```bash
+perl ~/perl_toolchain/sequence_data_scripts/LachesisGapDecisionCheck.pl -c lachesis_cluster_contig_coords.fixed.bed -g lachesis_pbjelly_corrected_gaps.bed -b serge_lumpy_bnds.bedpe -f lachesis_pbjelly_true_corrected_gaps.bed -u lachesis_pbjelly_uncorrected_gaps.bed -o perl_associated_named_gap_file -e filter_pbjelly_uncorrected_combined_intersect_count.bed
+
+cat perl_associated_named_gap_file.gap.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | intersectBed -a lachesis_problem_regions_actual_2kb_windows.fixed.bed -b stdin -wb | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -c 7 -f stdin -m
+
+cat perl_associated_named_gap_file.gap.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > perl_associated_named_gap_file.gap.sorted.bed
+
+```
+
+<a name="probsitegapfill"></a>
+### Known problem site gap fill status
+|Entry                                                                                                  | Count|
+|:------------------------------------------------------------------------------------------------------|-----:|
+|FILLED                                                                                                 |   120|
+|FILLED/Lachesis_group0__33_contigs__length_157380104;Lachesis_group7__23_contigs__length_108482926-+;- |     1|
+|FILLED/Lachesis_group10__21_contigs__length_94630891;utg6725__unclustered--;-                          |     1|
+|FILLED/Lachesis_group17__24_contigs__length_71147168;utg153339__unclustered--;+                        |     1|
+|FILLED/Lachesis_group18__52_contigs__length_69822432--;-                                               |     1|
+|FILLED/Lachesis_group19__387_contigs__length_68073856;Scaffold_1373.1__unclustered-+;-                 |     1|
+|FILLED/Lachesis_group19__387_contigs__length_68073856;utg9894__unclustered--;-                         |     1|
+|FILLED/Lachesis_group1__31_contigs__length_136678973--;-                                               |     1|
+|FILLED/Lachesis_group1__31_contigs__length_136678973;Lachesis_group2__24_contigs__length_121104543--;- |     1|
+|FILLED/Lachesis_group21__23_contigs__length_65245013;Lachesis_group22__26_contigs__length_62424687-+;+ |     1|
+|FILLED/Lachesis_group24__27_contigs__length_60160405;utg9304__unclustered-+;-                          |     1|
+|FILLED/Lachesis_group26__289_contigs__length_50366933;utg9373__unclustered-+;+                         |     1|
+|FILLED/Lachesis_group6__33_contigs__length_112773130;Lachesis_group7__23_contigs__length_108482926--;+ |     1|
+|FILLED/Lachesis_group8__26_contigs__length_106128401--;-                                               |     1|
+|FILLED/Lachesis_group8__26_contigs__length_106128401;utg9532__unclustered-+;+                          |     1|
+|UNFILLED                                                                                               |    11|
+
+<a name="gapfilecols"></a>
+### Here are the columns of the perl_associated_named_gap_file.gap.sorted.bed file:
+
+1. Lachesis cluster
+2. Start coord
+3. End coord
+4. pbJelly gap ID
+5. Status
+	1. "FILLED" <- pbjelly filled
+	2. "FILLED/Lachesis...*" <- pbjelly filled, but has Lumpy-sv - PacBio split read discordant signal
+	3. "UNFILLED" <- pbjelly couldn't fill
+4. Read depth deletions, or lumpy-sv Illumina calls that are within 2kb of this region
