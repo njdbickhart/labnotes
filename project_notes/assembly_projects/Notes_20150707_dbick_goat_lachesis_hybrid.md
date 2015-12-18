@@ -1815,3 +1815,5 @@ cat perl_associated_named_gap_file.gap.tab | perl ~/perl_toolchain/bed_cnv_fig_t
 	2. "FILLED/Lachesis...*" <- pbjelly filled, but has Lumpy-sv - PacBio split read discordant signal
 	3. "UNFILLED" <- pbjelly couldn't fill
 4. Read depth deletions, or lumpy-sv Illumina calls that are within 2kb of this region
+
+

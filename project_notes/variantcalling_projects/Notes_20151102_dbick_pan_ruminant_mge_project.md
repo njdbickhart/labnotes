@@ -299,3 +299,46 @@ grep '#Partially' cattle_bc_tfbs_umd3_liftover.unmapped | wc -l
 
 # OK, I didn't want those sites in any case, it looks like!
 ```
+
+## MGE identification
+
+Looking through my perl scripts, it looks like I have a script that automatically parses transchr ID'ed discordant reads for repeat identification. I just need to set up the proper files and let it run!
+
+I'm going to prepare the bed files before I start running anything, just so that I have my ducks in a row.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/gene_data
+
+```bash
+wget http://hgdownload.soe.ucsc.edu/goldenPath/bosTau6/database/rmsk.txt.gz
+wget http://hgdownload.soe.ucsc.edu/goldenPath/bosTau6/database/ensGene.txt.gz
+
+gunzip *.gz
+
+# Now to convert them to bed format and to extract the upstream regions of the genes
+perl -lane 'if($F[3] eq "-"){$e = $F[5] + 2000; print "$F[2]\t$F[5]\t$e\t$F[12]";}else{$s = $F[4] - 2000; if($s < 0){$s = 0;} print "$F[2]\t$s\t$F[4]\t$F[12]";}' < ensGene.txt > umd3_ensgene_2kb_upstream.bed
+perl -lane 'print "$F[2]\t$F[4]\t$F[5]\t$F[12]";' < ensGene.txt > umd3_ensgene.bed
+
+# Now for repeatmasker
+perl -lane 'print "$F[5]\t$F[6]\t$F[7]\t$F[10]";' < rmsk.txt > umd3_repeatmask_named.bed
+```
+
+I have the gene bed files that I need, let's grep out the transchr divet reads so that I can use them in the pipeline script.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams
+
+```bash
+# Testing on AG280
+grep 'transchr' AG280.raptr.preprocess.D.divet > AG280.raptr.preprocess.D.transchr.divet
+perl ~/perl_toolchain/sequence_data_scripts/transchrRepeatID.pl -d AG280.raptr.preprocess.D.transchr.divet -f ../gene_data/umd3_repeatmask_named.bed -o AG280.transchr.repeat.mge.bed
+
+# WHOOPS! Mistake! Gotta convert the transchr file to bedpe!
+# Also, this ID script ensures that the transchr alignments are not ambiguous
+perl ~/perl_toolchain/sequence_data_scripts/transchrIdentificationAlgorithm.pl -d AG280.raptr.preprocess.D.divet -o AG280.raptr.preprocess.D.tranchr.bedpe
+
+# Queuing these up to run them faster!
+for i in AG302 AG304 AG306 ITWB10 ITWB11 ITWB12 ITWB13; do divet=${i}.raptr.preprocess.D.divet; echo $divet; output=${i}.raptr.preprocess.D.tranchr.bedpe; perl ~/perl_toolchain/sequence_data_scripts/transchrIdentificationAlgorithm.pl -d $divet -o $output &
+done
+
+# OK, trying out one of the goat samples
+perl ~/perl_toolchain/sequence_data_scripts/transchrRepeatID.pl -d AG280.raptr.preprocess.D.tranchr.bedpe -f ../gene_data/umd3_repeatmask_named.bed -o AG280.transchr.repeat.mge.bed
+
