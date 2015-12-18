@@ -342,3 +342,36 @@ done
 # OK, trying out one of the goat samples
 perl ~/perl_toolchain/sequence_data_scripts/transchrRepeatID.pl -d AG280.raptr.preprocess.D.tranchr.bedpe -f ../gene_data/umd3_repeatmask_named.bed -o AG280.transchr.repeat.mge.bed
 
+wc -l AG280.transchr.repeat.mge.bed
+	463 AG280.transchr.repeat.mge.bed
+
+# Not many! Let's see how this pans out with our gene intersection
+intersectBed -a AG280.transchr.repeat.mge.bed -b ../gene_data/umd3_ensgene_2kb_upstream.bed -wb | cut -f13 | uniq
+ENSBTAG00000047403.1
+ENSBTAG00000011541.5
+ENSBTAG00000035268.1
+ENSBTAG00000047122.1
+ENSBTAG00000014435.3
+ENSBTAG00000045518.1
+
+# OK! Something to work with! Let's get the others queued up
+
+# I wrote a Java program that should streamline this. Let's test it out
+~/jdk1.8.0_05/bin/java -jar ~/MEIDivetID/store/MEIDivetID.jar -i AG280.raptr.preprocess.D.divet -r ../gene_data/umd3_repeatmask_named.bed -o AG280.raptr.MEIDivet
+
+# I need to bugfix it, unfortunately!
+```
+
+## SNP and INDEL ID
+
+Let's start calling SNPs and indels for all of the bams I have on Goat and Buffalo:
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams
+
+```bash
+# For Goat
+perl ~/perl_toolchain/sequence_data_scripts/samtoolsSNPFork.pl -r ../../reference/umd3_kary_unmask_ngap.fa -i ./AG280/AG280.1.nodup.bam,./AG302/AG302.1.nodup.bam,./AG304/AG304.1.nodup.bam,./AG306/AG306.1.nodup.bam -o goat_umd3_comparative_snp_calling.vcf -n 5 -s ../../reference/samtools_chr_segs.txt -t 1
+
+# For Buffalo
+perl ~/perl_toolchain/sequence_data_scripts/samtoolsSNPFork.pl -r ../../reference/umd3_kary_unmask_ngap.fa -i ./ITWB10/ITWB10.merged.bam,./ITWB11/ITWB11.merged.bam,./ITWB12/ITWB12.merged.bam,./ITWB13/ITWB13.merged.bam,./ITWB14/ITWB14.merged.bam,./ITWB15/ITWB15.merged.bam,./ITWB1/ITWB1.merged.bam,./ITWB2/ITWB2.merged.bam,./ITWB3/ITWB3.merged.bam,./ITWB4/ITWB4.merged.bam,./ITWB5/ITWB5.merged.bam,./ITWB6/ITWB6.merged.bam,./ITWB7/ITWB7.merged.bam,./ITWB9/ITWB9.merged.bam,./PC1/PC1.merged.bam -o buffalo_umd3_comparative_snp_calling.vcf -n 5 -s ../../reference/samtools_chr_segs.txt -t 1
+```
