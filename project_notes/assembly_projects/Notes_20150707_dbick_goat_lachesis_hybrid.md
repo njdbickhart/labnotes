@@ -19,6 +19,7 @@ These are my notes on mapping the pacbio contigs back to the Lachesis scaffolds 
 	* [Associating pbJelly filled gaps with SV signal](#pbjellysv)
 	* [Known problem site gap fill status](#probsitegapfill)
 	* [The columns of the perl_associated_named_gap_file.gap.sorted.bed](#gapfilecols)
+* [Creating pre-final draft](#prefinal)
 
 <a name="preparation"></a>
 ## Preparation
@@ -1816,4 +1817,132 @@ cat perl_associated_named_gap_file.gap.tab | perl ~/perl_toolchain/bed_cnv_fig_t
 	3. "UNFILLED" <- pbjelly couldn't fill
 4. Read depth deletions, or lumpy-sv Illumina calls that are within 2kb of this region
 
+<a name="prefinal"></a>
+## Creating pre-final draft
+
+I think that the ultimate goal is to follow the RH map order, but to keep PacBio contigs that were properly associated within the RH map. Shawn talked about a "orientation q score" value that allows us to gauge whether or not the Lachesis orientation is correct. The score is located on the "ordering" files within the "min" directory on his google drive folder. I've downloaded the ordering files and concatenated them into a single, combined file:
+
+> Laptop: /cygdrive/c/SharedFolder/goat_assembly_paper/lachesis_ordering
+
+```bash
+for i in *.ordering; do echo $i; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $ARGV[0] =~ /group(\d+)\.ordering/; $num = $1 * 1; while(<IN>){chomp; $_ =~ s/\r//g; if($_ =~ /^#/){next;} @s = split(/\t/); print "$num\t$s[1]\t$s[2]\t$s[3]\n";} close IN;' $i >> lachesis_combined_orient.tab; done
+
+cat lachesis_combined_orient.tab | cut -f4 | perl ../../programming/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   1526
+Minimum 0
+Maximum 9706.41
+Average 211.702023
+Median  9.283815
+Standard Deviation      787.307223
+Mode(Highest Distributed Value) 0
+```
+
+The columns correspond to the following scheme:
+
+1. Cluster number
+2. Scaffold/contig ID
+3. Contig is reverse complement (1 for true, 0 for false)
+4. Orientation q score
+
+The q score is a very broad distribution, with allot of zeroes apparently! Let's see if that matches up to the gaps that are part of the problem regions. I will do all of this on the server so that I can match things quickly.
+
+> Blade14:
+
+```bash
+# Converting things for the association
+cat lachesis_pbjelly_corrected_gaps.bed | perl -lane 'if($F[0] =~ /Lachesis_group(\d+)__.+/){ print "$1\t$F[1]\t$F[2]\t$F[3]";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > lachesis_pbjelly_cord_ids_gaps.bed
+
+perl -lane '$F[0] =~ /cluster_(\d+)/; print "$1\t$F[1]\t$F[2]";' < lachesis_problem_regions_actual_2kb_windows.bed > lachesis_problem_regions_clustnum_2kb_windows.bed
+
+# The file that contains the pbjelly gap ids within problem regions
+intersectBed -a lachesis_pbjelly_cord_ids_gaps.bed -b lachesis_problem_regions_clustnum_2kb_windows.bed > lachesis_problem_regions_pbjelly_gap_names.bed
+
+# The file that contains the putatively correct associations
+intersectBed -a lachesis_pbjelly_cord_ids_gaps.bed -b lachesis_problem_regions_clustnum_2kb_windows.bed -v > lachesis_ok_regions_pbjelly_gap_names.bed
+
+wc -l lachesis_problem_regions_pbjelly_gap_names.bed lachesis_ok_regions_pbjelly_gap_names.bed
+  145 lachesis_problem_regions_pbjelly_gap_names.bed
+ 1604 lachesis_ok_regions_pbjelly_gap_names.bed
+ 1749 total <- so, not bad! 8% of the total gaps are known problems with respect to the RH map
+
+### Generating the orientation q score beds
+# Starting out by associating the pbjelly coord ids with the gap junctions
+perl -e '$last = "NA"; $prev = 0; $ctg = "NA"; while(<>){chomp; @s = split(/\t/); if($last eq "NA" || $last ne $s[0]){$last = $s[0]; $prev = $s[2]; $ctg = $s[3];}else{$s[0] =~ /cluster_(\d+)/; print "$1\t$prev\t$s[1]\t$ctg;$s[3]\n"; $last = $s[0]; $prev = $s[2]; $ctg = $s[3];}}' < lachesis_cluster_contig_coords.bed > lachesis_cluster_contig_gap_coords.bed
+
+# main association
+intersectBed -a lachesis_pbjelly_cord_ids_gaps.bed -b lachesis_cluster_contig_gap_coords.bed -wb > lachesis_cluster_contig_gap_coords.pbjelly_assoc.tab
+
+# problem regions
+intersectBed -a lachesis_problem_regions_pbjelly_gap_names.bed -b lachesis_cluster_contig_gap_coords.bed -wb > lachesis_cluster_contig_gap_coords.pbjelly_assoc.problems.tab
+
+# non-problem regions
+intersectBed -a lachesis_ok_regions_pbjelly_gap_names.bed -b lachesis_cluster_contig_gap_coords.bed -wb > lachesis_cluster_contig_gap_coords.pbjelly_assoc.ok.tab
+
+# Now to get the orientation q scores by substituting the scaffold/ctg names in the tab file I just generated!
+perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; $_ =~ s/\r//g; @s = split(/\t/); $h{$s[1]} = $s[3];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/;/, $s[-1]); @g; foreach $j (@b){push(@g, $h{$j});} print join("\t", @s) . "\t" . join(";", @g) . "\n"; @g =();}' lachesis_combined_orient.tab lachesis_cluster_contig_gap_coords.pbjelly_assoc.tab > lachesis_cluster_contig_gap_coords.pbjelly_assoc.qscore_assoc.tab
+
+# Now for the problem regions
+perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; $_ =~ s/\r//g; @s = split(/\t/); $h{$s[1]} = $s[3];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/;/, $s[-1]); @g; foreach $j (@b){push(@g, $h{$j});} print join("\t", @s) . "\t" . join(";", @g) . "\n"; @g =();}' lachesis_combined_orient.tab lachesis_cluster_contig_gap_coords.pbjelly_assoc.problems.tab > lachesis_cluster_contig_gap_coords.pbjelly_assoc.problems.qscore_assoc.tab
+
+perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; $_ =~ s/\r//g; @s = split(/\t/); $h{$s[1]} = $s[3];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); @b = split(/;/, $s[-1]); @g; foreach $j (@b){push(@g, $h{$j});} print join("\t", @s) . "\t" . join(";", @g) . "\n"; @g =();}' lachesis_combined_orient.tab lachesis_cluster_contig_gap_coords.pbjelly_assoc.ok.tab > lachesis_cluster_contig_gap_coords.pbjelly_assoc.ok.qscore_assoc.tab
+
+### Now to generate some statistics here
+# I'm going to calculate the junction average and calculate summary stats from that
+perl -lane '@b = split(/;/, $F[-1]); $avg = ($b[1] + $b[0]) / 2; print $avg;' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.qscore_assoc.tab | statStd.pl
+total   1495
+Minimum 0
+Maximum 6897.385
+Average 210.910559
+Median  14.77334
+Standard Deviation      663.234991
+Mode(Highest Distributed Value) 0
+
+perl -lane '@b = split(/;/, $F[-1]); $avg = ($b[1] + $b[0]) / 2; print $avg;' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.problems.qscore_assoc.tab | statStd.pl
+total   145
+Minimum 0.149269
+Maximum 5477.37
+Average 269.955504
+Median  31.1143875
+Standard Deviation      711.407380
+Mode(Highest Distributed Value) 11.00563
+
+perl -lane '@b = split(/;/, $F[-1]); $avg = ($b[1] + $b[0]) / 2; print $avg;' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.ok.qscore_assoc.tab | statStd.pl
+total   1350
+Minimum 0
+Maximum 6897.385
+Average 204.568695
+Median  13.662974
+Standard Deviation      657.816896
+Mode(Highest Distributed Value) 0
+
+perl -lane '@b = split(/;/, $F[-1]); $avg = ($b[1] + $b[0]) / 2; print $avg;' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.ok.qscore_assoc.tab > ok_junction_vector.tab
+perl -lane '@b = split(/;/, $F[-1]); $avg = ($b[1] + $b[0]) / 2; print $avg;' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.problems.qscore_assoc.tab > problem_junction_vector.tab
+```
+
+Eyeballing the distributions, it seems like they are nearly the same. Let's test the Kolmogorov-Smirnof statistic to see if they are.
+
+```R
+ok <- read.delim("ok_junction_vector.tab", header=FALSE)
+problem <- read.delim("problem_junction_vector.tab", header=FALSE)
+
+ks.test(problem, as.numeric(ok$V1))
+	#Two-sample Kolmogorov-Smirnov test
+
+	#data:  problem and as.numeric(ok$V1)
+	#D = 0.20802, p-value = 2.397e-05
+	#alternative hypothesis: two-sided
+
+ks.test(problem, as.numeric(ok$V1), alternative="less")
+
+    #Two-sample Kolmogorov-Smirnov test
+
+	#data:  problem and as.numeric(ok$V1)
+	#D^- = 0.20802, p-value = 1.198e-05
+	#alternative hypothesis: the CDF of x lies below that of y
+
+# Let's plot this
+problem$prob <- "problem"
+ok$prob <- "ok"
+dist <- rbind(problem, ok)
+pdf(file="qorientscore.pdf", useDingbats=FALSE)
 
