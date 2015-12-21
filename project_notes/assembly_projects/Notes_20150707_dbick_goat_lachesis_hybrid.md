@@ -1946,3 +1946,87 @@ ok$prob <- "ok"
 dist <- rbind(problem, ok)
 pdf(file="qorientscore.pdf", useDingbats=FALSE)
 
+# Ran into a problem with ggplot. Gotta do it locally
+ggplot(dist, aes(V1, fill=prob)) + geom_density(alpha = 0.2) + xlim(0,750)
+```
+One last test before I do what I promised: let's get the scores for the contigs vs the scaffolds.
+
+```bash
+# Unscaffolded unitigs
+perl -lane '@b = split(/;/, $F[7]); @s = split(/;/, $F[8]); for($x = 0; $x < scalar(@b); $x++){if($b[$x] =~ /^utg/){print $s[$x];}}' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.qscore_assoc.tab | statStd.pl
+	total   1470
+	Minimum 0
+	Maximum 53.0113
+	Average 5.704568
+	Median  2.86578
+	Standard Deviation      7.442565
+	Mode(Highest Distributed Value) 0
+
+# scaffolds
+perl -lane '@b = split(/;/, $F[7]); @s = split(/;/, $F[8]); for($x = 0; $x < scalar(@b); $x++){unless($b[$x] =~ /^utg/){print $s[$x];}}' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.qscore_assoc.tab | statStd.pl
+	total   1520
+	Minimum 0.00741432
+	Maximum 9706.41
+	Average 409.366353
+	Median  35.66175
+	Standard Deviation      1072.243166
+	Mode(Highest Distributed Value) 11.2972
+
+# As I thought, the pacbio unitigs are much lower. Let's see how they stack up in problem regions.
+# Within problem regions
+perl -lane '@b = split(/;/, $F[7]); @s = split(/;/, $F[8]); for($x = 0; $x < scalar(@b); $x++){if($b[$x] =~ /^utg/){print $s[$x];}}' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.problems.qscore_assoc.tab | statStd.pl
+	total   91
+	Minimum 0
+	Maximum 46.8204
+	Average 4.272981
+	Median  1.84092
+	Standard Deviation      6.655081
+	Mode(Highest Distributed Value) 2.15545
+
+# Outside problem regions
+perl -lane '@b = split(/;/, $F[7]); @s = split(/;/, $F[8]); for($x = 0; $x < scalar(@b); $x++){if($b[$x] =~ /^utg/){print $s[$x];}}' < lachesis_cluster_contig_gap_coords.pbjelly_assoc.ok.qscore_assoc.tab | statStd.pl
+	total   1379
+	Minimum 0
+	Maximum 53.0113
+	Average 5.799039
+	Median  2.98478
+	Standard Deviation      7.484168
+	Mode(Highest Distributed Value) 0
+```
+
+OK, again, the distribution suggests that lower value contigs are likely in problem regions, but I still need manual editing. Let's do this: all problem contigs are removed in problem regions and all contigs with q scores lower than 1 are removed. Making an interleaved file with the data I will use for the separation.
+
+```bash
+cat lachesis_cluster_contig_gap_coords.pbjelly_assoc.problems.qscore_assoc.tab | perl -lane 'chomp; print "$_\tproblem";' > problem.temp
+cat lachesis_cluster_contig_gap_coords.pbjelly_assoc.ok.qscore_assoc.tab | perl -lane 'chomp; print "$_\tproblem";' > ok.temp
+cat lachesis_cluster_contig_coords.bed | perl -lane '$F[0] =~ /cluster_(\d+)/; print "$1\t$F[1]\t$F[2]\t$F[3]";' > scaff.temp
+
+cat problem.temp ok.temp scaff.temp | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > lachesis_interleaved_qscore_info.tab
+
+# Turning it into one line for easier manual editing
+perl -e '$last = "NA"; while($first = <>){$next = <>; chomp $first; chomp $next; @s = split(/\t/, $first); @n = split(/\t/, $next); if($n[0] ne $last && $s[0] ne $n[0]){$third = <>; chomp $third; print "$first\n$next\t$third\n"; $last = $n[0];}elsif($s[0] ne $last){print "$first\t$next\n"; $last = $s[0];}else{print "$first\t$next\n"; $last = $s[0];}}' < lachesis_interleaved_qscore_info.tab > lachesis_interleaved_qscore_info.oneline.tab
+
+# I created a script that should process things and generate the final files
+perl ~/perl_toolchain/assembly_scripts/reorderLachesisDecisTree.pl -t /mnt/nfs/nfs2/dbickhart/transfer/lachesis_ordering_decisions.txt -f ../../papadum-v5bng-pilon-split2kbgap.fa -i ../../papadum-v5bng-pilon-split2kbgap.fa.fai -o papadum-v6lach-bng-reorder
+
+# Doing a quick check
+samtools faidx papadum-v6lach-bng-reorder.fa
+wc -l papadum-v6lach-bng-reorder.fa.fai
+	31 papadum-v6lach-bng-reorder.fa.fai
+
+tail papadum-v6lach-bng-reorder.fa.fai
+cluster_30      35510596        2549820794      60      61
+```
+
+Lost quite a bit, but it's a very good start! Packaging the fasta and getting ready to ship it to the group.
+
+Here are the conditions for the Lachesis decision file:
+
+* A part is "removed" if
+	* It is not a BNG scaffold
+	* It has no RH map position
+	* It has a q score alignment of < 1
+* A part is a "problem" if
+	* It has a different RH map order
+	* Note that "problem" entries are included in the cluster to be reordered
+
