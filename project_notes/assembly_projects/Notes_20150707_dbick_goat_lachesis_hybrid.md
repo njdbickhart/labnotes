@@ -2030,3 +2030,27 @@ Here are the conditions for the Lachesis decision file:
 	* It has a different RH map order
 	* Note that "problem" entries are included in the cluster to be reordered
 
+Just a few things that bother me:
+
+* There are some BNG scaffolds that were not incorporated by Lachesis
+* We're missing about 300 mb
+
+Let's try to clear up the first point.
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); if($s[5] =~ /^(Scaffold_\d+)\..+/){$h{$1} = 1; }} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^(Scaffold_\d+)\..+/){if(exists($h{$1})){ print join("\t", @s) . "\n";}}}' papadum-v6lach-bng-reorder.agp papadum_v5lachesis.full.fa.fai |wc -l
+25 <- 25 scaffold segments that are missing
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); if($s[5] =~ /^(Scaffold_\d+)\..+/){$h{$1} = 1; }} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^(Scaffold_\d+)\..+/){if(exists($h{$1})){ print join("\t", @s) . "\n";}}}' papadum-v6lach-bng-reorder.agp papadum_v5lachesis.full.fa.fai | cut -f2 | perl -e '$c = 0; while(<STDIN>){chomp; $c += $_;} print "$c\n";'
+4,759,053 <- it's a start!
+```
+
+These are small enough that I can add them into the decision text.
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/reorderLachesisDecisTree.pl -t /mnt/nfs/nfs2/dbickhart/transfer/lachesis_ordering_decisions.txt -f ../../papadum-v5bng-pilon-split2kbgap.fa -i ../../papadum-v5bng-pilon-split2kbgap.fa.fai -o papadum-v6lach-bng-reorder.norm
+perl ~/perl_toolchain/assembly_scripts/reorderLachesisDecisTree.pl -t lachesis_ordering_decisions.txt -f ../../papadum-v5bng-pilon-split2kbgap.fa -i ../../papadum-v5bng-pilon-split2kbgap.fa.fai -o papadum-v6lach-bng-reorder.extra
+
+## NOTE: the lachesis_ordering_decision.txt file in the directory is modified to have extra 
+# elements that were BNG mapped but not Lachesis mapped
+```

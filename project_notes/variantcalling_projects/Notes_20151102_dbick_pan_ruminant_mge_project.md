@@ -360,6 +360,38 @@ ENSBTAG00000045518.1
 ~/jdk1.8.0_05/bin/java -jar ~/MEIDivetID/store/MEIDivetID.jar -i AG280.raptr.preprocess.D.divet -r ../gene_data/umd3_repeatmask_named.bed -o AG280.raptr.MEIDivet
 
 # I need to bugfix it, unfortunately!
+
+# Going to change the repeat bed and condense down the repeat family names
+perl -lane '$e = substr($F[3], 0, 4); print "$F[0]\t$F[1]\t$F[2]\t$e";' < umd3_repeatmask_named.bed > umd3_repeatmask_named.reduced.bed
+
+~/jdk1.8.0_05/bin/java -jar ~/MEIDivetID/store/MEIDivetID.jar -i AG280.raptr.preprocess.D.divet -r ../gene_data/umd3_repeatmask_named.reduced.bed -o AG280.raptr.MEIDivet
+
+intersectBed -a AG280.raptr.MEIDivet.putative.mei -b ../gene_data/umd3_ensgene_2kb_upstream.bed -wb | cut -f13 | uniq | wc -l
+1865
+
+# OK, there are more, but it's not every gene. about 10%
+for i in *.divet; do name=`echo $i | cut -d'.' -f1`; echo $name; out=${name}.raptr.MEIDivet; ~/jdk1.8.0_05/bin/java -jar ~/MEIDivetID/store/MEIDivetID.jar -i $i -r ../gene_data/umd3_repeatmask_named.reduced.bed -o $out; done
+
+wc -l *putative.mei
+    94748 AG280.raptr.MEIDivet.putative.mei
+    92157 AG302.raptr.MEIDivet.putative.mei
+   175003 AG304.raptr.MEIDivet.putative.mei
+    97134 AG306.raptr.MEIDivet.putative.mei
+   457612 ITWB10.raptr.MEIDivet.putative.mei
+   584112 ITWB11.raptr.MEIDivet.putative.mei
+   843911 ITWB12.raptr.MEIDivet.putative.mei
+   539155 ITWB13.raptr.MEIDivet.putative.mei
+   646520 ITWB14.raptr.MEIDivet.putative.mei
+   328120 ITWB15.raptr.MEIDivet.putative.mei
+        0 ITWB1.raptr.MEIDivet.putative.mei
+   147413 ITWB2.raptr.MEIDivet.putative.mei
+   130187 ITWB3.raptr.MEIDivet.putative.mei
+   134062 ITWB4.raptr.MEIDivet.putative.mei
+   106754 ITWB5.raptr.MEIDivet.putative.mei
+    84045 ITWB6.raptr.MEIDivet.putative.mei
+   118577 ITWB7.raptr.MEIDivet.putative.mei
+    67095 ITWB9.raptr.MEIDivet.putative.mei
+   247940 PC1.raptr.MEIDivet.putative.mei
 ```
 
 ## SNP and INDEL ID
@@ -374,4 +406,67 @@ perl ~/perl_toolchain/sequence_data_scripts/samtoolsSNPFork.pl -r ../../referenc
 
 # For Buffalo
 perl ~/perl_toolchain/sequence_data_scripts/samtoolsSNPFork.pl -r ../../reference/umd3_kary_unmask_ngap.fa -i ./ITWB10/ITWB10.merged.bam,./ITWB11/ITWB11.merged.bam,./ITWB12/ITWB12.merged.bam,./ITWB13/ITWB13.merged.bam,./ITWB14/ITWB14.merged.bam,./ITWB15/ITWB15.merged.bam,./ITWB1/ITWB1.merged.bam,./ITWB2/ITWB2.merged.bam,./ITWB3/ITWB3.merged.bam,./ITWB4/ITWB4.merged.bam,./ITWB5/ITWB5.merged.bam,./ITWB6/ITWB6.merged.bam,./ITWB7/ITWB7.merged.bam,./ITWB9/ITWB9.merged.bam,./PC1/PC1.merged.bam -o buffalo_umd3_comparative_snp_calling.vcf -n 5 -s ../../reference/samtools_chr_segs.txt -t 1
+
+# Removing the background snps and indels using a BTHO+BTJE vcf
+intersectBed -a goat_umd3_comparative_snp_calling.vcf.samtools.filtered.vcf -b /mnt/iscsi/vnx_gliu_7/100_base_run/samtools_snps/btho_btje_samples.samtools.filtered.vcf -v > goat_umd3_comparative_snp_calling.vcf.samtools.nobackground.vcf
+
+intersectBed -a buffalo_umd3_comparative_snp_calling.vcf.samtools.filtered.vcf -b /mnt/iscsi/vnx_gliu_7/100_base_run/samtools_snps/btho_btje_samples.samtools.filtered.vcf -v > buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.vcf
+
+# Getting only the homozygous snps/indels
+perl -lane 'if($_ =~ /^#/){print $_;}else{$not = 0; for($x = 9; $x < scalar(@F); $x++){@b = split(/:/, $F[$x]); if($b[0] ne "1/1"){$not = 1; last;}} if(!$not){print $_;}}' < goat_umd3_comparative_snp_calling.vcf.samtools.nobackground.vcf > goat_umd3_comparative_snp_calling.vcf.samtools.nobackground.hom.vcf
+
+perl -lane 'if($_ =~ /^#/){print $_;}else{$not = 0; for($x = 9; $x < scalar(@F); $x++){@b = split(/:/, $F[$x]); if($b[0] ne "1/1"){$not = 1; last;}} if(!$not){print $_;}}' < buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.vcf > buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.hom.vcf
+
+wc -l *.hom.vcf
+       191 buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.hom.vcf
+   7607135 goat_umd3_comparative_snp_calling.vcf.samtools.nobackground.hom.vcf
+   7607326 total
+
+# Hmmm, I'm missing allot of buffalo here
+# Going to try a slightly more permissive setting
+perl -lane 'if($_ =~ /^#/){print $_;}else{$not = 0; for($x = 9; $x < scalar(@F); $x++){@b = split(/:/, $F[$x]); if($b[0] ne "1/1" && $b[0] ne "./."){$not = 1; last;}} if(!$not){print $_;}}' < buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.vcf > buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.hom.perm.vcf
+
+# Nope! Too permissive. Trying to stop at 3 ambiguous sites
+perl -lane 'if($_ =~ /^#/){print $_;}else{$not = 0; for($x = 9; $x < scalar(@F); $x++){@b = split(/:/, $F[$x]); $discrep = 0; if($b[0] ne "1/1"){if($b[0] eq "./."){$discrep++; if($discrep > 2){$not = 1; last;}else{next;}}$not = 1; last;} } if(!$not){print $_;}}' < buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.vcf > buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.hom.perm.vcf
+
+# OK, now trying to get only the snps that intersect with gene upstream regions
+grep -v INDEL goat_umd3_comparative_snp_calling.vcf.samtools.nobackground.hom.vcf | intersectBed -a stdin -b ../gene_data/umd3_ensgene_2kb_upstream.bed -wb > goat_umd3_comparative_snp.hom.2kb_upstream.vcf
+grep -v INDEL buffalo_umd3_comparative_snp_calling.vcf.samtools.nobackground.hom.perm.vcf | intersectBed -a stdin -b ../gene_data/umd3_ensgene_2kb_upstream.bed -wb > buffalo_umd3_comparative_snp.hom.2kb_upstream.vcf
+
+wc -l *upstream.vcf
+   994171 buffalo_umd3_comparative_snp.hom.2kb_upstream.vcf
+   150644 goat_umd3_comparative_snp.hom.2kb_upstream.vcf
+  1144815 total
+
+# Now, let's see how much of the conserved TFBS are intersecting the snp
+perl -lane '$e = $F[1] + 1; print "$F[0]\t$F[1]\t$e\t$F[-1]";' <  buffalo_umd3_comparative_snp.hom.2kb_upstream.vcf > buffalo_umd3_comparative_snp.hom.2kb_upstream.bed
+perl -lane '$e = $F[1] + 1; print "$F[0]\t$F[1]\t$e\t$F[-1]";' < goat_umd3_comparative_snp.hom.2kb_upstream.vcf > goat_umd3_comparative_snp.hom.2kb_upstream.bed
+
+intersectBed -a buffalo_umd3_comparative_snp.hom.2kb_upstream.bed -b ../cattle_bc_tfbs_umd3_liftover.bed | wc -l
+26038
+intersectBed -a goat_umd3_comparative_snp.hom.2kb_upstream.bed -b ../cattle_bc_tfbs_umd3_liftover.bed | wc -l
+4437
+
+intersectBed -a buffalo_umd3_comparative_snp.hom.2kb_upstream.bed -b ../cattle_bc_tfbs_umd3_liftover.bed > buffalo_umd3_tfbs_intersect.bed
+intersectBed -a goat_umd3_comparative_snp.hom.2kb_upstream.bed -b ../cattle_bc_tfbs_umd3_liftover.bed > goat_umd3_tfbs_intersect.bed
+
+# Note, alot of these are duplicates from the TFBS bed
+cat goat_umd3_tfbs_intersect.bed | cut -f4 | uniq > goat_umd3_tfbs_intersect.list
+cat buffalo_umd3_tfbs_intersect.bed | cut -f4 | uniq > buffalo_umd3_tfbs_intersect.list
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o goat_umd3_tfbs_intersect.list buffalo_umd3_tfbs_intersect.list
+	File Number 1: goat_umd3_tfbs_intersect.list
+	File Number 2: buffalo_umd3_tfbs_intersect.list
+	Set     Count
+	1       227
+	1;2     974
+	2       3803
+
+	Group: 1 in output file: group_1.txt
+	Group: 1;2 in output file: group_1_2.txt
+	Group: 2 in output file: group_2.txt
+
+mv group_1_2.txt goat_buffal_umd3_tfbs_intersect.snp.share.list
+mv group_2.txt buffalo_umd3_tfbs_intersect.snp.uniq.list
+mv group_1.txt goat_umd3_tfbs_intersect.snp.uniq.list
 ```
