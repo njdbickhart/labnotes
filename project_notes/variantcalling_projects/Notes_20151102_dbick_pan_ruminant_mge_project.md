@@ -392,7 +392,116 @@ wc -l *putative.mei
    118577 ITWB7.raptr.MEIDivet.putative.mei
     67095 ITWB9.raptr.MEIDivet.putative.mei
    247940 PC1.raptr.MEIDivet.putative.mei
+
+# Let's associate them all with upstream regions
+# I'm noticing that the single base repeats are way too prevalent in some of the waterbuffalo. 
+# Removing single base repeats from the analysis
+for i in mei_calls/*putative.mei; do name=`echo $i | cut -d'.' -f1`; echo $name; perl -lane 'if($F[3] =~ /^\([TACG].+/){next;}else{print $_;}' < $i > $name.raptr.MEIDivet.filtered.putative.mei; done
+
+# That reduced the problem a bit, and those calls are more likely misalignments
+
+for i in mei_calls/*filtered.putative.mei; do name=`basename $i | cut -d'.' -f1`; echo $name; intersectBed -a $i -b ../gene_data/umd3_ensgene_2kb_upstream.bed -wb | uniq > mei_calls/${name}.mei.gene.2kb_upstream.bed; done
+
+# In order to find the common elements, I'm going to push the limits of my namelistvenn script
+for i in mei_calls/*mei.gene.2kb_upstream.bed; do name=`basename $i | cut -d'.' -f1`; echo $name; perl -lane 'print $F[-1];' < $i | uniq > mei_calls/${name}.mei.gene.2kb_upstream.list; done
+for i in mei_calls/I*.mei.gene.2kb_upstream.list; do echo -n "$i "; done; echo
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl mei_calls/ITWB10.mei.gene.2kb_upstream.list mei_calls/ITWB11.mei.gene.2kb_upstream.list mei_calls/ITWB12.mei.gene.2kb_upstream.list mei_calls/ITWB13.mei.gene.2kb_upstream.list mei_calls/ITWB14.mei.gene.2kb_upstream.list mei_calls/ITWB15.mei.gene.2kb_upstream.list mei_calls/ITWB2.mei.gene.2kb_upstream.list mei_calls/ITWB3.mei.gene.2kb_upstream.list mei_calls/ITWB4.mei.gene.2kb_upstream.list mei_calls/ITWB5.mei.gene.2kb_upstream.list mei_calls/ITWB6.mei.gene.2kb_upstream.list mei_calls/ITWB7.mei.gene.2kb_upstream.list mei_calls/ITWB9.mei.gene.2kb_upstream.list mei_calls/PC1.mei.gene.2kb_upstream.list > intersections.out
+perl -lane '($b)= $F[0] =~ tr/;/;/; if($b >= 12){print $_;}' < intersections.out
+	1;2;3;4;5;6;7;8;10;11;12;13;14  1
+	1;2;3;4;5;6;7;8;9;10;11;12;13   1
+	1;2;3;4;5;6;7;8;9;10;11;12;13;14        36
+	1;2;3;4;5;6;7;8;9;10;11;12;14   265
+	1;2;3;4;5;6;7;8;9;10;11;13;14   2
+	1;2;3;4;5;6;7;8;9;10;12;13;14   2
+	1;2;3;4;5;6;8;9;10;11;12;13;14  1
+	1;2;3;4;6;7;8;9;10;11;12;13;14  2
+	1;2;3;5;6;7;8;9;10;11;12;13;14  1
+	1;2;4;5;6;7;8;9;10;11;12;13;14  1
+
+# OK! Not a bad result! Let's find out which genes are in these shared groups though!
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o mei_calls/ITWB10.mei.gene.2kb_upstream.list mei_calls/ITWB11.mei.gene.2kb_upstream.list mei_calls/ITWB12.mei.gene.2kb_upstream.list mei_calls/ITWB13.mei.gene.2kb_upstream.list mei_calls/ITWB14.mei.gene.2kb_upstream.list mei_calls/ITWB15.mei.gene.2kb_upstream.list mei_calls/ITWB2.mei.gene.2kb_upstream.list mei_calls/ITWB3.mei.gene.2kb_upstream.list mei_calls/ITWB4.mei.gene.2kb_upstream.list mei_calls/ITWB5.mei.gene.2kb_upstream.list mei_calls/ITWB6.mei.gene.2kb_upstream.list mei_calls/ITWB7.mei.gene.2kb_upstream.list mei_calls/ITWB9.mei.gene.2kb_upstream.list mei_calls/PC1.mei.gene.2kb_upstream.list > intersections.out
+
+for i in `ls group_*.txt | perl -lane '($b)= $F[0] =~ tr/_//; if($b >= 13){print $_;}'`; do echo $i; mv $i mei_calls/buffalo.$i; done
+
+# Let's do the same for goat
+for i in mei_calls/A*mei.gene.2kb_upstream.list; do echo -n "$i "; done; echo
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl mei_calls/AG280.mei.gene.2kb_upstream.list mei_calls/AG302.mei.gene.2kb_upstream.list mei_calls/AG304.mei.gene.2kb_upstream.list mei_calls/AG306.mei.gene.2kb_upstream.list
+File Number 1: mei_calls/AG280.mei.gene.2kb_upstream.list
+File Number 2: mei_calls/AG302.mei.gene.2kb_upstream.list
+File Number 3: mei_calls/AG304.mei.gene.2kb_upstream.list
+File Number 4: mei_calls/AG306.mei.gene.2kb_upstream.list
+Set     Count
+1       695
+1;2     69
+1;2;3   64
+1;2;3;4 158
+1;2;4   41
+1;3     190
+1;3;4   135
+1;4     130
+2       566
+2;3     152
+2;3;4   83
+2;4     84
+3       1271
+3;4     222
+4       741
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o mei_calls/AG280.mei.gene.2kb_upstream.list mei_calls/AG302.mei.gene.2kb_upstream.list mei_calls/AG304.mei.gene.2kb_upstream.list mei_calls/AG306.mei.gene.2kb_upstream.list
+mv group_1_2_3_4.txt mei_calls/goat.group_1_2_3_4.txt
+
+# we'll use 4 groups for Goat and 13+ for Buffalo
+# So 158 genes for Goat
+# 312 in Buffalo
+cat mei_calls/buffalo.group_1_2_*.txt | sort | uniq > mei_calls/buffalo.group_13_plus.txt
+wc -l mei_calls/buffalo.group_13_plus.txt mei_calls/goat.group_1_2_3_4.txt
+ 312 mei_calls/buffalo.group_13_plus.txt
+ 158 mei_calls/goat.group_1_2_3_4.txt
+ 470 total
+
+# Let's see the overlap
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl mei_calls/buffalo.group_13_plus.txt mei_calls/goat.group_1_2_3_4.txt
+File Number 1: mei_calls/buffalo.group_13_plus.txt
+File Number 2: mei_calls/goat.group_1_2_3_4.txt
+Set     Count
+1       284
+1;2     28
+2       130
+
+# Interesting! So about 28 genes shared!
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o mei_calls/buffalo.group_13_plus.txt mei_calls/goat.group_1_2_3_4.txt
+mv group_1_2.txt mei_calls/goat.buff.mei.shared.txt
+# 8 of the combined set genes did not map to the DAVID database
 ```
+
+#### David db on shared goat buff MEI gene lists
+>ENSBTAG00000019788	TEA domain family member 4	Related Genes	Bos taurus
+>GOTERM_BP_FAT	regulation of transcription, DNA-dependent, regulation of transcription, regulation of RNA metabolic process,
+>GOTERM_MF_FAT	DNA binding, transcription factor activity, transcription regulator activity,
+ENSBTAG00000033412	beta 1,3-galactosyltransferase-like	Related Genes	Bos taurus
+GOTERM_BP_FAT	intracellular protein transport, protein localization, protein transport, vesicle-mediated transport, cellular protein localization, establishment of protein localization, intracellular transport, cellular macromolecule localization,
+GOTERM_CC_FAT	endoplasmic reticulum, membrane coat, coated membrane,
+INTERPRO	Clathrin/coatomer adaptor, adaptin-like, N-terminal, Fringe-like, Armadillo-like helical,
+ENSBTAG00000030297	hepatitis A virus cellular receptor 1 N-terminal domain containing protein	Related Genes	Bos taurus
+INTERPRO	Immunoglobulin subtype, Immunoglobulin-like, Immunoglobulin V-set, Immunoglobulin-like fold,
+SMART	IG,
+SP_PIR_KEYWORDS	receptor,
+ENSBTAG00000013866	ribosomal protein S27 pseudogene	Related Genes	Bos taurus
+GOTERM_BP_FAT	translation,
+GOTERM_CC_FAT	ribosome, ribonucleoprotein complex, non-membrane-bounded organelle, intracellular non-membrane-bounded organelle,
+GOTERM_MF_FAT	structural constituent of ribosome, structural molecule activity,
+ENSBTAG00000035027	similar to MOR 3Beta4	Related Genes	Bos taurus
+GOTERM_BP_FAT	cell surface receptor linked signal transduction, G-protein coupled receptor protein signaling pathway,
+GOTERM_CC_FAT	integral to membrane, intrinsic to membrane,
+GOTERM_MF_FAT	olfactory receptor activity,
+KEGG_PATHWAY	Olfactory transduction,
+ENSBTAG00000009542	zinc finger CCCH-type containing 10	Related Genes	Bos taurus
+GOTERM_MF_FAT	zinc ion binding, ion binding, cation binding, metal ion binding, transition metal ion binding,
+INTERPRO	Zinc finger, CCCH-type,
+SMART	ZnF_C3H1,
+SP_PIR_KEYWORDS	metal-binding, zinc,
+
+
 
 ## SNP and INDEL ID
 
@@ -469,4 +578,114 @@ perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o goat_um
 mv group_1_2.txt goat_buffal_umd3_tfbs_intersect.snp.share.list
 mv group_2.txt buffalo_umd3_tfbs_intersect.snp.uniq.list
 mv group_1.txt goat_umd3_tfbs_intersect.snp.uniq.list
+```
+
+## Getting segmental duplication regions
+
+I am going to get the seg dups really quickly and filter away potentially spurious calls quickly.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms
+
+```bash
+# Getting dups
+for i in *.bed; do name=`echo $i | cut -d'.' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[5] < 0.05 && $s[6] < 0.05 && $s[3] eq "duplication"){print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]\t$s[4]\n";}}' $i $name > $name.filtered.dups.bed; done
+for i in *.bed; do name=`echo $i | cut -d'.' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[5] < 0.05 && $s[6] < 0.05 && $s[3] eq "deletion"){print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]\t$s[4]\n";}}' $i $name > $name.filtered.dels.bed; done
+wc -l *.dups.bed
+   3144 AG280.filtered.dups.bed
+   3481 AG304.filtered.dups.bed
+   2810 AG306.filtered.dups.bed
+   3014 ITWB10.filtered.dups.bed
+   3089 ITWB11.filtered.dups.bed
+   3244 ITWB12.filtered.dups.bed
+   2812 ITWB13.filtered.dups.bed
+   2539 ITWB14.filtered.dups.bed
+   3260 ITWB15.filtered.dups.bed
+   3303 ITWB1.filtered.dups.bed
+   3394 ITWB2.filtered.dups.bed
+   3507 ITWB3.filtered.dups.bed
+   3302 ITWB4.filtered.dups.bed
+   3165 ITWB5.filtered.dups.bed
+   2128 ITWB6.filtered.dups.bed
+   3328 ITWB7.filtered.dups.bed
+   2975 PC1.filtered.dups.bed
+
+wc -l *.dels.bed
+     71 AG280.filtered.dels.bed
+     50 AG304.filtered.dels.bed
+    109 AG306.filtered.dels.bed
+   1878 ITWB10.filtered.dels.bed
+   1796 ITWB11.filtered.dels.bed
+   1580 ITWB12.filtered.dels.bed
+   1783 ITWB13.filtered.dels.bed
+   1384 ITWB14.filtered.dels.bed
+   1934 ITWB15.filtered.dels.bed
+   2124 ITWB1.filtered.dels.bed
+   2307 ITWB2.filtered.dels.bed
+   2191 ITWB3.filtered.dels.bed
+   2250 ITWB4.filtered.dels.bed
+   2161 ITWB5.filtered.dels.bed
+   1466 ITWB6.filtered.dels.bed
+   2275 ITWB7.filtered.dels.bed
+   1926 PC1.filtered.dels.bed
+  27285 total
+
+# Interesting thing on the deletions in the goat! Let's condense down to seg dups
+# Noticed some discrepencies in the data. Summarizing below
+ls ITW*.dups.bed > ITWB_dup_file.list
+echo -e "/mnt/iscsi/vnx_gliu_7/ruminant_project/gene_data/umd3_ensgene.bed\tensgene" > genedb.list
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d genedb.list -i ITWB_dup_file.list -o buffalo_segdups -t
+perl -lane 'if($F[4] >= 12){print "$F[1]\t$F[2]\t$F[3]\tbuffalo";}' < buffalo_segdups_regions.tab > buffalo_fixed_segdups.bed
+
+```
+
+| Group | Type | Count | Total Len |
+| :--- | :--- | ---: | ---: |
+Buffalo	| Dups	| 14,123 | 24,099,877
+Buffalo | Dels | 4,982 | 50,768,518
+Goat | Dups | 1,730 | 2,443,230,270
+Goat | Dels | 145 | 6,534,855
+
+I think that the Goat has way too many mapping issues to be reliable. Let's check this out.
+
+#### X coverage
+
+| Group | mapped X cov | unmapped X cov |
+| :--- | :--- | :--- |
+Goat | 0.9 - 2.3 | 0.8 - 2.1 |
+Buffalo | 0.9 - 12.6 | 0.4 - 12.3
+
+Let's stick with buffalo for Seg dups.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/jarms
+
+```bash
+for i in *.bed; do name=`echo $i | cut -d'.' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[5] < 0.05 && $s[6] < 0.05 && $s[3] eq "duplication"){print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]\t$s[4]\n";}}' $i $name > $name.filtered.dups.bed; done
+for i in *.bed; do name=`echo $i | cut -d'.' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[5] < 0.05 && $s[6] < 0.05 && $s[3] eq "deletion"){print "$s[0]\t$s[1]\t$s[2]\t$ARGV[1]\t$s[4]\n";}}' $i $name > $name.filtered.dels.bed; done
+
+for i in BTHO*.filtered.dups.bed; do name=`echo $i | cut -d'.' -f1`; echo -e "$i\t$name"; done > cattle_background_dup.list
+for i in BTJE*.filtered.dups.bed; do name=`echo $i | cut -d'.' -f1`; echo -e "$i\t$name"; done >> cattle_background_dup.list
+
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/genedb.list -i cattle_background_dup.list -o cattle_background -t
+perl -lane 'if($F[4] >= 19){print "$F[1]\t$F[2]\t$F[3]\tcattle";}' < cattle_background_regions.tab > cattle_background_fixed_segdups.bed
+
+# Now, removing the background to get out the segdups
+wc -l /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_fixed_segdups.bed cattle_background_fixed_segdups.bed
+ 130 /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_fixed_segdups.bed
+  92 cattle_background_fixed_segdups.bed
+ 222 total
+
+intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_fixed_segdups.bed -b cattle_background_fixed_segdups.bed -v | wc -l
+101
+intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_fixed_segdups.bed -b cattle_background_fixed_segdups.bed -v | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       101
+        Total Length:           276399
+        Length Average:         2736.62376237624
+        Length Median:          999
+        Length Stdev:           7550.02919783416
+        Smallest Length:        999
+        Largest Length:         71499
+
+intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_fixed_segdups.bed -b cattle_background_fixed_segdups.bed -v | perl -lane 'if($F[2] - $F[1] > 5000){print $_;}' | bed_length_sum.pl
+        Interval Numbers:       11
+        Total Length:           176,989
 ```
