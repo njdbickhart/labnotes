@@ -2054,3 +2054,125 @@ perl ~/perl_toolchain/assembly_scripts/reorderLachesisDecisTree.pl -t lachesis_o
 ## NOTE: the lachesis_ordering_decision.txt file in the directory is modified to have extra 
 # elements that were BNG mapped but not Lachesis mapped
 ```
+
+#### Checking one last problem site
+
+There were a few scaffolds that appear to cause some inconsistencies in the nucmer plots. I'm going to test them for problems using a few of the SV metrics. For instance: count of times that they overlap with problem sites.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/lachesis/test_coverage
+
+```bash
+# first, the overall statistics of overlap of read depth and lumpy
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b pav4_gccorr_only_lachesis.dels.nogaps.bed -c | cut -f5 | statStd.pl
+total   1526
+Minimum 0
+Maximum 73
+Average 3.197248
+Median  1
+Standard Deviation      5.571333
+Mode(Highest Distributed Value) 0
+
+# Now, for lumpy
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b serge_lumpy_dels.lt20kb.bed -c | cut -f5 | statStd.pl
+total   1526
+Minimum 0
+Maximum 27
+Average 0.722149
+Median  0
+Standard Deviation      2.445497
+Mode(Highest Distributed Value) 0
+
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b serge_lumpy_bnds.bedpe -c | cut -f5 | statStd.pl
+total   1526
+Minimum 0
+Maximum 86
+Average 0.385321
+Median  0
+Standard Deviation      2.474186
+Mode(Highest Distributed Value) 0
+
+# So most contigs/scaffolds have few, if any, SV profiles
+# Let's test it on specific cases
+# Read depth
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed -c | grep 'Scaffold_240'
+Lachesis_group21__23_contigs__length_65245013   22837860        25311128        Scaffold_240.2  2
+Lachesis_group21__23_contigs__length_65245013   25367924        30134733        Scaffold_240.3  3
+Lachesis_group21__23_contigs__length_65245013   33174969        65245008        Scaffold_240.1  32
+
+# SV dels
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b serge_lumpy_dels.lt20kb.bed -c | grep 'Scaffold_240'
+Lachesis_group21__23_contigs__length_65245013   22837860        25311128        Scaffold_240.2  0
+Lachesis_group21__23_contigs__length_65245013   25367924        30134733        Scaffold_240.3  2
+Lachesis_group21__23_contigs__length_65245013   33174969        65245008        Scaffold_240.1  15
+
+# SV BND
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b serge_lumpy_bnds.bedpe -c | grep 'Scaffold_240'
+Lachesis_group21__23_contigs__length_65245013   22837860        25311128        Scaffold_240.2  0
+Lachesis_group21__23_contigs__length_65245013   25367924        30134733        Scaffold_240.3  0
+Lachesis_group21__23_contigs__length_65245013   33174969        65245008        Scaffold_240.1  4
+
+# Not looking good!
+# Let's segregate out all of the contigs/scaffolds that have > 2 stdevs + the average events in all three cases
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b papadum_pbv4_gccorr_only_lachesis.dels.nogaps.bed -c | perl -lane 'if($F[4] > 13){print "$F[0]\t$F[1]\t$F[2]\t$F[3]";}' > misassembly_test_jarms_dels_problems.bed
+
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b serge_lumpy_dels.lt20kb.bed -c | perl -lane 'if($F[4] > 5){print "$F[0]\t$F[1]\t$F[2]\t$F[3]";}' > misassembly_test_lumpy_dels_problems.bed
+
+intersectBed -a lachesis_cluster_contig_coords.fixed.bed -b serge_lumpy_bnds.bedpe -c | perl -lane 'if($F[4] > 4){print "$F[0]\t$F[1]\t$F[2]\t$F[3]";}' > misassembly_test_lumpy_bnd_problems.bed
+
+wc -l misassembly_test_*                                             
+   79 misassembly_test_jarms_dels_problems.bed
+   13 misassembly_test_lumpy_bnd_problems.bed
+   52 misassembly_test_lumpy_dels_problems.bed
+  144 total
+
+# Converting them all to named lists
+cat misassembly_test_jarms_dels_problems.bed | cut -f4 > misassembly_test_jarms_dels_problems.list
+cat misassembly_test_lumpy_bnd_problems.bed | cut -f4 > misassembly_test_lumpy_bnd_problems.list
+cat misassembly_test_lumpy_dels_problems.bed | cut -f4 > misassembly_test_lumpy_dels_problems.list
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl  -o misassembly_test_jarms_dels_problems.list misassembly_test_lumpy_bnd_problems.list misassembly_test_lumpy_dels_problems.list
+	File Number 1: misassembly_test_jarms_dels_problems.list
+	File Number 2: misassembly_test_lumpy_bnd_problems.list
+	File Number 3: misassembly_test_lumpy_dels_problems.list
+	Set     Count
+	1       49
+	1;2     1
+	1;2;3   6
+	1;3     23
+	2       5
+	2;3     1
+	3       22
+
+grep 'Scaffold_240.1' group*.txt
+	group_1_3.txt:Scaffold_240.1
+```
+
+I have a bigger problem with the RH map orientation on the agp files!
+
+```bash
+tail cluster6_lachesis_order.list
+utg51695
+Scaffold_1893.1
+Scaffold_1849.1
+Scaffold_1829.1
+Scaffold_120
+utg56448
+utg56409
+Scaffold_1849.2
+Scaffold_1849.3
+Scaffold_427.1
+
+perl -lane 'if($F[0] == 6){print "$F[1]\t$F[2]\t$F[3]\t$F[4]\t$F[5]";}' <  /mnt/nfs/nfs2/dbickhart/transfer/lachesis_ordering_decisions.txt | tail
+utg56409        23      .       .       +
+utg56448        24      .       .       -
+utg56447        25      .       .       -
+Scaffold_1893.2 26      8       8       -
+utg29159        27      .       .       +
+utg51695        28      .       .       +
+Scaffold_1893.1 29      8       9       -
+Scaffold_1849.1 30      8       10      +
+Scaffold_1829.1 31      8       15      +
+Scaffold_120    32      8       14      +
+
+# 1829.1 should be the final lachesis cluster but it's in the middle of the cluster6 order!
+```
