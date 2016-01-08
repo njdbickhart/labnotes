@@ -688,4 +688,44 @@ intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buff
 intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_fixed_segdups.bed -b cattle_background_fixed_segdups.bed -v | perl -lane 'if($F[2] - $F[1] > 5000){print $_;}' | bed_length_sum.pl
         Interval Numbers:       11
         Total Length:           176,989
+
+# And the shared seg dups
+
 ```
+
+I've found a discrepency in my detection of deletions. I want to try to clear it up a bit and make the figures more accurate. 
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/100_base_run/jarms
+
+```bash
+for i in BTHO*.filtered.dels.bed; do name=`echo $i | cut -d'.' -f1`; echo -e "$i\t$name"; done > cattle_background_del.list
+for i in BTJE*.filtered.dels.bed; do name=`echo $i | cut -d'.' -f1`; echo -e "$i\t$name"; done >> cattle_background_del.list
+
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/genedb.list -i cattle_background_del.list -o cattle_background_dels -t
+
+perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); print "$s[1]\t$s[2]\t$s[3]\tcattle\n";}' < cattle_background_dels_regions.tab > cattle_background_dels_cnvrs.bed
+perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); print "$s[1]\t$s[2]\t$s[3]\tbuffalo\n";}' < /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_deletions_regions.tab > /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_deletions_regions.dels.bed
+
+intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_deletions_regions.dels.bed -b cattle_background_dels_cnvrs.bed -v | intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/gene_data/umd3_ensgene.bed -b stdin | wc -l
+854
+
+# That's still a large amount... let's see the regions that are deleted in all Buffalo
+# Err, only 8 regions! Let's do 50% frequency
+perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); if($s[4] >= 7){print "$s[1]\t$s[2]\t$s[3]\tbuffalo\n";}}' < /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_deletions_regions.tab > /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_deletions_regions.gt50perc.bed
+
+intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_deletions_regions.gt50perc.bed -b cattle_background_dels_cnvrs.bed -v | intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/gene_data/umd3_ensgene.bed -b stdin | uniq | wc -l
+102
+
+intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_deletions_regions.gt50perc.bed -b cattle_background_dels_cnvrs.bed -v | intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/gene_data/umd3_ensgene.bed -b stdin | perl -lane '$F[3] =~ s/(ENSBTAG.+)\.\d+/$1/; print $F[3];' | uniq | wc -l
+94 <- unique genes
+
+# Checking the "levels" from Jarms
+for i in /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/ITWB*jarmscnvs.bed.levels; do name=`basename $i | cut -d'.' -f1`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @F = split(/\t/); if($F[3] < 0.5){print "$F[0]\t$F[1]\t$F[2]\t$ARGV[1]\n";}} close IN;' $i $name; done | perl ~/bin/sortBedFileSTDIN.pl | mergeBed -i stdin -nms | perl -lane 'my %h; my @s = split(/;/, $F[3]); foreach $k (@s){$h{$k} = 1;} if(scalar(keys(%h)) >= 13){print join("\t", @F);}' > /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_jarms_common_del_regions.bed
+
+intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_jarms_common_del_regions.bed -b cattle_background_dels_cnvrs.bed -v | intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/gene_data/umd3_ensgene.bed -b stdin -f 0.90 -r | wc -l
+7
+
+# 7 genes that are reciprocally deleted! Actually 4 after removing redundant entries
+# That makes 5 with the Bitter taste receptor (missing just one animal that had 0.66)
+```
+
