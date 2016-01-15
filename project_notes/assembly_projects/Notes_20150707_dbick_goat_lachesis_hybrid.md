@@ -2176,3 +2176,45 @@ Scaffold_120    32      8       14      +
 
 # 1829.1 should be the final lachesis cluster but it's in the middle of the cluster6 order!
 ```
+
+## Final preps and AGP file creation
+
+Scaffold_240.1 is giving us problems, and chr3 and chr5 have some issues with the whole genome alignments.
+
+I'm going to split Scaffold_240.1 into two subsections (Scaffold_240.1.1 and Scaffold_240.1.2) and create a new input fasta file. I'm also going to try to fix my agp output generation.
+
+> Blade 14: /mnt/iscsi/vnx_gliu_7/goat_assembly/lachesis/test_coverage
+
+
+```bash
+# Checking the RH map for guidance
+grep 'Scaffold_240.1' ../../rh_map/papadum-v4bng-pilon-split2kbgap.rhorder.out
+8       Scaffold_240.1  18877424        18877424        ?
+20      Scaffold_240.1  19726450        19726450        ?
+23      Scaffold_240.1  33537   13295580        -
+26      Scaffold_240.1  31865478        31951360        -
+26      Scaffold_240.1  31598246        31762758        -
+26      Scaffold_240.1  26714379        31381416        -
+26      Scaffold_240.1  13867734        26665154        -
+```
+
+So, we should split at the 13295580 - 13867734 coordinate breakpoints
+
+```bash
+mkdir redo_240
+echo -e "Scaffold_240.1\t13295580\t13867734" > redo_240/scaffold_240_breaks.bed
+
+perl ~/perl_toolchain/sequence_data_scripts/splitFastaWBreakpointBed.pl -f ../../papadum-v5bng-pilon-split2kbgap.fa -o redo_240/papadum_v8bng-pilon_scaffolds.fa -b redo_240/scaffold_240_breaks.bed -s redo_240/scaffold_240_samtoolscoords.txt -m 5000 -n 0.95
+
+samtools faidx redo_240/papadum_v8bng-pilon_scaffolds.fa
+perl -lane 'print $F[1];' < redo_240/papadum_v8bng-pilon_scaffolds.fa.fai | perl -e '$c = 0; while(<>){chomp; $c += $_;} print "$c\n";'
+2,620,600,033
+
+# Looking good so far!
+# I manually editted the decision file to remove Scaffold_240.1 and replace it with the two segments
+
+perl ~/perl_toolchain/assembly_scripts/reorderLachesisDecisTree.pl -t /mnt/nfs/nfs2/dbickhart/transfer/lachesis_ordering_decisions_scaffold_240.txt -f redo_240/papadum_v8bng-pilon_scaffolds.fa -i redo_240/papadum_v8bng-pilon_scaffolds.fa.fai -o redo_240/papadum_v8lach-bng-reorder.norm
+
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[5]\t$F[8]";' < papadum-v7lach-bng-reorder.norm.fa.agp > version_7.order
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[5]\t$F[8]";' < redo_240/papadum_v8lach-bng-reorder.norm.agp > version_8.order
+```
