@@ -183,6 +183,113 @@ mummerplot -p chr18_subsection_align_test.mum --large --fat --png -Q combined_ch
 cat chr18_subsection_align_test.mum.gp | awk '{if (match($0, "len=")) { print substr($1, 1, index($1, "_")-1)"\" "$2" "$3} else print $0}' > chr18_subsection_align_test.mum.fixed.gp
 
 gnuplot -geometry 900x900+0+0 -title john_contig chr18_subsection_align_test.mum.fixed.gp
+
+mkdir full_chr_18_subsection
+mv chr18_subsection_align_test.* full_chr_18_subsection/
 ```
 
-It looks like John's contig has ~20kb more sequence near the 150kb mark than the reference, and there is one inversion and several translocations!
+It looks like John's contig has ~20kb more sequence near the 150kb mark than the reference, and there is one inversion and several translocations! Ah, damn, bad news is that it is the BAC vector! It turns out that Tim did not vector trim Lib14414_unitig_273.fasta, at the least. I found the vector location from NCBI's vecscreen.
+
+## Getting rid of the vector and trying again.
+
+It's a big waste of time, but I've gotta get rid of the vector to be sure that my assembly is correct.
+
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/john_assembled_contigs/pilon_testrun
+
+```bash
+# Starting from the beginning
+# PILON
+~/jdk1.8.0_05/bin/java -jar ~/bin/pilon-1.13.jar --genome combined_chr18_fastas.fa --frags arlinda_chr18/arlinda_chr18_merged_subsectioned.bam --output combined_chr18_pilon --changes --vcf --diploid
+
+# Removing vector from corrected sequence
+samtools faidx combined_chr18_pilon.fasta
+samtools faidx combined_chr18_pilon.fasta LIB14414_unitig_273_pilon > /mnt/nfs/nfs2/dbickhart/transfer/lib14414_unitig_273.pilon.fa
+
+samtools faidx combined_chr18_pilon.fasta LIB14363_unitig_3_pilon LIB14414_unitig_273_pilon:1-141764 LIB14435_unitig_94_pilon > combined_chr18_pilon.novec.fasta
+# This was after NCBI vec screening
+
+# AMOS and Minimus2
+~/amos-3.1.0/bin/toAmos -s combined_chr18_pilon.novec.fasta -o combined_chr18_pilon.novec.fixed.afg
+mv combined_chr18_pilon.novec.fasta combined_chr18_pilon.novec.fasta.orig
+rm combined_chr18_pilon.novec.fasta.fai
+~/amos-3.1.0/bin/minimus2 combined_chr18_pilon.novec.fixed -D REFCOUNT=0
+
+samtools faidx combined_chr18_pilon.novec.fixed.fasta
+head combined_chr18_pilon.novec.fixed.fasta.fai
+1       307495  3       60      61
+
+# Interesting... isn't this the approximate size of the vector?
+# I'll do a nucmer plot of this against the previous merged fasta to see how that processed as well
+
+## nucmer against chr18 subsection
+nucmer -mumref -l 100 -c 1000 -p chr18_subsection_align_novec umd3_chr18_573_580_unmasked.fa combined_chr18_pilon.novec.fixed.fasta
+delta-filter -i 95 -o 95 chr18_subsection_align_novec.delta > chr18_subsection_align_novec.best.delta
+dnadiff -p chr18_subsection_align_novec.dna -d chr18_subsection_align_novec.best.delta
+mummerplot -p chr18_subsection_align_novec.mum --large --fat --png -Q combined_chr18_pilon.novec.fixed.fasta chr18_subsection_align_novec.dna.1delta
+cat chr18_subsection_align_novec.mum.gp | awk '{if (match($0, "len=")) { print substr($1, 1, index($1, "_")-1)"\" "$2" "$3} else print $0}' > chr18_subsection_align_novec.mum.fixed.gp
+
+gnuplot -geometry 900x900+0+0 -title john_contig chr18_subsection_align_novec.mum.fixed.gp
+mv chr18_subsection_align_novec.mum.png chr18_subsection_align_novec.mum.emf
+```
+
+There's still a section of the genome that doesn't match the UMD3.1 reference. Let's try to run my subsection alignment program on the master, corrected fasta to see what pops out.
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f combined_chr18_pilon.novec.fixed.fasta -r ../../reference/umd3_kary_unmask_ngap.fa -o combined_chr18_pilon.novec.align.tab
+
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f combined_chr18_pilon.novec.fixed.fasta -r ../../reference/umd3_kary_unmask_ngap.fa -o combined_chr18_pilon.novec.align.tab
+loaded fasta file!
+[M::main_mem] read 308 sequences (307494 bp)...
+[M::mem_process_seqs] Processed 308 reads in 3.477 CPU sec, 3.392 real sec
+[main] Version: 0.7.10-r789
+[main] CMD: bwa mem ../../reference/umd3_kary_unmask_ngap.fa temp.fq
+[main] Real time: 56.742 sec; CPU: 9.354 sec
+Longest aligments:      chr     start   end     length
+                        chr1    20951590        153283269       132331679
+                        chr2    16512761        125716377       109203616
+                        chr11   48330260        107023187       58692927
+                        chr5    29133071        85219301        56086230
+                        chr16   5146193 55925864        50779671
+                        chr23   27321674        52492537        25170863
+                        chr13   3668010 27796611        24128601
+                        chrX    74404074        96914001        22509927
+                        chr18   40333783        62181617        21847834
+                        chr17   66030015        73910427        7880412
+                        chr3    2051723 2052723 1000
+                        chr26   32458140        32459140        1000
+                        chr8    12875966        12876966        1000
+                        chr29   41546141        41547141        1000
+                        chr14   56806974        56807974        1000
+                        chr24   13511406        13511520        114
+                        chr27   22840110        22840160        50
+                        chr28   6264630 6264677 47
+                        chr7    25614570        25614615        45
+                        chr10   87992202        87992246        44
+Output in: combined_chr18_pilon.novec.align.tab
+```
+The data really just confirmed the nucmer aligns, but with the added bonus of BWA mem mappings of the start and end of the contig to chr18.
+
+## Testing the pipeline on un-corrected fastas 
+
+I'm not happy to just try the pilon data, let's try assembling the uncorrected fastas and plotting that.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/john_assembled_contigs/pilon_testrun
+
+```bash
+# AMOS
+~/amos-3.1.0/bin/toAmos -s combined_chr18_fasta_novec.fa -o combined_chr18_fasta_novec.assemble.afg
+~/amos-3.1.0/bin/minimus2 combined_chr18_fasta_novec.assemble -D REFCOUNT=0
+
+samtools faidx combined_chr18_fasta_novec.assemble.fasta
+head combined_chr18_fasta_novec.assemble.fasta.fai
+1       307535  3       60      61
+
+# So there is a difference in size at least!
+# I made an automation script to run the nucmer plot
+sh ../run_nucmer_plot_automation_script.sh umd3_chr18_573_580_unmasked.fa combined_chr18_fasta_novec.assemble.fasta
+
+gnuplot -geometry 900x900+0+0 -title john_nopilon_contig combined_chr18_fasta_novec.mum.fixed.gp
+```
+
+There were just some minor changes with the sequence towards the 3' end of the assembly, notably the position of a large mum around the 57.65 Mb in the Pilon corrected version that is expanded, and a region in the uncorrected contig that maps towards the end of the contig. I suspect that these are due to poor read alignments after the correction.
