@@ -112,6 +112,7 @@ OK, now I'm going to try AMOS (specifically minimus from that pipeline).
 
 ```bash
 ~/amos-3.1.0/bin/toAmos -s combined_chr18_fixed.fasta -o combined_chr18_fixed.afg
+~/amos-3.1.0/bin/minimus2 combined_chr18_fixed -D REFCOUNT=1
 	 The log file is: combined_chr18_fixed.runAmos.log
 	Doing step 10:  Building AMOS bank & Dumping reads
 	Doing step 11
@@ -122,4 +123,66 @@ OK, now I'm going to try AMOS (specifically minimus from that pipeline).
 	Command: /usr/local/bin/show-coords -H -c -l -o -r -I 94 combined_chr18_fixed.delta | /home/dbickhart/amos-3.1.0/bin/nucmerAnnotate | egrep 'BEGIN|END|CONTAIN|IDENTITY' > combined_chr18_fixed.coords  exited with status: 1
 ```
 
-Damn thing needs everything installed to specific directories!
+Damn thing needs everything installed to specific directories! I edited the minimus2 executable (it was a shell script) to remove the hardlinks to nucmer entries.
+
+```bash
+~/amos-3.1.0/bin/minimus2 combined_chr18_fixed -D REFCOUNT=1
+
+# Oops! It turns out that I should rename the original fasta file because it is overwritten by minimus2!
+samtools faidx combined_chr18_fixed.fasta
+head combined_chr18_fixed.fasta.fai
+1       316083  3       60      61
+mv combined_chr18_fixed.fasta combined_chr18_fixed.mini_refcount1.fasta
+
+# Hmm, the refcount field may be limiting. I'm setting it to the default to do an all-vs-all alignment
+~/amos-3.1.0/bin/minimus2 combined_chr18_fixed -D REFCOUNT=0
+head combined_chr18_fixed.fasta.fai
+1       316083  3       60      61
+
+# Same result!
+diff combined_chr18_fixed.fasta combined_chr18_fixed.mini_refcount1.fasta
+
+# No differences!
+```
+
+The singular contig represents a 183,628 bp reduction in the naieve concatenated length of the three BAC contigs. 
+
+Let's align this to Chr18 to see how this will work out. I'm interested to see the nucmer lineup and to see if we're hitting the right target region.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/john_assembled_contigs/pilon_testrun
+
+```bash
+# getting the chr18 fasta ready
+samtools faidx ../../reference/umd3_kary_unmask_ngap.fa chr18 > umd3_chr18_unmasked.fa
+
+# This was taken from my notes file: Notes_20150831_dbick_goat_igc_region_annotation_scaffolding.md
+nucmer -mumref -l 100 -c 1000 -p chr18_contig_align_test umd3_chr18_unmasked.fa combined_chr18_fixed.fasta
+delta-filter -i 95 -o 95 chr18_contig_align_test.delta > chr18_contig_align_test.best.delta
+dnadiff -p chr18_contig_align_test.dna -d chr18_contig_align_test.best.delta
+
+mummerplot -p chr18_contig_align_test.mum --large --fat --png -Q combined_chr18_fixed.fasta chr18_contig_align_test.dna.1delta
+cat chr18_contig_align_test.mum.gp | awk '{if (match($0, "len=")) { print substr($1, 1, index($1, "_")-1)"\" "$2" "$3} else print $0}'  > chr18_contig_align_test.mum.fixed.gp
+
+# Then I had to change the terminal to emf and comment out mouse settings
+gnuplot -geometry 900x900+0+0 -title john_contig chr18_contig_align_test.mum.fixed.gp
+```
+
+Hmm, close, but the reference sequence really crowds out the plot here. I need to extract only the reference sequence I need.
+
+```bash
+mkdir full_chr_18_fixed
+mv chr18_contig_align_test.* full_chr_18_fixed/
+
+samtools faidx ../../reference/umd3_kary_unmask_ngap.fa chr18:57300000-58000000 > umd3_chr18_573_580_unmasked.fa
+
+nucmer -mumref -l 100 -c 1000 -p chr18_subsection_align_test umd3_chr18_573_580_unmasked.fa combined_chr18_fixed.fasta
+delta-filter -i 95 -o 95 chr18_subsection_align_test.delta > chr18_subsection_align_test.best.delta
+dnadiff -p chr18_subsection_align_test.dna -d chr18_subsection_align_test.best.delta
+
+mummerplot -p chr18_subsection_align_test.mum --large --fat --png -Q combined_chr18_fixed.fasta chr18_subsection_align_test.dna.1delta
+cat chr18_subsection_align_test.mum.gp | awk '{if (match($0, "len=")) { print substr($1, 1, index($1, "_")-1)"\" "$2" "$3} else print $0}' > chr18_subsection_align_test.mum.fixed.gp
+
+gnuplot -geometry 900x900+0+0 -title john_contig chr18_subsection_align_test.mum.fixed.gp
+```
+
+It looks like John's contig has ~20kb more sequence near the 150kb mark than the reference, and there is one inversion and several translocations!
