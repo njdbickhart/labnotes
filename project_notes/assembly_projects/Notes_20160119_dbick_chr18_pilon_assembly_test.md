@@ -63,7 +63,7 @@ samtools view -hb arlinda_chr18/arlinda_chr18_merged.bam LIB14363_unitig_3 LIB14
 samtools index arlinda_chr18/arlinda_chr18_merged_subsectioned.bam
 ```
 
-Here's where things get dicy. I don't want Pilon to correct the entire reference (it'll probably take all day!) but I also don't want it to crap out immediately when it checks the BAM header against the fastas that I'm trying to correct. I'm going to demo it with the subset of contigs that I want to correct, and if that fails, I'll try to reformat the bam header in order to trick the program into correcting only the reads that aligned to the specific contigs.
+Here's where things get dicey. I don't want Pilon to correct the entire reference (it'll probably take all day!) but I also don't want it to crap out immediately when it checks the BAM header against the fastas that I'm trying to correct. I'm going to demo it with the subset of contigs that I want to correct, and if that fails, I'll try to reformat the bam header in order to trick the program into correcting only the reads that aligned to the specific contigs.
 
 ```bash
 ## Demo 1: subset reference fasta
