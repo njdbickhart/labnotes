@@ -292,3 +292,22 @@ perl ~/perl_toolchain/simulations/runBWAAlignmentResourceTest.pl -f segments_rev
 | CALL | Get all (unfiltered) variant sites | 11,275 | 5689 |
 | FILTER | Remove variant site artifacts and get final calls | 804 | 384 |
 | **TOTAL**| --- | **50,737 = 14.09 hours**| **15,946 = 4.429 hours**|
+
+
+## Repetitive alignment testing
+
+Paul needs some data with respect to how BWA performs within repetitive regions. I'm going to setup another alignment run to see how BWA handles these variants within Paul's simulated data.
+
+**Paul's file locations**
+> 3850: /AIP_3_SAN/paul/UMD/ 
+
+
+> 3850: /seq1/bickhart/paul_repeats
+
+```bash
+ls /AIP_3_SAN/paul/UMD/source*.fq > fq_files.list
+
+# I then used vim to sort the files and generate the library/read group info
+# I also used vim to create a custom config file
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs paul_fq_list.tab --output repeats --config paul_alignment.config --coords /seq1/reference/samtools_chr_segs.txt --reference /seq1/reference/umd3_kary_unmask_ngap.fa --threads 10
+```
