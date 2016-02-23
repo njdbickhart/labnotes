@@ -293,3 +293,38 @@ gnuplot -geometry 900x900+0+0 -title john_nopilon_contig combined_chr18_fasta_no
 ```
 
 There were just some minor changes with the sequence towards the 3' end of the assembly, notably the position of a large mum around the 57.65 Mb in the Pilon corrected version that is expanded, and a region in the uncorrected contig that maps towards the end of the contig. I suspect that these are due to poor read alignments after the correction.
+
+<a name="holstein"></a>
+## Holstein BACs
+
+OK, the first assembly showed little difference between UMD3 apart from an inversion and some expanded repeats. I'm going to see if the RPCI-42 library (Holstein) has any differences from the Domino BAC sequence.
+
+Here are the files that will be used:
+* LIB14397_unitig_1_vector_trimmed.fasta        
+* LIB14414_unitig_273.fasta 
+* LIB14398_unitig_305_quiver.Vector.Trim.fasta  
+* LIB14435_unitig_94_vector_trim.fasta
+
+**NOTE:** the lib14414 unitig is not vector trimmed! Let's do that now.
+
+NCBI's [vecscreen](http://www.ncbi.nlm.nih.gov/tools/vecscreen/) shows that the last 10kb are the vector. Specifically these bases: 141780-150367.
+
+Trimming now...
+
+> pwd: /home/dbickhart/share/grants/immune_gene_cluster_grant/assemblies/chr18_bacs/rpci_42
+
+```bash
+samtools faidx LIB14414_unitig_273.fasta
+samtools faidx LIB14414_unitig_273.fasta LIB14414_unitig_273:1-141780 | perl -e '<>; print ">LIB14414_unitig_273_trimmed\n"; while(<>){print $_;}' > LIB14414_unitig_273.trimmed.fasta
+```
+
+From my notes, 14414 did not assemble well, and may overlap the same region as 14398. Here is the appropriate table:
+
+Library |	Region Name	| Clone Name	| End Coords	| Notes	| Library	| Results
+:--- | :--- | :--- | :--- | :--- | :--- | :---
+RPCI-42	|chr18|	RPCI42_154M1|	chr18:57,371,161-57,531,510|	Flanking 5' region|	14397|	finished
+RPCI-42	|chr18|	RPCI42_118F24|	chr18:57,548,063-57,704,285|	Overlaps SNP|	14414|	Did not assemble well
+RPCI-42	|chr18|	RPCI42_118B22|	chr18:57,548,064-57,704,269|	Perhaps a clone of the previous region?|	14398|	finished
+RPCI-42	|chr18|	RPCI42_3D15|	chr18:57,657,380-57,806,510|	Flanking 3' region|	14435|	finished
+
+My thoughts: three assemblies might be best here. Assemble with 14414, with 14398 and with both.  

@@ -2218,3 +2218,120 @@ perl ~/perl_toolchain/assembly_scripts/reorderLachesisDecisTree.pl -t /mnt/nfs/n
 perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[5]\t$F[8]";' < papadum-v7lach-bng-reorder.norm.fa.agp > version_7.order
 perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[5]\t$F[8]";' < redo_240/papadum_v8lach-bng-reorder.norm.agp > version_8.order
 ```
+
+## Polishing final assembly
+
+Sergey took us 99.9% of the distance. I'm just going to rename the fasta file headers just so that everyone has an easier time dealing with the file.
+
+Also I'm going to run some (brief) tests. Brief, only because I lack access to anything resembling a server and utility data!
+
+First, some preliminary checks.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/papadum10/quiver
+
+```bash
+# checking the names of the fasta entries
+samtools faidx goat.quivered.fasta
+# Retrieving the largest lachesis clusters and sorting them
+grep 'Contig' goat.quivered.fasta.fai | perl -e '@g; while(<>){chomp; @s = split(/\t/); push(@g, [$s[0], $s[1]]);} @g = sort {$b->[1] <=> $a->[1]} @g; for($x = 0; $x < 31; $x++){$c = $g[$x]; print $c->[0] . "\t" . $c->[1] . "\n";}' 
+
+# Checking the number of "unitigs" and "contigs" in the fasta header names
+perl -e '%h; while(<>){chomp; @s = split(/\t/); @b = split(//, $s[0]); $h{$b[0]} += 1;} foreach my $k (keys(%h)){print "$k\t$h{$k}\n";}' < goat.quivered.fasta.fai
+C       711
+u       29615
+
+# The pipes are killing everything. I've gotta change them.
+perl -ne '$_ =~ s/\|/_/g; print $_;' < goat.quivered.fasta > goat.quivered.fasta.tmp
+samtools faidx goat.quivered.fasta.tmp
+```
+
+OK, so the naming scheme I'll use goes something like this:
+
+* First 31 clusters are named: "clusterX"
+* The remaining non-degenerate clusters/scaffolds are size sorted and named: "scaffoldX" (starting at 1)
+* The rest are just the unitig numbers that Serge used before.
+
+#### The Perl Script
+
+```perl
+#!/usr/bin/perl
+# This is a one-shot script designed to replace the "contig" names from the pilon/pbjelly output 
+# into more user-friendly names
+
+use strict;
+my $usage = "perl $0 <input, indexed fasta> <output fasta>\n";
+
+chomp @ARGV;
+unless(scalar(@ARGV) == 2){
+	print $usage;
+	exit;
+}
+
+# Generate contig name and size listing
+my @reorg;
+open(my $IN, "< $ARGV[0].fai")  || die "Could not open fai file!\n$usage";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	push(@reorg, [$segs[0], $segs[1]]);
+}
+close $IN;
+@reorg = sort {$b->[1] <=> $a->[1]} @reorg;
+
+print "Done reorganizing names\n";
+
+open(my $OUT, "> $ARGV[1]");
+for(my $x = 0; $x < scalar(@reorg); $x++){
+	my $num = $x + 1;
+	my $ctgname = $reorg[$x]->[0];
+	my $ctgsize = $reorg[$x]->[1];
+	my $name;
+	if($x < 31){
+		$name = "cluster$num";
+	}elsif($ctgname =~ /^Contig/){
+		$num -= 31;
+		$name = "scaffold$num";
+	}elsif($ctgname =~ /^utg/){
+		my @segs = split(/_/, $ctgname);
+		$name = $segs[0];
+	}else{
+		print STDERR "Error! encountered name not expected! $ctgname\n";
+		next;
+	}
+	
+	open(my $IN, "samtools faidx $ARGV[0] $ctgname:1-$ctgsize |");
+	my $head = <$IN>;
+	print {$OUT} ">$name\n";
+	while(my $line = <$IN>){
+		print {$OUT} $line;
+	}
+	close $IN;
+}
+
+close $OUT;
+```
+
+Applying the script to the data
+
+```bash
+perl convert_goat_fasta_names.pl goat.quivered.fasta.tmp papadum.v10.quivered.polished.fasta
+```
+
+Now I'm going to remap the RH map probes to the data and check the order/orientation. If there are significant differences, then we're in trouble!
+
+> 3850: /seq1/bickhart/side_projects/rh_map 
+
+```bash
+bwa mem papadum.v10.quivered.polished.fasta RHmap_probe_sequences.fasta > papadum_10_rh_mappings.sam
+
+# Now to count unmapped probes
+# Old mappings
+perl -e '<>; $c = 0; $v = 0; while(<>){chomp; @s = split(/\t/); if($s[5] eq "*"){$v++;} $c++;} print "$c\t$v\n";'
+45953   285
+
+# New mappings
+cat papadum_10_rh_mappings.sam | perl -e '$c = 0; $v = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if($s[0] =~ /^@/){next;} if($s[2] eq "*"){$v++;}elsif($s[2] =~ /^cluster/){$t++;} $c++;} print "$c\t$v\t$t\n";'
+45632   2905    42305
+
+#(total lines, unmapped, mapped to clusters)
+```
