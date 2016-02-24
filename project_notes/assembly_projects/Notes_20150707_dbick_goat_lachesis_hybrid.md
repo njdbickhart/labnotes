@@ -2334,4 +2334,194 @@ cat papadum_10_rh_mappings.sam | perl -e '$c = 0; $v = 0; $t = 0; while(<>){chom
 45632   2905    42305
 
 #(total lines, unmapped, mapped to clusters)
+# Hmm, that's less than expected. Let's see how the probe names match up
+
+perl -e 'chomp(@ARGV); %h; open(DAT, "< $ARGV[0]"); while(<DAT>){chomp; @s = split(/\t/); if($s[0] =~ /^@/){next;}else{$h{$s[0]} = [$s[2], $s[3]];}} close DAT; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $d = $h{$s[0]}; $n = $s[5]; if($s[5] =~ /^utg/){@i = split(/_/, $s[5]); $n = $i[0];} print "$s[0]\t" . $d->[0] . "\t" . $d->[1] . "\t$n\t$s[6]\n";} close DAT;' papadum_10_rh_mappings.sam RHmap_to_PacBio-v3_contigs.txt > ordered_rh_mappings.tab
+
+# "N/A" probes were not included in the fasta file, so lets get rid of those
+grep -v '#N/A' ordered_rh_mappings.tab > ordered_rh_mappings.nona.tab
+
+# Interestingly, some of these mappings just show probes that no longer adequately align to existing clusters
+grep 'utg1957' ordered_rh_mappings.nona.tab
+	OAR1_238375598.1        cluster1        102619982       utg1957 5494269
+	OAR1_238449743.1        cluster1        102678183       utg1957 5436139
+	BTB-00045786    *       0       utg1957 5403122
+	OAR1_238532462.1        cluster1        102767990       utg1957 5346907
+	BTB-01648341    cluster1        104103766       utg1957 4014925
+	BTB-00044939    cluster1        104069097       utg1957 4049457
+	BTB-00045108    cluster1        103997337       utg1957 4120908
+
+# Let's test how often this occurs
+perl -e '%h; while(<>){chomp; @s = split(/\t/); $h{$s[3]}->{$s[1]} += 1;} my($b, $n, $l, $m, $r); foreach $k (keys(%h)){ if($k eq "*"){ foreach $j (keys(%{$h{$k}})){ if($j ne "*"){$r++;}} next;} $ha = exists($h{$k}->{"*"}); $num = scalar(keys(%{$h{$k}})); if($num > 1 && !$ha){$m++;}elsif($num == 2 && $ha){$l++;}elsif($num == 1 && !$ha){$b++;}elsif($num == 1 && $ha){$n++;}} print "NoProb \| NoMaps \| PartialMap \| MultMaps \| Resolve\n:---\|:---\|:---\|:---\|:---\n"; print "$b\|$n\|$l\|$m\|$r\n";' < ordered_rh_mappings.nona.tab
 ```
+#### Results from mappings listing 
+
+NoProb | NoMaps | PartialMap | MultMaps | Resolve
+:---|:---|:---|:---|:---
+915|10|459|54|88
+
+The "MultMaps" are the biggest concern here. 
+
+```bash
+# I'm comparing this to the previous checkpoint assembly: papadum v8
+gunzip papadum_v8bng-pilon_scaffolds.fa.gz
+bwa index papadum_v8bng-pilon_scaffolds.fa
+
+bwa mem papadum_v8bng-pilon_scaffolds.fa RHmap_probe_sequences.fasta > papadum_8_rh_mappings.sam
+cat papadum_8_rh_mappings.sam | perl -e '$c = 0; $v = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if($s[0] =~ /^@/){next;} if($s[2] eq "*"){$v++;}elsif($s[2] =~ /^cluster/){$t++;} $c++;} print "$c\t$v\t$t\n";'
+45632   2503    0
+
+# Pretty similar to the previous mappings
+# Going to try this before the Pilon correction
+bwa index goat_split_36ctg_assembly.fa
+bwa mem goat_split_36ctg_assembly.fa RHmap_probe_sequences.fasta > papadum_4_rh_mappings.sam
+cat papadum_4_rh_mappings.sam | perl -e '$c = 0; $v = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if($s[0] =~ /^@/){next;} if($s[2] eq "*"){$v++;}elsif($s[2] =~ /^cluster/){$t++;} $c++;} print "$c\t$v\t$t\n";'
+45632   2634    0
+
+# Pretty damn similar again!
+# Let's try to associate these maps with the rest to see if there's a trend
+
+```
+
+The important thing is cluster order. Let's check that quickly.
+
+```bash
+perl -e '$last = "start"; $c = 0; while(<>){chomp; @s = split(/\t/); if($s[1] ne $last && $s[1] ne "*"){print "$last\t$c\n"; $last = $s[1]; $c = 0;} $c++;}' < ordered_rh_mappings.nona.tab | wc -l
+903
+
+# That looks bad, but there are lots of "singletons" where there was one probe mapping to an alternative contig/scaffold
+perl -e '$last = "start"; $c = 0; while(<>){chomp; @s = split(/\t/); if($s[1] ne $last && $s[1] ne "*" && $c > 2){print "$last\t$c\n"; $last = $s[1]; $c = 0;} $c++;}' < ordered_rh_mappings.nona.tab | wc -l
+824
+
+# Still pretty high. Let's try to reformat the tab file I generated before and deal with the chromosomes
+perl -e 'chomp(@ARGV); %h; open(DAT, "< $ARGV[0]"); while(<DAT>){chomp; @s = split(/\t/); if($s[0] =~ /^@/){next;}else{$h{$s[0]} = [$s[2], $s[3]];}} close DAT; open(IN, "< $ARGV[1]"); <IN>; while(<IN>){chomp; @s = split(/\t/); $d = $h{$s[0]}; $n = $s[5]; if($s[5] =~ /^utg/){@i = split(/_/, $s[5]); $n = $i[0];} print "$s[0]\t$s[1]\t" . $d->[0] . "\t" . $d->[1] . "\t$n\t$s[6]\n";} close DAT;' papadum_10_rh_mappings.sam RHmap_to_PacBio-v3_contigs.txt > ordered_rh_mappings.tab
+grep -v '#N/A' ordered_rh_mappings.tab > ordered_rh_mappings.nona.tab
+
+# Prints the chromosome ordering with contig/scaffold contribution:
+perl -e '$last = "start"; $lastc = -1; $c = 0; while(<>){chomp; @s = split(/\t/); if($s[2] ne $last && $s[2] ne "*" && $c > 2){print "$last\t$lastc\t$c\n"; $last = $s[2]; $lastc = $s[1]; $c = 0;} $c++;}' < ordered_rh_mappings.nona.tab | perl -e '%h; while(<>){chomp; @s = split(/\t/); $h{$s[1]}->{$s[0]} += $s[2];} foreach my $k (sort {$a <=> $b} keys(%h)){print "[$k]"; @js = sort{$h{$k}->{$b} <=> $h{$k}->{$a}} keys(%{$h{$k}}); foreach $j (@js){print "\t$j\t" . $h{$k}->{$j};} print "\n";}'
+
+# Prints only the highest contributing contigs/scaffolds to each RH chromosome
+perl -e '$last = "start"; $lastc = -1; $c = 0; while(<>){chomp; @s = split(/\t/); if($s[2] eq "*"){next;} if($s[2] ne $last && $c > 2){print "$last\t$lastc\t$c\n"; $last = $s[2]; $lastc = $s[1]; $c = 0;} $c++;}' < ordered_rh_mappings.nona.tab | perl -e '%h; while(<>){chomp; @s = split(/\t/); $h{$s[1]}->{$s[0]} += $s[2];} foreach my $k (sort {$a <=> $b} keys(%h)){print "[$k]"; @js = sort{$h{$k}->{$b} <=> $h{$k}->{$a}} keys(%{$h{$k}}); foreach $j (@js){if($h{$k}->{$j} > 10){print "\t$j\t" . $h{$k}->{$j};}} print "\n";}'
+```
+
+I've identified three mistakes that can be corrected.
+
+chr23 (Scaffold_1637.1 ... not sure what it's doing there!):
+**OAR20_34988140.1        23      cluster28       31879933        utg56619        242597**
+ARS-BFGL-NGS-39980      23      cluster19       37132   utg1471 37049
+OAR20_35185147.1        23      cluster19       44754   utg1471 44601
+s65224.1        23      cluster19       86150   utg1471 85838
+s67035.1        23      cluster19       116059  utg1471 115673
+s62346.1        23      cluster19       216218  utg1471 215416
+s36143.1        23      cluster19       228189  utg1471 227304
+OAR20_35394096.1        23      cluster19       240856  utg1471 239999
+BTA-56332-no-rs 23      *       0       utg1471 276984
+s00007.1        23      cluster19       304932  utg1471 303947
+s13273.1        23      cluster28       31717145        utg56619        80208
+OAR20_35687386.1        23      cluster19       445509  utg1471 443953
+BTA-56342-no-rs 23      cluster19       476001  utg1471 474420
+OAR20_35863023.1        23      cluster19       521144  utg1471 519397
+OAR20_35961027.1        23      cluster19       621645  utg1471 619517
+s30412.1        23      cluster19       634367  utg1471 632202
+OAR20_36071622.1        23      cluster19       725792  utg1471 723386
+ARS-BFGL-BAC-3611       23      cluster19       769882  utg1471 767342
+s69641.1        23      cluster19       815637  utg1471 812995
+s33429.1        23      cluster19       835835  utg1471 833204
+OAR20_36346864.1        23      cluster19       1046875 utg1044 155937
+BTA-92720-no-rs 23      cluster19       1065604 utg1044 174586
+OAR20_36383975.1        23      cluster19       1081680 utg1044 190642
+OAR20_36396618.1        23      cluster19       1096172 utg1044 205104
+ARS-BFGL-NGS-107881     23      cluster19       1103602 utg1044 212516
+OAR20_36457784.1        23      cluster19       1154832 utg1044 263723
+ARS-BFGL-NGS-82538      23      cluster19       1161456 utg1044 270342
+OAR20_36481077.1        23      cluster19       1181627 utg1044 290452
+OAR20_36542486.1        23      cluster19       1235181 utg1044 343812
+OAR20_36646239.1        23      cluster19       1328781 utg1044 437211
+ARS-BFGL-NGS-112063     23      cluster19       1378913 utg23190        1735562
+OAR20_36737629.1        23      cluster19       1411359 utg1044 519670
+OAR20_36774341_X.1      23      cluster19       1450046 utg1044 558246
+ARS-BFGL-NGS-110889     23      *       0       utg1044 599303
+**ARS-BFGL-NGS-104089     23      cluster28       33954938        utg523  829685
+OAR20_37626453.1        23      cluster28       33979337        utg523  850990**
+
+chr11: (Was this a quiver/pilon overcorrection? BNG Scaffold_22.1)
+OAR3_50509171.1 11      cluster15       58939039        utg32509        5985124
+OAR3_50474257.1 11      *       0       utg32511        14272
+**utg32511 +
+utg43837 +
+utg1519 +
+utg32563 +
+utg45429 +
+utg386 +
+utg509 - 6,800,668 to 2,642,887**
+OAR3_23520928.1 11      cluster15       58991810        utg509  2642887
+OAR3_23366586.1 11      cluster15       59135635        utg509  2499167
+
+chr21:
+BTB-00811262    21      cluster20       41659038        utg28093        188358
+BTA-51901-no-rs 21      scaffold1       68374   utg717  562953
+**scaffold1 +**
+s14592.1        21      scaffold1       3320181 utg23187        1339100
+BTB-00800263    21      cluster20       41438419        utg23187        1286224
+
+Testing the chr11 problem junctions
+
+```bash
+samtools faidx papadum.v10.quivered.polished.fasta cluster15:58939039-58979039 > chr11_cluster15_probsite.fa
+bwa mem papadum_v8bng-pilon_scaffolds.fa chr11_cluster15_probsite.fa > chr11_cluster15_probsite.sam
+
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]";' < chr11_cluster15_probsite.sam
+cluster15:58939039-58979039     16      Scaffold_22.2   2       60
+cluster15:58939039-58979039     2064    Scaffold_22.1   2811767 60
+cluster15:58939039-58979039     2064    Scaffold_22.1   2826288 60
+cluster15:58939039-58979039     2064    Scaffold_22.1   28261785        60
+
+#Scaffold_22.1 is on that side! Let's check the other
+samtools faidx papadum.v10.quivered.polished.fasta cluster15:58991810-59135635 > chr11_cluster15_probsite2.fa
+bwa mem papadum_v8bng-pilon_scaffolds.fa chr11_cluster15_probsite2.fa > chr11_cluster15_probsite2.sam
+cluster15:58991810-59135635     16      Scaffold_22.1   2655186 60
+
+# A little more upstream to see if we get away from Scaffold_22.1
+samtools faidx papadum.v10.quivered.polished.fasta cluster15:58930039-58939039 > chr11_cluster15_probsite3.fa
+bwa mem papadum_v8bng-pilon_scaffolds.fa chr11_cluster15_probsite3.fa > chr11_cluster15_probsite3.sam
+
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]";' < chr11_cluster15_probsite3.sam | tail -n 20
+cluster15:58930039-58939039     16      Scaffold_22.2   23426   60
+
+```
+
+I need to use the proper cluster names to ask Sergey to fix these errors. Let's reverse engineer which clusters these were.
+
+My name | Length | Serge's cluster
+:--- | :--- | :---
+cluster1   |     157459805   |    Contig9
+cluster2    |    136571093    |   Contig16
+cluster3    |    120757200    |   Contig22
+cluster4    |    120098609    |   Contig5
+cluster5    |    119051289    |   Contig3
+cluster6     |   117708699    |   Contig12
+cluster7     |   112708337     |  Contig15
+cluster8     |   108463126     |  Contig14
+cluster9     |   101128593     |  Contig19
+cluster10    |   94703394      |  Contig24
+cluster11    |   91592673     |   Contig13
+cluster12    |   87320585      |  Contig6
+cluster13    |   83050203      |  Contig25
+cluster14    |   81929103      |  Contig18
+cluster15    |   80796137      |  Contig11
+cluster16    |   79400982      |  Contig17
+cluster17    |   71795819     |   Contig27
+cluster18    |   71178665      |  Contig20
+cluster19    |   67351606      |  Contig2
+cluster20    |   66116439      |  Contig7
+cluster21    |   66077574      |  Contig0
+cluster22    |   65196113     |   Contig8
+cluster23    |   62349873      |  Contig28
+cluster24    |   60336389      |  Contig21
+cluster25    |   51441506      |  Contig23
+cluster26    |   51337999      |  Contig10
+cluster27    |   49920226      |  Contig1
+cluster28    |   48900931      |  Contig26
+cluster29    |   44739069      |  Contig29
+cluster30     |  44685470      |  Contig31
+cluster31      | 42877099      |  Contig4
