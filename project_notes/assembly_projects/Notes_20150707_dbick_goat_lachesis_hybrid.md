@@ -2525,3 +2525,71 @@ cluster28    |   48900931      |  Contig26
 cluster29    |   44739069      |  Contig29
 cluster30     |  44685470      |  Contig31
 cluster31      | 42877099      |  Contig4
+
+
+Sergey confirmed that the AGP file he used accidentally truncated Scaffold_22.1. I'm going to check that one, then add in the missing Scaffold and check the final error and modify his AGP file as needed.
+
+> 3850: /seq1/bickhart/side_projects
+
+```bash
+# Checking chr11's truncation
+grep Scaffold_22.1 papadum_v10lach-bng-reorder.norm.agp
+8       58902394        87165315        5       F       Scaffold_22.1   1       28262922        -
+
+# That matches my data on the size of the scaffold fragment
+# Let's check Scaffold_1637.1 now
+grep Scaffold_1637.1 papadum_v10lach-bng-reorder.norm.agp
+20      1       7847968 0       F       Scaffold_1637.1 1       7847968 +
+
+# That's in the right place (at the start of the chromosome)
+# Now let's see if we can incorporate "Scaffold1" from above. 
+# First we need to figure out just what "Scaffold1" really is!
+cd rh_map/
+samtools faidx papadum.v10.quivered.polished.fasta scaffold1 > scaffold1.section.fa
+bwa mem papadum_v8bng-pilon_scaffolds.fa scaffold1.section.fa > scaffold1.section.sam
+samtools view -bS scaffold1.section.sam > scaffold1.section.bam
+~/bedtools2/bin/bamToBed -i scaffold1.section.bam
+	Scaffold_61.2   632203  3341330 scaffold1       60      +
+	Scaffold_61.2   1       632143  scaffold1       60      +
+
+# OK, we've got the name. Let's see if it is in the agp file
+cd ..
+grep Scaffold_61.2 papadum_v10lach-bng-reorder.norm.agp
+Scaffold_61.2   1       3341330 1       F       Scaffold_61.2   1       3341330 +
+
+# Unplaced, as we expected. Let's see if its constitutive components are placed
+grep Scaffold_61 papadum_v10lach-bng-reorder.norm.agp
+18      22869765        24605794        1       F       Scaffold_61.1   1       1736030 +
+Scaffold_61.2   1       3341330 1       F       Scaffold_61.2   1       3341330 +
+
+# I'm going to have to align the constitutive component of Scaffold_61 to the other assembly to see if it is the same cluster
+cd rh_map/
+samtools faidx papadum_v8bng-pilon_scaffolds.fa Scaffold_61.1 > Scaffold_61.1.section.fa
+bwa mem papadum.v10.quivered.polished.fasta Scaffold_61.1.section.fa > Scaffold_61.1.section.sam
+samtools view -bS Scaffold_61.1.section.sam > Scaffold_61.1.section.bam
+~/bedtools2/bin/bamToBed -i Scaffold_61.1.section.bam
+	cluster20       41469935        43206254        Scaffold_61.1   60      -
+
+# This matches the same cluster and coordinates, but I'm going to have to be careful of how to orient it!
+# Let's pull more flanking sequence and align that to be sure!
+samtools faidx papadum_v8bng-pilon_scaffolds.fa Scaffold_1.7:1-1000000 > Scaffold_1.7.section.fa
+bwa mem papadum.v10.quivered.polished.fasta Scaffold_1.7.section.fa > Scaffold_1.7.section.sam
+samtools view -bS Scaffold_1.7.section.sam > Scaffold_1.7.section.bam
+~/bedtools2/bin/bamToBed -i Scaffold_1.7.section.bam
+cluster20       18628475        19276723        Scaffold_1.7:1-1000000  60      +
+cluster20       18273514        18625837        Scaffold_1.7:1-1000000  60      +
+
+samtools faidx papadum_v8bng-pilon_scaffolds.fa Scaffold_1.7:22186583-23186583 > Scaffold_1.7.end.fa
+bwa mem papadum.v10.quivered.polished.fasta Scaffold_1.7.end.fa > Scaffold_1.7.end.sam
+samtools view -bS Scaffold_1.7.end.sam > Scaffold_1.7.end.bam
+~/bedtools2/bin/bamToBed -i Scaffold_1.7.end.bam
+cluster20       40469583        41469935        Scaffold_1.7:22186583-23186583  60      +
+
+# OK, so the scaffold goes after Scaffold_1.7 and before Scaffold_61.1
+grep Scaffold_61.2 papadum_v8bng-pilon_scaffolds.fa.fai
+Scaffold_61.2   3341330 734118399       60      61
+
+perl -e '$start = 0; $last = 0; while(<>){chomp; @s = split(/\t/); if($s[0] == 18 && $s[5] eq "Scaffold_61.1"){$start = 1; $last = $s[2];}elsif($s[0] != 18){$start = 0;}elsif($start){if($s[7] ne "map"){$s[1] = $last + 1; $s[2] = $last + $s[7];}else{$s[1] = $last + 1; $s[2] = $last + 5;} $last = $s[2];} print join("\t", @s); print "\n";}' < papadum_v11lach-bng-reorder.norm.agp > papadum_v11lach-bng-reorder.norm.agp.temp
+mv papadum_v11lach-bng-reorder.norm.agp.temp papadum_v11lach-bng-reorder.norm.fixed.agp
+```
+
