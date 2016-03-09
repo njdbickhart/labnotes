@@ -311,3 +311,31 @@ ls /AIP_3_SAN/paul/UMD/source*.fq > fq_files.list
 # I also used vim to create a custom config file
 perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs paul_fq_list.tab --output repeats --config paul_alignment.config --coords /seq1/reference/samtools_chr_segs.txt --reference /seq1/reference/umd3_kary_unmask_ngap.fa --threads 10
 ```
+
+Now I need to run the GATK Best practices workflow separately. I will use untrained and trained methods to call the variants.
+
+First, let's realign all INDELs in the existing bams.
+
+> 3850: /seq1/bickhart/paul_repeats/repeats
+
+```bash
+# Identifying indel sites
+for i in ./*/*.bam; do name=`basename $i | cut -d'.' -f1`; echo $name; ~/jdk1.8.0_45/bin/java -jar ~/bin/GenomeAnalysisTK.jar -T RealignerTargetCreator -R /seq1/reference/umd3_kary_unmask_ngap.fa -I $i -o $name/$name.indelslist -nt 15; done
+
+#~ 8 minutes per bam at 15 cores
+
+# Realigning indel sites
+# NOTE: the GATK is picky about file extensions! I renamed all of the interval lists with this command:
+for i in ./*/*.indelslist; do name=`basename $i | cut -d'.' -f1`; mv $i $name/$name.indels.list; done
+for i in ./*/*.bam; do name=`basename $i | cut -d'.' -f1`; indel=`echo $name/$name.indels.list`; echo $indel; ~/jdk1.8.0_45/bin/java -jar ~/bin/GenomeAnalysisTK.jar -T IndelRealigner -R /seq1/reference/umd3_kary_unmask_ngap.fa -I $i -targetIntervals $indel -LOD 0.4 -o $name/$name.indel.realigned.bam; done
+
+# ~ 78 minutes per bam at 1 core each
+
+# I'm just going to use the UnifiedGenotyper -- the HaplotypeCaller uses Haplotypes to call INDELs and Paul
+# did not format the data to account for their "haplotyping"
+# Getting the input list of bams
+for i in ./*/*.indel.realigned.bam; do echo -ne "-I $i "; done; echo
+
+# Running the UnifiedGenotyper
+~/jdk1.8.0_45/bin/java -Xmx65g -jar ~/bin/GenomeAnalysisTK.jar -T UnifiedGenotyper -R /seq1/reference/umd3_kary_unmask_ngap.fa -I ./source10/source10.indel.realigned.bam -I ./source1/source1.indel.realigned.bam -I ./source2/source2.indel.realigned.bam -I ./source3/source3.indel.realigned.bam -I ./source4/source4.indel.realigned.bam -I ./source5/source5.indel.realigned.bam -I ./source6/source6.indel.realigned.bam -I ./source7/source7.indel.realigned.bam -I ./source8/source8.indel.realigned.bam -I ./source9/source9.indel.realigned.bam -o gatk_raw_variant_calls.vcf --genotype_likelihoods_model BOTH -nt 20
+
