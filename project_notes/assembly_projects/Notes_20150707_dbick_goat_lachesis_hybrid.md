@@ -2315,9 +2315,7 @@ Applying the script to the data
 
 ```bash
 perl convert_goat_fasta_names.pl goat.quivered.fasta.tmp papadum.v10.quivered.polished.fasta
-<<<<<<< HEAD
-```
-=======
+
 ```
 
 Now I'm going to remap the RH map probes to the data and check the order/orientation. If there are significant differences, then we're in trouble!
@@ -2596,4 +2594,140 @@ perl -e '$start = 0; $last = 0; while(<>){chomp; @s = split(/\t/); if($s[0] == 1
 mv papadum_v11lach-bng-reorder.norm.agp.temp papadum_v11lach-bng-reorder.norm.fixed.agp
 ```
 
->>>>>>> origin/master
+## Finalizing the assembly
+
+First, performing the RH map tests to see if everything matches up.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/quiver
+
+```bash
+bwa index goat.quivered.fasta
+bwa mem goat.quivered.fasta ../rh_map/RHmap_probe_sequences.fasta > rh_map_probes_quiver.sam
+
+# Mapping check
+cat rh_map_probes_quiver.sam | perl -e '$c = 0; $v = 0; $t = 0; while(<>){chomp; @s = split(/\t/); if($s[0] =~ /^@/){next;} if($s[2] eq "*"){$v++;}elsif($s[2] =~ /^cluster/){$t++;} $c++;} print "$c\t$v\t$t\n";'
+45632   2400    0
+
+# 100 more maps! Good deal!
+
+# RH map probe check
+# Converting to tab format
+perl -e 'chomp(@ARGV); %h; open(DAT, "< $ARGV[0]"); while(<DAT>){chomp; @s = split(/\t/); if($s[0] =~ /^@/){next;}else{$h{$s[0]} = [$s[2], $s[3]];}} close DAT; open(IN, "< $ARGV[1]"); <IN>; while(<IN>){chomp; @s = split(/\t/); if($s[-1] eq "#N\A"){next;} $d = $h{$s[0]}; $n = $s[5]; if($s[5] =~ /^utg/){@i = split(/_/, $s[5]); $n = $i[0];} print "$s[0]\t$s[1]\t" . $d->[0] . "\t" . $d->[1] . "\t$n\t$s[6]\n";} close DAT;' rh_map_probes_quiver.sam ../rh_map/RHmap_to_PacBio-v3_contigs.txt > rh_map_probes_quiver.nona.tab
+
+# Cluster 23 has a slight merger with cluster 18, but this is a very small addition that is just over a megabase.
+# We'll ignore it for now.
+```
+
+OK, now I need to concatenate the list of contigs in the Pilon folder, add the other contigs that were not incorporated and then relabel them into a more machine-readable format.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/pilon
+
+```bash
+for i in *.fasta; do echo $i; perl -e '$h = <>; chomp $h; $h =~ s/^>//g; @b = split(/\|/, $h); print ">$b[0]\n"; while(<>){print $_;}' < $i >> pilon_merged_output.fasta; done
+
+# This should be my list of finished, error corrected contigs/scaffolds. 
+# Let's write a script that takes the quivered fastas and adds them as separate entries as well.
+
+# First, to get rid of the damn pipes in the quiver fasta
+perl -ne 'if($_ =~ /^>/){$_ =~ s/\|/_/g;} print $_;' < ../quiver/goat.quivered.fasta > ../quiver/goat.quivered.nopipe.fasta
+samtools faidx ../quiver/goat.quivered.nopipe.fasta
+
+# now to run the script
+perl ../final_contig_naming_script.pl pilon_merged_output.fasta ../quiver/goat.quivered.nopipe.fasta goat_v12_corrected.fa
+```
+
+Here is the script (it's an adaptation of my prior perl script):
+
+```perl
+#!/usr/bin/perl
+# This is a one-shot script designed to incorporate all of the finished, corrected data into a 
+# coherent, usable fasta file
+
+use strict;
+my $usage = "perl $0 <input pilon, indexed fasta> <input quiver, indexed fasta> <output fasta>\n";
+
+chomp @ARGV;
+unless(scalar(@ARGV) == 3){
+	print $usage;
+	exit;
+}
+
+# Generate contig name and size listing
+my @reorg;
+my %found;
+my @unplaced;
+open(my $IN, "< $ARGV[0].fai")  || die "Could not open fai file!\n$usage";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	$found{$segs[0]} = 1;
+	push(@reorg, [$segs[0], $segs[1]]);
+}
+close $IN;
+@reorg = sort {$b->[1] <=> $a->[1]} @reorg;
+
+open(my $IN, "< $ARGV[1].fai") || die "Could not open fai file!\n$usage";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	$segs[0] =~ s/_quiver//g;
+	if(!exists($found{$segs[0]})){
+		push(@unplaced, [$segs[0], $segs[1]]);
+	}
+}
+close $IN;
+@unplaced = sort {$b->[1] <=> $a->[1]} @unplaced;
+	
+
+print "Done reorganizing names\n";
+
+open(my $OUT, "> $ARGV[2]");
+for(my $x = 0; $x < scalar(@reorg); $x++){
+	my $num = $x + 1;
+	my $ctgname = $reorg[$x]->[0];
+	my $ctgsize = $reorg[$x]->[1];
+	my $name;
+	if($x < 31){
+		$name = "cluster_$num";
+	}elsif($ctgname =~ /^Contig/){
+		$num -= 31;
+		$name = "scaffold_$num";
+	}elsif($ctgname =~ /^utg/){
+		my @segs = split(/_/, $ctgname);
+		$name = $segs[0];
+	}else{
+		print STDERR "Error! encountered name not expected! $ctgname\n";
+		next;
+	}
+	
+	open(my $IN, "samtools faidx $ARGV[0] $ctgname:1-$ctgsize |");
+	my $head = <$IN>;
+	print {$OUT} ">$name\n";
+	while(my $line = <$IN>){
+		print {$OUT} $line;
+	}
+	close $IN;
+}
+
+for(my $x = 0; $x < scalar(@unplaced); $x++){
+	my $num = $x + 1;
+	my $ctgname = $unplaced[$x]->[0];
+	my $ctgsize = $unplaced[$x]->[1];
+	
+	my $name = "unplaced_$num";
+	open(my $IN, "samtools faidx $ARGV[1] $ctgname:1-$ctgsize |");
+	my $head = <$IN>;
+	print {$OUT} ">$name\n";
+	while(my $line = <$IN>){
+		print {$OUT} $line;
+	}
+	close $IN;
+}
+
+close $OUT;
+```
+
+
+
+
+
