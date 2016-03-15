@@ -2670,8 +2670,8 @@ open(my $IN, "< $ARGV[1].fai") || die "Could not open fai file!\n$usage";
 while(my $line = <$IN>){
 	chomp $line;
 	my @segs = split(/\t/, $line);
-	$segs[0] =~ s/_quiver//g;
-	if(!exists($found{$segs[0]})){
+	my($short) = $segs[0] =~ m/(.+)_quiver/;
+	if(!exists($found{$short})){
 		push(@unplaced, [$segs[0], $segs[1]]);
 	}
 }
@@ -2727,7 +2727,251 @@ for(my $x = 0; $x < scalar(@unplaced); $x++){
 close $OUT;
 ```
 
+OK, so I made a mistake with the script in the original version (changed version is above) due to the addition of the "quiver" handle on the end of each "Contig" name. 
 
+```bash
+perl ../final_contig_naming_script.pl pilon_merged_output.fasta ../quiver/goat.quivered.nopipe.fasta goat_v13_corrected.fa
 
+samtools faidx goat_v13_corrected.fa
+wc -l *.fai
+  30681 goat_v12_corrected.fa.fai
+  29998 goat_v13_corrected.fa.fai
+    683 pilon_merged_output.fasta.fai
+  61362 total
 
+# Looks good! I think that the number of entries matches what I'd expect
 
+mv goat_v13_corrected.fa goat_v13_corrected.full.fa
+samtools faidx goat_v13_corrected.full.fa
+
+# Now to pull only the 683 pilon-corrected contigs
+perl -lane 'if(!($F[0] =~ /unplaced_.+/)){print STDERR "$F[0]"; open(IN, "samtools faidx goat_v13_corrected.full.fa $F[0]:1-$F[1] |"); $h = <IN>; print ">$F[0]"; while(<IN>){chomp; print "$_";} close IN;}' < goat_v13_corrected.full.fa.fai > goat_v13_corrected.ctg.fa
+
+# Finally, to create a BWA index and map the RH probes and SNP chip probes
+bwa index goat_v13_corrected.full.fa
+bwa mem goat_v13_corrected.full.fa ../snp_probes/my_temp.fq > goat_v13_corrected.full.snps.sam
+bwa mem goat_v13_corrected.full.fa ../rh_map/RHmap_probe_sequences.fasta > goat_v13_corrected.full.rhmap.sam
+```
+
+Now to make the sam files into tab delimited entries. I'm going to accomplish this using a dedicated script this time.
+
+```perl
+#!/usr/bin/perl
+# this is a one-shot script designed to associate RH map coordinates with aligned entries from a sam file
+# Includes all prior mapping information from teh RH map file
+
+use strict;
+use Getopt::Std;
+
+my %opts;
+my $usage = "perl $0 -r <rh map> -s <sam file> -o <output tab file>\n";
+getopt('rso', \%opts);
+
+unless(defined($opts{'r'}) && defined($opts{'s'}) && defined($opts{'o'})){
+	print $usage;
+	exit;
+}
+
+# Get the sam file coordinates mapped into memory
+my %coords; #= {snp probe} -> [chr, pos, orient]
+open(my $IN, "< $opts{s}") || die "Could not open sam file!\n$usage";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	if($segs[0] =~ /^@/){next;}
+	my $orient = "+";
+	if($segs[1] & 0x10){
+		$orient = "-";
+	}
+	
+	push(@{$coords{$segs[0]}}, ($segs[2], $segs[3], $orient));
+}
+close $IN;
+
+# Open the RH map file and associate sam entries with it
+open(my $IN, "< $opts{r}") || die "Could not open RH map file!\n$usage";
+open(my $OUT, "> $opts{o}");
+my $h = <$IN>;
+print {$OUT} "Probe\tChr(RH)\tPos(RH)\tChr(goat13)\tPos(goat13)\tOrient(goat13)\tChr(goat3)\tPos(goat3)\tChr(CHI1)\tPos(CHI1)\n";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	my ($g13chr, $g13pos, $g13orient);
+	if(!(exists($coords{$segs[0]}))){
+		print STDERR "Error with missing snp probe: $segs[0]!\n";
+		($g13chr, $g13pos, $g13orient) = ("MISS", "MISS", "MISS");
+	}else{
+		($g13chr, $g13pos, $g13orient) = @{$coords{$segs[0]}};
+		#$g13chr = $coords{$segs[0]}->[0]
+		if($g13chr eq "*"){
+			$g13chr = "UNMAP";
+			$g13pos = "UNMAP";
+			$g13orient = "UNMAP";
+		}
+	}
+	
+	# Deal with goatv3 contig naming convention
+	my ($g3ctg) = $segs[5] =~ /(utg\d+)_len.*/;
+	my $g3pos = $segs[6];
+	if($g3ctg eq ""){
+		$g3ctg = "UNMAP";
+		$g3pos = "UNMAP";
+	}
+	if($segs[5] eq "\#N/A"){
+		$g3ctg = "MISS";
+		$g3pos = "MISS";
+	}
+	
+	my ($bgichr, $bgipos, $rhchr, $rhpos) = ($segs[3], $segs[4], $segs[1], $segs[2]);
+	
+	print {$OUT} "$segs[0]\t$rhchr\t$rhpos\t$g13chr\t$g13pos\t$g13orient\t$g3ctg\t$g3pos\t$bgichr\t$bgipos\n";
+	
+}
+
+close $IN;
+close $OUT;
+
+exit;
+```
+
+Associating SNP probes should be easier. Let's do it with a one-liner.
+
+Nope! On second thought, the information on the probes needs more details added as separate columns. I'll repurpose my script above into another one-liner.
+
+```perl
+#!/usr/bin/perl
+# this is a one-shot script designed to associate snp probe coordinates with aligned entries from a sam file
+# Includes all prior mapping information from the snp probe file
+
+use strict;
+use Getopt::Std;
+
+my %opts;
+my $usage = "perl $0 -r <snp file> -s <sam file> -o <output tab file>\n";
+getopt('rso', \%opts);
+
+unless(defined($opts{'r'}) && defined($opts{'s'}) && defined($opts{'o'})){
+	print $usage;
+	exit;
+}
+
+our %refseq = (
+	'NC_022293.1' => 'chr1',
+	'NC_022294.1' => 'chr2',
+	'NC_022295.1' => 'chr3',
+	'NC_022296.1' => 'chr4',
+	'NC_022297.1' => 'chr5',
+	'NC_022298.1' => 'chr6',
+	'NC_022299.1' => 'chr7',
+	'NC_022300.1' => 'chr8',
+	'NC_022301.1' => 'chr9',
+	'NC_022302.1' => 'chr10',
+	'NC_022303.1' => 'chr11',
+	'NC_022304.1' => 'chr12',
+	'NC_022305.1' => 'chr13',
+	'NC_022306.1' => 'chr14',
+	'NC_022307.1' => 'chr15',
+	'NC_022308.1' => 'chr16',
+	'NC_022309.1' => 'chr17',
+	'NC_022310.1' => 'chr18',
+	'NC_022311.1' => 'chr19',
+	'NC_022312.1' => 'chr20',
+	'NC_022313.1' => 'chr21',
+	'NC_022314.1' => 'chr22',
+	'NC_022315.1' => 'chr23',
+	'NC_022316.1' => 'chr24',
+	'NC_022317.1' => 'chr25',
+	'NC_022318.1' => 'chr26',
+	'NC_022319.1' => 'chr27',
+	'NC_022320.1' => 'chr28',
+	'NC_022321.1' => 'chr29',
+	'NC_022322.1' => 'chrX',
+	'NC_005044.2' => 'chrMT',
+);
+
+# Get the sam file coordinates mapped into memory
+my %coords; #= {snp probe} -> [chr, pos, orient]
+open(my $IN, "< $opts{s}") || die "Could not open sam file!\n$usage";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	if($segs[0] =~ /^@/){next;}
+	my $orient = "+";
+	if($segs[1] & 0x10){
+		$orient = "-";
+	}
+	
+	push(@{$coords{$segs[0]}}, ($segs[2], $segs[3]));
+}
+close $IN;
+
+# Open the SNP map file and associate sam entries with it
+open(my $IN, "< $opts{r}") || die "Could not open SNP map file!\n$usage";
+open(my $OUT, "> $opts{o}");
+my $h = <$IN>;
+print {$OUT} "Probe\tSynthesized\tSuccessful\tMAF\tChr(goat13)\tPos(goat13)\tChr(Chi1)\tPos(Chi1)\tChr(UMD3)\tPos(UMD3)\tSequence\n";
+while(my $line = <$IN>){
+	chomp $line;
+	$line =~ s/\r//g;
+	my @segs = split(/\t/, $line);
+	my ($g13chr, $g13pos);
+	if(!(exists($coords{$segs[0]}))){
+		print STDERR "Error with missing snp probe: $segs[0]!\n";
+		($g13chr, $g13pos) = ("MISS", "MISS");
+	}else{
+		($g13chr, $g13pos) = @{$coords{$segs[0]}};
+		#$g13chr = $coords{$segs[0]}->[0]
+		if($g13chr eq "*"){
+			$g13chr = "UNMAP";
+			$g13pos = "UNMAP";
+		}
+	}
+	my $bginame = (exists($refseq{$segs[10]}))? $refseq{$segs[10]} : $segs[10];
+	
+	my ($synth, $succ, $bgichr, $bgipos, $umdchr, $umdpos, $seq) = ($segs[2], $segs[3], $bginame, $segs[11], $segs[14], $segs[15], $segs[1]);
+	
+	print {$OUT} "$segs[0]\t$synth\t$succ\t$segs[4]\t$g13chr\t$g13pos\t$bgichr\t$bgipos\t$umdchr\t$umdpos\t$seq\n";
+	
+}
+
+close $IN;
+close $OUT;
+
+exit;
+```
+
+Now I just need to reorder the SNP probes so that they are able to be used in association studies.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/pilon
+
+```bash
+perl -e '$h = <>; print $h; %data; while(<>){chomp; @segs = split(/\t/); my @temp = @segs; push(@{$data{$segs[4]}}, \@temp);} @k = keys(%data); @sort = @k[map { unpack "N", substr($_,-4) } sort map{ my $key = $k[$_]; $key =~ s[(\d+)][ pack "N", $1 ]ge; $key . pack "N", $_ } 0..$#k]; foreach my $s (@sort){@d = @{$data{$s}}; @j = sort{$a->[5] <=> $b->[5]} @d; foreach my $t (@j){print join("\t", @{$t}); print "\n";}}' < goat_v13_corrected.full.snps.tab > goat_v13_corrected.full.snps.sorted.tab
+
+# Checking the number of unplaced and scaffold chromosomes that have SNP probe mappings
+perl ../../programming/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f goat_v13_corrected.full.snps.sorted.tab -c 4 | perl -lane '@b = split(/_/, $F[0]); print $b[0];' | perl ../../programming/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
+```
+
+|Entry       | Count|
+|:-----------|-----:|
+|Chr(goat13) |     1|
+|Entry       |     1|
+|MISS        |     1|
+|UNMAP       |     1|
+|cluster     |    31|
+|scaffold    |   215|
+|unplaced    |   288|
+
+Now going to count the number of entries per cluster/scaffold.
+
+```bash
+perl ../../programming/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f goat_v13_corrected.full.snps.sorted.tab -c 4 | perl -e '%h; while(<>){chomp; @s = split(/\t/); @b = split(/_/, $s[0]); $h{$b[0]} += $s[1];} foreach my $k (sort {$a cmp $b} keys(%h)){print "$k\t$h{$k}\n";}'
+```
+|Entry | Count| Perc |
+|:--- | ---:| ---: |
+MISS  |  1 | < 0.01%
+UNMAP |  64 | 0.1%
+cluster |59,082 | 98.47%
+scaffold|        556 | 0.9%
+unplaced |       297 | 0.5%
+
+On the CHI_1.0 assembly, 1600 probes aligned to unplaced scaffolds (2.6%). 
