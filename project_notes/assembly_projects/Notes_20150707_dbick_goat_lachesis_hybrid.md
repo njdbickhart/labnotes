@@ -2975,3 +2975,145 @@ scaffold|        556 | 0.9%
 unplaced |       297 | 0.5%
 
 On the CHI_1.0 assembly, 1600 probes aligned to unplaced scaffolds (2.6%). 
+
+
+## Updating the RH map probe lists
+
+Adding the other chromosome scaffolds to the lists was requested by Shawn and a few other groups. I think it will be a good comparison to send to everyone.
+
+First, let's index the two fastas so that we can map the probes.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/pilon
+
+```bash
+bwa index Lachesis_assembly.fasta & bwa index papadum-v5bng-pilon-split2kbgap.fa
+
+bwa mem Lachesis_assembly.fasta ../rh_map/RHmap_probe_sequences.fasta > lachesis_assembly_rh.sam
+bwa mem papadum-v5bng-pilon-split2kbgap.fa ../rh_map/RHmap_probe_sequences.fasta > papadum_v5bng_rh.sam
+
+perl change_and_associate_rh_map_extra.pl -r ../rh_map/RHmap_to_PacBio-v3_contigs.txt -s goat_v13_corrected.full.rhmap.sam -b papadum_v5bng_rh.sam -l lachesis_assembly_rh.sam -o goat_v13_corrected.full.rhmap.extend.tab
+```
+
+And here is the updated script code:
+
+```perl
+#!/usr/bin/perl
+# this is a one-shot script designed to associate RH map coordinates with aligned entries from a sam file
+# Includes all prior mapping information from teh RH map file
+# Updated to add other assembly versions
+
+use strict;
+use Getopt::Std;
+
+my %opts;
+my $usage = "perl $0 -r <rh map> -s <sam file> -o <output tab file> -b bionano -l lachesis\n";
+getopt('rsobl', \%opts);
+
+unless(defined($opts{'r'}) && defined($opts{'s'}) && defined($opts{'o'})){
+	print $usage;
+	exit;
+}
+
+# Get the sam file coordinates mapped into memory
+my %coords; #= {snp probe} -> [chr, pos, orient]
+open(my $IN, "< $opts{s}") || die "Could not open sam file!\n$usage";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	if($segs[0] =~ /^@/){next;}
+	my $orient = "+";
+	if($segs[1] & 0x10){
+		$orient = "-";
+	}
+	
+	push(@{$coords{$segs[0]}}, ($segs[2], $segs[3], $orient));
+}
+close $IN;
+
+# Other two sams
+my %lach;
+open(my $IN, "< $opts{l}") || die "Could not open lachesis file!\n$usage";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	if($segs[0] =~ /^@/){next;}
+	my $orient = "+";
+	if($segs[1] & 0x10){
+		$orient = "-";
+	}
+	
+	push(@{$lach{$segs[0]}}, ($segs[2], $segs[3]));
+}
+close $IN;
+
+my %bng;
+open(my $IN, "< $opts{b}") || die "Could not open bng file!\n$usage";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	if($segs[0] =~ /^@/){next;}
+	my $orient = "+";
+	if($segs[1] & 0x10){
+		$orient = "-";
+	}
+	
+	push(@{$bng{$segs[0]}}, ($segs[2], $segs[3]));
+}
+close $IN;
+
+# Open the RH map file and associate sam entries with it
+open(my $IN, "< $opts{r}") || die "Could not open RH map file!\n$usage";
+open(my $OUT, "> $opts{o}");
+my $h = <$IN>;
+print {$OUT} "Probe\tChr(RH)\tPos(RH)\tChr(goat13)\tPos(goat13)\tOrient(goat13)\tChr(goat3)\tPos(goat3)\tChr(bng)\tPos(bng)\tChr(lach)\tPos(lach)\tChr(CHI1)\tPos(CHI1)\n";
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	my ($g13chr, $g13pos, $g13orient, $bngchr, $bngpos, $lachchr, $lachpos);
+	if(!(exists($coords{$segs[0]}))){
+		print STDERR "Error with missing snp probe: $segs[0]!\n";
+		($g13chr, $g13pos, $g13orient) = ("MISS", "MISS", "MISS");
+		($bngchr, $bngpos, $lachchr, $lachpos) = ("MISS", "MISS", "MISS", "MISS");
+	}else{
+		($g13chr, $g13pos, $g13orient) = @{$coords{$segs[0]}};
+		($bngchr, $bngpos) = @{$bng{$segs[0]}};
+		($lachchr, $lachpos) = @{$lach{$segs[0]}};
+		#$g13chr = $coords{$segs[0]}->[0]
+		if($g13chr eq "*"){
+			$g13chr = "UNMAP";
+			$g13pos = "UNMAP";
+			$g13orient = "UNMAP";
+		}
+		if($bngchr eq "*"){
+			$bngchr = "UNMAP";
+			$bngpos = "UNMAP";
+		}
+		if($lachchr eq "*"){
+			$lachchr = "UNMAP";
+			$lachpos = "UNMAP";
+		}
+	}
+	
+	# Deal with goatv3 contig naming convention
+	my ($g3ctg) = $segs[5] =~ /(utg\d+)_len.*/;
+	my $g3pos = $segs[6];
+	if($g3ctg eq ""){
+		$g3ctg = "UNMAP";
+		$g3pos = "UNMAP";
+	}
+	if($segs[5] eq "\#N/A"){
+		$g3ctg = "MISS";
+		$g3pos = "MISS";
+	}
+	
+	my ($bgichr, $bgipos, $rhchr, $rhpos) = ($segs[3], $segs[4], $segs[1], $segs[2]);
+	
+	print {$OUT} "$segs[0]\t$rhchr\t$rhpos\t$g13chr\t$g13pos\t$g13orient\t$g3ctg\t$g3pos\t$bngchr\t$bngpos\t$lachchr\t$lachpos\t$bgichr\t$bgipos\n";
+	
+}
+
+close $IN;
+close $OUT;
+
+exit;
+```
