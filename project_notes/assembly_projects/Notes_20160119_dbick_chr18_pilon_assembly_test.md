@@ -328,3 +328,39 @@ RPCI-42	|chr18|	RPCI42_118B22|	chr18:57,548,064-57,704,269|	Perhaps a clone of t
 RPCI-42	|chr18|	RPCI42_3D15|	chr18:57,657,380-57,806,510|	Flanking 3' region|	14435|	finished
 
 My thoughts: three assemblies might be best here. Assemble with 14414, with 14398 and with both.  
+
+Lets start with the entirety of the pipeline and get Pilon-corrected assemblies before Amos overlap.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/john_assembled_contigs/holstein_bacs
+
+```bash
+# Removing target chr18 regions
+cat ../LIB14397_unitig_1_vector_trimmed.fasta ../LIB14398_unitig_305_quiver.Vector.Trim.fasta ../LIB14414_unitig_273.vectortrim.fasta ../LIB14435_unitig_94_vector_trim.fasta > rpci42_bac.fasta
+bwa mem ../../reference/umd3_kary_unmask_ngap.fa rpci42_bac.fasta > rpci42_bacs_uncorrected_align.sam
+
+perl -lane 'if($F[0] =~ /^@/ || $F[1] > 16){next;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]\t" . (length($F[9]) + $F[3]);}' < rpci42_bacs_uncorrected_align.sam
+	LIB14397_unitig_1        0       chr18   57381124        60      57541326
+	LIB14398_unitig_305     16      chr18   57565716        60      57729084
+	LIB14414_unitig_273     0       chr18   57565716        60      57707495
+	LIB14435_unitig_94     16      chr18   57676772        60      57835648
+
+# Looks like the region is chr18:57381124-57835648
+# NOTE: the two "clones" that Tim mentioned differ in end sequence alignments by ~ 20kb
+# Masking the fasta
+echo -e "chr18\t57381124\t57835648" > rpci42_bac_mask.bed
+~/bedtools-2.17.0/bin/maskFastaFromBed -fi ../../reference/umd3_kary_unmask_ngap.fa -bed rpci42_bac_mask.bed -fo chr18_initial_masked.fa
+
+# Making the pilon fasta
+cat chr18_initial_masked.fa rpci42_bac.fasta > chr18_combined_unitigs_masked.fa
+bwa index chr18_combined_unitigs_masked.fa
+samtools faidx chr18_combined_unitigs_masked.fa
+
+# Alignment
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs ../Arlinda-Chief.10x.spreadsheet.tab --reference chr18_combined_unitigs_masked.fa --config ../pilon_testrun/test_pipeline.cnfg --threads 15 --output arlinda_rpci42
+
+# Extracting contigs
+samtools view -hb arlinda_rpci42/Arlinda-Chief/Arlinda-Chief.merged.bam 'LIB14397_unitig_1_vector_trimmed' 'LIB14398_unitig_305|quiver_Vector_Trim' LIB14414_unitig_273 LIB14435_unitig_94_vector_trim > arlinda_rpci42/Arlinda-Chief.unitigs.bam
+
+# Pilon correction
+samtools index /mnt/iscsi/vnx_gliu_7/john_assembled_contigs/holstein_bacs/arlinda_rpci42/Arlinda-Chief.unitigs.bam
+~/jdk1.8.0_05/bin/java -jar ~/bin/pilon-1.13.jar --genome chr18_combined_unitigs_masked.fa --frags arlinda_rpci42/Arlinda-Chief.unitigs.bam --output chr18_rpci42_unitigs --changes --vcf --diploid
