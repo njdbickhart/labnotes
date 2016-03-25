@@ -364,3 +364,112 @@ samtools view -hb arlinda_rpci42/Arlinda-Chief/Arlinda-Chief.merged.bam 'LIB1439
 # Pilon correction
 samtools index /mnt/iscsi/vnx_gliu_7/john_assembled_contigs/holstein_bacs/arlinda_rpci42/Arlinda-Chief.unitigs.bam
 ~/jdk1.8.0_05/bin/java -jar ~/bin/pilon-1.13.jar --genome chr18_combined_unitigs_masked.fa --frags arlinda_rpci42/Arlinda-Chief.unitigs.bam --output chr18_rpci42_unitigs --changes --vcf --diploid
+
+# Pilon crashed -- I suspect its due to the presence of a pipe in the fasta names
+perl -ne 'if($_ =~ /^>/){ $_ =~ s/\|/_/g; print $_;}else{print $_;}' < chr18_combined_unitigs_masked.fa > chr18_combined_unitigs_masked.nopipe.fa
+perl -ne 'if($_ =~ /^>/){ $_ =~ s/\|/_/g; print $_;}else{print $_;}' < rpci42_bac.fasta > rpci42_bac.corrected.fasta
+
+samtools view -h arlinda_rpci42/Arlinda-Chief.unitigs.bam | perl -ne '$_ =~ s/\|/_/g; print $_;' | samtools view -bS - > arlinda_rpci42/Arlinda-Chief.unitigs.corrected.bam
+samtools index arlinda_rpci42/Arlinda-Chief.unitigs.corrected.bam
+
+~/jdk1.8.0_05/bin/java -Xmx75g -jar ~/bin/pilon-1.13.jar --genome chr18_combined_unitigs_masked.nopipe.fa --frags arlinda_rpci42/Arlinda-Chief.unitigs.corrected.bam --output chr18_rpci42_unitigs --changes --vcf --diploid
+# OK... still crashing. Let's try this without the pilon correction
+
+# Amos assembly of non-polished contigs
+cp rpci42_bac.corrected.fasta rpci42_bac.corrected.fasta.bak
+~/amos-3.1.0/bin/toAmos -s rpci42_bac.corrected.fasta -o rpci42_bac.corrected.afg
+~/amos-3.1.0/bin/minimus2 rpci42_bac.corrected -D REFCOUNT=0
+
+head rpci42_bac.corrected.fasta.fai
+	1       163390  3       60      61
+
+# That's... really weird. Let's see how the alignments turn out
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f rpci42_bac.corrected.fasta -r ../../reference/umd3_kary_unmask_ngap.fa -o rpci42_bac.corrected.fasta.align.tab
+# Nope! Doesn't look good.
+
+# Let's try individual pilon targets
+samtools faidx rpci42_bac.fasta
+# Lib14397_1 worked
+~/jdk1.8.0_05/bin/java -Xmx70g -jar ~/bin/pilon-1.16.jar --genome chr18_combined_unitigs_masked.fa --frags arlinda_rpci42/Arlinda-Chief.unitigs.corrected.bam --output lib14397_1_pilon --changes --vcf --diploid --targets LIB14397_unitig_1_vector_trimmed
+
+# Lib14398_305 failed
+~/jdk1.8.0_05/bin/java -Xmx70g -jar ~/bin/pilon-1.16.jar --genome chr18_combined_unitigs_masked.fa --frags arlinda_rpci42/Arlinda-Chief.unitigs.corrected.bam --output lib14398_305_pilon --changes --vcf --diploid --targets LIB14398_unitig_305_quiver_Vector_Trim
+
+# Lib14414_273 worked
+~/jdk1.8.0_05/bin/java -Xmx70g -jar ~/bin/pilon-1.16.jar --genome chr18_combined_unitigs_masked.fa --frags arlinda_rpci42/Arlinda-Chief.unitigs.corrected.bam --output lib14414_273_pilon --changes --vcf --diploid --targets LIB14414_unitig_273
+
+# Lib14435_94 worked
+~/jdk1.8.0_05/bin/java -Xmx70g -jar ~/bin/pilon-1.16.jar --genome chr18_combined_unitigs_masked.fa --frags arlinda_rpci42/Arlinda-Chief.unitigs.corrected.bam --output lib14435_94_pilon --changes --vcf --diploid --targets LIB14435_unitig_94_vector_trim
+
+# Taking the error corrected fasta entries for further analysis
+cat lib14397_1_pilon.fasta lib14414_273_pilon.fasta lib14435_94_pilon.fasta > pilon_corrected_rpci14_bac.fa
+cp pilon_corrected_rpci14_bac.fa pilon_corrected_rpci14_bac.fa.bak
+
+# Amos assembly of polished contigs
+~/amos-3.1.0/bin/toAmos -s pilon_corrected_rpci14_bac.fa -o pilon_corrected_rpci14_bac.afg
+~/amos-3.1.0/bin/minimus2 pilon_corrected_rpci14_bac -D REFCOUNT=0
+samtools faidx pilon_corrected_rpci14_bac.fasta
+
+# I didn't get a contig, trying to figure out why
+```
+
+OK! The problem is in the nucmer coords file, which shows no overlap among the three contigs. Also, in my prior assembly, the third contig didn't assemble into the final product at all! The information is in the "singletons" file. 
+
+First assembly singletons:
+* LIB14435_unitig_94_vector_trim
+
+Second assembly singletons:
+* LIB14397_unitig_1_vector_trimmed_pilon
+* LIB14414_unitig_273_pilon
+* LIB14435_unitig_94_vector_trim_pilon
+
+Let's try an assembly alignment to try to sort this out.
+
+```bash
+# Lib 14397
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f lib14397_1_pilon.fasta -r ../../reference/umd3_kary_unmask_ngap.fa -o lib14397_1_pilon.fasta.align.tab
+Longest aligments:      chr     start   end     length
+                        chr18   57371117        57532624        161507
+                        *       0       1000    1000
+                        chr27   22286043        22286293        250
+                        chrX    44952057        44952154        97
+                        chr6    113122076       113122147       71
+                        chr4    3045190 3045260 70
+
+# Lib 14414
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f lib14414_273_pilon.fasta -r ../../reference/umd3_kary_unmask_ngap.fa -o lib14414_273_pilon.fasta.align.tab
+Longest aligments:      chr     start   end     length
+                        chr1    20951590        153283269       132331679
+                        chr24   13511406        55366739        41855333
+                        chrX    101793354       142730599       40937245
+                        chr16   5146193 36768842        31622649
+                        chr18   40333924        62955483        22621559
+                        chr23   27321674        42251667        14929993
+                        chr13   3668010 3669010 1000
+                        chr15   25930890        25931890        1000
+                        chr11   6304540 6305540 1000
+                        chr26   32458140        32459140        1000
+                        chr6    48897110        48898110        1000
+                        chr2    16512761        16513761        1000
+						... not so good!
+# Lib 14435
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f lib14435_94_pilon.fasta -r ../../reference/umd3_kary_unmask_ngap.fa -o lib14435_94_pilon.fasta.align.tab
+Longest aligments:      chr     start   end     length
+                        chr1    20951590        121426804       100475214
+                        chr10   15174811        87992246        72817435
+                        chrX    74404074        134697683       60293609
+                        chr16   5146193 55925864        50779671
+                        chr18   15236467        62961880        47725413
+                        chr5    22425571        22426571        1000
+                        chr26   32458140        32459140        1000
+                        chr20   7720770 7721770 1000
+                        chr13   78628163        78629163        1000
+                        chr4    69969728        69970728        1000
+                        chr11   74810900        74811900        1000
+                        chr6    67547644        67547816        172
+                        chr24   13511406        13511551        145
+                        chr23   27321674        27321789        115
+                        chr19   53681295        53681355        60
+```
+
+OK, the problem is that 14414 has issues and so does 14435. I suspect that they were not properly assembled.
