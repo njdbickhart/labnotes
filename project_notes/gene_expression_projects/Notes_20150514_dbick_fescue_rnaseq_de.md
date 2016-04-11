@@ -11,6 +11,7 @@
 * [Interpreting the results](#interpret)
 * [Group Specific Results](#specific)
 * [Dissecting more useful information](#dissect)
+* [Checking Control condition expression](#controls)
 
 <a name="initial"></a>
 ## Initial information on files
@@ -773,3 +774,86 @@ wc -l gene_lists/comparisons/rsem_*allpat*.list
 ```
 
 I think that I just need to reformat the excel spreadsheet to just show the significant PPDE genes and then I'm done here.
+
+<a name="controls"></a>
+## Checking Control condition expression
+
+Randy wanted to see if the control gene expression changed over time in the absence of any other factors. While such a comparison is interesting, it is very difficult to assign any type of statistical confidence on the relatively low sample numbers we have in this analysis. Still, let's do this for the sake of exhaustiveness.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/rna_seq/RBaldwin
+
+```bash
+export PATH=/home/dbickhart/RSEM/:$PATH
+mkdir controls
+# Separating out only the data I need from the matrix
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/separateGeneTableMatrixForRSEM.pl -f rsem_gnorm_matrix.txt -t C -s L1 -k sample_key_file.tab -o controls/rsem_C_L1_biopsy_untrans_matrix.txt
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/separateGeneTableMatrixForRSEM.pl -f rsem_gnorm_matrix.txt -t C -s L2 -k sample_key_file.tab -o controls/rsem_C_L2_biopsy_untrans_matrix.txt
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/separateGeneTableMatrixForRSEM.pl -f rsem_gnorm_matrix.txt -t C -s D -k sample_key_file.tab -o controls/rsem_C_D_biopsy_untrans_matrix.txt
+
+# Now, let's combine the gene RPKM counts into a larger matrix
+# Order is: D, L1, L2
+perl -e 'chomp(@ARGV); open(D, "< $ARGV[0]"); open(L1, "< $ARGV[1]"); open(L2, "< $ARGV[2]"); open(OUT, "> controls/rsem_C_combo_biopsy_matrix.txt"); while(<D>){chomp; @d = split(/\t/); $t = <L1>; chomp($t); @l1 = split(/\t/, $t); $t = <L2>; chomp($t); @l2 = split(/\t/, $t); shift(@l1); shift(@l2); push(@d, (@l1, @l2)); print OUT join("\t", @d); print OUT "\n";}' controls/rsem_C_D_biopsy_untrans_matrix.txt controls/rsem_C_L1_biopsy_untrans_matrix.txt controls/rsem_C_L2_biopsy_untrans_matrix.txt
+
+# OK, there are 5 in each, so we're good to go for the rsem analysis
+cp controls/rsem_C_combo_biopsy_matrix.txt ./
+rsem-run-ebseq rsem_C_combo_biopsy_matrix.txt 5,5,5 rsem_C_ebseq_analysis
+# Note: I had to go into R and install "bitops" for some reason
+```
+
+Let's setup the pattern diagram for the changing "conditions" in this run:
+
+#### Control analysis patterns
+
+Name | **D** |    **L1**  |   **L2**
+:--- | :--- | :---| :---
+"Pattern1"  |    1  |     1  |     1
+"Pattern2"   |   1   |    1   |    2
+"Pattern3"   |   1   |    2   |    1
+"Pattern4"   |   1   |    2   |    2
+"Pattern5"   |   1   |    2   |    3
+
+I moved all output files to the control folder and continued the analysis from there.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/rna_seq/RBaldwin/controls
+
+```bash
+# OK, remove all genes with a PPDE < 90%
+perl -lane 'if($F[7] >= 0.90){print $_;}' < rsem_C_ebseq_analysis > rsem_C_ebseq_analysis.ppdegt90.tab
+ wc -l rsem_C_ebseq_analysis.ppdegt90.tab rsem_C_ebseq_analysis
+    890 rsem_C_ebseq_analysis.ppdegt90.tab
+  14754 rsem_C_ebseq_analysis
+
+# OK, so a substantial reduction in size, but not as much as with the conditions
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f rsem_C_ebseq_analysis.ppdegt90.tab -c 6 -m
+```
+#### Control time period differentially expressed genes
+
+|Entry      | Count|
+|:----------|-----:|
+|"Pattern2" |   599|
+|"Pattern3" |    45|
+|"Pattern4" |   246|
+
+OK, so let's summarize:
+
+* There are 599 genes that are similarly expressed in **Dry** and **L1** but are different in **L2**
+* There are 45 genes that are similarly expressed in **Dry** and **L2** but are different in **L1**
+* Finally, there are 246 genes that are similarly expressed in **L1** and **L2** but are different in **Dry**
+
+It's interesting that Pattern 2 is the top category though. Let's prepare a spreadsheet for Randy and Tony in the meantime.
+
+```bash
+perl ~/perl_toolchain/sequence_data_scripts/combineEBSeqResultsToTab.pl -c rsem_C_ebseq_analysis.condmeans -f rsem_C_ebseq_analysis -o rsem_C_ebseq_analysis.results.tab
+
+# Filtering above 90 PPDE
+perl -e '$h = <>; print $h; while(<>){chomp; @s = split(/\t/); if($s[1] > 0.90){print join("\t", @s); print "\n";}}' < rsem_C_ebseq_analysis.results.tab > rsem_C_ebseq_analysis.results.90.tab
+
+# Generating gene lists
+perl -e '$t = "Pattern2"; open(OUT, "> rsem_C_ebseq_analysis.genes.$t.list"); $h = <>; while(<>){chomp; @s = split(/\t/); if($s[2] eq $t){print OUT "$s[0]\n";}}' < rsem_C_ebseq_analysis.results.90.tab
+perl -e '$t = "Pattern3"; open(OUT, "> rsem_C_ebseq_analysis.genes.$t.list"); $h = <>; while(<>){chomp; @s = split(/\t/); if($s[2] eq $t){print OUT "$s[0]\n";}}' < rsem_C_ebseq_analysis.results.90.tab
+perl -e '$t = "Pattern4"; open(OUT, "> rsem_C_ebseq_analysis.genes.$t.list"); $h = <>; while(<>){chomp; @s = split(/\t/); if($s[2] eq $t){print OUT "$s[0]\n";}}' < rsem_C_ebseq_analysis.results.90.tab
+```
+
+OK, so I think I'm ready to send this out for initial discovery. I converted the results file to excel and formatted the data so that it was easier to read.
