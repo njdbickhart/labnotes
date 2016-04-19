@@ -233,3 +233,82 @@ samtools faidx papadum-v13.trimmed.fa
 ```
 
 I made sure that the last contig was in place.
+
+## NCBI genome format
+
+In order to submit this to NCBI I need to reformat the fasta so that it can be processed by them.
+
+Here are the facets of the genome that need to be fixed so that we can submit it:
+
+1. Please remove any N nucleotides from the beginning or end of the sequence 
+2. Any run of exactly 5 N's is an unknown length gap (could be 1 could be 10000).  All other N's are estimated length gaps.  Is this correct? Are the 55 runs of exactly 5 N's completely unknown length gaps?  
+3. It looks like you have a single scaffold for chromosomes 1-29 but chromosome X is in two different scaffolds.  Is this correct? 
+4. I noticed there isn't a chromosome Y but you indicated this is a male goat. 
+ Is this correct?
+5. Are any of the runs of N's in the fasta file scaffold-breaking gaps? 
+
+I think that the only things we need to really address is (1.) above.
+
+Here's my perl script to do this:
+
+```perl
+#!/usr/bin/perl
+# This is a one-shot script that is designed to trim the beginning and ending "N's" of a fasta
+
+use strict;
+
+chomp(@ARGV);
+my $usage = "perl $0 <input fasta> <output fasta> <changes bed>\n";
+
+unless(scalar(@ARGV) == 3){
+	print $usage;
+	exit;
+}
+
+open(my $IN, "< $ARGV[0]") || die "Could not open fasta file!\n$usage";
+open(my $OUT, "> $ARGV[1]");
+open(my $BED, "> $ARGV[2]");
+my $header = "NA"; my $seq;
+while(my $line = <$IN>){
+	chomp $line;
+	if($line =~ /^>/){
+		if($header eq "NA"){
+			$header = $line;
+			next;
+		}
+		my ($start) = $seq =~ /^(N+)/;
+		my ($end) = $seq =~ /(N+)$/;
+		my $nseq = substr($seq, length($start), length($seq) - length($end) - length($start)); 
+		$nseq =~ s/(.{60})/$1\n/g;
+		chomp($nseq);
+		print {$OUT} "$header\n$nseq\n";
+		chomp($header);
+		$header =~ s/>//g;
+		
+		if(length($start) > 0){
+			my $s = length($start);
+			print {$BED} "$header\t1\t$s\ttrim\n";
+		}
+		if(length($end) > 0){
+			my $fs = length($seq) - length($end);
+			my $fe = length($seq);
+			print {$BED} "$header\t$fs\t$fe\ttrim\n";
+		}
+		$header = $line;
+		$seq = "";
+	}else{
+		chomp $line;
+		$seq .= $line;
+	}
+}
+close $IN;
+close $OUT;
+close $BED;
+```
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/final
+
+```bash
+perl remove_beginning_and_end_ns.pl papadum-v13.trimmed.fa papadum-v13.nstrim.fa papadum-v13.nstrim.bed
+samtools faidx papadum-v13.nstrim.fa
+
