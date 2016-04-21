@@ -312,3 +312,23 @@ close $BED;
 perl remove_beginning_and_end_ns.pl papadum-v13.trimmed.fa papadum-v13.nstrim.fa papadum-v13.nstrim.bed
 samtools faidx papadum-v13.nstrim.fa
 
+```
+
+## Identifying filled gaps
+
+I have written a script to try to interrogate gap regions and to see if we filled them in our assembly. My strategy is to take flanking sequence from the CHI_1.0 reference assembly, then align it to our assembly and count the non-N bases in between that we have filled.
+
+I will also generate plots related to gap counts, gap size disparity and other metrics that arise in the data. 
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check
+
+```bash
+wget ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCF_000317765.1_CHIR_1.0/GCF_000317765.1_CHIR_1.0_genomic.fna.gz
+gunzip GCF_000317765.1_CHIR_1.0_genomic.fna.gz
+samtools faidx GCF_000317765.1_CHIR_1.0_genomic.fna
+
+# Gotta fix the NCBI naming scheme
+perl -ne 'if($_ =~ /^>/){chomp; @s = split(/\s+/); print "$s[0]\n";}else{print $_;}' < GCF_000317765.1_CHIR_1.0_genomic.fna > CHIR_1.0_fixed.fa
+samtools faidx CHIR_1.0_fixed.fa
+
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o CHIR_1.0_fixed.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d papadumv13_gap_fills.tab

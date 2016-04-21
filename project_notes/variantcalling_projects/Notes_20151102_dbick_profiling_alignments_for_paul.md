@@ -339,3 +339,37 @@ for i in ./*/*.indel.realigned.bam; do echo -ne "-I $i "; done; echo
 # Running the UnifiedGenotyper
 ~/jdk1.8.0_45/bin/java -Xmx65g -jar ~/bin/GenomeAnalysisTK.jar -T UnifiedGenotyper -R /seq1/reference/umd3_kary_unmask_ngap.fa -I ./source10/source10.indel.realigned.bam -I ./source1/source1.indel.realigned.bam -I ./source2/source2.indel.realigned.bam -I ./source3/source3.indel.realigned.bam -I ./source4/source4.indel.realigned.bam -I ./source5/source5.indel.realigned.bam -I ./source6/source6.indel.realigned.bam -I ./source7/source7.indel.realigned.bam -I ./source8/source8.indel.realigned.bam -I ./source9/source9.indel.realigned.bam -o gatk_raw_variant_calls.vcf --genotype_likelihoods_model BOTH -nt 20
 
+```
+
+## Generating Fastqs from Real Bulls and Profiling Samtools again
+
+This time, I need to generate fastq files for Paul and to profile samtools SNP and INDEL calling using his haplotype-conscious INDEL generated files.
+
+Let's start with the Fastq file generation. I'm going to pick 5 bulls and generate fastqs from each of their bams. Here are the bulls I'm choosing:
+
+* HOCAN000006193092.reformatted.sorted.bam
+* HOCAN000006229227.reformatted.sorted.bam
+* HOCAN000008432142.reformatted.sorted.bam
+* HOUSA000002290977.reformatted.sorted.bam
+* HOUSA000002103297.reformatted.sorted.bam
+
+Let's calculate X coverage for each. 
+
+BamName | RawXCov | MapXCov |AvgRawChrcov   | AvgMapChrcov
+:--- | ---: | ---: | ---: | ---:
+/seq1/1000_bulls_bams/HOCAN000006193092.reformatted.sorted.bam  |27.3168755629344       |27.1030509620649       |27.2511413175916        |27.1593428688746
+/seq1/1000_bulls_bams/HOCAN000006229227.reformatted.sorted.bam  |14.8310661644636        |14.728106661835        |14.6534759546251        |14.6110610509382
+/seq1/1000_bulls_bams/HOCAN000008432142.reformatted.sorted.bam  |13.2641766293167        |13.1150529137082       |13.2509905641113        |13.1770808762698
+/seq1/1000_bulls_bams/HOUSA000002290977.reformatted.sorted.bam  |21.3564580449796        |20.3525714013229       |20.3619061797221        |20.0546701933024
+/seq1/1000_bulls_bams/HOUSA000002103297.reformatted.sorted.bam  |21.1363286939813        |20.9606242614159       |21.0943039446459        |21.0191666982687
+
+So they're about 13 - 27 X coverage, each. Not bad!
+
+Let's start out by making the base fastqs, then I can randomly sample from there.
+
+> 3850: /seq1/bickhart/paul_fqs
+
+```bash
+# I realized that I need to sort the files so that I can get read names in order
+# Printing out the data I need to flat files, then I'll sort based on the read name then split them
+for i in /seq1/1000_bulls_bams/HOCAN000006193092.reformatted.sorted.bam /seq1/1000_bulls_bams/HOCAN000006229227.reformatted.sorted.bam /seq1/1000_bulls_bams/HOCAN000008432142.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002290977.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002103297.reformatted.sorted.bam; do name=`basename $i | cut -d'.' -f1`; echo $name; perl -e 'chomp(@ARGV); open(OUT, "> $ARGV[0].unsort.flat"); open(IN, "samtools view $ARGV[1] |"); while(<IN>){chomp; @s = split(/\t/); print OUT "$s[0]\t$s[9]\t$s[10]\n";} close IN; close OUT;' $name $i &  done
