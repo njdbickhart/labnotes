@@ -332,3 +332,167 @@ perl -ne 'if($_ =~ /^>/){chomp; @s = split(/\s+/); print "$s[0]\n";}else{print $
 samtools faidx CHIR_1.0_fixed.fa
 
 perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o CHIR_1.0_fixed.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d papadumv13_gap_fills.tab
+
+# I had to change the trans-chr naming scheme just to ensure that I capture all info
+mv papadumv13_gap_fills.tab papadumv13_gap_fills.old.tab
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o CHIR_1.0_fixed.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d papadumv13_gap_fills.tab
+```
+
+Some interesting things about the transchr regions: I found that some of the discrepancies in the CHI_1.0 reference may be due to their permissive scaffolding of smaller contigs of repetitive regions. Example:
+
+Type | CHI chr | CHI start | CHI end | gap size | v13 r1 coords | v13 r2 coords|
+:--- | :--- | :--- | :--- | :--- | :--- | :--- |
+Trans  | NC_022293.1   |  100025065   |    100025197   |    132  |         cluster_1:101396029-101396530 |  cluster_16:59202103-59202526   
+Trans  | NC_022293.1   |  100027515   |    100027852   |    337   |       cluster_1:101398497-101398992  | cluster_6:16544269-16544441    
+Trans  | NC_022293.1   |  100028024    |   100028916   |    892   |       cluster_6:16544268-16544440  |   cluster_1:101400723-101401154
+
+The RH map reveals this to be a 400kb region between two sheep probes, whereas our assembly is only about 200kb on the same large contig. This suggests that they merged some stuff together that they shouldn't have!
+
+Let's start collecting some stats on the data.
+
+```bash
+# Some bad apples
+cat /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/papadumv13_gap_fills.old.tab | grep -v 'Trans' | perl -lane 'if($F[-1] > 100000){print ($F[-1] - $F[4]);}' | wc -l
+	1081
+# 0.5% of gaps correspond to large differences in assembly sequence placement
+
+# count of deviations
+cat /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/papadumv13_gap_fills.old.tab | grep -v 'Trans' | perl -lane 'if($F[-1] < 100000){print ($F[-1] - $F[4]);}' | statStd.pl
+	total   241830
+	Minimum -22675
+	Maximum 99295
+	Average 138.423165
+	Median  16
+	Standard Deviation      2444.962691
+	Mode(Highest Distributed Value) 11
+
+# On average, we filled 138 more bases for each gap
+
+# Count of different gap types
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/papadumv13_gap_fills.old.tab -c 0 -m
+```
+#### Gap counts
+|Entry  |  Count|
+|:------|------:|
+|Closed | 242888|
+|Open   |     23|
+|Trans  |  13853|
+
+So, 5% of the gaps were trans-chr events, and < 0.1% were unable to be filled by our assembly. 95% of the gaps (- the 0.5% that were large differences on the same cluster) were successfully filled.
+
+
+## Working on CHI_2.0 gaps
+
+I received the sequence from Serge and I want to rerun the analysis on CHI_2.0. Let's prepare the fasta and work on the data.
+
+> Blade14: /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/
+
+```bash
+perl -ne 'if($_ =~ /^>/){chomp; @s = split(/\|/); print ">$s[3]\n";}else{print $_;}' < GCA_000317765.2_CHIR_2.0_genomic.fna > CHIR_2.0_fixed.fa
+samtools faidx CHIR_2.0_fixed.fa
+
+wc -l CHIR_2.0_fixed.fa.fai
+	102896 CHIR_2.0_fixed.fa.fai # CHI 1.0 was 77,021 ... not sure if they decided to just add more??
+```
+
+OK, now to work in a directory off of the shared drive.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/chi2
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d papadumv13_gap_fills.chi2.tab
+
+# Just a quick comparison of gap regions
+wc -l temp.gap.bed
+	221091 temp.gap.bed # vs 260474 in CHI_1.0
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/table_bed_length_sum.pl temp.gap.bed
+FName   IntNum  TotLen  LenAvg  LenStdev        LenMedian       SmallestL       LargestL
+temp.gap.bed    221091  84973034        384.335110881945        1409.90000053502        0       0       22812
+# CHI_1.0 had ~137 megabases of gaps, this one has 84.97 mbps
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f papadumv13_gap_fills.chi2.tab -c 0 -m
+```
+
+#### CHI_2.0 gap closures
+
+|Entry  | Count|
+|:------|-----:|
+|Closed | 59737|
+|Open   |     4|
+|Trans  |  9252|
+
+OK, not as impressive as above. Discounting transchr and open segments, we have 86.58% closure rate (n = 68993 for the tab file).
+
+Let's dig further to get more data.
+
+```bash
+# Checking average gap size deviations
+cat papadumv13_gap_fills.chi2.tab | grep -v 'Trans' | perl -lane 'if($F[-1] < 100000){print ($F[-1] - $F[4]);}' | statStd.pl
+total   59380
+Minimum -22653
+Maximum 99230
+Average -202.261485
+Median  20
+Standard Deviation      3476.456333
+Mode(Highest Distributed Value) 10
+
+# So on average, the BGI assembly was predicting far larger gaps and we were filling them with smaller counts of bases
+
+```
+
+Serge brought up the great point that I should try to validate our gap closures with contigs (ie. anchoring and spanning PacBio reads) just to ensure that we have a good set here. I'm going to map the version 3 contigs to our v13 assembly and then see how many gaps are internal to the contig maps.
+
+**Strategy:** pull 500bp from each end of the contigs and map to the v13 assembly to generate a bed coordinate file. Then intersect with the gap bed file.
+
+> blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/remap
+
+```bash
+# I'm using papadum v4, which contains my split contigs that had errors
+perl -lane 'if($F[0] =~ /^utg/){$e = $F[1] - 500; print "$F[0]\t1\t500\n$F[0]\t$e\t$F[1]";}' < /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4/papadum-v4s.fa.fai > papadum_v4s.ends.bed
+
+# Generating the fasta file for BWA realignment
+perl -lane '$ucsc = "$F[0]:$F[1]-$F[2]"; open(IN, "samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4/papadum-v4s.fa $ucsc |"); $h = <IN>; print ">$F[0]_$F[1]_$F[2]"; while(<IN>){ print $_;} close IN;' < papadum_v4s.ends.bed > papadum_v4s.ends.fa
+
+# BWA alignment
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz papadum_v4s.ends.fa > papadum_v4s.ends.sam
+
+# Just checking alignment stats and manipulating the files
+samtools view -bS papadum_v4s.ends.sam | samtools sort -T papadum -o papadum_v4s.ends.bam -
+samtools index papadum_v4s.ends.bam
+samtools idxstats papadum_v4s.ends.bam | tail
+	*       0       0       5
+
+# 5 didn't align! Let's take a closer look
+samtools view papadum_v4s.ends.bam | tail | perl -lane 'print "$F[0]\t$F[2]";'
+	utg1292_730853_731353   *
+	utg3966_1_500   *
+	utg3966_835613_836113   *
+	utg7363_218102_218602   *
+	utg8805_1_500   *
+
+# I'll fight over them later, let's work on the ones that did
+samtools view papadum_v4s.ends.bam | perl -e '%h; while(<>){chomp; @s = split(/\t/); if($s[1] & 2048){next;} @b = split(/_/, $s[0]); push(@{$h{$b[0]}}, [$s[2], $s[3]]);} foreach my $k (keys(%h)){if(scalar(@{$h{$k}}) > 2){print STDERR "Error with $k!\n";}foreach my $r (@{$h{$k}}){print $r->[0] . "\t" . $r->[1] . "\t";} print "$k\n";}' > first_tier_mappings.notbed
+perl -lane 'if($F[0] ne $F[2]){print $_;}' < first_tier_mappings.notbed | wc -l
+	541
+
+# ok, new strategy, that's too many contigs to lose. Let's go internal here
+perl -lane 'if($F[0] =~ /^utg/){$e = $F[1] - 500; $e1 = $F[1] - 1500; print "$F[0]\t500\t1500\n$F[0]\t$e1\t$e";}' < /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4/papadum-v4s.fa.fai > papadum_v4s.ends.int.bed
+
+perl -lane '$ucsc = "$F[0]:$F[1]-$F[2]"; open(IN, "samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4/papadum-v4s.fa $ucsc |"); $h = <IN>; print ">$F[0]_$F[1]_$F[2]"; while(<IN>){ print $_;} close IN;' < papadum_v4s.ends.int.bed > papadum_v4s.ends.int.fa
+
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz papadum_v4s.ends.int.fa > papadum_v4s.ends.int.sam
+samtools view -bS papadum_v4s.ends.int.sam | samtools sort -T papapdum -o papadum_v4s.ends.int.bam -
+
+samtools view papadum_v4s.ends.int.bam | perl -e '%h; while(<>){chomp; @s = split(/\t/); if($s[1] & 2048){next;} @b = split(/_/, $s[0]); push(@{$h{$b[0]}}, [$s[2], $s[3]]);} foreach my $k (keys(%h)){if(scalar(@{$h{$k}}) > 2){print STDERR "Error with $k!\n";}foreach my $r (@{$h{$k}}){print $r->[0] . "\t" . $r->[1] . "\t";} print "$k\n";}' > second_tier_mappings.notbed
+
+perl -lane 'if($F[0] ne $F[2]){print $_;}' < second_tier_mappings.notbed | wc -l
+670
+
+# That's even worse!
+# working with the first tier mappings for now...
+perl -lane 'if($F[0] ne $F[2]){next;}else{print "$F[0]\t$F[1]\t$F[3]\t$F[4]";}' < first_tier_mappings.notbed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > first_tier_mappings.sort.bed
+
+# Let's try the intersection with the cluster aligning gaps
+grep 'Closed' ../chi2/papadumv13_gap_fills.chi2.tab | perl -lane 'if($F[8] > 50000){next;} unless($F[5] =~ /^cluster/){next;} ($fs, $fe) = $F[6] =~ /.+:(\d+)-(\d+)/; ($ss, $se) = $F[7] =~ /.+:(\d+)-(\d+)/; push(@n, ($fs, $fe, $ss, $se)); @n = sort{$a <=> $b}(@n); print "$F[5]\t$n[1]\t$n[2]"; @n = ();' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > cluster_gaps_closed.bed
+
