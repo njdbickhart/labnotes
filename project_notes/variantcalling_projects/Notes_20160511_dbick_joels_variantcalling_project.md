@@ -6,6 +6,7 @@ These are my notes on the alignment and variant calling performed on Joel's bull
 
 ## Table of Contents
 * [Organizing the data](#organizing)
+* [Generating 1000 bulls SNP and INDEL annotations](#onethousand)
 
 <a name="organizing"></a>
 ## Organizing the data
@@ -68,3 +69,8 @@ That makes **39** animals already available for some form of processing. I will 
 
 * **final_file_joel_bulls.list** -> Contains bam files that we currently maintain from Genome Canada and our project
 * **1000_bulls_sequenced_joels_bulls.list** -> Contains the names (reformatted) of bulls that were in the 1000 bulls data files but we do not have the bams for.
+
+<a name="onethousand"></a>
+## Generating 1000 bulls SNP and INDEL annotations
+
+I am going to create tabular excel output for Joel by splitting the 1000 bull genomes files into 

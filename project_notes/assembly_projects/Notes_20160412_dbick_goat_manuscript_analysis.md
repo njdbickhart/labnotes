@@ -495,4 +495,98 @@ perl -lane 'if($F[0] ne $F[2]){next;}else{print "$F[0]\t$F[1]\t$F[3]\t$F[4]";}' 
 
 # Let's try the intersection with the cluster aligning gaps
 grep 'Closed' ../chi2/papadumv13_gap_fills.chi2.tab | perl -lane 'if($F[8] > 50000){next;} unless($F[5] =~ /^cluster/){next;} ($fs, $fe) = $F[6] =~ /.+:(\d+)-(\d+)/; ($ss, $se) = $F[7] =~ /.+:(\d+)-(\d+)/; push(@n, ($fs, $fe, $ss, $se)); @n = sort{$a <=> $b}(@n); print "$F[5]\t$n[1]\t$n[2]"; @n = ();' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > cluster_gaps_closed.bed
+```
 
+OK, these strategies failed, but Serge was able to generate a nucmer plot of his v3 assembly against v13 so that I can create coordinate bed files for contig assignments to the new assembly. 
+The **out.1coords** file is the filtered, high confidence alignments here. Let's condense it down to contig/sequence alignments. Like with everything, I'm going to try the easy way first and then try a more nuanced approach if that gives unsatisfactory results.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check
+
+```bash
+perl -lane '@b = split(/_/, $F[12]); print "$F[11]\t$F[0]\t$F[1]\t$b[0]";' < out.1coords > goat_v3_vs_v13_aligns_unrefined.bed
+
+# Now to merge them with a good base "slop" to ensure that close ends are joined in the final bed file.
+perl condense_chr_cluster_seq.pl goat_v3_vs_v13_aligns_unrefined.bed goat_v3_vs_v13_aligns_merged.bed
+
+# OK, that seemed to work!
+```
+
+Now, I will attempt to find gaps that are closed internal to the contigs as evidence that the closure was completed.
+
+```bash
+mkdir closed_confirm
+
+# all gap cluster intersections
+intersectBed -a goat_v3_vs_v13_aligns_merged.bed -b remap/cluster_gaps_closed.bed -wa -wb | wc -l
+	48,403
+# all gaps that are not covered by the cluster bed file
+intersectBed -a remap/cluster_gaps_closed.bed -b goat_v3_vs_v13_aligns_merged.bed -v | wc -l
+	8,984
+# gaps that are not fully within contig boundaries
+intersectBed -a goat_v3_vs_v13_aligns_merged.bed -b remap/cluster_gaps_closed.bed -wa -wb | perl -lane 'if($F[5] >= $F[1] && $F[6] <= $F[2]){next;}else{print $_;}' | wc -l
+	219
+# gaps that ARE within contig boundaries
+intersectBed -a goat_v3_vs_v13_aligns_merged.bed -b remap/cluster_gaps_closed.bed -wa -wb | perl -lane 'if($F[5] >= $F[1] && $F[6] <= $F[2]){print $_;}' | wc -l
+	48,184
+```
+
+OK, let's tabulate the stats. Here are the numbers:
+
+#### CHI 2.0 gap fills
+
+Entry | Count
+:--- | ---:
+Total gaps in chi2	| 68,993
+Closed gaps in chi2 | 59,737
+Confirmed closed gaps in chi2 | 48,184
+Unconfirmed closed gaps in chi2 | 9,203
+Ambiguous gap closures in chi2 (trans) | 9,252
+Failed gap closures in chi2 | 4
+
+So **86.6%** of gaps were closed, and **69.83%** were confirmed by PacBio consensus contigs. 
+
+## Identifying CHI 1.0 to 2.0 closures
+
+Now, my goal is to take the CHI 1.0 and CHI 2.0 gaps, identify the improvements that CHI 2.0 made and then see how many of those were confirmed in our assembly.
+
+> Blade14:
+
+```bash
+# Generating CHI 1.0 bed file
+mkdir chi1
+cat /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/papadumv13_gap_fills.old.tab | grep 'Closed' | perl -lane 'if($F[-1] < 10000){($s1, $e1) = $F[6] =~ /.+:(\d+)-(\d+)/; ($s2, $e2) = $F[7] =~ /.+:(\d+)-(\d+)/; my @u; push(@u, ($s1, $s2, $e1, $e2)); @u = sort {$a <=> $b} @u; print "$F[5]\t$u[1]\t$u[2]";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > chi1/chi1_closed_gaps.bed
+wc -l chi1/chi1_closed_gaps.bed
+	241,128 chi1/chi1_closed_gaps.bed
+
+# OK, now to intersect with chi2 to see how many gaps were left open
+intersectBed -a chi1/chi1_closed_gaps.bed -b remap/cluster_gaps_closed.bed -v | wc -l
+	199,199
+
+# Gaps putatively closed by the assembly
+intersectBed -a chi1/chi1_closed_gaps.bed -b remap/cluster_gaps_closed.bed -v | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       199199
+        Total Length:           88,459,287
+
+# Total CHI1 gaps
+cat chi1/chi1_closed_gaps.bed | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       241128
+        Total Length:           133,597,731
+
+# exclusive CHI 2.0 gaps (for some reason!)
+intersectBed -b chi1/chi1_closed_gaps.bed -a remap/cluster_gaps_closed.bed -v | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       15548
+        Total Length:           14,423,862
+
+intersectBed -a chi1/chi1_closed_gaps.bed -b remap/cluster_gaps_closed.bed -v > chi1/chi1_gaps_closed_by_chi2.bed
+
+
+# Gaps closed within contig boundaries
+intersectBed -a goat_v3_vs_v13_aligns_merged.bed -b chi1/chi1_gaps_closed_by_chi2.bed -wa -wb | perl -lane 'if($F[5] >= $F[1] && $F[6] <= $F[2]){print $_;}' | wc -l
+	168,826
+
+# Gaps not covered by contig alignments
+intersectBed -a chi1/chi1_gaps_closed_by_chi2.bed -b goat_v3_vs_v13_aligns_merged.bed -v | wc -l
+	30,279
+```
+
+That makes **70%** of gaps unambiguously closed in this version.
