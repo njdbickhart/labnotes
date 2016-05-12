@@ -7,6 +7,7 @@ These are my notes on the conclusion of the analysis of the goat reference genom
 ## Table of Contents
 * [Spearman rank correlation of Lachesis](#correlation)
 * [Preparing data for NCBI](#ncbi)
+* [Centromere repeat check](#centromere)
 
 <a name="correlation"></a>
 ## Spearman rank correlation of Lachesis
@@ -598,3 +599,16 @@ bwa index /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.f
 perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o CHIR_1.0_fixed.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d chi1_to_chi2_gap_summary.tab
 
 ```
+
+<a name="centromere"></a>
+## Centromere repeat check
+
+Serge identified several low complexity regions that may be centromeric. I'm interested to see if we've found it so I downloaded the consensus sequence from [an article](https://genomebiology.biomedcentral.com/articles/10.1186/gb-2013-14-1-r10) that claims to have identified it (note: it's in the online supplementary notes). I'm going to pull the sequence from clusters 7 and 9 to see if it matches the centromere.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/centromere_check
+
+```bash
+# Just because it's easy, let's try bwa
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz centromere.fa > centromere.sam
+
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz cluster_7:112500444-112506199

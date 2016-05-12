@@ -104,3 +104,33 @@ Here are the output data columns:
 9. Gene (gene name or ensembl accession)
 10. AA or Amino Acid (only present in cases of nonsynonymous mutations)
 11. Columns 11 through the last column are animal genotypes
+
+I need to process the following, remaining chromosomes for Joel: 15, 3, 20, 6, 14, 16, 1, 18, 19, 7, 13, 28, 10.
+
+I've created a short bash script to thread this to speed things up.
+
+#### /seq1/1kbulls_annotatedvcf/process_script.sh
+```bash
+# $1 = chromosome
+
+beaglevcf=${1}-Beagle-Run5.eff.vcf.gz
+beagleuncomp=${1}-Beagle-Run5.eff.vcf
+progout=${1}_joels_holstein_subsection.tab
+
+# Uncompress and recompress files
+gunzip $beaglevcf
+bgzip $beagleuncomp
+bcftools index $beaglevcf
+
+perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f $beaglevcf -o $progout -a ../bickhart/side_projects/joels_bulls/1000_bulls_sequenced_joels_bulls_priorformat.list
+```
+
+And here is the code that I'm using to farm out the jobs.
+
+> 3850: /seq1/1kbulls_annotatedvcf/
+
+```bash
+for i in Chr15 Chr3 Chr20 Chr6 Chr14 Chr16 Chr1 Chr18 Chr7 Chr13 Chr28 Chr10; do echo $i; sh process_script.sh $i & done
+
+# Chr19 was already bgzipped, so I will process that directly
+perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f Chr19-Beagle-Run5.eff.vcf.gz -o Chr19_joels_holstein_subsection.tab -a ../bickhart/side_projects/joels_bulls/1000_bulls_sequenced_joels_bulls_priorformat.list
