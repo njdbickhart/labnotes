@@ -7,6 +7,7 @@ These are my notes on the alignment and variant calling performed on Joel's bull
 ## Table of Contents
 * [Organizing the data](#organizing)
 * [Generating 1000 bulls SNP and INDEL annotations](#onethousand)
+	* [Output tab file columns](#outheads)
 
 <a name="organizing"></a>
 ## Organizing the data
@@ -86,3 +87,20 @@ bcftools index Chr5-Beagle-Run5.eff.vcf.gz
 perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f Chr5-Beagle-Run5.eff.vcf.gz -o Chr5_joels_holstein_subsection.tab -a ../bickhart/side_projects/joels_bulls/1000_bulls_sequenced_joels_bulls_priorformat.list
 
 ```
+
+Here are the output data columns:
+
+<a name="outheads"></a>
+#### Output tab file columns
+
+1. Chromosome
+2. Base pair position
+3. Reference allele
+4. Alternate allele
+5. Quality score (not present in 1k bulls data)
+6. Type (can be either a "SNP" or an "INDEL")
+7. Mutation (different classifications based on the mutation's presence in or outside of a gene)
+8. Priority (can be "HIGH," "MODERATE," "LOW," or "MODIFIER" in decreasing order of interest)
+9. Gene (gene name or ensembl accession)
+10. AA or Amino Acid (only present in cases of nonsynonymous mutations)
+11. Columns 11 through the last column are animal genotypes
