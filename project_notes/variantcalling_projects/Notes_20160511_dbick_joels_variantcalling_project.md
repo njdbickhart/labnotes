@@ -73,4 +73,16 @@ That makes **39** animals already available for some form of processing. I will 
 <a name="onethousand"></a>
 ## Generating 1000 bulls SNP and INDEL annotations
 
-I am going to create tabular excel output for Joel by splitting the 1000 bull genomes files into 
+I am going to create tabular excel output for Joel by splitting the 1000 bull genomes files into the tabular output that I've generated previously for Tad. Joel would like the entire chromosome from the 1kbulls VCF file. While this makes things easier for me, it may take longer to process. I'll get started immediately.
+
+I just rewrote my [vcf subsectioning](https://github.com/njdbickhart/perl_toolchain/blob/master/vcf_utils/filterAndSubsectionVCFfile.pl) script to handle the processing of the vcf.
+
+> 3850: /seq1/1kbulls_annotatedvcf
+
+```bash
+bgzip Chr5-Beagle-Run5.eff.vcf
+bcftools index Chr5-Beagle-Run5.eff.vcf.gz
+
+perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f Chr5-Beagle-Run5.eff.vcf.gz -o Chr5_joels_holstein_subsection.tab -a ../bickhart/side_projects/joels_bulls/1000_bulls_sequenced_joels_bulls_priorformat.list
+
+```

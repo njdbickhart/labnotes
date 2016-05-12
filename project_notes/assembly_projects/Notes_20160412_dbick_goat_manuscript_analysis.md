@@ -590,3 +590,11 @@ intersectBed -a chi1/chi1_gaps_closed_by_chi2.bed -b goat_v3_vs_v13_aligns_merge
 ```
 
 That makes **70%** of gaps unambiguously closed in this version.
+
+I'm not confident that I'm identifying the gaps correctly. Let's try remapping chi1.0 gaps onto chi2.0 using my alignment block strategy.
+
+```bash
+bwa index /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o CHIR_1.0_fixed.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d chi1_to_chi2_gap_summary.tab
+
+```
