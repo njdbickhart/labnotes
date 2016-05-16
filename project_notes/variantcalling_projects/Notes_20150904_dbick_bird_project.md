@@ -11,6 +11,7 @@ These are my commands and notes on the CNV calling on a wild bird dataset.
 * [Running CNVNator on the bird data](#cnvnator)
 * [Running JaRMS on the bird data](#jarms)
 * [Summary of current results](#summary1)
+* [Consolidating Tandem Dup information for Morgan](#consol)
 
 <a name="stats"></a>
 ## BAM file summary statistics
@@ -413,3 +414,91 @@ sj.cor.jarms.wssd_regions.tab | tab delimited list of predicted Segmental Duplic
 sj.cor.jarms.wssd_anno.xls | excel spreadsheet with gene intersections of the Segmental Duplications
 sj.cor.jarms.dels_anno.xls | excel spreadsheet with gene intersections of the misassemblies/deletions
 
+<a name="consol"></a>
+## Consolidating Tandem Dup information for Morgan
+
+I'm now going to take the RAPTR-SV divet file and attempt to find evidence of tandem duplications near previously detected WSSD in Morgan that match up with Joe (the other sample). My strategy is pretty straight-forward:
+
+* Convert RAPTR-SV divet file into a bedpe and intersect bed coordinates of remapped WSSD segments with everted bedpe
+* Count the support and define tandem dup breakpoints
+
+Let's subsection the divet so we can rapidly interrogate it.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/bird_data/raptr
+
+```bash
+# Selecting only the scaffolds that we need
+grep 'eversion' sj.cor_resorted.raptr.preprocess.3436b63b-fe72-471e-8018-58e591fe2e60.divet | perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %keep; while(<IN>){chomp; $keep{$_} = 1;} close IN; while(<STDIN>){chomp; @s = split(/\t/); if(exists($keep{$s[1]})){print "$s[1]\t$s[2]\t$s[3]\t$s[5]\t$s[6]\t$s[7]\t$s[0]\n";}}' scaffs.list > sj.cor.wssd.firstselection.eversion.bedpe
+
+wc -l *.bedpe
+	95815 sj.cor.wssd.firstselection.eversion.bedpe 
+
+# Well, that's a reasonable number! Let's see how close it compares to our bed coordinates from the WSSD blasting
+# First, let's generate some end sequence
+perl -lane '$s1 = $F[1] - 100; $e1 = $F[1] + 100; if($s1 < 1){$s1 = 1;} $s2 = $F[2] - 100; $e2 = $F[2] + 100; print "$F[0]\t$s1\t$e1\n$F[0]\t$s2\t$e2";' < sj.cor_refined_wssd.bed > sj.cor_refined_wssd.ends.bed
+perl -lane '$s1 = $F[1] - 100; $e1 = $F[1] + 100; if($s1 < 1){$s1 = 1;} $s2 = $F[2] - 100; $e2 = $F[2] + 100; print "$F[0]\t$s1\t$e1\n$F[0]\t$s2\t$e2";' < sj.cor_original_wssd.bed > sj.cor_original_wssd.ends.bed
+
+
+# After a few successive tests, I'm worried about repeats. Some of the "ends" are in repetitive regions
+# Let's still gather the evidence and deal with it later
+intersectBed -a sj.cor_original_wssd.ends.bed -b sj.cor.wssd.firstselection.eversion.bedpe -c | perl -lane 'if($F[3]){print $_;}'
+	jcf7180005232807        11401   11601   2
+>	jcf7180005232807        14400   14600   221
+	jcf7180005232807        65401   65601   382
+	jcf7180005232807        65401   65601   382
+	jcf7180005232807        65401   65601   382
+	jcf7180005234354        215401  215601  2
+	jcf7180005234354        215401  215601  2
+	jcf7180005234811        196901  197101  188
+	jcf7180005234811        200400  200600  4
+	jcf7180005219577        9400    9600    1
+	jcf7180005234681        16401   16601   19
+	jcf7180005234681        19900   20100   7
+	jcf7180005234416        470901  471101  13
+	jcf7180005232807        6900    7100    2
+	jcf7180005198788        1       101     194
+	jcf7180005198788        1       101     194
+
+intersectBed -a sj.cor_refined_wssd.ends.bed -b sj.cor.wssd.firstselection.eversion.bedpe -c | perl -lane 'if($F[3]){print $_;}'
+	jcf7180005232807        11401   11601   2
+	jcf7180005232807        13500   13700   5
+	jcf7180005232807        65841   66041   10
+>	jcf7180005232807        66577   66777   338
+	jcf7180005232807        72282   72482   174
+	jcf7180005232807        72342   72542   174
+	jcf7180005234675        10410   10610   4
+	jcf7180005234811        198682  198882  4
+	jcf7180005198788        9153    9353    793
+	jcf7180005198788        9620    9820    671
+	jcf7180005232807        5688    5888    37
+	jcf7180005198788        1       101     194
+	jcf7180005198788        5436    5636    201
+	jcf7180005198788        5875    6075    411
+
+# Now to eliminate putative repetitive regions
+intersectBed -a sj.cor_original_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.bed -wb | grep 'jcf7180005232807'
+	jcf7180005232807        14568   14600   jcf7180005232807        14568   14761
+intersectBed -a sj.cor_refined_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.bed -wb | grep 'jcf7180005232807'
+	jcf7180005232807        65903   65923   jcf7180005232807        65903   65923
+
+intersectBed -a sj.cor_refined_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.bed -wb | grep 'jcf7180005234811'
+intersectBed -a sj.cor_original_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.bed -wb | grep 'jcf7180005234811'
+# jcf7180005234811 is clean
+
+intersectBed -a sj.cor_original_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.bed -wb | grep 'jcf7180005198788'
+	jcf7180005198788        8455    8601    jcf7180005198788        8455    8653
+intersectBed -a sj.cor_refined_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.bed -wb | grep 'jcf7180005198788'
+# Interesting fact: 388 reads support this tandem dup:
+# jcf7180005198788        73      194     jcf7180005198788        9176    9209
+
+intersectBed -a sj.cor_original_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.bed -wb | grep 'jcf7180005234681'
+intersectBed -a sj.cor_refined_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.bed -wb | grep 'jcf7180005234681'
+# jcf7180005234681 is clean
+
+# Just to test this, going to generate some BAM slices and view them with SVS Genome browse
+```
+
+That makes three potential Tandem Dups with good supporting evidence:
+>	jcf7180005234811        197001  200500
+>	jcf7180005198788	73	9209
+>	jcf7180005234681        16501   20000
