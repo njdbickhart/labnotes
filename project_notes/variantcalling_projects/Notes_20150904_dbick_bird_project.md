@@ -12,6 +12,8 @@ These are my commands and notes on the CNV calling on a wild bird dataset.
 * [Running JaRMS on the bird data](#jarms)
 * [Summary of current results](#summary1)
 * [Consolidating Tandem Dup information for Morgan](#consol)
+	* [Strong Tandem Candidates](#strongtandem)
+	* [Other Tandem Candidates](#othertandem)
 
 <a name="stats"></a>
 ## BAM file summary statistics
@@ -499,6 +501,53 @@ intersectBed -a sj.cor_refined_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.be
 ```
 
 That makes three potential Tandem Dups with good supporting evidence:
+<a name="strongtandem"></a>
+#### Strong Tandem candidates
 >	jcf7180005234811        197001  200500
->	jcf7180005198788	73	9209
+>	jcf7180005198788	73	9209                    <- IGV signature suggests tandem dup + dispersed dup near 5,608
 >	jcf7180005234681        16501   20000
+
+
+Now I'm going to try a more aggressive approach that includes the majority of the window interval; however, I am going to actively filter repetitive regions.
+
+```bash
+intersectBed -a sj.cor.wssd.firstselection.eversion.bedpe -b ../fasta/sj.corr.repeatmasker.bed -v > sj.cor.wssd.firstselection.eversion.norepeats.bedpe
+wc -l *.bedpe
+   95815 sj.cor.wssd.firstselection.eversion.bedpe
+   92099 sj.cor.wssd.firstselection.eversion.norepeats.bedpe
+
+# That removed far fewer than I expected!
+# Let's see how the data intersects now
+# NOTE: the refined coordinates were a subset of the following selection
+intersectBed -a sj.cor_original_wssd.bed -b sj.cor.wssd.firstselection.eversion.norepeats.bedpe -c | perl -lane 'if($F[3]){print $_;}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
+intersectBed -a sj.cor_original_wssd.ends.bed -b sj.cor.wssd.firstselection.eversion.norepeats.bedpe -c | perl -lane 'if($F[3]){print $_;}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
+```
+<a name="othertandem"></a>
+#### Other Tandem Candidates
+#### Original 
+|Entry            | Count|
+|:----------------|-----:|
+|jcf7180005198788 |     3|
+|jcf7180005219577 |     1|
+|jcf7180005228792 |     2|
+|jcf7180005232807 |     5|
+|jcf7180005234354 |     2|
+|jcf7180005234416 |     1|
+|jcf7180005234601 |     1|
+|jcf7180005234675 |     2|
+|jcf7180005234681 |     1|
+|jcf7180005234717 |     1|
+|jcf7180005234811 |     1|
+
+#### Original ends
+|Entry            | Count|
+|:----------------|-----:|
+|jcf7180005198788 |     2|
+|jcf7180005219577 |     1|
+|jcf7180005232807 |     6|
+|jcf7180005234354 |     2|
+|jcf7180005234416 |     1|
+|jcf7180005234681 |     2|
+|jcf7180005234811 |     2|
+
+So, there is strong evidence for the prior three tandem dups I detected, and some very complex evidence for the tandem dups in the table above (minus the three which are in both lists).

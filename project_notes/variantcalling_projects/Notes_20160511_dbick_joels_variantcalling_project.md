@@ -71,6 +71,125 @@ That makes **39** animals already available for some form of processing. I will 
 * **final_file_joel_bulls.list** -> Contains bam files that we currently maintain from Genome Canada and our project
 * **1000_bulls_sequenced_joels_bulls.list** -> Contains the names (reformatted) of bulls that were in the 1000 bulls data files but we do not have the bams for.
 
+I am missing 2 bulls from Joel's list. Here are my notes on how to reconcile the lists.
+
+> 3850: /seq1/bickhart/side_projects/joels_bulls
+
+```bash
+perl -lane 'print $F[1];' < /work1/grw/grw1/Joel/With_Seq_41.txt > georges_list_41.txt
+cat final_file_joel_bulls.list 1000_bulls_sequenced_joels_bulls.list > my_list_bulls.txt
+
+# I used vim to format the my_list_bulls.txt file so that the names were uniform
+# Still quite a few were missing
+```
+
+I need to go back to the source and use the last list of bulls to reconcile the differences. 
+
+```bash
+for i in ../../../1000_bulls_bams/HO*.bam; do name=`basename $i | cut -d'.' -f1`; echo $name; done > 100_bulls_holsteins.list
+
+# ID bulls in 1000 bulls data
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o 1000_bulls_sequenced_reformatted.list Bulls_100_sons_1504_ID.txt
+mv group_1_2.txt 1000_bulls_joel_with_canada.list
+mv group_2.txt bulls_minus_1000_data.list
+
+# I realized that I can generate the association for all files at once
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o 1000_bulls_sequenced_reformatted.list Bulls_100_sons_1504_ID.txt canadian_bulls.list 100_bulls_holsteins.list
+File Number 1: 1000_bulls_sequenced_reformatted.list
+File Number 2: Bulls_100_sons_1504_ID.txt
+File Number 3: canadian_bulls.list
+File Number 4: 100_bulls_holsteins.list
+Set     Count
+1       364
+1;2     19
+1;2;3   9
+1;2;3;4 3
+1;2;4   5
+1;4     26
+2       34
+2;4     1
+4       2
+
+mv group_1_2.txt 1000_bulls_only_joel.list
+cat group_1_2_4.txt group_1_2_3.txt group_1_2_3_4.txt group_2_4.txt > joel_already_controlled.list
+
+# George has a list of bulls that have sequence, supposedly. Let's use that list instead
+perl -lane 'print $F[1];' < With_Seq_41.txt > georges_list_sequenced.list
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o 1000_bulls_sequenced_reformatted.list Bulls_100_sons_1504_ID.txt georges_list_sequenced.list canadian_bulls.list 100_bulls_holsteins.list
+File Number 1: 1000_bulls_sequenced_reformatted.list
+File Number 2: Bulls_100_sons_1504_ID.txt
+File Number 3: georges_list_sequenced.list
+File Number 4: canadian_bulls.list
+File Number 5: 100_bulls_holsteins.list
+Set     Count
+1       364
+1;2;3   19
+1;2;3;4 9
+1;2;3;4;5       3
+1;2;3;5 5
+1;5     26
+2       30
+2;3     4
+2;3;5   1
+5       2
+
+# OK, let's find out who is in the 2;3 group and where they're located
+head group_2_3.txt
+HODEU000000254210
+HOUSA000002247437
+HONLD000839380546
+HODEU000000830287
+
+for i in HODEU000000254210 HOUSA000002247437 HONLD000839380546 HODEU000000830287; do getids $i | perl -e '<>; <>; while(<>){chomp; @s = split(/\s+/); print "$s[1]\n";}' > $i.names; done
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl 1000_bulls_sequenced_reformatted.list HODEU000000254210.names
+File Number 1: 1000_bulls_sequenced_reformatted.list
+File Number 2: HODEU000000254210.names
+Set     Count
+1       425
+1;2     1
+2       5
+# I did this for the rest, and only found discrepencies with HOUSA000002247437 and HONLD000839380546
+
+# Testing George Liu's list for preferred ids
+for i in `cat george_lius_list.txt`; do getids $i | perl -e '<>; <>; while(<>){chomp; @s = split(/\s+/); print "$s[1]\n";}'; done > george_lius_list_altnames.txt
+grep HOUSA000002247437 george_lius_list_altnames.txt
+grep HONLD000839380546 george_lius_list_altnames.txt
+
+# Nothing
+# HONLD000839380546 was in the 1000 bulls list, but I was unable to find it because of my permissive substitution script
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o 1000_bulls_sequenced_reformatted.list Bulls_100_sons_1504_ID.txt georges_list_sequenced.list canadian_bulls.list 100_bulls_holsteins.list
+File Number 1: 1000_bulls_sequenced_reformatted.list
+File Number 2: Bulls_100_sons_1504_ID.txt
+File Number 3: georges_list_sequenced.list
+File Number 4: canadian_bulls.list
+File Number 5: 100_bulls_holsteins.list
+Set     Count
+1       363
+1;2;3   20
+1;2;3;4 9
+1;2;3;4;5       3
+1;2;3;5 5
+1;5     26
+2       30
+2;3     3
+2;3;5   1
+5       2
+
+# So we remove HOUSA000002247437 but process the rest
+grep -v 'HOUSA000002247437' group_2_3.txt > alt_1000_bulls_ids.txt
+mv group_1_2_3.txt 1000_bulls_presumptive_list.list
+cat group_2_3_5.txt group_1_2_3_5.txt group_1_2_3_4_5.txt group_1_2_3_4.txt > joels_bulls_we_already_have.list
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o 1000_bulls_sequenced_reformatted.list HODEU000000254210.names
+# This is HODEU000578194407
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o 1000_bulls_sequenced_reformatted.list HODEU000000830287.names
+# This is HODEU002261530135
+```
+
+The files that contain the proper sequenced bulls are:
+* /seq1/bickhart/side_projects/joels_bulls/1000_bulls_presumptive_list.list
+* /seq1/bickhart/side_projects/joels_bulls/joels_bulls_we_already_have.list
+
 <a name="onethousand"></a>
 ## Generating 1000 bulls SNP and INDEL annotations
 
@@ -134,3 +253,10 @@ for i in Chr15 Chr3 Chr20 Chr6 Chr14 Chr16 Chr1 Chr18 Chr7 Chr13 Chr28 Chr10; do
 
 # Chr19 was already bgzipped, so I will process that directly
 perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f Chr19-Beagle-Run5.eff.vcf.gz -o Chr19_joels_holstein_subsection.tab -a ../bickhart/side_projects/joels_bulls/1000_bulls_sequenced_joels_bulls_priorformat.list
+```
+
+#### I just redid the 1000 bulls list, so I need to reprocess the data so that Joel has the proper animals
+
+```bash
+for i in Chr10 Chr13 Chr14 Chr15 Chr16 Chr17 Chr18 Chr19 Chr28 Chr29 Chr6 Chr20 Chr1 Chr3; do echo $i; perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f ${i}-Beagle-Run5.eff.vcf.gz -o ${i}_joels_holstein_subsection.tab -a ../bickhart/side_projects/joels_bulls/1000_bulls_presumptive_list_reformatted.list; done
+```
