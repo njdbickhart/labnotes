@@ -503,9 +503,9 @@ intersectBed -a sj.cor_refined_wssd.ends.bed -b ../fasta/sj.corr.repeatmasker.be
 That makes three potential Tandem Dups with good supporting evidence:
 <a name="strongtandem"></a>
 #### Strong Tandem candidates
->	jcf7180005234811        197001  200500
->	jcf7180005198788	73	9209                    <- IGV signature suggests tandem dup + dispersed dup near 5,608
->	jcf7180005234681        16501   20000
+*	jcf7180005234811        197001  200500
+*	jcf7180005198788	73	9209                    <- IGV signature suggests tandem dup + dispersed dup near 5,608
+*	jcf7180005234681        16501   20000
 
 
 Now I'm going to try a more aggressive approach that includes the majority of the window interval; however, I am going to actively filter repetitive regions.
