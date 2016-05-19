@@ -598,6 +598,84 @@ I'm not confident that I'm identifying the gaps correctly. Let's try remapping c
 bwa index /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa
 perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o CHIR_1.0_fixed.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d chi1_to_chi2_gap_summary.tab
 
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f chi1_to_chi2_gap_summary.tab -c 0 -m
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f papadumv13_gap_fills.tab -c 0 -m
+```
+
+#### Raw count improvement of v13 over Chi_2.0
+
+|Chi_2.0 Entry  |  Count|v13 Entry  |  Count| Perc improvement |
+|:------|------:|:------|------:| ----: 
+|Closed | 230587|Closed | 242888| 5.3%
+|Open   |     51|Open   |     23| 121%
+|Trans  |  26126|Trans  |  13853| 88.6%
+
+Chi_2.0 closes **89.8%** of gaps, whereas v13 closes **94.6%**.
+
+Now I'm going to "merge" the documents to generate a different type of count.
+
+```bash
+ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); push(@d, $s[0]);} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); push(@n, ($d[$c], $s[0])); print join(";", @n); @n = (); print "\n"; $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
+```
+256764
+
+#### Direct comparison of gap closure status in v13 (left) and chi_2.0 (right)
+
+|Entry         |  Count| Percentage
+|:-------------|------:| ----:
+|Closed;Closed | 226783| 88.3%
+|Closed;Open   |     51| < 0.0001%
+|Closed;Trans  |  16054| 6.3 %
+|Open;Closed   |     23| < 0.0001%
+|Trans;Closed  |   3781| 1.47%
+|Trans;Trans   |  10072| 3.92%
+
+Let's do our due dilligence and identify the Open;Closed category gaps.
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); push(@d, $s[0]);} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); push(@n, ($d[$c], $s[0])); $y = join(";", @n); if($y eq "Open;Closed"){open(TEMP, "grep -P \"$s[1]\t$s[2]\" $ARGV[0] |"); $l = <TEMP>; close TEMP; @h = split(/\t/, $l); print join("\t", @s); print "\t$h[6]\t$h[7]\t$h[8]\t$h[9]\t$h[10]\n";} @n = (); $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab
+
+# All of the Open;Closed regions had neither pair map to our assembly
+# Let's grab them and see if there are actually reads that align to these regions
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); push(@d, $s[0]);} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); push(@n, ($d[$c], $s[0])); $y = join(";", @n); if($y eq "Open;Closed"){@u = split("[:-]", $s[6]); @r = split("[:-]", $s[7]); push(@m, ($u[1], $u[2], $r[1], $r[2])); @m = sort{$a <=> $b} @m; print "$s[5]\t$m[0]\t$m[3]\n"; @m = ();} @n = (); $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab > chi2_closed_open_regions.bed
+
+perl -lane '$F[1] -= 100; $F[2] += 100; system("samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa $F[0]:$F[1]-$F[2]");' < chi2_closed_open_regions.bed > chi2_closed_open_regions.fa
+bwa index chi2_closed_open_regions.fa
+# Doing a small test first to see if this works out
+bwa mem chi2_closed_open_regions.fa /mnt/nfs/nfs2/GoatData/sequence_data/C0LYPACXX/Sample_Goat250/Goat250_NoIndex_L001_R1_001.fastq.gz /mnt/nfs/nfs2/GoatData/sequence_data/C0LYPACXX/Sample_Goat250/Goat250_NoIndex_L001_R2_001.fastq.gz > chi2_closed_open_regions.1.1.sam
+samtools view -bS chi2_closed_open_regions.1.1.sam | samtools sort -T chi2 -o chi2_closed_open_regions.1.1.bam -
+
+samtools index chi2_closed_open_regions.1.1.bam
+samtools idxstats chi2_closed_open_regions.1.1.bam | perl -lane 'if($F[2]){print $_;}'
+	CM001714_2:110755006-110756284  1279    6       0
+	CM001720_2:92504225-92505523    1299    51      51		<	<
+	CM001731_2:61530410-61532110    1701    2       0
+	CM001731_2:61534256-61535509    1254    11      1		<
+	CM001731_2:61537861-61539039    1179    4       0			<
+	CM001731_2:62979583-62980535    953     3       1		<
+	AJPT02042923.1:239614-241686    2073    9       0
+	AJPT02042923.1:238569-240007    1439    1       0
+	CM001739_2:59089786-59091045    1260    4       0
+	CM001739_2:75243202-75244649    1448    1       1		<
+	CM001734_2:44465535-44466979    1445    2       0
+	CM001734_2:44466632-44468626    1995    1       0
+	CM001734_2:44468602-44492165    23564   86      55		<	<
+
+# Doing another to confirm
+bwa mem chi2_closed_open_regions.fa /mnt/nfs/nfs2/GoatData/sequence_data/C0LYPACXX/Sample_Goat250/Goat250_NoIndex_L001_R1_002.fastq.gz /mnt/nfs/nfs2/GoatData/sequence_data/C0LYPACXX/Sample_Goat250/Goat250_NoIndex_L001_R2_002.fastq.gz | samtools view -bS -F 8 -f 4 - | samtools sort -T temp -o chi2_closed_open_regions.1.2.bam -
+
+```
+
+Six of the regions have high degrees of one-end mapped reads, suggesting that the region is difficult to resolve, and is not representative of live animals.
+
+Let's generate a list of gap regions from our Closed;Open and Closed;Trans list in a bed file to send to Ben for gene intersection.
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); push(@d, $s[0]);} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); push(@n, ($d[$c], $s[0])); $y = join(";", @n); if($y eq "Closed;Open" || $y eq "Closed;Trans"){print "$s[1]\t$s[2]\t$s[3]\n";} @n = (); $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab >  chi1_closed_gaps_unresolved_in_chi2.bed
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]}->{$s[1]}->{$s[2]} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[1]}->{$s[2]}->{$s[3]})){@u = split("[:-]", $s[6]); @r = split("[:-]", $s[7]); push(@m, ($u[1], $u[2], $r[1], $r[2])); @m = sort{$a <=> $b} @m; print "$s[5]\t$m[0]\t$m[3]\t$s[1]_$s[2]_$s[3]\n"; @m = ();}} close IN;' chi1_closed_gaps_unresolved_in_chi2.bed papadumv13_gap_fills.tab | perl -lane 'if($F[2] - $F[1] < 50000){print $_;}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > v13_closed_gaps_unresolved_in_chi2.bed
+
 ```
 
 <a name="centromere"></a>
