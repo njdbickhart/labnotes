@@ -8,6 +8,7 @@ These are my notes on the alignment and variant calling performed on Joel's bull
 * [Organizing the data](#organizing)
 * [Generating 1000 bulls SNP and INDEL annotations](#onethousand)
 	* [Output tab file columns](#outheads)
+* [Calling SNPs and INDELs in Canadian and US Holstein data](#finertune)
 
 <a name="organizing"></a>
 ## Organizing the data
@@ -259,4 +260,29 @@ perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f Chr19-Beagle-Ru
 
 ```bash
 for i in Chr10 Chr13 Chr14 Chr15 Chr16 Chr17 Chr18 Chr19 Chr28 Chr29 Chr6 Chr20 Chr1 Chr3; do echo $i; perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f ${i}-Beagle-Run5.eff.vcf.gz -o ${i}_joels_holstein_subsection.tab -a ../bickhart/side_projects/joels_bulls/1000_bulls_presumptive_list_reformatted.list; done
+
+# All files were copied to Joel's seq1 directory
+```
+
+<a name="finertune"></a>
+## Calling SNPs and INDELs in Canadian and US Holstein data
+
+I am going to use Samtools to generate SNP and INDEl calls for the remaining data. I will need to discuss the format of CNV calls with him to see what type of input data he can run in his SAS data -- I suspect that problems will be encountered with overlapping variants (ie. CNVs that cover numerous SNPs).
+
+> 3850 /seq1/
+
+```bash
+# I just need to identify the bulls that are part of the 100 bulls project that need to be recalled
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1 bickhart/side_projects/joels_bulls/joels_bulls_we_already_have.list bickhart/side_projects/joels_bulls/canadian_bulls.list
+File Number 1: bickhart/side_projects/joels_bulls/joels_bulls_we_already_have.list
+HOUSA000002290977
+HOUSA000002040728
+HOUSA000002147486
+HOUSA000122358313
+HOUSA000002103297
+HOUSA000001697572
+
+# The rest are the Canadian bulls
+for i in ls /seq1/genome_canada/*.bam; do echo -n "$i "; done; echo
+for i in Chr10 Chr13 Chr14 Chr15 Chr16 Chr17 Chr18 Chr19 Chr28 Chr29 Chr6 Chr20 Chr1 Chr3; do samtools mpileup -C50 -gf /seq1/reference/umd_3_1_reference_1000_bull_genomes.fa -uv -t DP -r $i /seq1/genome_canada/HOLCANM000005279989.bam /seq1/genome_canada/HOLCANM000006026421.bam /seq1/genome_canada/HOLCANM000100745543.bam /seq1/genome_canada/HOLDEUM000000253642.bam /seq1/genome_canada/HOLGBRM000000598172.bam /seq1/genome_canada/HOLITAM006001001962.bam /seq1/genome_canada/HOLUSAM000002265005.bam /seq1/genome_canada/HOLUSAM000002297473.bam /seq1/genome_canada/HOLUSAM000017129288.bam /seq1/genome_canada/HOLUSAM000017349617.bam /seq1/genome_canada/HOLUSAM000123066734.bam /seq1/genome_canada/HOLUSAM000132973942.bam /seq1/1000_bulls_bams/HOUSA000002290977.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002040728.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002147486.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000122358313.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002103297.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000001697572.reformatted.sorted.bam | bcftools call -vmO z -o /seq1/bickhart/side_projects/joels_bulls/resequenced_holstein_18_${i}.vcf.gz & done
 ```
