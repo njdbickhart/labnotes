@@ -496,3 +496,30 @@ For: ../../../joel/Chr6_joels_holstein_subsection.tab and resequenced_holstein_1
 ```
 
 Hmm... that's far too much of a sacrifice here. Most of the variant sites aren't matching up.
+
+Let's do a quick test where I extract the same animals and attempt to combine them in the same process.
+
+```bash
+for i in /seq1/genome_canada/*.bam; do name=`basename $i | cut -d'.' -f1`; echo "$name"; done > test_set_bulls.list
+# I added the 100 bulls entries as well to this list
+
+perl ~/perl_toolchain/vcf_utils/filterAndSubsectionVCFfile.pl -f /seq1/1kbulls_annotatedvcf/Chr28-Beagle-Run5.eff.vcf.gz -o test_Chr28_joels_holstein_subsection.tab -a test_set_bulls.list
+perl combine_tab_format_vcfs.pl test_Chr28_joels_holstein_subsection.tab resequenced_holstein_18_Chr28.vcf > test_joel_combined_holstein_Chr28.tab
+	For: test_Chr28_joels_holstein_subsection.tab and resequenced_holstein_18_Chr28.vcf, 66233 entries in the vcf did not match the tab file, and 531242 for viceversa
+
+wc -l test_joel_combined_holstein_Chr28.tab
+	839441 test_joel_combined_holstein_Chr28.tab
+wc -l resequenced_holstein_18_Chr28.vcf
+	311287 resequenced_holstein_18_Chr28.vcf
+# Testing how many are not monomorphic reference
+perl -lane 'if($F[0] eq "CHR"){next;}else{$c = 0; for($x = 10; $x < 22; $x++){if($F[$x] eq "0|0"){$c++;}} if($c >= 12){next;}else{print $_;}}' < test_Chr28_joels_holstein_subsection.tab | wc -l
+	769,182
+
+perl -lane 'if($F[0] eq "CHR"){print $_;}else{$c = 0; for($x = 10; $x < 22; $x++){if($F[$x] eq "0|0"){$c++;}} if($c >= 12){next;}else{print $_;}}' < test_Chr28_joels_holstein_subsection.tab > test_Chr28_joels_filtered_holstein_subsection.tab
+perl combine_tab_format_vcfs.pl test_Chr28_joels_filtered_holstein_subsection.tab resequenced_holstein_18_Chr28.vcf > test_joel_filtered_holstein_Chr28.tab
+	For: test_Chr28_joels_filtered_holstein_subsection.tab and resequenced_holstein_18_Chr28.vcf, 66326 entries in the vcf did not match the tab file, and 527654 for viceversa
+```
+
+OK, so let's calculate the venn stats for this. 66,233 unique for the sequence data, 531,242 unique for the 1000 bulls, and 308,199 shared sites. ~ 4,000 predicted monomorphic reference sites in the 1k bulls data are variant calls within the sequence data.
+
+
