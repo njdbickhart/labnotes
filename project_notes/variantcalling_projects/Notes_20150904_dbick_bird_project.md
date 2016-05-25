@@ -551,3 +551,36 @@ intersectBed -a sj.cor_original_wssd.ends.bed -b sj.cor.wssd.firstselection.ever
 |jcf7180005234811 |     2|
 
 So, there is strong evidence for the prior three tandem dups I detected, and some very complex evidence for the tandem dups in the table above (minus the three which are in both lists).
+
+I just got a sub list of more sites to test for tandem dups. I'm going to check them via the pipeline I developed above.
+
+```bash
+# Selecting only the scaffolds that we need
+cat sj.cor_secondset_original_wssd.bed | cut -f1 | uniq > secondscaffs.list
+grep 'eversion' sj.cor_resorted.raptr.preprocess.3436b63b-fe72-471e-8018-58e591fe2e60.divet | perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %keep; while(<IN>){chomp; $keep{$_} = 1;} close IN; while(<STDIN>){chomp; @s = split(/\t/); if(exists($keep{$s[1]})){print "$s[1]\t$s[2]\t$s[3]\t$s[5]\t$s[6]\t$s[7]\t$s[0]\n";}}' secondscaffs.list > sj.cor.wssd.secondselection.eversion.bedpe
+
+intersectBed -a sj.cor.wssd.secondselection.eversion.bedpe -b ../fasta/sj.corr.repeatmasker.bed -v > sj.cor.wssd.secondselection.eversion.norepeats.bedpe
+wc -l *.bedpe
+     303 sj.cor.wssd.secondselection.eversion.bedpe
+     303 sj.cor.wssd.secondselection.eversion.norepeats.bedpe
+
+# It removed nothing, really!
+# Let's try the intersection
+intersectBed -a sj.cor_secondset_original_wssd.bed -b sj.cor.wssd.secondselection.eversion.norepeats.bedpe -c | perl -lane 'if($F[3]){print $_;}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
+
+intersectBed -a sj.cor_secondset_original_wssd.bed -b sj.cor.wssd.secondselection.eversion.norepeats.bedpe -c | perl -lane 'if($F[3]){print $_;}'
+	jcf7180005229501        1501    9000    18
+
+intersectBed -a sj.cor_secondset_original_wssd.bed -b sj.cor.wssd.secondselection.eversion.norepeats.bedpe -wb
+jcf7180005229501        1703    1828    jcf7180005229501        1703    1828    jcf7180005229501        13595   13634   -8265586826556520021
+...
+# They were all like this
+```
+#### Last set of dups with potential tandem duplication signatures
+
+|Entry            | Count|
+|:----------------|-----:|
+|jcf7180005229501 |     1|
+
+Just one with 18 eversion signals! I think that's about all 
+

@@ -286,3 +286,213 @@ HOUSA000001697572
 for i in ls /seq1/genome_canada/*.bam; do echo -n "$i "; done; echo
 for i in Chr10 Chr13 Chr14 Chr15 Chr16 Chr17 Chr18 Chr19 Chr28 Chr29 Chr6 Chr20 Chr1 Chr3; do samtools mpileup -C50 -gf /seq1/reference/umd_3_1_reference_1000_bull_genomes.fa -uv -t DP -r $i /seq1/genome_canada/HOLCANM000005279989.bam /seq1/genome_canada/HOLCANM000006026421.bam /seq1/genome_canada/HOLCANM000100745543.bam /seq1/genome_canada/HOLDEUM000000253642.bam /seq1/genome_canada/HOLGBRM000000598172.bam /seq1/genome_canada/HOLITAM006001001962.bam /seq1/genome_canada/HOLUSAM000002265005.bam /seq1/genome_canada/HOLUSAM000002297473.bam /seq1/genome_canada/HOLUSAM000017129288.bam /seq1/genome_canada/HOLUSAM000017349617.bam /seq1/genome_canada/HOLUSAM000123066734.bam /seq1/genome_canada/HOLUSAM000132973942.bam /seq1/1000_bulls_bams/HOUSA000002290977.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002040728.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002147486.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000122358313.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002103297.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000001697572.reformatted.sorted.bam | bcftools call -vmO z -o /seq1/bickhart/side_projects/joels_bulls/resequenced_holstein_18_${i}.vcf.gz & done
 ```
+
+Now, I need to do the fun and exciting part: combining vcf files. I've generated two scripts for this purpose. Here they are:
+
+#### combine_tab_format_vcfs.pl
+
+```perl
+#!/usr/bin/perl
+# This is a one-shot script designed to combine the genotypes from recalled snps and my
+# tab format VCF condensed version
+
+use strict;
+
+my $usage = "perl $0 <input tab file> <input new vcf>\n";
+chomp(@ARGV);
+unless(scalar(@ARGV) == 2){
+        print $usage;
+        exit;
+}
+
+open(my $VCF, "< $ARGV[1]");
+open(my $TAB, "< $ARGV[0]");
+
+# Gather header information
+my $tans; my $vans;
+my $thead = <$TAB>;
+chomp($thead);
+my @theadsegs = split(/\t/, $thead);
+$tans = scalar(@theadsegs) - 11;
+
+my @vcfheadsegs;
+while(my $line = <$VCF>){
+        chomp $line;
+        if($line =~ /^#CHROM/){
+                @vcfheadsegs = split(/\t/, $line);
+                $vans = scalar(@vcfheadsegs) - 9;
+                last;
+        }
+}
+my @combinedhead;
+my $vcflist = scalar(@vcfheadsegs) -1;
+push(@combinedhead, (@theadsegs, @vcfheadsegs[9 .. $vcflist]));
+print join("\t", @combinedhead) . "\n";
+my %vdata; # {chr}->{pos}->{ref} = [alt, qual, animal genotypes]
+# Storing vcf file into memory
+while(my $line = <$VCF>){
+        chomp $line;
+        my @vsegs = split(/\t/, $line);
+        my $maxlines = scalar(@vsegs) - 1;
+        $vdata{$vsegs[0]}->{$vsegs[1]}->{$vsegs[3]} = [$vsegs[4], $vsegs[5], @vsegs[9 .. $maxlines]];
+}
+close $VCF;
+
+my $notintab = 0;
+
+# Now to sequentially move through both files and process each line
+while(my $tline = <$TAB>){
+        chomp($tline);
+        my @tsegs = split(/\t/, $tline);
+
+        if(exists($vdata{$tsegs[0]}->{$tsegs[1]}->{$tsegs[2]})){
+                # Same exact allele
+                my $str = generateOutString(\@tsegs, $vdata{$tsegs[0]}->{$tsegs[1]}->{$tsegs[2]}, $tans, $vans, 0);
+                push(@{$vdata{$tsegs[0]}->{$tsegs[1]}->{$tsegs[2]}}, -1);
+                # the -1 is a signifier that we've used this variant call before
+                print "$str\n";
+        }else{
+                $notintab++;
+                my $str = generateOutString(\@tsegs, my $blank, $tans, $vans, 1);
+                print "$str\n";
+        }
+}
+
+close $TAB;
+my $notmatch = 0;
+foreach my $chr (keys(%vdata)){
+        foreach my $pos (keys(%{$vdata{$chr}})){
+                foreach my $ref (keys(%{$vdata{$chr}->{$pos}})){
+                        my $vref = $vdata{$chr}->{$pos}->{$ref};
+                        if($vref->[-1] eq "-1"){
+                                next;
+                        }else{
+                                # We have a VCF entry that didn't match up with the orignal
+                                $notmatch++;
+                                my @vals;
+                                push(@vals, ($chr, $pos, $ref, $vref->[0], $vref->[1], (length($ref) > 1 || length($vref->[0]) > 1)? "INDEL" : "SNP", ".", ".", ".", "."));
+                                for(my $x = 0; $x < $tans; $x++){
+                                        push(@vals, "./.");
+                                }
+                                for(my $x = 2; $x < scalar(@{$vref}); $x++){
+                                        my $g = $vref->[$x];
+                                        my @gsegs = split(":", $g);
+                                        push(@vals, $gsegs[0]);
+                                }
+                                my $str = join("\t", @vals);
+                                print "$str\n";
+                        }
+                }
+        }
+}
+
+print STDERR "For: $ARGV[0] and $ARGV[1], $notmatch entries in the vcf did not match the tab file, and $notintab for viceversa\n";
+
+exit;
+
+sub generateOutString{
+        my ($tref, $vref, $tans, $vans, $visempty) = @_;
+        my $str;
+        if($visempty){
+                my @vals;
+                push(@vals, @{$tref});
+                for(my $x = 0; $x < $vans; $x++){
+                        push(@vals, "./.");
+                }
+                $str = join("\t", @vals);
+        }else{
+                my @vals;
+                if($vref->[0] ne $tref->[3]){
+                        push(@vals, @{$tref});
+                        for(my $x = 0; $x < $vans; $x++){
+                             push(@vals, "./.");
+                        }
+                        $str = join("\t", @vals);
+                        $str .= "\n";
+                        @vals = ();
+
+                        push(@vals, (@{$tref}[0 .. 2], $vref->[0], $vref->[1], (length($tref->[2]) > 1 || length($vref->[0]) > 1)? "INDEL" : "SNP", ".", ".", ".", "."));
+                        for(my $x = 0; $x < $tans; $x++){
+                                push(@vals, "./.");
+                        }
+                        for(my $x = 2; $x < scalar(@{$vref}); $x++){
+                                my $g = $vref->[$x];
+                                my @gsegs = split(":", $g);
+                                push(@vals, $gsegs[0]);
+                        }
+                        $str .= join("\t", @vals);
+                }else{
+                        push(@vals, @{$tref});
+                        for(my $x = 2; $x < scalar(@{$vref}); $x++){
+                                my $g = $vref->[$x];
+                                my @gsegs = split(":", $g);
+                                push(@vals, $gsegs[0]);
+                        }
+                        $str = join("\t", @vals);
+                }
+       	}
+        return $str;
+}
+
+```
+
+And a sorting script:
+
+#### sort_vcf_tab_format.pl
+
+```perl
+#!/usr/bin/perl
+# This is another one shot script designed to sort my tab vcf output
+
+use strict;
+chomp(@ARGV);
+my $usage = "perl $0 <input tab file>\n";
+
+unless(scalar(@ARGV) == 1){
+        print $usage;
+        exit;
+}
+
+open(my $IN, "< $ARGV[0]");
+my $head = <$IN>;
+print $head;
+my %data;
+while(my $line = <$IN>){
+        chomp $line;
+        my @segs = split(/\t/, $line);
+        push(@{$data{$segs[0]}->{$segs[1]}}, \@segs);
+}
+close $IN;
+
+foreach my $chr (sort {$a cmp $b} keys(%data)){
+        foreach my $pos (sort {$a <=> $b} keys(%{$data{$chr}})){
+                foreach my $ref (@{$data{$chr}->{$pos}}){
+                        print join("\t", @{$ref}) . "\n";
+                }
+        }
+}
+exit;
+```
+
+
+> 3850 /seq1/bickhart/side_projects/joel
+
+```bash
+for i in Chr10 Chr13 Chr14 Chr15 Chr16 Chr17 Chr18 Chr19 Chr1 Chr20 Chr28 Chr29 Chr3 Chr6; do perl combine_tab_format_vcfs.pl ../../../joel/${i}_joels_holstein_subsection.tab resequenced_holstein_18_${i}.vcf > joel_combined_holstein_${i}.tab; perl sort_vcf_tab_format.pl joel_combined_holstein_{$i}.tab > joel_combined_holstein_{$i}.sorted.tab; done
+For: ../../../joel/Chr10_joels_holstein_subsection.tab and resequenced_holstein_18_Chr10.vcf, 133990 entries in the vcf did not match the tab file, and 1070521 for viceversa
+For: ../../../joel/Chr13_joels_holstein_subsection.tab and resequenced_holstein_18_Chr13.vcf, 99519 entries in the vcf did not match the tab file, and 879606 for viceversa
+For: ../../../joel/Chr14_joels_holstein_subsection.tab and resequenced_holstein_18_Chr14.vcf, 116600 entries in the vcf did not match the tab file, and 871460 for viceversa
+For: ../../../joel/Chr15_joels_holstein_subsection.tab and resequenced_holstein_18_Chr15.vcf, 126369 entries in the vcf did not match the tab file, and 977319 for viceversa
+For: ../../../joel/Chr16_joels_holstein_subsection.tab and resequenced_holstein_18_Chr16.vcf, 106784 entries in the vcf did not match the tab file, and 937587 for viceversa
+For: ../../../joel/Chr17_joels_holstein_subsection.tab and resequenced_holstein_18_Chr17.vcf, 111746 entries in the vcf did not match the tab file, and 780052 for viceversa
+For: ../../../joel/Chr18_joels_holstein_subsection.tab and resequenced_holstein_18_Chr18.vcf, 92108 entries in the vcf did not match the tab file, and 649237 for viceversa
+For: ../../../joel/Chr19_joels_holstein_subsection.tab and resequenced_holstein_18_Chr19.vcf, 80263 entries in the vcf did not match the tab file, and 644141 for viceversa
+For: ../../../joel/Chr1_joels_holstein_subsection.tab and resequenced_holstein_18_Chr1.vcf, 212633 entries in the vcf did not match the tab file, and 1674948 for viceversa
+For: ../../../joel/Chr20_joels_holstein_subsection.tab and resequenced_holstein_18_Chr20.vcf, 95802 entries in the vcf did not match the tab file, and 779795 for viceversa
+For: ../../../joel/Chr28_joels_holstein_subsection.tab and resequenced_holstein_18_Chr28.vcf, 66233 entries in the vcf did not match the tab file, and 531242 for viceversa
+For: ../../../joel/Chr29_joels_holstein_subsection.tab and resequenced_holstein_18_Chr29.vcf, 81369 entries in the vcf did not match the tab file, and 611619 for viceversa
+For: ../../../joel/Chr3_joels_holstein_subsection.tab and resequenced_holstein_18_Chr3.vcf, 151845 entries in the vcf did not match the tab file, and 1198002 for viceversa
+For: ../../../joel/Chr6_joels_holstein_subsection.tab and resequenced_holstein_18_Chr6.vcf, 166544 entries in the vcf did not match the tab file, and 1191275 for viceversa
+```
+
+Hmm... that's far too much of a sacrifice here. Most of the variant sites aren't matching up.
