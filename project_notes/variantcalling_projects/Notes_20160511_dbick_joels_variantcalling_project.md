@@ -9,6 +9,7 @@ These are my notes on the alignment and variant calling performed on Joel's bull
 * [Generating 1000 bulls SNP and INDEL annotations](#onethousand)
 	* [Output tab file columns](#outheads)
 * [Calling SNPs and INDELs in Canadian and US Holstein data](#finertune)
+* [Plan B: generating variant site probabilities for overlap](#probability)
 
 <a name="organizing"></a>
 ## Organizing the data
@@ -522,4 +523,10 @@ perl combine_tab_format_vcfs.pl test_Chr28_joels_filtered_holstein_subsection.ta
 
 OK, so let's calculate the venn stats for this. 66,233 unique for the sequence data, 531,242 unique for the 1000 bulls, and 308,199 shared sites. ~ 4,000 predicted monomorphic reference sites in the 1k bulls data are variant calls within the sequence data.
 
+<a name="probability"></a>
+## Plan B: generating variant site probabilities for overlap
 
+OK, I need to revise my plan to account for the discrepancy of overlap here. I'm going to generate genotype probability scores and then use them to fill out the VCF tab file.
+
+```bash
+for i in Chr10 Chr13 Chr14 Chr15 Chr16 Chr17 Chr18 Chr19 Chr28 Chr29 Chr6 Chr20 Chr1 Chr3; do samtools mpileup -C50 -gf /seq1/reference/umd_3_1_reference_1000_bull_genomes.fa -uv -t DP -r $i /seq1/genome_canada/HOLCANM000005279989.bam /seq1/genome_canada/HOLCANM000006026421.bam /seq1/genome_canada/HOLCANM000100745543.bam /seq1/genome_canada/HOLDEUM000000253642.bam /seq1/genome_canada/HOLGBRM000000598172.bam /seq1/genome_canada/HOLITAM006001001962.bam /seq1/genome_canada/HOLUSAM000002265005.bam /seq1/genome_canada/HOLUSAM000002297473.bam /seq1/genome_canada/HOLUSAM000017129288.bam /seq1/genome_canada/HOLUSAM000017349617.bam /seq1/genome_canada/HOLUSAM000123066734.bam /seq1/genome_canada/HOLUSAM000132973942.bam /seq1/1000_bulls_bams/HOUSA000002290977.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002040728.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002147486.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000122358313.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002103297.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000001697572.reformatted.sorted.bam
