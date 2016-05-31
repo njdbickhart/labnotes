@@ -4,6 +4,17 @@
 
 These are my notes on taking existing BAC sequences from the chr18 bac clones, polishing them and assembling them into larger contiguous segments (or at least scaffolding them!).
 
+## Table of Contents
+* [Protocol](#protocol)
+* [Assembling contigs into larger contigs](#assemble)
+* [Getting rid of the vector and trying again](#vector)
+* [Testing the pipeline on un-corrected fastas](#uncorrected)
+* [Holstein BACs](#holstein)
+* [Aligning with larger cattle scaffolds](#align)
+
+<a name="protocol"></a>
+## Protocol
+
 The quivered BAC clone contigs are unrefined, and likely need pilon correction. I'm going to create a dummy fasta file (reference genome + extra segments to be polished) and Pilon-correct it. Then I'm going to use Velvet to try to do a quick graph-based assembly. If that fails, I'll go pure consensus-overlap (Celera?).
 
 #### Here are the pipeline steps:
@@ -89,6 +100,7 @@ Pilon | Length | 499,711 bp
 Pilon | SNPs | 609
 Pilon | INDELs | 115
 
+<a name="assemble"></a>
 ## Assembling contigs into larger contigs
 
 Now I'm going to take the error-corrected (and uncorrected!) fastas and attempt to merge them into larger contigs. We'll try velvet first, and then Celera if needed. We'll see what works!
@@ -190,6 +202,7 @@ mv chr18_subsection_align_test.* full_chr_18_subsection/
 
 It looks like John's contig has ~20kb more sequence near the 150kb mark than the reference, and there is one inversion and several translocations! Ah, damn, bad news is that it is the BAC vector! It turns out that Tim did not vector trim Lib14414_unitig_273.fasta, at the least. I found the vector location from NCBI's vecscreen.
 
+<a name="vector"></a>
 ## Getting rid of the vector and trying again.
 
 It's a big waste of time, but I've gotta get rid of the vector to be sure that my assembly is correct.
@@ -270,6 +283,7 @@ Output in: combined_chr18_pilon.novec.align.tab
 ```
 The data really just confirmed the nucmer aligns, but with the added bonus of BWA mem mappings of the start and end of the contig to chr18.
 
+<a name="uncorrected"></a>
 ## Testing the pipeline on un-corrected fastas 
 
 I'm not happy to just try the pilon data, let's try assembling the uncorrected fastas and plotting that.
@@ -473,3 +487,66 @@ Longest aligments:      chr     start   end     length
 ```
 
 OK, the problem is that 14414 has issues and so does 14435. I suspect that they were not properly assembled.
+
+<a name="align"></a>
+## Aligning with larger cattle scaffolds
+
+Tim sent me his current (unpolished) version of the assembly. My hope is to extract the Chr18 regions that we need, polish them with pilon, collect the polishing data, and then compare the regions back to UMD3 and BTAU4. This should be the final piece of the puzzle that John needs.
+
+My first step is to identify the regions that each clone aligns to on the new scaffolds.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/john_assembled_contigs
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14397_unitig_1_vector_trimmed.fasta -r cattle_31Mar2016_bfJmS.fasta -o scaffold_comp/LIB14397_unitig_1_juan.tab
+Longest aligments:      chr     start   end     length
+                        ScbfJmS_318     56875450        57035827        160377
+                        *       0       1000    1000
+
+# Holy crapoli! That's one solid, contiguous block???
+
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14398_unitig_305_quiver.Vector.Trim.fasta -r cattle_31Mar2016_bfJmS.fasta -o scaffold_comp/LIB14398_unitig_305_juan.tab
+Longest aligments:      chr     start   end     length
+                        ScbfJmS_1701    86193152        99873250        13680098
+                        ScbfJmS_2343    2755967 5740448 2984481
+                        ScbfJmS_318     57051564        57213021        161457 <- this is the alignment
+                        ScbfJmS_1121    30478491        30479491        1000
+                        ScbfJmS_692     9632368 9633368 1000
+                        ScbfJmS_528     34542801        34542962        161
+                        ScbfJmS_989     40131499        40131597        98
+                        ScbfJmS_1283    27416047        27416122        75
+                        ScbfJmS_296     34434764        34434825        61
+
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14414_unitig_273.vectortrim.fasta -r cattle_31Mar2016_bfJmS.fasta -o scaffold_comp/LIB14414_unitig_273_juan.tab
+Longest aligments:      chr     start   end     length
+                        ScbfJmS_318     57079699        57861777        782078	<- over embellished
+                        ScbfJmS_2343    2756044 2757044 1000
+                        ScbfJmS_1121    30478491        30478744        253
+                        ScbfJmS_528     34542801        34542962        161
+                        ScbfJmS_217     53536990        53537118        128
+                        ScbfJmS_2171    7927026 7927133 107
+                        ScbfJmS_989     40131499        40131597        98
+                        ScbfJmS_1864    19772502        19772579        77
+                        ScbfJmS_1283    27416047        27416122        75
+                        ScbfJmS_1701    86193107        86193152        45
+
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f LIB14435_unitig_94_vector_trim.fasta -r cattle_31Mar2016_bfJmS.fasta -o scaffold_comp/LIB14435_unitig_94_juan.tab
+Longest aligments:      chr     start   end     length
+                        ScbfJmS_318     57127035        57366337        239302
+
+# Another one segment run!
+```
+
+Let's tabulate the regions that we're interested in:
+
+* ScbfJmS_318	56875450	57366337
+* chr18			57,371,161	57,806,510
+
+OK, now just to extract and compare to the same region in UMD3.1. Our SNP should be somewhere in the 57.100 Mb region of this assembly.
+
+```bash
+samtools faidx cattle_31Mar2016_bfJmS.fasta ScbfJmS_318:56875450-57366337 > scaffold_comp/ScbfJmS_318-56875450_57366337.fa
+samtools faidx /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa chr18:57371161-57806510 > scaffold_comp/chr18-57371161_57806510.fa
+
+cd scaffold_comp
+sh ../run_nucmer_plot_automation_script.sh chr18-57371161_57806510.fa ScbfJmS_318-56875450_57366337.fa

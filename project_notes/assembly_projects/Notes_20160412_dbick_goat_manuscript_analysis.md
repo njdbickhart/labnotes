@@ -615,7 +615,7 @@ Chi_2.0 closes **89.8%** of gaps, whereas v13 closes **94.6%**.
 Now I'm going to "merge" the documents to generate a different type of count.
 
 ```bash
- perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); push(@d, $s[0]);} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); push(@n, ($d[$c], $s[0])); print join(";", @n); @n = (); print "\n"; $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); push(@d, $s[0]);} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); push(@n, ($d[$c], $s[0])); print join(";", @n); @n = (); print "\n"; $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
 ```
 256764
 
@@ -678,6 +678,48 @@ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split
 
 ```
 
+Now I need to cherry pick a good example of a gap that we've completely closed, but the CHI_2.0 and CHI_1.0 assemblies failed to close, and a gene intersects with the region of the gap.
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); $d = $s[10] - $s[8]; push(@d, "$s[0];$s[6];$s[7];$d");} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); if($s[4] < 100){$c++; next;} $d = $s[10] - $s[8]; if($d < 25){$c++; next;} push(@n, ($d[$c], "$s[0];$s[6];$s[7];$d")); print join(";", @n); @n = (); print "\n"; $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab | head
+
+# That gave me a good list to start. Let's see how many of these events there are.
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); $d = $s[10] - $s[8]; push(@d, "$s[0];$s[6];$s[7];$d");} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); if($s[4] < 100){$c++; next;} $d = $s[10] - $s[8]; if($d < 25){$c++; next;} push(@n, ($d[$c], "$s[0];$s[6];$s[7];$d")); print join(";", @n); @n = (); print "\n"; $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab | wc -l
+	38194
+
+# That's a good proportion of gaps that still have ambiguous bases in them in CHI 2!
+# Let's take the gap regions in this grouping, filter them further and then intersect them with Ben's gene list
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); $d = $s[10] - $s[8]; push(@d, "$s[0];$s[6];$s[7];$d");} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); if($s[4] < 100){$c++; next;} $d = $s[10] - $s[8]; if($d < 25){$c++; next;} push(@n, ($d[$c], "$s[0];$s[6];$s[7];$d")); print join(";", @n); @n = (); print "\n"; $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab | perl -lane '@d = split(";", $F[0]); if($d[-1] > 10000){next;}else{($c1, $s1, $e1) = $d[1] =~ /(.+):(\d+)-(\d+)/; ($c2, $s2, $e2) = $d[2] =~ /(.+):(\d+)-(\d+)/; print "$c1\t$s1\t$e1\t$c2\t$s2\t$e2\t$d[0];$d[4];$d[3];$d[7];$d[5];$d[6]";}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > candidate_gap_regions_forfigure.bedpe
+
+# There were 36,954 candidate gaps after removing the large anomalies. 
+# Intersecting them with the exon coordinates
+bedtools bed12tobed6 -i Papadum_v13_EVM5.bed12 | intersectBed -a candidate_gap_regions_forfigure.bedpe -b stdin -wb > candidate_gap_regions_forfigure.exon_intersect.bedpe
+# there were 14,181 candidates for the whole gene intersection.
+# there were 2087 candidates for just the exons (command shown above)
+
+# Here's a nice example:
+scaffold_4      704058  704559  scaffold_4      704866  705368  Closed;Closed;0;5064;CM001726_2:75227873-75228374;CM001726_2:75233718-75234153  scaffold_4      703407  704807  evm.model.Scaffold_1370.15      0       -
+
+# extracting coordinates from the fastas (+/- 10kb)
+# CM001726_2:75217873-75244153
+# scaffold_4:694058-715368
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz scaffold_4:694058-715368 > scaffold_4-694058_715368.fa
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa CM001726_2:75217873-75244153 > CM001726_2-75217873_75244153.fa
+
+# Now to do a quick nucmer plot
+sh ../../john_assembled_contigs/run_nucmer_plot_automation_script.sh scaffold_4-694058_715368.fa CM001726_2-75217873_75244153.fa
+
+# I just need to adjust the coordinates to generate the files for Jana
+# 6 kb on the end of the gene
+grep 'evm.model.Scaffold_1370.15' Papadum_v13_EVM5.bed12 | bedtools bed12tobed6 -i stdin > chosen_gene_exons.bed
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz scaffold_4:696058-721368 > scaffold_4-696058_721368.fa
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa CM001726_2:75217873-75250153 > CM001726_2-75217873_75250153.fa
+
+
+```
+
 <a name="centromere"></a>
 ## Centromere repeat check
 
@@ -690,3 +732,4 @@ Serge identified several low complexity regions that may be centromeric. I'm int
 bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz centromere.fa > centromere.sam
 
 samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz cluster_7:112500444-112506199
+```
