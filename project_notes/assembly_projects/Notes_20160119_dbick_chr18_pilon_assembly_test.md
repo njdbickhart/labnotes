@@ -550,3 +550,14 @@ samtools faidx /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa chr18:57
 
 cd scaffold_comp
 sh ../run_nucmer_plot_automation_script.sh chr18-57371161_57806510.fa ScbfJmS_318-56875450_57366337.fa
+```
+
+OK, the region looks good! There's a good amount of inversion after the SNP coordinate as well. Let's Pilon polish this and then ship it off to Ben for annotation.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/john_assembled_contigs/scaffold_comp
+
+```bash
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs ../Arlinda-Chief.10x.spreadsheet.tab --output arlinda_chief_newassembly --reference ../cattle_31Mar2016_bfJmS.fasta --config test_pipeline.cnfg  --threads 10
+
+~/jdk1.8.0_05/bin/java -jar ~/pilon-1.16.jar --genome ../cattle_31Mar2016_bfJmS.fasta --frags arlinda_chief_newassembly/Arlinda-Chief/Arlinda-Chief.merged.bam > cattle_31Mar2016_bfJmS.pilon.fasta
+```
