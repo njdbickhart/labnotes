@@ -733,3 +733,31 @@ bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full
 
 samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz cluster_7:112500444-112506199
 ```
+
+There were just some unplaced chromosomes that appear to harbor the centromeric repeat. I'm guessing that most of the heterochromatin is missing from our assembly or is in the degenerate contigs.
+
+<a name="nucmerplot"></a>
+## Figure 2 nucmer plot generation
+
+In addition to the FRC plot and the dotplot showing assembly discrepancies, I want to create a nucmer image that shows the entirety of our chr 20 scaffold in a nucmer comparison to bgi's CHI_1.0 chr20. I'll generate the nucmer plot myself here. I will juxtapose the BioNano chr20 scaffold image and generate a CHI_1.0 scaffold tiling map as a comparison.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/figure_2
+
+```bash
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz cluster_17 > ars1_cluster17.fa
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa CM001729_2 > chi2_chr20.fa
+
+# I think that CM001729_2 is the chr20 scaffold. We'll see!
+sh ../../john_assembled_contigs/run_nucmer_plot_automation_script.sh chi2_chr20.fa ars1_cluster17.fa
+sh ../../john_assembled_contigs/run_nucmer_plot_automation_script.sh ars1_cluster17.fa chi2_chr20.fa
+```
+
+In order to generate a gap figure, I had to use R.
+
+```R
+library(Sushi)
+beddata <- read.delim(file="chi2_chr20.gaps.bed", sep="\t", header=FALSE)
+colnames(beddata) <- c("chrom", "start", "end")
+plotBed(beddata=beddata, chrom="CM001729_2", chromstart=1, chromend=74161552, row="supplied", palettes=list(SushiColors(7)), type="density")
+labelgenome("CM001729_2", 1, 74161552, n=4,scale="Mb",edgeblankfraction=0.10)
+dev.copy2pdf(file="chi_2_20_gap_density.pdf", useDingbats=FALSE)
