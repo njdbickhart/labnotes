@@ -702,6 +702,10 @@ bedtools bed12tobed6 -i Papadum_v13_EVM5.bed12 | intersectBed -a candidate_gap_r
 # Here's a nice example:
 scaffold_4      704058  704559  scaffold_4      704866  705368  Closed;Closed;0;5064;CM001726_2:75227873-75228374;CM001726_2:75233718-75234153  scaffold_4      703407  704807  evm.model.Scaffold_1370.15      0       -
 
+# NOTE: I confirmed via bam alignments that this gap was correctly closed by our assembly.
+# 5kb predicted by CHI_2.0. 300 bp closed gap in our assembly.
+samtools view /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-HiSeq-Goat400-Freezev13.bam scaffold_4:704058-705368 | less
+
 # extracting coordinates from the fastas (+/- 10kb)
 # CM001726_2:75217873-75244153
 # scaffold_4:694058-715368
@@ -717,6 +721,31 @@ grep 'evm.model.Scaffold_1370.15' Papadum_v13_EVM5.bed12 | bedtools bed12tobed6 
 samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz scaffold_4:696058-721368 > scaffold_4-696058_721368.fa
 samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa CM001726_2:75217873-75250153 > CM001726_2-75217873_75250153.fa
 
+# The plots don't look bad, but I need a really clear example
+# Let's select a wide range of regions and ask Jana to create plots for each
+# I'd like to get big gaps that are > 5kb, but let's see what the distribution looks like first
+perl -lane '@b = split(";", $F[6]); print "$b[3]";' <candidate_gap_regions_forfigure.exon_intersect.bedpe | statStd.pl
+total   2087
+Minimum 25
+Maximum 9920
+Average 1134.033062
+Median  541
+Standard Deviation      1566.453545
+Mode(Highest Distributed Value) 32
+
+# OK, so we're likely to get 300 regions this way based on back of the napkin calculations
+# Let's still test it.
+perl -lane '@b = split(";", $F[6]); if($b[3] > 5000){print $_;}' <candidate_gap_regions_forfigure.exon_intersect.bedpe | wc -l
+95
+
+# Lower than that, but close!
+# Let's automate the fasta generation
+mkdir dotter_data
+# NOTE: added 100kb to each side of the region -- will have to expand it out to the size of the gene later
+perl -lane '@b = split(";", $F[6]); if($b[3] > 5000){print $_;}' <candidate_gap_regions_forfigure.exon_intersect.bedpe | perl -lane 'if($F[0] =~ /unplaced/){next;} my @n; push(@n, ($F[1], $F[2], $F[4], $F[5])); @n = sort{$a <=> $b} @n; my $start = $n[0] - 100000; my $end = $n[3] + 100000; my $name = "$F[0]_$start\_$end"; system("samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz $F[0]:$start-$end > dotter_data/$name.v13.fa"); my @b = split(";", $F[6]); my ($chr, $s1, $e1) = $b[4] =~ /(.+):(\d+)-(\d+)/; my ($s2, $e2) = $b[5] =~ /.+:(\d+)-(\d+)/; my @j; push(@j, ($s1, $e1, $s2, $e2)); @j = sort{$a <=> $b} @j; my $cstart = $j[0] - 100000; my $cend = $j[3] + 100000; system("samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa $chr:$cstart-$cend > dotter_data/$name.chi2.fa");'
+
+# Had to remove 3 sets of groups that had abnormal coordinates
+# That should be enough to work with now
 
 ```
 

@@ -573,4 +573,12 @@ samtools faidx ../cattle_31Mar2016_bfJmS.fasta ScbfJmS_2191 ScbfJmS_994 ScbfJmS_
 
 # Retrying pilon
 ~/jdk1.8.0_05/bin/java -Xmx80g -jar ~/pilon-1.16.jar --genome cattle_31Mar2016_bfJmS.prepilon.fasta --frags arlinda_chief_newassembly/arlinda-chief.subsection.gt100k.sort.bam
+
+# OK! crashed again! Just Scaffold ScbfJmS_318 then!
+samtools faidx ../cattle_31Mar2016_bfJmS.fasta ScbfJmS_318 > ScbfJmS_318.subsection.fa
+samtools view -b arlinda_chief_newassembly/Arlinda-Chief/Arlinda-Chief.merged.bam ScbfJmS_318 > arlinda_chief_newassembly/ScbfJmS_318.arlinda_chief.subsection.bam
+samtools index arlinda_chief_newassembly/ScbfJmS_318.arlinda_chief.subsection.bam
+
+
+~/jdk1.8.0_05/bin/java -Xmx80g -jar ~/pilon-1.16.jar --genome ScbfJmS_318.subsection.fa --frags arlinda_chief_newassembly/ScbfJmS_318.arlinda_chief.subsection.bam --output ScbfJmS_318_pilon_corrected
 ```
