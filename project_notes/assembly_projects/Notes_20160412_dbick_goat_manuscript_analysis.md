@@ -747,6 +747,16 @@ perl -lane '@b = split(";", $F[6]); if($b[3] > 5000){print $_;}' <candidate_gap_
 # Had to remove 3 sets of groups that had abnormal coordinates
 # That should be enough to work with now
 
+# Now I am going to take an example and try to fit the whole gene model over it
+perl -lane '@b = split(";", $F[6]); if($b[3] > 5000){print $_;}' <candidate_gap_regions_forfigure.exon_intersect.bedpe | grep AJPT02103338.1
+grep evm.model.Scaffold_397.85 Papadum_v13_EVM5.bed12 | head -n 1 | bedtools bed12tobed6 -i stdin > evm.scaffold_397.85.gene.bed
+
+# evm.model.Scaffold_397.89 is unknown
+# evm.model.Scaffold_397.85 is mucin-5b-like
+# evm.model.Scaffold_397.91 is mucin-5ac
+# evm.model.Scaffold_397.87 is TOLLIP
+# evm.model.Scaffold_397.81 is mucin-5ac
+
 ```
 
 <a name="centromere"></a>
