@@ -84,6 +84,7 @@ And here is that script:
 ```perl
 #!/usr/bin/perl
 # This is a one-shot script designed to process the tabular rh order files into discrete rankings
+# 6/20/2016: modified to take into account interchromosome assignments in pre-bng data
 
 use strict;
 chomp(@ARGV);
@@ -148,8 +149,14 @@ sub processdata{
 	# process data
 	foreach my $d (@data){
 		# remove bad entries
-		if($d->[3] != $mostchr || $d->[4] eq '.'){next;}
-		push(@processed, [$d->[1], $d->[2] + $addl, $d->[4] + $addr]);
+		if($d->[4] eq '.'){
+			next;
+		}
+		if($d->[3] != $mostchr){
+			push(@processed, [$d->[1], $d->[2] + $addl, -1]);
+		}else{
+			push(@processed, [$d->[1], $d->[2] + $addl, $d->[4] + $addr]);
+		}
 	}
 	return @processed;
 }
@@ -600,6 +607,7 @@ perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o CHIR_1.0_fixed.f
 
 perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f chi1_to_chi2_gap_summary.tab -c 0 -m
 perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f papadumv13_gap_fills.tab -c 0 -m
+
 ```
 
 #### Raw count improvement of v13 over Chi_2.0
@@ -757,7 +765,36 @@ grep evm.model.Scaffold_397.85 Papadum_v13_EVM5.bed12 | head -n 1 | bedtools bed
 # evm.model.Scaffold_397.87 is TOLLIP
 # evm.model.Scaffold_397.81 is mucin-5ac
 
+# HOLD the phone! My percent filled column on the tab file wasn't accurately reporting the number of N's correctly! Here it is:
+# Gaps filled from CHI1.0 to CHI2.0 without any N bases:
+grep 'Closed' chi1_to_chi2_gap_summary.tab | perl -lane 'if($F[10] - $F[8] < 1){print $_;}' | wc -l
+160299
+
+# So here is the revised table
 ```
+|Chi_2.0 Entry  |  Count|v13 Entry  |  Count| Perc improvement |
+|:------|------:|:------|------:| ----: 
+|Closed |160,299|Closed |242,888| 36%
+|Open   | 70,339|Open   |     23| 121%
+|Trans  | 26,126|Trans  |  13853| 88.6%
+
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split(/\t/); push(@d, $s[0]);} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); my $state = $s[0]; if($s[0] eq "Closed" && $s[10] - $s[8] > 1){$state = "Open";} push(@n, ($d[$c], $state)); print join(";", @n); @n = (); print "\n"; $c++;} close IN;' papadumv13_gap_fills.tab chi1_to_chi2_gap_summary.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
+```
+256764 total gaps in chi1
+
+#### Final stats of V13 (right) to CHI2.0 (left)
+|Entry         |  Count|
+|:-------------|------:|
+|Closed;Closed | 178117|
+|Closed;Open   |  48717|
+|Closed;Trans  |  16054|
+|Open;Closed   |     20|
+|Open;Open     |      3|
+|Trans;Closed  |   2699|
+|Trans;Open    |   1082|
+|Trans;Trans   |  10072|
 
 <a name="centromere"></a>
 ## Centromere repeat check
@@ -800,3 +837,78 @@ colnames(beddata) <- c("chrom", "start", "end")
 plotBed(beddata=beddata, chrom="CM001729_2", chromstart=1, chromend=74161552, row="supplied", palettes=list(SushiColors(7)), type="density")
 labelgenome("CM001729_2", 1, 74161552, n=4,scale="Mb",edgeblankfraction=0.10)
 dev.copy2pdf(file="chi_2_20_gap_density.pdf", useDingbats=FALSE)
+
+```
+
+## Final stats mash-up
+
+These are just some odd stat pulls to try to finalize the supplementary data. 
+
+#### Y scaffold BNG percentage
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/goat_y
+
+```bash
+# Alignments of scaffolds
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz unplaced_bng_scafs.fa > unplaced_bng_scafs.sam
+
+# Conversion to tab delimited format
+perl -lane 'if($F[0] =~ /^@/){next;}else{if($F[1] > 1000){next;}print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]";}' < unplaced_bng_scafs.sam > alignments.tab
+
+# Getting just the scaffold names
+cat alignments.tab | cut -f3 | sort | uniq
+
+# I then marked the scaffold names with a "1" in the tab file
+# Total Y scaffold counts from Serge's filtered list
+perl -e 'chomp @ARGV; open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; $c = 0; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$c += $h{$s[0]};}} close IN; print "$c\n";' /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz.fai y_scaffolds_ided.tab
+10,446,801
+
+# BNG scaffolds only
+perl -e 'chomp @ARGV; open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; $c = 0; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]}) && $s[1]){$c += $h{$s[0]};}} close IN; print "$c\n";' /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz.fai y_scaffolds_ided.tab
+5,243,236
+```
+
+#### Lachesis RH map correlations
+
+I am going to redo the correlations by setting misplaced contigs (wrong chromosome determined by RH map) to "-1" in order to better represent order.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/lachesis/rh_map_correlations
+
+```bash
+# Using rewritten script
+perl generate_rh_order_vectors.pl post_bng_lachesis_rhorder.tab post_bng_lachesis_rhorder.new.vecs
+perl generate_rh_order_vectors.pl pre_bng_lachesis_rhorder.tab pre_bng_lachesis_rhorder.new.vecs
+```
+
+```R
+data <- read.delim("pre_bng_lachesis_rhorder.new.vecs", header=FALSE)
+cor.test(data$V2, data$V3, alternative = "two.sided", method = "spearman")
+
+        Spearmans rank correlation rho
+
+	data:  data$V2 and data$V3
+	S = 41518000, p-value < 2.2e-16
+	alternative hypothesis: true rho is not equal to 0
+	sample estimates:
+	    rho
+	0.9101831
+	
+	Warning message:
+	In cor.test.default(data$V2, data$V3, alternative = "two.sided",  :
+	  Cannot compute exact p-value with ties
+data <- read.delim("post_bng_lachesis_rhorder.new.vecs", header=FALSE)
+cor.test(data$V2, data$V3, alternative = "two.sided", method = "spearman")
+
+        Spearmans rank correlation rho
+
+	data:  data$V2 and data$V3
+	S = 1174400, p-value < 2.2e-16
+	alternative hypothesis: true rho is not equal to 0
+	sample estimates:
+	     rho
+	0.978919
+	
+	Warning message:
+	In cor.test.default(data$V2, data$V3, alternative = "two.sided",  :
+	  Cannot compute exact p-value with ties
+```
