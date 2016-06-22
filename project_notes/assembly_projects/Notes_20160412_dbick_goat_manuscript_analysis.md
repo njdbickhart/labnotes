@@ -912,3 +912,33 @@ cor.test(data$V2, data$V3, alternative = "two.sided", method = "spearman")
 	In cor.test.default(data$V2, data$V3, alternative = "two.sided",  :
 	  Cannot compute exact p-value with ties
 ```
+
+
+#### X chromosome tandem repeat collapse visualization
+
+I'm going to take the region of the X chromosome that is collapsed in CHIR_2.0 and attempt to make a figure out of it! The data is derived from the BioNano repeat arrays. Here are the coordinates that are collapsed:
+
+> cluster_21:51966063-60909199
+
+I am going to gather the following information to try to make this work:
+
+* RepeatMasker information
+* CHIR_2.0 region information (through alignments)
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/x_chr_tandem
+
+```bash
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz cluster_21:51966063-60909199 > xchr_tandem_region.fa
+
+# Aligning segments using my 1kb window alignment consensus map script
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f xchr_tandem_region.fa -r /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -o xchr_tandem_region.chir2align.tab
+
+# Because of the fragmentary nature of the alignment, I kinda had to do this by eye:
+# block 1:	CM001739_2:128721766-128869308	cluster_21:51966063-52109063
+# block 2:  CM001739_2:120306877-122248687	cluster_21:52109063-53786063
+# block 3:  CM001739_2:119370571-119702052	cluster_21:53786063-53917063
+# block 4:  CM001739_2:122361963-125080251	cluster_21:53917063-56690063
+# block 5:  CM001739_2:86072248-86369469(rev) cluster_21:56690063-57145063
+# block 6:  
+
+~/RepeatMasker/RepeatMasker -pa 10 -qq -species goat -no_is -gff xchr_tandem_region.fa
