@@ -796,6 +796,23 @@ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @d; while(<IN>){chomp; @s = split
 |Trans;Open    |   1082|
 |Trans;Trans   |  10072|
 
+Now to just retrieve some small stats on CHIR1 for a supplementary table.
+
+```bash
+# ARS1 closed gaps in gene models
+cat chi1/chi1_closed_gaps.bed | sortBedFileSTDIN.pl | intersectBed -a stdin -b Papadum_v13_EVM5.bed12 | wc -l
+101610
+
+# ARS1 closed gaps in exons
+bedtools bed12tobed6 -i Papadum_v13_EVM5.bed12 | intersectBed -a chi1/chi1_closed_gaps.bed -b stdin | wc -l
+21852
+
+# ARS1 closed gaps upstream of genes
+perl -lane 'if($F[5] eq "-"){$ns = $F[2]; $ne = $F[2] + 2000;}else{$ns = $F[1] - 2000; $ne = $F[1];} if($ns < 1){$ns = 1;} print "$F[0]\t$ns\t$ne";' < Papadum_v13_EVM5.bed12 | intersectBed -a chi1/chi1_closed_gaps.bed -b stdin | wc -l
+13279
+
+```
+
 <a name="centromere"></a>
 ## Centromere repeat check
 
@@ -812,6 +829,17 @@ samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v
 
 There were just some unplaced chromosomes that appear to harbor the centromeric repeat. I'm guessing that most of the heterochromatin is missing from our assembly or is in the degenerate contigs.
 
+Serge has done some extra work on the centromeres and telomeres, just checking the data here.
+
+> pwd:
+
+```bash
+perl -e '<>; while(<>){chomp; @s = split(/\t/); $s[0] =~ s/^>//; my $ss = ($s[3] > $s[4])? $s[4] : $s[3]; my $se = ($s[3] > $s[4])? $s[3] : $s[4]; print "$s[0]\t$ss\t$se\n";}' < v13.telomere > v13.telomere.bed
+
+cat v13.telomere.bed | sortBedFileSTDIN.pl | mergeBed -i stdin -d 500 | perl -lane 'if($F[2] - $F[1] > 2000){print $_;}' > v13.filtered.2kb.telomere.bed
+
+cat centromere_aligns.bed | sortBedFileSTDIN.pl | mergeBed -i stdin -d 9000 > centromere_aligns.filtered.bed
+```
 <a name="nucmerplot"></a>
 ## Figure 2 nucmer plot generation
 
@@ -922,7 +950,8 @@ I'm going to take the region of the X chromosome that is collapsed in CHIR_2.0 a
 
 I am going to gather the following information to try to make this work:
 
-* RepeatMasker information
+* 
+*  information
 * CHIR_2.0 region information (through alignments)
 
 > Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/x_chr_tandem
@@ -941,4 +970,91 @@ perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f xchr_tande
 # block 5:  CM001739_2:86072248-86369469(rev) cluster_21:56690063-57145063
 # block 6:  
 
+# It looks like CHIR_2.0 may have corrected this gap. Let's check CHIR_1.0
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f xchr_tandem_region.fa -r ../gap_check/CHIR_1.0_fixed.fa -o xchr_tandem_region.chir1align.tab
+# NC_022322.1 is the X chr
+
+# Interestingly, CHIR_2.0 has done a major rewrite here! CHIR_1.0 was a huge problem region
+grep NC_022322.1 xchr_tandem_region.chir1align.tab | perl -lane 'my $s = ($F[4] > $F[5])? $F[5]: $F[4]; my $e = ($F[4] > $F[5])? $F[4]: $F[5]; my @g = split(";", $F[-1]); my $c = 0; foreach $i (@g){$c += $i;} my $avg = $c / scalar(@g); if($avg > 55){print "$F[3]\t$s\t$e";}' | sortBedFileSTDIN.pl | mergeBed -d 10000 -i stdin | perl -lane '$l = $F[2] - $F[1]; if($l > 400000){print join("\t", @F) . "\t$l";}'
+NC_022322.1     83806841        84238004        431163
+NC_022322.1     113525452       113968114       442662
+NC_022322.1     114347970       114824125       476155
+NC_022322.1     115946048       118132746       2186698
+NC_022322.1     118785435       119973419       1187984
+NC_022322.1     119986859       120521860       535001
+NC_022322.1     120593321       121132114       538793
+
+# These are the largest segments that exist here. Let's piece this together for a circos diagram
+```
+51966063
+
+ARS1c | start | end | CHI1c | start | end | orient | actual AStart | actual AEnd | 
+:--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+cluster_21 | 4740000 | 5037000 | NC_022322.1 | 83806841 | 84098991 | + | 56706063 | 57003063
+cluster_21 | 5040000 | 5177000 | NC_022322.1 | 84105588 | 84238004 | - | 57006063 | 57143063
+cluster_21 | 192000 | 728000 | NC_022322.1 | 113524958 | 113968114 | + | 52158063 | 52694063
+cluster_21 | 927000 | 1409000 | NC_022322.1 | 114351879 | 114824204 | + | 52893063 | 53375063
+cluster_21 | 2409000 | 4682000 | NC_022322.1 | 115946048 | 118131598 | + | 54375063 | 56648063
+cluster_21 | 5434000 | 7734000 | NC_022322.1 | 118785435 | 121142948 | + | 57400063 | 59700063
+cluster_21 | 7812000 | 8943136 | NW_005101056.1 | 42670 | 1162819 | - | 59778063 | 60909199
+cluster_21 | 1 | 189000 | NC_022322.1 | 121312110 | 121524693 | -
+
+60556417-60638863 
+
+816952-899398
+
+60035465-60104062
+
+ 296000-364597
+
+```bash
 ~/RepeatMasker/RepeatMasker -pa 10 -qq -species goat -no_is -gff xchr_tandem_region.fa
+
+# I found that there were 900 charlie TE's in the region!
+# They also seem to correlate well with the breakpoints of CHIR_1.0
+perl -e '$e = 8942890; for($x = 0; $x < $e; $x += 10000){my $te = $x + 10000; print "cluster_21\t$x\t$te\n";}' > cluster_21_region_windows.10kb.bed
+grep 'DNA/hAT-Charlie' xchr_tandem_region_rmask_out.bed > xchr_tandem_region_rmask_out.hat_charlie.bed
+bedtools coverage -b cluster_21_region_windows.10kb.bed -a xchr_tandem_region_rmask_out.hat_charlie.bed | sortBedFileSTDIN.pl | perl -lane 'if($F[3]){print $_;}' | bedtools merge -i stdin -d 10000 | wc -l
+83
+bedtools coverage -b cluster_21_region_windows.10kb.bed -a xchr_tandem_region_rmask_out.hat_charlie.bed | sortBedFileSTDIN.pl | perl -lane 'if($F[3]){print $_;}' | bedtools merge -i stdin -d 10000 | perl -lane 'if($F[2] - $F[1] > 10000){print $_;}' | wc -l
+59
+bedtools coverage -b cluster_21_region_windows.10kb.bed -a xchr_tandem_region_rmask_out.hat_charlie.bed | sortBedFileSTDIN.pl | perl -lane 'if($F[3]){print $_;}' | bedtools merge -i stdin -d 10000 | perl -lane 'if($F[2] - $F[1] > 10000){print $_;}' > cluster_21_region_charlie_tpases_gt10kb.bed
+
+# I was able to find an interesting pattern of orientation for the Charlie-Tpases
+# (+, -, -, -, +) 
+# This coincides nicely with their hotspot regions and the breakpoints in the assembly
+perl get_charlie_pattern.pl xchr_tandem_region_rmask_out.hat_charlie.bed > cluster_21_region_charlie_tpases_20kb_pattern.bed
+
+```
+
+```bash
+Super-Scaffold_1637     2002349 2003349 109     997     1000    0.9970000
+Super-Scaffold_1637     2003349 2004349 38      831     1000    0.8310000
+Super-Scaffold_1637     2004349 2005349 44      939     1000    0.9390000
+Super-Scaffold_1637     2005349 2006349 38      885     1000    0.8850000
+Super-Scaffold_1637     2006349 2007349 25      524     1000    0.5240000
+Super-Scaffold_1637     2007349 2008349 47      788     1000    0.7880000
+Super-Scaffold_1637     2008349 2009349 52      830     1000    0.8300000
+Super-Scaffold_1637     2009349 2010349 102     984     1000    0.9840000
+Super-Scaffold_1637     2010349 2011349 70      993     1000    0.9930000
+Super-Scaffold_1637     2011349 2012349 58      772     1000    0.7720000
+
+cluster_20      1984828 1985828 107     937     1000    0.9370000
+cluster_20      1985828 1986828 23      507     1000    0.5070000
+cluster_20      1986828 1987828 73      982     1000    0.9820000
+cluster_20      1987828 1988828 146     1000    1000    1.0000000
+
+```
+
+#### Repeat analysis
+
+OK, so I need to identify repetitive element regions in both regions and then try to correlate gaps with these regions (wilcoxon rank sum test?). Perhaps by counting bovA/bovB repeats.
+
+First, to generate the repeatmasker output.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/repeat_analysis
+
+```bash
+~/RepeatMasker/RepeatMasker -pa 10 -no_is -species goat -q /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa
+
+~/RepeatMasker/RepeatMasker -pa 10 -no_is -species goat -q papadum-v13.full.fa
