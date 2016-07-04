@@ -1292,4 +1292,93 @@ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp
 perl -lane 'if($F[0] eq "Type"){print $_;}else{printf("%s (%d bp)\t%d\t%d\t%d\t%d\t%d\n", $F[0], $F[5], $F[1], $F[2], $F[3], $F[4], $F[5])}' < highqual_repeat_summary.tab > highqual_repeat_summary.rformat.tab
 ```
 
+#### Checking immune regions to ensure continuity of CHIR_1 and 2
+
+John raised a point about figure 5 that the mapping to CHIR_1.0 may have been a problem. We can wave this as being a comparison of new de novo assemblies, but let's see if there is an actual improvement in CHIR_2.0.
+
+> NKC: NC_022297.1:91233093-91817092
+> LRC: cluster_20:64067497-64886393
+
+OK, so the NKC is a single scaffold, so let's align that to CHIR_2.0. The LRC is difficult, so we'll align that section from our assembly to CHIR_2.0.
+
+```bash
+samtools faidx ../CHIR_1.0_fixed.fa NC_022297.1:91233093-91817092 > nkc_region.fa
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f nkc_region.fa -r /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -o nkc_region_chi2.tab
+Longest aligments:      chr     start   end     length
+                        CM001717_2      36755150        100123118       63367968
+                        CM001739_2      22431548        43798176        21366628
+                        CM001723_2      24456073        27127775        2671702
+                        CM001714_2      100384654       101008884       624230
+
+# Checking the number of gaps here
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa CM001714_2:100384654-101008884 > nkc_chir2_aligned_seg.fa
+~/jdk1.8.0_05/bin/java -jar ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -f nkc_chir2_aligned_seg.fa -o nkc_chir2_aligned_seg.gap.bed -s nkc_chir2_aligned_seg.gap.stats
+wc -l nkc_chir2_aligned_seg.gap.bed
+	30 nkc_chir2_aligned_seg.gap.bed
+
+# Now for the LRC region
+samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz cluster_20:64067497-64886393 > lrc_papadum_region.fa
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f lrc_papadum_region.fa -r /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -o lrc_region_chi2.tab
+perl ~/perl_toolchain/assembly_scripts/alignUnitigSectionsToRef.pl -f lrc_papadum_region.fa -r /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -o lrc_region_chi2.tab
+Longest aligments:      chr     start   end     length
+                        CM001710_2      20394930        143358691       122963761
+                        CM001739_2      7626536 126954893       119328357
+                        CM001712_2      9127115 117202535       108075420
+                        CM001716_2      6375053 105453689       99078636
+                        CM001718_2      4454532 79322517        74867985
+                        CM001727_2      480173  64940967        64460794
+                        CM001723_2      6813625 69742374        62928749
+                        CM001714_2      58025634        103872347       45846713
+                        CM001726_2      15433754        49419276        33985522
+                        CM001719_2      43668247        74739486        31071239
+                        CM001711_2      91119110        117871455       26752345
+                        CM001725_2      14646374        40569406        25923032
+                        CM001717_2      3214536 28828586        25614050
+                        CM001732_2      16150671        34999784        18849113
+
+# OK! Allot more issues! Let's check it out
+# AJPT02103297.1 is in the middle. It's the same situation
+# Cluster_20:259000-691000 is missing in CHIR_2.0
+```
+
+## Additional repetitive analysis
+
+Serge wants me to check the Sheep and Cattle assembly repetitive contents using the same 75% length threshold. 
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/repeat_analysis/other_ruminants
+
+```bash
+perl -e 'while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[9] eq "+")? "+" : "-"; $s[13] =~ s/-//g; $qlen = $s[14] - $s[13]; $s[15] =~ s/-//g; my $unmapped; my $totsize; my $perc; if($orient eq "+"){$unmapped = $s[13] + $s[15]; $totsize = $s[14] + $s[15];}else{$unmapped = $s[15] + $s[13]; $totsize = $s[13] + $s[14];} my $mapdisc = $s[2] + $s[3] + $s[4]; $mapdisc /= 1000; if($totsize == 0 || $unmapped == 0 || $totsize - $unmapped == 0){next;} my $superclass = ($s[11] eq $s[12])? $s[12] : "$s[11]/$s[12]"; $perc = ($totsize - $unmapped)/$totsize; print "$s[5]\t$s[6]\t$s[7]\t$orient\t$s[10]\t$superclass\t$qlen\t$mapdisc\t$perc\n";}' < umd3_cattle_rmsk.out > umd3_cattle_rmsk.repmask.bed
+
+perl -e 'while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[9] eq "+")? "+" : "-"; $s[13] =~ s/-//g; $qlen = $s[14] - $s[13]; $s[15] =~ s/-//g; my $unmapped; my $totsize; my $perc; if($orient eq "+"){$unmapped = $s[13] + $s[15]; $totsize = $s[14] + $s[15];}else{$unmapped = $s[15] + $s[13]; $totsize = $s[13] + $s[14];} my $mapdisc = $s[2] + $s[3] + $s[4]; $mapdisc /= 1000; if($totsize == 0 || $unmapped == 0 || $totsize - $unmapped == 0){next;} my $superclass = ($s[11] eq $s[12])? $s[12] : "$s[11]/$s[12]"; $perc = ($totsize - $unmapped)/$totsize; print "$s[5]\t$s[6]\t$s[7]\t$orient\t$s[10]\t$superclass\t$qlen\t$mapdisc\t$perc\n";}' < oari3_sheep_rmsk.out > oari3_sheep_rmsk.repmask.bed
+
+perl -lane 'if($F[7] <= 0.40 && $F[8] >= 0.75){print $_;}' < umd3_cattle_rmsk.repmask.bed > umd3_cattle_rmsk.repmask.75thresh.bed
+perl -lane 'if($F[7] <= 0.40 && $F[8] >= 0.75){print $_;}' < oari3_sheep_rmsk.repmask.bed > oari3_sheep_rmsk.repmask.75thresh.bed
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f umd3_cattle_rmsk.repmask.75thresh.bed -c 5 > umd3_cattle_rmsk.repeatsuperclass.75thresh.tab
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f oari3_sheep_rmsk.repmask.75thresh.bed -c 5 > oari3_sheep_rmsk.repeatsuperclass.75thresh.tab
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' umd3_cattle_rmsk.repeatsuperclass.75thresh.tab umd3_cattle_rmsk.repmask.75thresh.bed > umd3_cattle_rmsk.repeatsuperclass.extend.75thresh.tab
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' oari3_sheep_rmsk.repeatsuperclass.75thresh.tab oari3_sheep_rmsk.repmask.75thresh.bed > oari3_sheep_rmsk.repeatsuperclass.extend.75thresh.tab
+
+
+perl -e 'while(<>){chomp; @F = split(/\t/); if                                                          ($F[0] eq "Type"){print $_;}else{printf("%s (%d bp)\t%d\t%d\t%d\t%d\t%d\n", $F[0], $F[5], $F[1], $F[2], $F[3], $F[                                                          4], $F[5])}}' < highqual_repeat_summary.tab > highqual_repeat_summary.rformat.tab
+```
+
+Printing comparison plot to file:
+
 ```R
+data <-read.delim("combined_ruminant_data.tab", sep="\t", header=TRUE)
+data.ggplot <- data.frame(Type = data$Class, Count = data$ARS1Count, Assembly = c("ARS1"))
+data.ggplot <- rbind(data.ggplot, data.frame(Type = data$Class, Count = data$CHIR2Count, Assembly = c("CHIR2.0")))
+data.ggplot <- rbind(data.ggplot, data.frame(Type = data$Class, Count = data$CattleCount, Assembly = c("UMD3.1")))
+data.ggplot <- rbind(data.ggplot, data.frame(Type = data$Class, Count = data$SheepCount, Assembly = c("OARI3.0")))
+
+data.ggplot$Type <- factor(data.ggplot$Type, levels = data.ggplot$Type)
+library(ggplot2)
+
+ggplot(data=data.ggplot, aes(x=Type, y=Count, fill=Assembly)) + geom_bar(stat="identity", position=position_dodge(), colour="black") + scale_y_log10(breaks = c(10,100,1000,10000,100000,1000000), labels = fancy_scientific) + theme(text = element_text(size=20), axis.text.x = element_text(angle = 45, hjust = 1)) + ylab("Count (log10)") + xlab("Repeat Class (Average Length (bp))")
+
+dev.copy2pdf(file="ruminant_comparison.pdf", useDingbats=FALSE)
+```
+
