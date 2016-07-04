@@ -1058,3 +1058,238 @@ First, to generate the repeatmasker output.
 ~/RepeatMasker/RepeatMasker -pa 10 -no_is -species goat -q /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa
 
 ~/RepeatMasker/RepeatMasker -pa 10 -no_is -species goat -q papadum-v13.full.fa
+
+# Now to convert to bed format for intersections
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < papadum-v13.full.fa.out > papadum-v13.full.repeatmask.out.bed
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < CHIR_2.0_fixed.fa.out > CHIR_2.0_fixed.repeatmask.out.bed
+
+# The repeat counts are similar
+wc -l *.bed
+  5385732 CHIR_2.0_fixed.repeatmask.out.bed
+  5391929 papadum-v13.full.repeatmask.out.bed
+
+# Let's see if the lengths are similar
+cat papadum-v13.full.repeatmask.out.bed | cut -f7 | statStd.pl
+	total   5391929
+	Minimum -1
+	Maximum 44050
+	Average 960.958183
+	Median  207
+	Standard Deviation      1730.468934
+	Mode(Highest Distributed Value) 66
+
+cat CHIR_2.0_fixed.repeatmask.out.bed | cut -f7 | statStd.pl
+	total   5385732
+	Minimum 0
+	Maximum 30408
+	Average 920.310183
+	Median  206
+	Standard Deviation      1661.982519
+	Mode(Highest Distributed Value) 66
+
+# And the actual mapping lengths
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/table_bed_length_sum.pl -c papadum-v13.full.repeatmask.out.bed CHIR_2.0_fixed.repeatmask.out.bed
+```
+
+| FName | IntNum | TotLen | LenAvg | LenStdev | LenMedian | SmallestL | LargestL |
+| :---- | -----: | -----: | -----: | -------: | --------: | --------: | -------: |
+| papadum-v13 | 5391929 | 1,403,055,172 | 260.2139 | 499.8013 | 149 | 5 | 33064 |
+| CHIR_2.0 | 5385732 | 1,177,568,174 | 218.6458 | 290.2337 | 142 | 5 | 30069 |
+
+```bash
+perl -lane 'print "$F[1]\t$F[2]\t$F[3]\t$F[0]";' < ../gap_check/papadumv13_gap_fills.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > chir_2_gaps_withars1_stats.bed
+
+intersectBed -a chir_2_gaps_withars1_stats.bed -b CHIR_2.0_fixed.repeatmask.out.bed | uniq | wc -l
+4406
+# That's far less than I expected! That's a pain!
+# Let's instead relate it back to ARS1
+
+perl -lane 'if($F[0] ne "Closed"){next;} my($fc, $fs, $fe) = $F[6] =~ /(.+):(\d+)-(\d+)/; my ($sc, $ss, $se) = $F[7] =~ /(.+):(\d+)-(\d+)/; my @d; push(@d, ($fs, $fe, $ss, $se)); @d = sort {$a <=> $b} @d; if($d[2] - $d[1] > 10000){next;} print "$sc\t$d[1]\t$d[2]\t$F[1]:$F[2]-$F[3]";' < ../gap_check/chi2/papadumv13_gap_fills.chi2.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl > chi_2_gaps_in_ars1.bed
+
+intersectBed -a chi_2_gaps_in_ars1.bed -b papadum-v13.full.repeatmask.out.bed | cut -f4 | uniq | wc -l
+52,000
+
+# That is a strangely rounded number
+# Stayed the same after a sort and then a uniq
+# Checking how many gaps had more than one repeat within them
+intersectBed -a chi_2_gaps_in_ars1.bed -b papadum-v13.full.repeatmask.out.bed | cut -f4 | perl -e '%h; while(<>){chomp; $h{$_} += 1;} $c = 0; $sum = 0; foreach $k (keys(%h)){if($h{$k} > 1){$c++; $sum += $h{$k};}} $avg = $sum / $c; print "$c\t$avg\n";'
+20406   4.07179261001666
+
+# So, almost half of the gaps we closed had an average of 4 repeats in them
+# Checking the sizes of repeats that spanned chir2 gaps
+intersectBed -a chi_2_gaps_in_ars1.bed -b papadum-v13.full.repeatmask.out.bed -wb | cut -f11 | statStd.pl
+total   114683
+Minimum 6
+Maximum 28916
+Average 1430.226886
+Median  576
+Standard Deviation      1785.936157
+Mode(Highest Distributed Value) 3835
+
+# Counting repeat classes
+intersectBed -a chi_2_gaps_in_ars1.bed -b papadum-v13.full.repeatmask.out.bed -wb | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 8 > repeat_class_gap_tab_count.tab
+
+# BovB repeats made up 43.58% of all identified repeats in closed gap regions!
+# Let's see if it's due to clustering
+intersectBed -a chi_2_gaps_in_ars1.bed -b papadum-v13.full.repeatmask.out.bed -wb | grep 'BovB' | cut -f11 | statStd.pl
+total   54196
+Minimum 10
+Maximum 3847
+Average 2251.342424
+Median  1670
+Standard Deviation      1344.969222
+Mode(Highest Distributed Value) 3835
+
+# The lengths indicate that these are full lenght elements
+intersectBed -a chi_2_gaps_in_ars1.bed -b papadum-v13.full.repeatmask.out.bed -wb | grep 'BovB' | cut -f4 | sort | uniq | wc -l
+38,923
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f papadum-v13.full.repeatmask.out.bed -c 4 > ars1_full_repeat_class_count.tab
+
+# Getting repeat counts from super class estimates
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f CHIR_2.0_fixed.repeatmask.out.bed -c 5 > chi2_repeat_super_class_count.tab
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f papadum-v13.full.repeatmask.out.bed -c 5 > ars1_repeat_super_class_count.tab
+
+# Including repeat lengths
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[6];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' ars1_repeat_super_class_count.tab papadum-v13.full.repeatmask.out.bed > ars1_repeat_super_class_count.extend.tab
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[6];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' chi2_repeat_super_class_count.tab CHIR_2.0_fixed.repeatmask.out.bed > chi2_repeat_super_class_count.extend.tab
+
+# Just checking to see if I can infer more about the repeat sizes from the gap regions from a graph
+intersectBed -a chi_2_gaps_in_ars1.bed -b papadum-v13.full.repeatmask.out.bed -wb | cut -f11 > repeat_lengths.vec
+intersectBed -a chi_2_gaps_in_ars1.bed -b papadum-v13.full.repeatmask.out.bed -wb | grep 'BovB' | cut -f11 > repeat_bovb_lengths.vec
+
+# there may be more repeats in the unplaced regions. Checking
+grep 'CM0017' CHIR_2.0_fixed.repeatmask.out.bed | wc -l
+	5,140,444
+	245,288	<- unplaced
+
+grep 'cluster' papadum-v13.full.repeatmask.out.bed | wc -l
+	4,980,501
+	411,428 <- unplaced
+```
+
+#### GGplot of gap repeat length histogram
+
+```R
+rlens <- read.delim("repeat_lengths.vec", header=FALSE)
+rbovb <- read.delim("repeat_bovb_lengths.vec", header=FALSE)
+data <- data.frame(Class=c("Total"), Lengths=rlens)
+data <- rbind(data, data.frame(Class=c("BovB"), Lengths=rbovb))
+colnames(data) <- c("Class", "Lengths")
+
+ggplot(data, aes(x=Lengths, fill=Class)) + geom_histogram(binwidth=10, alpha=0.5, position="identity") + xlim(0,4000) + theme_set(theme_gray(base_size = 16))
+dev.copy2pdf(file="gap_repeat_lengths.pdf", useDingbats=FALSE)
+
+
+# Making the full figure repeat plot
+data <- read.delim("subtable_repeat_counts.formatted", sep="\t", header=TRUE)
+data.ggplot <- data.frame(Class=data$X, Count=data$ARS1Count, Assembly=c("ARS1"))
+data.ggplot <- rbind(data.ggplot, data.frame(Class=data$X, Count=data$CHIR2Count, Assembly=c("CHIR2.0")))
+
+fancy_scientific <- function(l){
+l <- format(l, scientific = TRUE)
+l <- gsub("^(.*)e", "'\\1'e", l)
+l <- gsub("e", "%*%10^", l)
+ parse(text=l)
+}
+
+ggplot(data=data.ggplot, aes(x=Class, y=Count, fill=Assembly)) + geom_bar(stat="identity", position=position_dodge(), colour="black") + scale_y_log10(breaks = c(10,100,1000,10000,100000,1000000), labels = fancy_scientific) + theme(text = element_text(size=20), axis.text.x = element_text(angle = 45, hjust = 1)) + ylab("Count (log10)") + xlab("Repeat Class (Average Length (bp))")
+```
+
+#### Repeat length completion analysis
+
+OK, new plan, let's see what happens when I pull out only repeats that have > 75% match length to the database.
+
+```bash
+# Adding the percent divergence and the length match to the query
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; $s[13] =~ s/[()]//g; $s[11] =~ s/[()]//g; $s[12] =~ s/[()]//g; my $unmapped; my $totsize; my $perc; if($orient eq "+"){$unmapped = $s[11] + $s[13]; $totsize = $s[12] + $s[13];}else{$unmapped = $s[13] + $s[11]; $totsize = $s[11] + $s[12];} $perc = ($totsize - $unmapped)/$totsize; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\t$s[1]\t$perc\n";}' < papadum-v13.full.fa.out > papadum-v13.full.repeatmask.extend.out.bed
+
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; $s[13] =~ s/[()]//g; $s[11] =~ s/[()]//g; $s[12] =~ s/[()]//g; my $unmapped; my $totsize; my $perc; if($orient eq "+"){$unmapped = $s[11] + $s[13]; $totsize = $s[12] + $s[13];}else{$unmapped = $s[13] + $s[11]; $totsize = $s[11] + $s[12];} $perc = ($totsize - $unmapped)/$totsize; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\t$s[1]\t$perc\n";}' < CHIR_2.0_fixed.fa.out > CHIR_2.0_fixed.repeatmask.extend.out.bed
+
+cat papadum-v13.full.repeatmask.extend.out.bed | cut -f9 | statStd.pl
+	Maximum 0.999959951942331
+	Average 0.458806
+	Median  0.320754716981132
+	Standard Deviation      0.380204
+
+cat CHIR_2.0_fixed.repeatmask.extend.out.bed | cut -f9 | statStd.pl
+	Maximum 1.01666666666667
+	Average 0.449307
+	Median  0.311320754716981
+	Standard Deviation      0.380812
+
+cat papadum-v13.full.repeatmask.extend.out.bed | cut -f8 | statStd.pl
+	Maximum 59.2
+	Average 17.857126
+
+cat CHIR_2.0_fixed.repeatmask.extend.out.bed | cut -f8 | statStd.pl
+	Maximum 66.1
+	Average 17.744743
+
+# Time to start filtering and counting!
+# > 80% similarity and > 75% length (OUR ASSEMBLY IS A 3% IMPROVEMENT)
+perl -lane 'if($F[8] > 0.75 && $F[7] < 20){print $_;}' < papadum-v13.full.repeatmask.extend.out.bed | wc -l
+	1,305,013
+perl -lane 'if($F[8] > 0.75 && $F[7] < 20){print $_;}' < CHIR_2.0_fixed.repeatmask.extend.out.bed | wc -l
+	1,279,437
+
+# Let's make a table of this data
+perl -e 'chomp(@ARGV); open(ARS, "< $ARGV[0]"); open(CHI, "< $ARGV[1]"); my $lenthresh = 0.99; my $idthresh = 0; print "LengthThresh\tDisimilarityThresh\tARS1Count\tCHI2Count\n"; for(my $x = 0; $x < 15; $x++){ print "$lenthresh\t$idthresh"; my $ars = 0; my $chi = 0; while(<ARS>){chomp; @s = split(/\t/); if($s[8] >= $lenthresh && $s[7] <= $idthresh){$ars++;}} seek(ARS, 0, 1); while(<CHI>){chomp; @s = split(/\t/); if($s[8] >= $lenthresh && $s[7] <= $idthresh){$chi++;}} seek(CHI, 0, 1); print "\t$ars\t$chi\n"; $lenthresh -= 0.05; $idthresh += 5;}' papadum-v13.full.repeatmask.extend.out.bed CHIR_2.0_fixed.repeatmask.extend.out.bed
+
+# Hmm... We're beating them in all these categories! Let's go lower
+perl -e 'chomp(@ARGV); open(ARS, "< $ARGV[0]"); open(CHI, "< $ARGV[1]"); my $lenthresh = 0.29; my $idthresh = 70; print "LengthThresh\tDisimilarityThresh\tARS1Count\tCHI2Count\n"; for(my $x = 0; $x < 6; $x++){ print "$lenthresh\t$idthresh"; my $ars = 0; my $chi = 0; while(<ARS>){chomp; @s = split(/\t/); if($s[8] >= $lenthresh && $s[7] <= $idthresh){$ars++;}} seek(ARS, 0, 0); while(<CHI>){chomp; @s = split(/\t/); if($s[8] >= $lenthresh && $s[7] <= $idthresh){$chi++;}} seek(CHI, 0, 0); print "\t$ars\t$chi\n"; $lenthresh -= 0.05; $idthresh += 5;}' papadum-v13.full.repeatmask.extend.out.bed CHIR_2.0_fixed.repeatmask.extend.out.bed
+```
+
+LengthThresh  |  DisimilarityThresh  |    ARS1Count   |    CHI2Count
+---: | ---: | ---: | ---: 
+0.99  |  0  |     236    | 127
+0.94  |  5  |     223177 | 216165
+0.89  |  10 |     430240 | 422684
+0.84   | 15 |     886145  |867140
+0.79   | 20 |     1294524 |1268993
+0.74   | 25 |     1539233 |1512908
+0.69   | 30 |     1758000 |1709417
+0.64   | 35 |     1901918 |1850280
+0.59  |  40 |     1987695 |1938407
+0.54   | 45 |     2138697 |2092243
+0.49  |  50 |     2250482 |2208138
+0.44  |  55 |     2366002 |2328662
+0.39   | 60 |     2466942 |2429621
+0.34   | 65 |     2625083 |2563249
+0.29   | 70 |     3022302 |2954212
+0.24  |  75 |     3241224| 3149584
+0.19  |  80 |     3455405| 3353230
+0.14  |  85 |     3651978| 3563806
+0.09  |  90 |     3970625| 3901507
+0.04  |  95 |     4629640| 4572496
+
+```bash
+# I'm curious. Let's do BovB at all thresholds
+grep BovB papadum-v13.full.repeatmask.extend.out.bed > papadum-v13.full.repeatmask.extend.out.bovb.bed
+grep BovB CHIR_2.0_fixed.repeatmask.extend.out.bed > CHIR_2.0_fixed.repeatmask.extend.out.bovb.bed
+
+perl -e 'chomp(@ARGV); open(ARS, "< $ARGV[0]"); open(CHI, "< $ARGV[1]"); my $lenthresh = 0.99; my $idthresh = 0; print "LengthThresh\tDisimilarityThresh\tARS1Count\tCHI2Count\n"; for(my $x = 0; $x < 20; $x++){ print "$lenthresh\t$idthresh"; my $ars = 0; my $chi = 0; while(<ARS>){chomp; @s = split(/\t/); if($s[8] >= $lenthresh && $s[7] <= $idthresh){$ars++;}} seek(ARS, 0, 0); while(<CHI>){chomp; @s = split(/\t/); if($s[8] >= $lenthresh && $s[7] <= $idthresh){$chi++;}} seek(CHI, 0, 0); print "\t$ars\t$chi\n"; $lenthresh -= 0.05; $idthresh += 5;}' papadum-v13.full.repeatmask.extend.out.bovb.bed CHIR_2.0_fixed.repeatmask.extend.out.bovb.bed
+
+# The comparsion points are very good and follow our expected trend!
+# OK, we've agreed to a cutoff value: 75% repeat length and 60% ID (40% dissimilarity)
+perl -lane 'if($F[7] <= 40 && $F[8] >= 0.75){print $_;}' < papadum-v13.full.repeatmask.extend.out.bed > papadum-v13.full.repeatmask.extend.75thresh.out.bed
+perl -lane 'if($F[7] <= 40 && $F[8] >= 0.75){print $_;}' < CHIR_2.0_fixed.repeatmask.extend.out.bed > CHIR_2.0_fixed.repeatmask.extend.75thresh.out.bed
+
+# Now for the pipeline to generate the tables
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f CHIR_2.0_fixed.repeatmask.extend.75thresh.out.bed -c 5 > chi2_repeat_super_class_count.75thresh.tab
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f papadum-v13.full.repeatmask.extend.75thresh.out.bed -c 5 > ars1_repeat_super_class_count.75thresh.tab
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' ars1_repeat_super_class_count.75thresh.tab papadum-v13.full.repeatmask.extend.75thresh.out.bed > ars1_repeat_super_class_count.extend.75thresh.tab
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' chi2_repeat_super_class_count.75thresh.tab CHIR_2.0_fixed.repeatmask.extend.75thresh.out.bed > chi2_repeat_super_class_count.extend.75thresh.tab
+
+
+#### On further review, my original repeat length estimate was off! 
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' ars1_repeat_super_class_count.tab papadum-v13.full.repeatmask.out.bed > ars1_repeat_super_class_count.extend.tab
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' chi2_repeat_super_class_count.tab CHIR_2.0_fixed.repeatmask.out.bed > chi2_repeat_super_class_count.extend.tab
+
+
+# formatting data for R
+perl -lane 'if($F[0] eq "Type"){print $_;}else{printf("%s (%d bp)\t%d\t%d\t%d\t%d\t%d\n", $F[0], $F[5], $F[1], $F[2], $F[3], $F[4], $F[5])}' < highqual_repeat_summary.tab > highqual_repeat_summary.rformat.tab
+```
+
+```R
