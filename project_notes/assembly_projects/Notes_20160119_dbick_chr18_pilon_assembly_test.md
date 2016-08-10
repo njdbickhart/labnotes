@@ -542,6 +542,10 @@ Let's tabulate the regions that we're interested in:
 * ScbfJmS_318	56875450	57366337
 * chr18			57,371,161	57,806,510
 
+Just for my notes:
+
+> tag SNP is ARS-BFGL-NGS-109285 at 57,589,121 bp on BTA 18
+
 OK, now just to extract and compare to the same region in UMD3.1. Our SNP should be somewhere in the 57.100 Mb region of this assembly.
 
 ```bash
@@ -582,3 +586,107 @@ samtools index arlinda_chief_newassembly/ScbfJmS_318.arlinda_chief.subsection.ba
 
 ~/jdk1.8.0_05/bin/java -Xmx80g -jar ~/pilon-1.16.jar --genome ScbfJmS_318.subsection.fa --frags arlinda_chief_newassembly/ScbfJmS_318.arlinda_chief.subsection.bam --output ScbfJmS_318_pilon_corrected
 ```
+
+Remapping snp probes onto the new assembly segment to check probe order continuity.
+
+> 3850: /seq1/side_projects/john_chr18/snp_probe_remap
+
+```bash
+bwa index ScbfJmS_318_pilon_corrected.fasta.gz
+
+# Generating SNP fastq and location position file
+perl -e '<>; open(SNP, "> hd_snp_probes.fq"); open(LOC, "> hd_snp_locations.tab"); while(<>){chomp; $_ =~ s/\r//g; @s = split(/\t/); @b = split(/[\[\]]/, $s[4]); $b[2] =~ tr/ACGT/TGCA/; $b[2] = reverse($b[2]); my $q1 = "I" x length($b[0]); my $q2 = "I" x length($b[2]); print SNP "\@$s[0].f\n$b[0]\n+\n$q1\n\@$s[0].r\n$b[2]\n+\n$q2\n"; print LOC "$s[0]\t$s[2]\t$s[3]\n";}' < /work1/grw/chips/BovineHD_B_AlleleReport.txt
+
+bwa mem ScbfJmS_318_pilon_corrected.fasta.gz hd_snp_probes.fq > ScbfJmS_318_hd_probe_align.sam
+perl ~/perl_toolchain/snp_utilities/getSNPPositionFromSAM.pl ScbfJmS_318_hd_probe_align.sam ScbfJmS_318_hd_probe_align.tab
+perl -lane 'if($F[0] =~ /ProbeName/){print $_;}elsif($F[1] ne "*"){print $_;}' < ScbfJmS_318_hd_probe_align.tab > ScbfJmS_318_hd_probe_align.filtered.tab
+
+# Trying this again with the actual probes from the BovineHD
+perl -lane '$q = "I" x length($F[1]); print "\@$F[0]\n$F[1]\n+\n$q";' < bovine_hd_snpprobes_illumina.txt > bovine_hd_snpprobes_illumina.fq
+
+bwa mem ScbfJmS_318_pilon_corrected.fasta.gz bovine_hd_snpprobes_illumina.fq > bovine_hd_snpprobes_illumina.ScbfJmS.sam
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl probe_seq_align_marker.list bovineHD_chr18_markers.txt
+File Number 1: probe_seq_align_marker.list
+File Number 2: bovineHD_chr18_markers.txt
+Set     Count
+1       199
+1;2     17591
+2       868
+
+# Some of the "1" category were unreliable mismatches because I didn't align to the whole genome
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o probe_seq_align_marker.list bovineHD_chr18_markers.txt
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[0] =~ /^@/ || $s[2] eq "*" || $s[1] & 2048){next;} if(exists($h{$s[0]})){ my $len = 0; while($s[5] =~ /(\d+)([MIDNSHPX])/g){ $c = $2; if($c eq "M" || $c eq "D" || $c eq "N" || $c eq "X" || $c eq "P"){$len += $1;}} $s[3] += $len - 1; print "$s[0]\t$s[2]\t$s[3]\n";}} close IN;' bovineHD_chr18_markers.txt bovine_hd_snpprobes_illumina.ScbfJmS.sam | sort -k3n > ScbfJmS_318_probe_locs.tab
+```
+
+Now, I need to devise a method for identifying inversions. I'll just rank them and do a plot to try to expose some inversions.
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %h; my $c = 1; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $c; $c++;} close IN; open(IN, "< $ARGV[1]"); $c = 1;  while(<IN>){chomp; @s = split(/\t/); print "$c\t$h{$s[0]}\n"; $c++;} close IN;' bovine_HD_chr18_umd3_order.tab ScbfJmS_318_probe_locs.tab > probe_order.vecs
+```
+
+Plotting a simple diagram to visualize all of this
+
+```R
+data <- read.delim("probe_order_bp.vecs", sep="\t", header=FALSE)
+plot(data, xlim=c(57000000, 58000000), ylim=c(56000000, 58000000))
+# assembled region start
+abline(v=57371161)
+# assembled region end
+abline(v=57806510)
+# priority SNP
+abline(v=57589121)
+dev.copy2pdf(file="local_aligned_snp_tagbwsnp.pdf", useDingbats=FALSE)
+```
+
+There appears to be this large region (100kb) that is devoid of any markers. This corresponds to our large inverted/repetitive regions identified in the assembly.
+
+```bash
+# Allowing for direct probe position comparisons
+perl -e 'print "SNPID\tUMD3\tNEW\n"; chomp(@ARGV); open(IN, "< $ARGV[0]"); my %h; my $c = 1; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[2]; $c++;} close IN; open(IN, "< $ARGV[1]"); $c = 1;  while(<IN>){chomp; @s = split(/\t/); $j = "NA"; if(exists($h{$s[0]})){$j = $h{$s[0]};} print "$s[0]\t$s[2]\t$j\n"; $c++;} close IN;' ScbfJmS_318_probe_locs.tab bovine_HD_chr18_umd3_order.tab > mapped_probe_umd3_new_order_comp.tab
+
+# The last chunk of chr18 from 63,226,272 to 65,999,159 is missing on this contig
+perl -lane 'if($F[2] eq "NA" && $F[1] < 63226272){print $_;}' < mapped_probe_umd3_new_order_comp.tab | wc -l
+	52 <- probes unmapped in our new assembly compared to UMD3
+
+# Let's try to pull the probes that aren't on the HD chip but are aligned in our data again to try to insert them in the middle
+# Grabbing the new probes that we need to intercalate
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1 probe_seq_align_marker.list bovineHD_chr18_markers.txt | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/grepMultipleExactMatches.pl -g stdin -c 0 -f bovine_hd_snpprobes_illumina.ScbfJmS.sam -e '@' -x 0,2,3,5 | sort -k 3n | perl -lane 'if($F[3] =~ /S$/){next;}else{print $_;}' > new_assembly_newlymapped_probes.tab
+
+# There were 162 probes that need to be added to the list
+perl intercalation_script.pl new_assembly_newlymapped_probes.tab mapped_probe_umd3_new_order_comp.tab > mapped_probe_umd3_new_order_comp.intercalate.tab
+```
+
+Here's the crude intercalation script:
+
+```perl
+chomp(@ARGV);
+open(IN, "< $ARGV[0]");
+my @n;
+while(<IN>){
+        chomp;
+        my @s = split(/\t/);
+        push(@n, \@s);
+}
+close IN;
+open(IN, "< $ARGV[1]");
+my $head = <IN>;
+print $head;
+while(<IN>){
+        chomp;
+        my @s = split(/\t/);
+        my $i = 0;
+        while($s[2] > $n[$i]->[2]){
+                print $n[$i]->[0] . "\tNA\t" . $n[$i]->[2] . "\n";
+                $i++;
+        }
+        if($i >= 1){
+                for($x = 0; $x < $i; $x++){
+                        shift(@n);
+                }
+        }
+        print join("\t", @s) . "\n";
+}
+```
+

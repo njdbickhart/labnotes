@@ -1292,6 +1292,15 @@ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp
 perl -lane 'if($F[0] eq "Type"){print $_;}else{printf("%s (%d bp)\t%d\t%d\t%d\t%d\t%d\n", $F[0], $F[5], $F[1], $F[2], $F[3], $F[4], $F[5])}' < highqual_repeat_summary.tab > highqual_repeat_summary.rformat.tab
 ```
 
+> Blade14: /mnt/iscsi/vnx_gliu_7/reference/
+
+```bash
+# Generating cattle repeatmasker file
+~/RepeatMasker/RepeatMasker -q -pa 10 -species cow -no_is umd3_kary_unmask_ngap.fa
+
+~/RepeatMasker/RepeatMasker -q -pa 20 -species sheep -no_is oviAri3.fa
+```
+
 #### Checking immune regions to ensure continuity of CHIR_1 and 2
 
 John raised a point about figure 5 that the mapping to CHIR_1.0 may have been a problem. We can wave this as being a comparison of new de novo assemblies, but let's see if there is an actual improvement in CHIR_2.0.
@@ -1382,3 +1391,27 @@ ggplot(data=data.ggplot, aes(x=Type, y=Count, fill=Assembly)) + geom_bar(stat="i
 dev.copy2pdf(file="ruminant_comparison.pdf", useDingbats=FALSE)
 ```
 
+#### Checking cattle and sheep run outside of UCSC
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/reference
+
+```bash
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; $s[13] =~ s/[()]//g; $s[11] =~ s/[()]//g; $s[12] =~ s/[()]//g; my $unmapped; my $totsize; my $perc; if($orient eq "+"){$unmapped = $s[11] + $s[13]; $totsize = $s[12] + $s[13];}else{$unmapped = $s[13] + $s[11]; $totsize = $s[11] + $s[12];} $perc = ($totsize - $unmapped)/$totsize; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\t$s[1]\t$perc\n";}' < umd3_kary_unmask_ngap.fa.out > umd3_kary_unmask_ngap.fa.repeat.extend.bed
+
+perl -lane 'if($F[7] <= 40 && $F[8] >= 0.75){print $_;}' < umd3_kary_unmask_ngap.fa.repeat.extend.bed > umd3_kary_unmask_ngap.fa.repeat.extend.75thresh.bed
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f umd3_kary_unmask_ngap.fa.repeat.extend.75thresh.bed -c 5 > ../goat_assembly/repeat_analysis/other_ruminants/umd3_quick_cattle_rmsk.repeatsuperclass.75thresh.tab
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' ../goat_assembly/repeat_analysis/other_ruminants/umd3_quick_cattle_rmsk.repeatsuperclass.75thresh.tab umd3_kary_unmask_ngap.fa.repeat.extend.75thresh.bed > ../goat_assembly/repeat_analysis/other_ruminants/umd3_quick_cattle_rmsk.repeatsuperclass.extend.75thresh.tab
+```
+
+OK, it looks like the data is totally different -- this warrants a new analysis for Sheep too just to be consistent.
+
+```bash
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; $s[13] =~ s/[()]//g; $s[11] =~ s/[()]//g; $s[12] =~ s/[()]//g; my $unmapped; my $totsize; my $perc; if($orient eq "+"){$unmapped = $s[11] + $s[13]; $totsize = $s[12] + $s[13];}else{$unmapped = $s[13] + $s[11]; $totsize = $s[11] + $s[12];} $perc = ($totsize - $unmapped)/$totsize; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\t$s[1]\t$perc\n";}' < oviAri3.fa.out > oviAri3_quick_sheep_rmsk.repmask.bed
+
+perl -lane 'if($F[7] <= 40 && $F[8] >= 0.75){print $_;}' < oviAri3_quick_sheep_rmsk.repmask.bed > oviAri3_quick_sheep_rmsk.repmask.75thresh.bed
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f oviAri3_quick_sheep_rmsk.repmask.75thresh.bed -c 5 > oviAri3_quick_sheep_rmsk.repeatsuperclass.75thresh.tab
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' oviAri3_quick_sheep_rmsk.repeatsuperclass.75thresh.tab oviAri3_quick_sheep_rmsk.repmask.75thresh.bed > oviAri3_quick_sheep_rmsk.repeatsuperclass.extend.75thresh.tab
+```
