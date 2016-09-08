@@ -10,6 +10,7 @@ These are my notes on the alignment and variant calling performed on Joel's bull
 	* [Output tab file columns](#outheads)
 * [Calling SNPs and INDELs in Canadian and US Holstein data](#finertune)
 * [Plan B: generating variant site probabilities for overlap](#probability)
+* [Reconciling bull lists](#reconcile)
 
 <a name="organizing"></a>
 ## Organizing the data
@@ -138,7 +139,7 @@ Set     Count
 # OK, let's find out who is in the 2;3 group and where they're located
 head group_2_3.txt
 HODEU000000254210
-HOUSA000002247437
+HOUSA000002247437  <---- this was the ID that I found later through animal keys
 HONLD000839380546
 HODEU000000830287
 
@@ -532,3 +533,67 @@ OK, I need to revise my plan to account for the discrepancy of overlap here. I'm
 for i in Chr10 Chr13 Chr14 Chr15 Chr16 Chr17 Chr18 Chr19 Chr28 Chr29 Chr6 Chr20 Chr1 Chr3; do samtools mpileup -C50 -gf /seq1/reference/umd_3_1_reference_1000_bull_genomes.fa -uv -t DP -r $i /seq1/genome_canada/HOLCANM000005279989.bam /seq1/genome_canada/HOLCANM000006026421.bam /seq1/genome_canada/HOLCANM000100745543.bam /seq1/genome_canada/HOLDEUM000000253642.bam /seq1/genome_canada/HOLGBRM000000598172.bam /seq1/genome_canada/HOLITAM006001001962.bam /seq1/genome_canada/HOLUSAM000002265005.bam /seq1/genome_canada/HOLUSAM000002297473.bam /seq1/genome_canada/HOLUSAM000017129288.bam /seq1/genome_canada/HOLUSAM000017349617.bam /seq1/genome_canada/HOLUSAM000123066734.bam /seq1/genome_canada/HOLUSAM000132973942.bam /seq1/1000_bulls_bams/HOUSA000002290977.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002040728.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002147486.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000122358313.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002103297.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000001697572.reformatted.sorted.bam
 
 samtools mpileup -C50 -gf /seq1/reference/umd_3_1_reference_1000_bull_genomes.fa -uv -t DP -r Chr5 /seq1/genome_canada/HOLCANM000005279989.bam /seq1/genome_canada/HOLCANM000006026421.bam /seq1/genome_canada/HOLCANM000100745543.bam /seq1/genome_canada/HOLDEUM000000253642.bam /seq1/genome_canada/HOLGBRM000000598172.bam /seq1/genome_canada/HOLITAM006001001962.bam /seq1/genome_canada/HOLUSAM000002265005.bam /seq1/genome_canada/HOLUSAM000002297473.bam /seq1/genome_canada/HOLUSAM000017129288.bam /seq1/genome_canada/HOLUSAM000017349617.bam /seq1/genome_canada/HOLUSAM000123066734.bam /seq1/genome_canada/HOLUSAM000132973942.bam /seq1/1000_bulls_bams/HOUSA000002290977.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002040728.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002147486.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000122358313.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000002103297.reformatted.sorted.bam /seq1/1000_bulls_bams/HOUSA000001697572.reformatted.sorted.bam | bcftools call -vmO z -o resequenced_holstein_18_Chr5.vcf.gz
+```
+
+<a name="reconcile"></a>
+## Reconciling bull lists
+
+There were more problems with the list of animals that have been sequenced. I'm going to try to resolve these by starting from scratch with George's list, the 1000 bulls list and Joel's new list.
+
+First of all, let's stop with the comparison of international IDs as they are not unique identifiers. I will be jury rigging the 
+
+> 3850: /seq1/bickhart/side_projects/joels_bulls/reformat_lists
+
+```bash
+# formatting Joel's email list
+perl -lane 'print $F[1];' < raw_data > pauls_list_wgs_bulls.list
+perl -lane 'open(IN, "echo $F[0] | ID2key |"); $l = <IN>; @s = split(/\s+/, $l); print "$s[1]"; close IN;' < pauls_list_wgs_bulls.list > pauls_list_wgs_bulls.ids
+
+# copying datasets for venn comparisons
+perl -lane 'open(IN, "echo $F[0] | ID2key |"); $l = <IN>; @s = split(/\s+/, $l); print "$s[1]"; close IN;' < ../1000_bulls_sequenced.list > 1000_list_wgs_bulls.ids
+perl -lane 'open(IN, "echo $F[0] | ID2key |"); $l = <IN>; @s = split(/\s+/, $l); print "$s[1]"; close IN;' < ../Bulls_100_sons_1504_ID.list > georges_list_wgs_bulls.ids
+perl -lane 'open(IN, "echo $F[0] | ID2key |"); $l = <IN>; @s = split(/\s+/, $l); print "$s[1]"; close IN;' < ../canadian_bulls.list > canadian_list_wgs_bulls.ids
+perl -lane 'open(IN, "echo $F[0] | ID2key |"); $l = <IN>; @s = split(/\s+/, $l); print "$s[1]"; close IN;' < ../100_bulls_holsteins.list > liu_list_wgs_bulls.ids
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl pauls_list_wgs_bulls.ids 1000_list_wgs_bulls.ids georges_list_wgs_bulls.ids canadian_list_wgs_bulls.ids liu_list_wgs_bulls.ids prior_list_wgs_bulls.ids
+	File Number 1: pauls_list_wgs_bulls.ids
+	File Number 2: 1000_list_wgs_bulls.ids
+	File Number 3: georges_list_wgs_bulls.ids
+	File Number 4: canadian_list_wgs_bulls.ids
+	File Number 5: liu_list_wgs_bulls.ids
+	File Number 6: prior_list_wgs_bulls.ids
+	Set     Count
+	1;2     1
+	1;2;3;4;5;6     3
+	1;2;3;4;6       9
+	1;2;3;5;6       5
+	1;2;3;6 20
+	2       333
+	2;3     1
+	2;3;6   2
+	2;5     26
+	3       30
+	3;5;6   1
+	5       2
+
+# Checking individual bulls now to see which ones are different among the lists
+# Paul's list vs George's list
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1_2 pauls_list_wgs_bulls.ids 1000_list_wgs_bulls.ids georges_list_wgs_bulls.ids canadian_list_wgs_bulls.ids liu_list_wgs_bulls.ids
+	File Number 1: pauls_list_wgs_bulls.ids
+	File Number 2: 1000_list_wgs_bulls.ids
+	51356830
+
+echo "51356830" | key2ID2
+getids HOUSA000137974489
+	51356830 HOUSA000137974489 M    B   1  ** 2016-05-24 RONELEE TOYSTORY DOMAIN-ET
+
+# George's list and the 1000 bulls, but not in my prior list of sequenced animals
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 2_3 pauls_l                          t_wgs_bulls.ids georges_list_wgs_bulls.ids canadian_list_wgs_bulls.ids liu_list_wgs_bulls.ids prior_list_wgs_bulls.ids
+	File Number 2: 1000_list_wgs_bulls.ids
+	File Number 3: georges_list_wgs_bulls.ids
+	2539707
+
+echo "2539707" | key2ID2
+getids HOUSA000002247437
+	2539707 HOUSA000002247437 M    B   1  ** 1999-08-25 528 ETAZON CELSIUS-ET
+```
