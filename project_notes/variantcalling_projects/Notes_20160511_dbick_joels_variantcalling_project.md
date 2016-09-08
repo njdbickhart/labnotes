@@ -596,4 +596,17 @@ perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 2_3 pau
 echo "2539707" | key2ID2
 getids HOUSA000002247437
 	2539707 HOUSA000002247437 M    B   1  ** 1999-08-25 528 ETAZON CELSIUS-ET
+
+
+# Now converting to a tab delimited list of all bull sequenced (and by whom!)
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o pauls_list_wgs_bulls.ids 1000_list_wgs_bulls.ids georges_list_wgs_bulls.ids canadian_list_wgs_bulls.ids liu_list_wgs_bulls.ids prior_list_wgs_bulls.ids
+
+perl -lane '$type = "1000;Canada;Liu"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_1_2_3_4_5_6.txt > current_list_of_animals.tab
+perl -lane '$type = "1000"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_1_2.txt >> current_list_of_animals.tab
+perl -lane '$type = "1000;Canada"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_1_2_3_4_6.txt >> current_list_of_animals.tab
+perl -lane '$type = "1000;Liu"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_1_2_3_5_6.txt >> current_list_of_animals.tab
+perl -lane '$type = "1000"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_1_2_3_6.txt >> current_list_of_animals.tab
+perl -lane '$type = "1000"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_2_3.txt >> current_list_of_animals.tab
+perl -lane '$type = "1000"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_2_3_6.txt >> current_list_of_animals.tab
+perl -lane '$type = "Liu"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_3_5_6.txt >> current_list_of_animals.tab
 ```
