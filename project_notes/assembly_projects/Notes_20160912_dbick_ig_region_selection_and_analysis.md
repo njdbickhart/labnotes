@@ -148,3 +148,5 @@ grep 'ScbfJmS_2297' chori_bac_end_aligns.tab
 CH240_196P13    2       1       ScbfJmS_2297    10740   2       ScbfJmS_1659    41941553
 CH240_231B16    2       1       ScbfJmS_2297    5662    2       ScbfJmS_1659    42001414
 ```
+
+**NOTE: The RPCI-42 clone that we need is: 567N23**
