@@ -55,6 +55,9 @@ axis <- GenomeAxisTrack(range = gaps.ir)
 # Data track
 plot <- DataTrack(bed.granges, name = "-Log10 p")
 
+# This shows all gene ids:
+plotTracks(list(ideo, axis, biomart, plot), from = start, to = end, type = c("l", "g"), showId = TRUE, groupAnnotation = "id", showOverplotting = TRUE)
+
 # Now to tie all the tracks together
 plotTracks(list(ideo, axis, biomart, plot), from = start, to = end, type = c("l", "g"), stacking = "squish", groupAnnotation = "id", showOverplotting = TRUE)
 dev.copy2pdf(file = "chr5_region_log10p_plot.pdf", useDingbats = FALSE)
