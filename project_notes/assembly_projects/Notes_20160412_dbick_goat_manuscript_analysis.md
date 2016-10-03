@@ -8,6 +8,7 @@ These are my notes on the conclusion of the analysis of the goat reference genom
 * [Spearman rank correlation of Lachesis](#correlation)
 * [Preparing data for NCBI](#ncbi)
 * [Centromere repeat check](#centromere)
+* [Gap check update](#gapupdate)
 
 <a name="correlation"></a>
 ## Spearman rank correlation of Lachesis
@@ -1415,3 +1416,144 @@ perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f oviA
 
 perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); my %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], 0];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[5]}->[1] += $s[2] - $s[1];} close IN; print "Entry\tCount\tTotLen\tAvgLen\n"; foreach my $k (sort {$a cmp $b} keys(%data)){$count = $data{$k}->[0]; $len = $data{$k}->[1]; $avg = $len / $count; print "$k\t$count\t$len\t$avg\n";}' oviAri3_quick_sheep_rmsk.repeatsuperclass.75thresh.tab oviAri3_quick_sheep_rmsk.repmask.75thresh.bed > oviAri3_quick_sheep_rmsk.repeatsuperclass.extend.75thresh.tab
 ```
+<a name="gapupdate"></a>
+## Gap check update 
+I need to run a couple of tests on the filled gap analysis in order to satisfy reviewer concerns. Here are the tests I need to run:
+
+* Check that CHIR_1.0 and CHIR_2.0 don't close any gaps in ARS1
+* Check WGS alignments in predicted gap closure regions for hard clipping that indicates incorrect gap closure
+* Find out how many gaps are in ARS1 gene models
+
+#### Checking ARS1 gap closures in CHIR_2.0
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check
+
+```bash
+# First, let's compare ARS1 gaps to CHIR_2.0
+mkdir ars1_gaps
+samtools faidx papadum-v13.full.fa
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o papadum-v13.full.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d ars1_gaps/ars1_gaps_on_chi2.tab
+
+grep 'Closed' ars1_gaps/ars1_gaps_on_chi2.tab | wc -l
+373 <- not a good sign off the bat, lets look at this closer
+
+# Some of these regions are huge, like on the order of 100kb or larger
+# I suspect that these are just misaligned reads instead of being true closures
+grep 'Closed' ars1_gaps/ars1_gaps_on_chi2.tab | perl -lane 'if($F[8] < 100000){print $_;}' | wc -l
+255
+
+# Time to check them out!
+```
+> Blade14 : /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/ars1_gaps/
+
+```bash
+# Starting a bwa run
+/mnt/nfs/nfs2/GoatData/sequence_data/C0LYPACXX/Sample_Goat400/*.fastq.gz | perl -e 'use File::Basename; %h; while(<>){chomp; $fname = basename($_); $file = $_; @bname = split(/_/, $fname); push(@{$h{$bname[2]}->{$bname[4]}}, $file); } foreach $lane (keys(%h)){foreach $num (keys(%{$h{$lane}})){print join("\t", @{$h{$lane}->{$num}}); print "\tgoat400\tpapadum\n";}}' > papadum_400_file_list.tab
+
+cp  ~/.mergedpipeline.cnfg chi2_quick_align.cnfg
+# altered to just do alignments
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs papadum_400_file_list.tab --output chi2_aligns --config chi2_quick_align.cnfg --reference /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa --threads 20
+
+# Had to merge them due to errors
+perl ~/perl_toolchain/sequence_data_scripts/bamMergeUtility.pl -d ./chi2_aligns/papadum -o ./chi2_aligns/chi2_papadum_merged.bam
+
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g ars1_gaps_on_chi2.tab -t chi2_aligns/chi2_papadum_merged.bam -o ars1_gaps_on_chi2.depth.checked.tab
+
+
+### Testing CHIR_1.0
+perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs papadum_400_file_list.tab --output chi1_aligns --reference ../CHIR_1.0_fixed.fa --config chi2_quick_align.cnfg --threads 15
+
+perl ~/perl_toolchain/sequence_data_scripts/bamMergeUtility.pl -d chi1_aligns/papadum/ -o chi1_aligns/ars1_chi1_merged.bam
+
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o ../papadum-v13.full.fa -s ../CHIR_1.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d ars1_gaps_on_chi1.newlogic.tab
+
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g ars1_gaps_on_chi1.newlogic.tab -t chi1_aligns/ars1_chi1_merged.bam -o ars1_gaps_on_chi1.newlogic.checked.tab
+# other checking criteria
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g ars1_gaps_on_chi1.newlogic.tab -t chi1_aligns/ars1_chi1_merged.bam -o ars1_gaps_on_chi1.newlogic.checked.2.tab -f ../CHIR_1.0_fixed.fa -v /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g ars1_gaps_on_chi2.newlogic.tab -t chi2_aligns/chi2_papadum_merged.bam -o ars1_gaps_on_chi2.newlogic.checked.2.tab -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -v /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz
+
+# There were still some large gaps that were supposedly filled in the BGI assembly but were present in ours
+# This needs to be checked
+grep 'FullClose' ars1_gaps_on_chi1.newlogic.checked.tab | perl -lane 'if($F[4] > 30){system("samtools faidx /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/CHIR_1.0_fixed.fa $F[3]");}' > chi1_large_gaps_doublecheck.fa
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz chi1_large_gaps_doublecheck.fa > chi1_large_gaps_doublecheck.sam
+
+
+```
+
+#### Checking ARS1 filled gaps from CHIR_2.0
+
+I wrote a script to process the data and identify misassemblies within closed gaps.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check
+
+```bash
+# CHI2 gaps closed
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g chi2/papadumv13_gap_fills.chi2.tab -t /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam -o chi2/papadumv13_gap_fills.chi2.checked.depth.tab
+Tested: 59737
+Skipped: 9256
+
+# CHI1 gaps closed
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g ../papadumv13_gap_fills.old.tab -t /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam -o ars1_chi1_filled_gaps.check.tab
+Tested: 242888
+Skipped: 13876
+
+# CHI2.0 gaps fully closed
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f chi2/papadumv13_gap_fills.chi2.checked.depth.tab -c 0 -m
+
+# CHI1.0 gaps fully closed
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f ars1_chi1_filled_gaps.check.tab -c 0
+
+# New logic
+# New logic script
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o ../papadum-v13.full.fa -s /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d ars1_gaps_on_chi2.newlogic.tab
+
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g ars1_gaps_on_chi2.newlogic.tab -t chi2_aligns/chi2_papadum_merged.bam -o ars1_gaps_on_chi2.newlogic.checked.tab
+```
+
+|Entry     | CHIR_1|CHIR_2|
+|:---------|------:|-----:|
+|FullClose | 208401| 48298|
+|GAP       |  33406| 11078|
+|Large     |   1081|   361|
+
+
+It looks really good, but there were no filled gaps with less than 5 reads worth of coverage? I find that a bit hard to believe... Let's test this.
+
+Test intervals:
+**cluster_1:1711-1967**
+**cluster_1:6324-6507**
+
+The first should have several "bad areas" and the second should have good coverage.
+
+```bash
+echo -e "Closed\tYup\t1000\t2000\t1000\tcluster_1\tcluster_1:1711-1967\tcluster_1:1711-1967\t200\t1\t200\nClosed\tYup\t2000\t3000\t1000\tcluster_1\tcluster_1:6324-6507\tcluster_1:6324-6507\t200\t1\t200" > test_dataset.out.tab
+
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g test_dataset.out.tab -t /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam -o test_dataset.out.checked.tab
+```
+
+OK, my second set of criteria include the following:
+* Gap flanking sequence must map unambiguously within 100kb of each other
+	* Gap flanking sequence aligning > 100kb are "too **Large**"
+	* Gap flanking sequence that has missing alignments, or 10% of the read as soft/hard clipped are "**Unmapped**"
+* Any number of ambiguous bases ("N") are considered "**Gaps**"
+* All else are considered "Closed" and are subject to the following checks
+* Next, I check sequence-based coverage to confirm closure
+	* If the samtools depth estimate for any bases across the region are < 5, read is considered a "**GAP**" (cryptic misassembly)
+	* If the gap region has any ambiguous bases, it is considered a "**Gap**"
+	* Next I check the full gap region by pulling the full sequence of the region in the target assembly and aligning it back to the original assembly
+		* If you map the full gap closed region from the target assembly (ie. CHIR_2.0) back to the original assembly (ie. ARS1) and the entire region aligns to the assembly without ambiguity (no hard clipping, full length alignment), then the gap region is considered "**Ambiguous**" (most likely due to repetitive structure)
+		* All remaining gap regions are labeled as "**FullClose**" entries and likely represent closure of the gap
+
+
+|Entry     |CHIR_2|CHIR_1|
+|:---------|-----:|-----:|
+|Ambiguous |    12|    14|
+|FullClose |     4|     4|
+|GAP       |   141|    94|
+|Large     |    85|    49|
+|Trans     |   100|    98|
+|Unmapped  |   254|   337|
+
+
+
+
