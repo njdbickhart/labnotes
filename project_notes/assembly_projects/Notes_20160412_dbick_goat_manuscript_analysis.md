@@ -1555,5 +1555,18 @@ OK, my second set of criteria include the following:
 |Unmapped  |   254|   337|
 
 
+## Rerunning the gap closure pipeline on CHIR1 and CHIR2
 
+Now that I think that I have fair criteria, let's see how frequently ARS1 closes gaps in CHIR2 and CHIR1.
 
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/chi1
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -s ../papadum-v13.full.fa -o ../CHIR_1.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d chi1_gaps_on_ars1.newlogic.tab ; echo "done first"; perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g chi1_gaps_on_ars1.newlogic.tab -t /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam -o chi1_gaps_on_ars1.newlogic.checked.tab -v ../CHIR_1.0_fixed.fa -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz
+```
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/chi2
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -s ../papadum-v13.full.fa -o /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d chi2_gaps_on_ars1.newlogic.tab ; echo "done first"; perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g chi2_gaps_on_ars1.newlogic.tab -t /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam -o chi2_gaps_on_ars1.newlogic.checked.tab -v /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz
+```
