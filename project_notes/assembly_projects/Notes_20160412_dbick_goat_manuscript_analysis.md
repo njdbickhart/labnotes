@@ -1569,4 +1569,396 @@ perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -s ../papadum-v13.f
 
 ```bash
 perl ~/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -s ../papadum-v13.full.fa -o /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -g ~/GetMaskBedFasta/store/GetMaskBedFasta.jar -j ~/jdk1.8.0_05/bin/java -d chi2_gaps_on_ars1.newlogic.tab ; echo "done first"; perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g chi2_gaps_on_ars1.newlogic.tab -t /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam -o chi2_gaps_on_ars1.newlogic.checked.tab -v /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz
+# New criteria: only unmapped gap regions are ambiguous
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f chi2_gaps_on_ars1.newlogic.checked.2.tab -c 0 -m
 ```
+|Entry     | Count|
+|:---------|-----:|
+|Ambiguous |    23|
+|FullClose | 41306|
+|GAP       |  9718|
+|Gap       |   598|
+|Large     |   264|
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g chi1_gaps_on_ars1.newlogic.tab -t /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam -o chi1_gaps_on_ars1.newlogic.checked.2.tab -v ../CHIR_1.0_fixed.fa -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f chi1_gaps_on_ars1.newlogic.checked.2.tab -c 0 -m
+```
+|Entry     |  Count|
+|:---------|------:|
+|FullClose | 153975|
+|GAP       |  26090|
+|Gap       |   2282|
+|Large     |    568|
+
+#### Testing ARS1 gaps closed based on the same logic
+
+```bash
+perl ~/perl_toolchain/assembly_scripts/checkIdentifiedGapPairedEndDisc.pl -g ars1_gaps_on_chi2.newlogic.tab -t chi2
+_aligns/chi2_papadum_merged.bam -o chi2_gaps_on_ars1.newlogic.checked.3.tab -f /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixe
+d.fa -v /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz; echo "done 1"; rm temp.check.fa; perl ~/perl_toolchain/ass
+embly_scripts/checkIdentifiedGapPairedEndDisc.pl -g ars1_gaps_on_chi1.newlogic.tab -t chi1_aligns/ars1_chi1_merged.bam -o chi1_gaps_on_ars1.newlog
+ic.checked.3.tab -f ../CHIR_1.0_fixed.fa -v /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f chi2_gaps_on_ars1.newlogic.checked.3.tab -c 0 -m
+```
+
+|Entry     | Count|
+|:---------|-----:|
+|FullClose |    16|
+|GAP       |    49|
+|Gap       |    92|
+|Large     |    85|
+
+```bash
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f chi1_gaps_on_ars1.newlogic.checked.3.tab -c 0 -m
+```
+
+|Entry     | Count|
+|:---------|-----:|
+|FullClose |    18|
+|GAP       |    19|
+|Gap       |    75|
+|Large     |    49|
+
+```bash
+# Checking alignments in order to resolve fullclosed regions 
+#CHIR1
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz temp.check.fa > chi1_fullclose_check.sam
+perl -lane 'if($F[0] =~ /^@/){next;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]\t$F[5]\t$F[6]\t$F[7]";}' < chi1_fullclose_check.sam
+# 8 alignments were to unplaced contigs and should be ambiguous
+# 1 alignment was to a scaffold -- may be worth a follow-up later
+# NC_022298.1:45519413-45520211   16      scaffold_324    12445   38      799M  Orig:cluster_6:47855013-47855650     637
+
+grep 'FullClose' chi2_gaps_on_ars1.newlogic.checked.3.tab | perl -lane 'system("samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa $F[3] >> chir2_ars1_gapregions.fa");'
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz chir2_ars1_gapregions.fa > chir2_ars1_gapregions.sam
+perl -lane 'if($F[0] =~ /^@/){next;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]\t$F[5]\t$F[6]\t$F[7]";}' < chir2_ars1_gapregions.sam
+# 7 alignments were to unplaced contigs or were unmapped and should be ambiguous
+# Again, another alignment to the same scaffold that should be followed up
+# CM001715_2:49090466-49091264    16      scaffold_324    12445   38      799M Orig: cluster_6:47855013-47855650     637
+
+# Used this one-liner to distinguish between actual gap regions and ambiguous small regions that were not able to be checked
+perl -lane 'if($F[0] eq "Closed" && $F[10] > $F[8] && $F[8] != -1 && $F[10] < 100000){print $_;}' < ../chi1/chi1_gaps_on_ars1.newlogic.tab
+```
+
+#### Complete gap summary for ARS1 gap fills
+
+|Entry     | CHIR2|  CHIR1|
+|:---------|-----:|------:|
+|Ambiguous |    23|      0|
+|FullClose | 41306| 153975|
+|Unconfirm | 18113|  88293|
+|Mutual Gap|    29|     52|
+|Large     |   264|    568|
+|Trans     |  9252|  13853|
+|Unmapped  |     6|     23|
+
+#### Complete gap summary for BGI filling of ARS1 gaps
+
+|Entry     | CHIR2| CHIR1|
+|:---------|-----:|-----:|
+|Ambiguous |     5|     8|
+|FullClose |    11|    10|
+|Unknown   |    63|    30|
+|Mutual Gap|    78|    64|
+|Large     |    85|    49|
+
+#### Common ARS1 gaps filled by both assemblies
+
+cluster_15:47423320-47423344
+cluster_15:73919205-73919210
+cluster_25:12174627-12174632
+cluster_4:101582232-101582256
+cluster_6:47855013-47855650
+cluster_7:71064191-71065249
+cluster_7:88496162-88496186
+cluster_8:106614827-106614851
+cluster_9:87048108-87048132
+
+#### Identifying ARS1 + CHI2, CHI1 filled gaps
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/gap_check/chi1
+
+```bash
+# CHI1 gaps filled by CHI2
+grep 'Closed' ../chi1_to_chi2_gap_summary.tab | perl -lane 'if($F[10] - $F[8] < 1){($s1, $e1) = $F[6] =~ /.+:(\d+)-(\d+)/; ($s2, $e2) = $F[7] =~ /.+:(\d+)-(\d+)/; @h = ($s1, $s2, $e1, $e2); @h = sort{$a <=> $b}@h; print "$F[5]\t$h[1]\t$h[2]\t$F[1]:$F[2]-$F[3]";}' | sortBedFileSTDIN.pl > chi1_gaps_filled_chi2_without_nbases.bed
+
+grep 'Closed' ../papadumv13_gap_fills.old.tab | perl -lane 'if($F[10] - $F[8] < 1){($s1, $e1) = $F[6] =~ /.+:(\d+)-(\d+)/; ($s2, $e2) = $F[7] =~ /.+:(\d+)-(\d+)/; @h = ($s1, $s2, $e1, $e2); @h = sort{$a <=> $b}@h; print "$F[5]\t$h[1]\t$h[2]\t$F[1]:$F[2]-$F[3]";}' | sortBedFileSTDIN.pl > chi1_gaps_filled_ars1_without_nbases.bed
+
+# Simple venn comparison
+cat chi1_gaps_filled_ars1_without_nbases.bed | cut -f4 > chi1_gaps_filled_ars1_without_nbases.list
+cat chi1_gaps_filled_chi2_without_nbases.bed | cut -f4 > chi1_gaps_filled_chi2_without_nbases.list
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl chi1_gaps_filled_ars1_without_nbases.list chi1_gaps_filled_chi2_without_nbases.list
+	File Number 1: chi1_gaps_filled_ars1_without_nbases.list
+	File Number 2: chi1_gaps_filled_chi2_without_nbases.list
+	Set     Count
+	1       84294   <- unique to our assembly/trans in chi2
+	1;2     157884  <- shared
+	2       2415	<- Trans in our assembly
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1_2 chi1_gaps_filled_ars1_without_nbases.list chi1_gaps_filled_chi2_without_nbases.list > chi1_gaps_filled_both_without_nbases.list
+
+# Retrieving closure sequence for confirmation
+perl -lane 'if($F[2] - $F[1] < 10000){system("samtools faidx /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa $F[0]:$F[1]-$F[2] >> chi1_gaps_filled_chi2_without_nbases.fa");}' < chi1_gaps_filled_chi2_without_nbases.bed
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v13/papadum-v13.full.fa.gz chi1_gaps_filled_chi2_without_nbases.fa > chi1_gaps_filled_chi2_without_nbases.sam
+
+# Checking mapped alignments without Mapq filter
+perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] != 2064 && $F[1] != 2048 && $F[2] ne "*"){print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]\t$F[5]";}' < chi1_gaps_filled_chi2_without_nbases.sam | wc -l
+143,135 (89.29%)
+
+# Now with a mapq filter of 10
+perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] != 2064 && $F[1] != 2048 && $F[2] ne "*" && $F[4] > 10){print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]\t$F[5]";}' < chi1_gaps_filled_chi2_without_nbases.sam | wc -l
+113,219 (70.63%)
+
+# Now to do a venn comparison
+perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] != 2064 && $F[1] != 2048 && $F[2] ne "*"){print "$F[0]";}' < chi1_gaps_filled_chi2_without_nbases.sam > chi1_gaps_filled_chi2_without_nbases.crossalign.pass.list
+# Converting back to CHI1 coords
+perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $h{$s[0]}->{$s[1]}->{$s[2]} = $s[3];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; ($chr, $s, $e) = $_ =~ /(.+):(\d+)-(\d+)/; if(exists($h{$chr}->{$s}->{$e})){print $h{$chr}->{$s}->{$e}; print "\n";}else{print STDERR "Could not find $_!\n";}} close IN;' chi1_gaps_filled_chi2_without_nbases.bed chi1_gaps_filled_chi2_without_nbases.crossalign.pass.list > chi1_gaps_filled_chi2_without_nbases.crossalign.pass.converted.list
+
+# Now to grep out the fullclose and partial closed gaps from CHI1 on ARS1
+grep 'FullClose' chi1_gaps_on_ars1.newlogic.checked.2.tab | perl -lane 'print $F[1];' > chi1_gaps_on_ars1.newlogic.fullclose.wgs.list
+grep -v 'Large' chi1_gaps_on_ars1.newlogic.checked.2.tab | perl -lane 'print $F[1];' > chi1_gaps_on_ars1.newlogic.allbutlarge.wgs.list
+
+# OK, we're ready for venn comparisons
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl chi1_gaps_filled_chi2_without_nbases.list chi1_gaps_filled_ars1_without_nbases.list chi1_gaps_filled_chi2_without_nbases.crossalign.pass.converted.list chi1_gaps_on_ars1.newlogic.fullclose.wgs.list chi1_gaps_on_ars1.newlogic.allbutlarge.wgs.list
+File Number 1: chi1_gaps_filled_chi2_without_nbases.list
+File Number 2: chi1_gaps_filled_ars1_without_nbases.list	(n = 242178)
+File Number 3: chi1_gaps_filled_chi2_without_nbases.crossalign.pass.converted.list
+File Number 4: chi1_gaps_on_ars1.newlogic.fullclose.wgs.list
+File Number 5: chi1_gaps_on_ars1.newlogic.allbutlarge.wgs.list
+
+Set     Count
+1       163
+1;2     3101	<- same with chi2, but didn't pass either test (1.28%)
+1;2;3   35306	<- alignment pass filter only (14.578%)
+1;2;3;4;5       94212	<- confirmed in both assemblies; both methods (38.90%)
+1;2;3;5 11343   <- confirmed in both by only cross-align (4.684%)
+1;2;4;5 11956   <- confirmed in both by only wgs filter (4.937%)
+1;2;5   1966    <- unconfirmed in both by tentative wgs filter (0.811%)
+1;3     2237    <- shouldn't exist -- will check (they're Trans chr aligns)
+1;3;5   13		<- shouldn't exist -- will check (they're gaps in our assembly)
+1;5     2
+2       21476	<- failed all tests (8.867%)
+2;4;5   47807   <- confirmed in ARS1 by WGS gap fill (19.74%)
+2;5     15011   <- unconfirmed in ARS1 by wgs gap fill (6.20%)
+5       37
+```
+That makes 82.84% confirmed in our assembly (200624 / 242178 total closed gaps). 94,212 (38.90%) were confirmed by both cross assembly alignment and WGS alignment. 153,975 were confirmed by WGS methods. 143,135 were confirmed by cross-assembly alignment.
+ 
+<a name="fosmid"></a>
+## Fosmid Check
+Steve has done the alignments but there are some issues. I need to remove duplicates and then merge together fosmid reports. First, lets format and fix the data.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/fosmid_check
+
+```bash
+for i in CHIR-1 CHIR-2 papadum-lachesis papadum-v03 papadum-v04 papadum-v05 papadum-v13; do echo $i; mkdir $i; wkdir=/mnt/nfs/nfs2/GoatData/Fosmid/${i}; for b in $wkdir/*.bam; do bname=`basename $b`; echo $bname; ~/jdk1.8.0_05/bin/java -jar ~/picard-tools-1.85/picard.jar MarkDuplicates I=$b O=${i}/${bname} M=${i}/${bname}.mkdups REMOVE_DUPLICATES=true MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=200; done; done
+
+for i in ./*/*.bam; do echo $i; samtools index $i; done
+
+# I'm getting allot of seg faults. Maybe I should run the libraries separately?
+perl reformat_bams.pl
+
+for i in CHIR-1 CHIR-2 papadum-lachesis papadum-v03 papadum-v04 papadum-v05 papadum-v13; do bfai=$i/${i}_lumpy_sv_BfaI_output.vcf; rsai=$i/${i}_lumpy_sv_RsaI_output.vcf; out=$i/${i}_sep_libs_nonoverlap.bed; for b in $bfai $rsai; do perl -lane 'if($F[0] =~ /^#/){next;}else{($type) = $F[7] =~ /SVTYPE=(.+)\;/; $F[0] =~ s/\|/_/g; $e = $F[1] + 1; print "$F[0]\t$F[1]\t$e\t$type\n";}' < $b; done > $out; done
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f ./CHIR-1/CHIR-1_sep_libs_nonoverlap.bed,./CHIR-2/CHIR-2_sep_libs_nonoverlap.bed,./papadum-lachesis/papadum-lachesis_sep_libs_nonoverlap.bed,./papadum-v03/papadum-v03_sep_libs_nonoverlap.bed,./papadum-v04/papadum-v04_sep_libs_nonoverlap.bed,./papadum-v05/papadum-v05_sep_libs_nonoverlap.bed,./papadum-v13/papadum-v13_sep_libs_nonoverlap.bed -c 3 -m
+File1:  ./CHIR-1/CHIR-1_sep_libs_nonoverlap.bed
+File2:  ./CHIR-2/CHIR-2_sep_libs_nonoverlap.bed
+File3:  ./papadum-lachesis/papadum-lachesis_sep_libs_nonoverlap.bed
+File4:  ./papadum-v03/papadum-v03_sep_libs_nonoverlap.bed
+File5:  ./papadum-v04/papadum-v04_sep_libs_nonoverlap.bed
+File6:  ./papadum-v05/papadum-v05_sep_libs_nonoverlap.bed
+File7:  ./papadum-v13/papadum-v13_sep_libs_nonoverlap.bed
+```
+
+|CHIR1 | Count|CHIR2 | Count|LachOn| Count|PBctg | Count|PBBNG | Count|PBnLaC| Count|ARS1  | Count|
+|:-----|-----:|:-----|-----:|:-----|-----:|:-----|-----:|:-----|-----:|:-----|-----:|:-----|-----:|
+|BND   |  4342|BND   |   840|BND   |   870|BND   |  1158|BND   |   920|BND   |   664|BND   |   456|
+|DEL   |   197|DEL   |   144|DEL   |   162|DEL   |   130|DEL   |   134|DEL   |   143|DEL   |   144|
+|DUP   |    14|DUP   |    12|DUP   |    31|DUP   |     4|DUP   |     5|DUP   |    33|DUP   |     8|
+|INV   |     5|INV   |    10|INV   |    22|INV   |     0|INV   |     2|INV   |    13|INV   |    10|
+|100MB | 155.8|100MB |  34.4|100MB |  37.1|100MB |  44.2|100MB |  36.3|100MB |  29.2|100MB |  21.1|
+
+
+OK, the lumpy stats are done. Let's calculate the number of reads that mapped.
+
+```bash
+for i in ./*/*.bam; do unmapped=`samtools idxstats ./CHIR-1/CHIR-1-goat-fosmid-BfaI.bam | grep "*" | cut -f4`; echo -e "$i\t$unmapped"; done
+
+# they were all the same: 88594
+```
+
+OK, let's turn this into a consolidating table with an "error per mb" estimate. Done (above). Now to check repetitive regions as a response to reviewer #2.
+
+I need to pull out the Del and Dup sequences and check them against repetitive regions. All of the BND signal appears to be from fosmids that bind to unplaced contigs, suggesting that they should be scaffolded where their anchor reads are attached. 
+
+```bash
+# Pulling only events that have more than one PE support and are less than 1 mb
+for i in ./papadum-v13/*I_output.vcf; do perl -lane 'if($F[0] =~ /^#/){next;}else{($type, $end, $pe) = $F[7] =~ /SVTYPE=(.{3,5});.*END=(\d+);.*PE=(\d{1,4});/; if($pe > 0 && $type ne "BND" && $end - $F[1] < 1000000){print "$F[0]\t$F[1]\t$end\t$type\t$pe";}}' < $i; done | sortBedFileSTDIN.pl > papadum-v13/del_dup_inv_events.bed
+
+# Intersecting with repeats
+intersectBed -a papadum-v13/del_dup_inv_events.bed -b ../repeat_analysis/papadum-v13.full.repeatmask.extend.75thresh.out.bed -wb | perl -lane 'if($F[11] > 1000){print "$F[5]\t$F[6]\t$F[7]\t$F[10]\t$F[11]\t$F[3]";}' | wc -l
+21
+
+intersectBed -a papadum-v13/del_dup_inv_events.bed -b ../repeat_analysis/papadum-v13.full.repeatmask.extend.75thresh.out.bed -wb | perl -lane 'if($F[11] > 1000){print "$F[5]\t$F[6]\t$F[7]\t$F[10]\t$F[11]\t$F[3]";}'
+cluster_20      62619994        62626357        LINE/L1 6888    DEL
+cluster_14      62117816        62124142        LINE/L1 8390    INV
+cluster_10      77586122        77592441        LINE/L1 8154    DUP
+cluster_10      77794417        77796334        Satellite/centr 1965    DUP
+cluster_10      77795261        77796535        Satellite/centr 1262    DUP
+cluster_10      77797410        77799859        Satellite/centr 2443    DUP
+cluster_10      77801227        77802588        Satellite/centr 1360    DUP
+cluster_10      77803542        77805200        Satellite/centr 1686    DUP
+cluster_10      77808725        77811352        Satellite/centr 2602    DUP
+cluster_10      77827930        77829604        Satellite/centr 1684    DUP
+cluster_10      77830878        77835736        Satellite/centr 4895    DUP
+cluster_10      77834661        77835739        Satellite/centr 1402    DUP
+cluster_10      77837035        77838709        Satellite/centr 1398    DUP
+cluster_10      77839663        77841023        Satellite/centr 1386    DUP
+cluster_10      77720101        77726629        LINE/L1 8381    DUP
+cluster_19      68865813        68867308        Simple_repeat   1524    DUP
+cluster_19      69035001        69038800        Simple_repeat   3888    DUP
+cluster_19      69197571        69199724        Simple_repeat   2182    DUP
+cluster_19      68865813        68867308        Simple_repeat   1524    DUP
+cluster_19      69035001        69038800        Simple_repeat   3888    DUP
+cluster_19      69197571        69199724        Simple_repeat   2182    DUP
+
+# There were only 5 dels/dups/invs that had repetitive content
+cluster_10      77479823        77856293        DUP     5
+cluster_19      68374696        68587239        DEL     5
+cluster_19      68410541        69257800        DUP     4
+cluster_19      68410663        69244694        DUP     4
+cluster_20      62517172        62761341        DEL     5
+cluster_14      62101583        62183931        INV     4
+```
+
+
+#### Comparison of fosmid end discrepencies to gaps
+
+I wanted to see how many of our gaps were predicted deletions/inversions/duplications based on the fosmid data.
+
+```bash
+intersectBed -a papadum-v13/del_dup_inv_events.bed -b ../gap_check/papadum-v13.full.gaps.bed -wa | uniq | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 3 -m
+```
+#### Gaps compared to del, inv and dup calls
+
+|Entry | Count|
+|:-----|-----:|
+|DEL   |     6|
+|DUP   |     3|
+|INV   |     5|
+
+That's 14 gaps (sum - 1 for a duplicate duplication on cluster_19).
+
+```bash
+intersectBed -a papadum-v13/del_dup_inv_events.bed -b ../gap_check/chi1/chi1_gaps_filled_ars1_without_nbases.bed -wa | uniq | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 3 -m
+```
+
+#### Gaps ARS1 filled in CHI1 compared to del, inv and dup calls
+
+|Entry | Count|
+|:-----|-----:|
+|DEL   |     6|
+|DUP   |     5|
+|INV   |     8|
+
+That's 18 gaps (sum - 1 for the same duplicate on cluster_19). Most of them are the same del/dup/inv calls listed above (only 4 new regions).
+
+## Quick unplaced analysis
+
+I just need to identify the reason why our degenerate contigs exist. I suspect that most are just very strong repeats.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/fosmid_check
+
+```bash
+# Degenerate count:
+grep unplaced ../gap_check/papadum-v13.full.fa.fai | wc -l
+29,315
+
+# Checking how many have > 75% length devoted to repeats
+perl -e 'chomp(@ARGV); open(IN, "grep unplaced ../gap_check/papadum-v13.full.fa.fai |"); %lens; while(<IN>){chomp; @s = split(/\t/); $lens{$s[0]} = $s[1];} close IN; open(IN, "grep unplaced ../repeat_analysis/papadum-v13.full.repeatmask.out.bed |"); %reps; while(<IN>){chomp; @s = split(/\t/); $reps{$s[0]} += $s[2] - $s[1];} close IN; foreach my $up (keys(%reps)){ my $ratio = $reps{$up} / $lens{$up}; if($ratio > 0.75){print "$up\n";}}' | wc -l
+21,820
+
+# How many have SOME satellite sequence
+perl -e 'chomp(@ARGV); open(IN, "grep unplaced ../gap_check/papadum-v13.full.fa.fai |"); %lens; while(<IN>){chomp; @s = split(/\t/); $lens{$s[0]} = $s[1];} close IN; open(IN, "grep unplaced ../repeat_analysis/papadum-v13.full.repeatmask.out.bed | grep Satellite |"); %reps; while(<IN>){chomp; @s = split(/\t/); $reps{$s[0]} += $s[2] - $s[1];} close IN; foreach my $up (keys(%reps)){ my $ratio = $reps{$up} / $lens{$up}; if($ratio > 0){print "$up\n";}}' | wc -l
+25,023
+
+# How many have centromeric/satellite sequence over 25% 
+perl -e 'chomp(@ARGV); open(IN, "grep unplaced ../gap_check/papadum-v13.full.fa.fai |"); %lens; while(<IN>){chomp; @s = split(/\t/); $lens{$s[0]} = $s[1];} close IN; open(IN, "grep unplaced ../repeat_analysis/papadum-v13.full.repeatmask.out.bed | grep Satellite |"); %reps; while(<IN>){chomp; @s = split(/\t/); $reps{$s[0]} += $s[2] - $s[1];} close IN; foreach my $up (keys(%reps)){ my $ratio = $reps{$up} / $lens{$up}; if($ratio > 0.25){print "$up\n";}}' | wc -l
+24,500
+
+# Satellite over 75% of the contig
+perl -e 'chomp(@ARGV); open(IN, "grep unplaced ../gap_check/papadum-v13.full.fa.fai |"); %lens; while(<IN>){chomp; @s = split(/\t/); $lens{$s[0]} = $s[1];} close IN; open(IN, "grep unplaced ../repeat_analysis/papadum-v13.full.repeatmask.out.bed | grep Satellite |"); %reps; while(<IN>){chomp; @s = split(/\t/); $reps{$s[0]} += $s[2] - $s[1];} close IN; foreach my $up (keys(%reps)){ my $ratio = $reps{$up} / $lens{$up}; if($ratio > 0.75){print "$up\n";}}' | wc -l
+19,295
+
+# Zero read alignments
+samtools idxstats /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam | grep 'unplaced' | perl -lane 'if($F[2] == 0){print $F[0];}' | wc -l
+123
+```
+
+OK, so most, right off the bat, are highly repetitive. Let's do a Venn analysis to confirm.
+
+```bash
+grep unplaced ../gap_check/papadum-v13.full.fa.fai | perl -lane 'print $F[0];' > ars1_degen_master.list
+perl -e 'chomp(@ARGV); open(IN, "grep unplaced ../gap_check/papadum-v13.full.fa.fai |"); %lens; while(<IN>){chomp; @s = split(/\t/); $lens{$s[0]} = $s[1];} close IN; open(IN, "grep unplaced ../repeat_analysis/papadum-v13.full.repeatmask.out.bed |"); %reps; while(<IN>){chomp; @s = split(/\t/); $reps{$s[0]} += $s[2] - $s[1];} close IN; foreach my $up (keys(%reps)){ my $ratio = $reps{$up} / $lens{$up}; if($ratio > 0.75){print "$up\n";}}' > ars1_degen_rep_gt75.list
+perl -e 'chomp(@ARGV); open(IN, "grep unplaced ../gap_check/papadum-v13.full.fa.fai |"); %lens; while(<IN>){chomp; @s = split(/\t/); $lens{$s[0]} = $s[1];} close IN; open(IN, "grep unplaced ../repeat_analysis/papadum-v13.full.repeatmask.out.bed | grep Satellite |"); %reps; while(<IN>){chomp; @s = split(/\t/); $reps{$s[0]} += $s[2] - $s[1];} close IN; foreach my $up (keys(%reps)){ my $ratio = $reps{$up} / $lens{$up}; if($ratio > 0){print "$up\n";}}' > ars1_degen_rep_satellite.list
+samtools idxstats /mnt/nfs/nfs2/GoatData/Ilmn/papadum-v13/bwa-out/Goat-Ilmn-Freezev13.bam | grep 'unplaced' | perl -lane 'if($F[2] == 0){print $F[0];}' > ars1_degen_zero_reads.list
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl ars1_degen_master.list ars1_degen_rep_satellite.list ars1_degen_rep_gt75.list ars1_degen_zero_reads.list
+File Number 1: ars1_degen_master.list
+File Number 2: ars1_degen_rep_satellite.list
+File Number 3: ars1_degen_rep_gt75.list
+File Number 4: ars1_degen_zero_reads.list
+Set     Count
+1       3494	<- The only set that is not accounted for here
+1;2     3886
+1;2;3   21125
+1;2;3;4 5
+1;2;4   7
+1;3     687
+1;3;4   3
+1;4     108
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1 ars1_degen_master.list ars1_degen_rep_satellite.list ars1_degen_rep_gt75.list ars1_degen_zero_reads.list > ars1_unaccounted_for.list
+```
+
+## GWAS analysis and plot generation
+
+I need to select examples of remapped probes that show significant effects in Heather's GWAS. Let's start with the low-hanging fruit by taking the unmapped probes from the original CHIR_1.0 and checking their significance in the Peulh data.
+
+In the remapped 56k chip, the first 1409 markers are unmapped in CHIR_1.0.
+
+> pwd: /home/dbickhart/share/goat_assembly_paper/GWAS
+
+```bash
+head -n 1409 ../snp_probes/ADAPTmap_ARS1_updated_ignoreX.map | perl -lane 'if($F[0] == 0){next;}else{print "$F[0]\t$F[3]\t$F[1]";}' | perl -e 'chomp(@ARGV); %h; while(<STDIN>){chomp; @s = split(/\t/); $h{$s[2]} = "$s[0]:$s[1]";} open(IN, "< $ARGV[0]"); print "snp\tchr\tpos\tdistance\tpvalue\t-log10p\tFDR\tproportionVar\tcallRate\n"; while(<IN>){chomp; @s = split(/,/); if(exists($h{$s[0]}) && $s[5] > 2){print "$s[0]\t$s[1]\t$s[2]\t$s[3]\t$s[4]\t$s[5]\t$s[10]\t$s[11]\t$s[14]\n";}} close IN;' Peulh\ AGIN\ assembly.csv
+snp     chr     pos     distance        pvalue  -log10p FDR     proportionVar   callRate
+snp31007-scaffold3424-53240     3       103188580       0       0.00125982960141677     2.89968819152438        0.63533700850272        0.369811375711095       1
+snp50485-scaffold7244-13356     6       3106462 0       0.00799190836500886     2.09734950436155        0.884076934167077       0.268327332225227       1
+snp54629-scaffold834-105661     6       3237591 0       0.00564371471500465     2.24843494758081        0.806408447847567       0.28835576489127        1
+snp40027-scaffold5107-301       7       107694942       0       0.000741254328141377    3.13003275779978        0.577717899776732       0.396680780134015       1
+snp11230-scaffold1401-556817    12      87109949        0       2.03317637356759e-006   5.69182494563904        0.0522922797399718      0.632392457012523       1
+snp13191-scaffold1505-153770    26      45556525        0       0.00916246880419353     2.03798749100726        0.916942087196324       0.260347300254181       1
+snp4713-scaffold1153-307649     28      42140721        0       7.65446357828852e-006   5.11608523908096        0.0984344880008958      0.588609980477254       1
+snp4712-scaffold1153-270557     28      42177859        0       7.65446357828852e-006   5.11608523908096        0.0787475904007166      0.588609980477254       1
+snp24521-scaffold249-93325      29      38814227        0       0.00855510445876449     2.06777468330721        0.89809391480487        0.26435926350978        1
+```
+
+OK, we've got one marker to work with right now that is barely before the FDR cutoff: snp11230-scaffold1401-556817
+
+Let's grep out all of the markers on chr12 from the dataset. It looks like this marker is the second to last on the chromosome and is flanked by a long distance from the end of the chr.
+
+```R
+data <- read.delim("Peulh AGIN assembly.csv", sep=",", header=TRUE)
+chr12_markers <- data[data$Chromosome == 12, ]
+chr12_markers$X.log10.P.Value. <- as.numeric(levels(chr12_markers$X.log10.P.Value.))[chr12_markers$X.log10.P.Value.]
+plot(x = chr12_markers$Position, y =chr12_markers$X.log10.P.Value., col = ifelse(chr12_markers$Marker == "snp11230-scaffold1401-556817", "red", "black"))
+```
+
+Let's combine the data to draw out regions that have changed between the two assemblies.
+
+
+
+
