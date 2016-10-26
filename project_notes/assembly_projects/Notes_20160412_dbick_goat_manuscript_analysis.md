@@ -1959,6 +1959,258 @@ plot(x = chr12_markers$Position, y =chr12_markers$X.log10.P.Value., col = ifelse
 
 Let's combine the data to draw out regions that have changed between the two assemblies.
 
+```R
+library(Gviz)
 
+agil <- read.delim("Peulh_AGIN_assembly.csv", sep=",", header=TRUE)
+bgi <- read.delim("Peulh_Original_assembly.csv", sep=",", header=TRUE)
 
+agil.chr12 <- agil[agil$Chromosome == 12,]
+bgi.chr12 <- bgi[bgi$Chromosome == 12,]
 
+agil.chr12$X.log10.P.Value. <- as.numeric(levels(agil.chr12$X.log10.P.Value.))[agil.chr12$X.log10.P.Value.]
+bgi.chr12$X.log10.P.Value. <- as.numeric(levels(bgi.chr12$X.log10.P.Value.))[bgi.chr12$X.log10.P.Value.]
+
+chr <- 12
+start <- 83200000
+end <- 87249056
+
+# Axis track
+axisTrack <- GenomeAxisTrack()
+
+# log10 pvalues
+agil.chr12.granges <- GRanges(seqnames = 12, ranges = IRanges(start = agil.chr12$Position, end = agil.chr12$Position), score = agil.chr12$X.log10.P.Value.)
+bgi.chr12.granges <- GRanges(seqnames = 12, ranges = IRanges(start = bgi.chr12$Position, end = bgi.chr12$Position), score = bgi.chr12$X.log10.P.Value.)
+
+# Adding gene track
+ars1.genes <- read.delim("ars1_genbank_gene_refseq.chrnums.bed", header=FALSE)
+ars1.genes <- ars1.genes[ars1.genes$V1 != "",]
+ars1.genes <- droplevels(ars1.genes)
+ars1.genes <- ars1.genes[ars1.genes$V1 != "X",]
+ars1.genes <- droplevels(ars1.genes)
+ars1.genes.granges <- GRanges(seqnames = ars1.genes$V1, ranges = IRanges(start = ars1.genes$V2, end = ars1.genes$V3, names = ars1.genes$V4))
+
+ars1.genes.grtrack <- GeneRegionTrack(ars1.genes.granges, chromosome = chr, name = "RefSeq", ucscChromosomeNames=FALSE)
+
+# Generating log10p value tracks
+agil.chr12.dtrack <- DataTrack(agil.chr12.granges, name = "ARS1")
+bgi.chr12.dtrack <- DataTrack(bgi.chr12.granges, name = "CHIR_1.0")
+
+plotTracks(list(axisTrack, ars1.genes.grtrack, bgi.chr12.dtrack, agil.chr12.dtrack), from = start, to = end, cex = 1.5)
+
+# This ended up not working very well -- the CHIR_1.0 data won't line up very well
+```
+
+Going to try to identify probes that have "moved" and add them to the list.
+
+I wrote a script that identified all of the misordered/inverted probes and colored them differently. I ran it with a window size of 6 and a step of 3. Here is the script:
+
+```perl
+#!/usr/bin/perl
+# This is a script designed to use overlapping windows to "tag" SNP probes as having moved in our assembly based on their order in the "map" file.
+# The user can specify the window size and step of the window
+# Colors: green = moved. darkturquoise + blueviolet= stayed
+
+use strict;
+use Getopt::Std;
+
+my $usage = "perl $0 -i <input> -w <window size> -s <step> -o <output>\n";
+my %opts;
+getopt('iwso', \%opts);
+
+unless(defined($opts{'i'}) && defined($opts{'w'}) && defined($opts{'s'}) && defined($opts{'o'})){
+	print $usage;
+	exit;
+}
+
+# Assign GWAS alternating color scheme
+my %chrcolors;
+for(my $x = 1; $x < 31; $x++){
+	if($x % 2 == 0){
+		$chrcolors{$x} = "darkturquoise";
+	}else{
+		$chrcolors{$x} = "blueviolet";
+	}
+}
+$chrcolors{0} = "black";
+$chrcolors{31} = "blueviolet";
+
+my $winSize = $opts{'w'};
+my $step = $opts{'s'};
+
+my %probes; # container for probe colors
+my @probeOrder; # sorting probes by their appearance in the file
+my @rows; # container for the window
+
+open(my $IN, "< $opts{i}") || die "Could not open input! $usage\n";
+open(my $OUT, "> $opts{o}");
+
+# The first 1409 lines are all misplaced
+my $lcount = 0;
+
+while(my $line = <$IN>){
+	chomp $line;
+	my @lsegs = split(/\t/, $line);
+	$lsegs[0] =~ s/X/31/;
+	
+	if($lsegs[0] != 0){
+		$probes{$lsegs[1]} = "firebrick1";
+	}else{
+		$probes{$lsegs[1]} = "black";
+	}
+	push(@probeOrder, [$lsegs[1], $lsegs[0], $lsegs[3]]);
+	$lcount++;
+	if($lcount >= 1410){
+		last;
+	}
+}
+
+my $rowcount = 0;
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line); 
+	$segs[0] =~ s/X/31/; # Just to make this all numeric
+	
+	push(@rows, \@segs);
+	$probes{$segs[1]} = $chrcolors{$segs[0]};
+	push(@probeOrder, [$segs[1], $segs[0], $segs[3]]);
+	$rowcount++;
+	
+	# Logic to see if we need to check on our probes
+	if($rowcount == $winSize || eof($IN)){
+		# identify the consensus chr assignment
+		my %chrs;
+		foreach my $s (@rows){
+			if($s->[0] == 0){
+				next;
+			}
+			$chrs{$s->[0]} += 1;
+		}
+		
+		if(keys(%chrs) > 1){
+			# check if we're at the end of a chromosome
+			my $endofchr = 0;
+			my $previous = 0;
+			for(my $x = 0; $x < scalar(@rows); $x++){
+				if($rows[$x]->[0] == $previous || $rows[$x]->[0] == 0){
+					next;
+				}else{
+					if($x + 1 < scalar(@rows)){
+						# we can check one more entry at least
+						if($rows[$x]->[0] + 1 == $previous && $rows[$x + 1]->[0] == $rows[$x]->[0]){
+							$endofchr = 1;
+							last;
+						}
+					}else{
+						# We have to guess here
+						if($rows[$x]->[0] + 1 == $previous){
+							$endofchr = 1;
+							last;
+						}
+					}
+				}
+				$previous = $rows[$x]->[0];
+			}
+			
+			if(!$endofchr){
+				# The highest keys win and all others are mapped as disordered
+				my @sortkeys = sort{$chrs{$b} <=> $chrs{$a}} keys(%chrs);
+				foreach my $s (@rows){
+					if($sortkeys[0] != $s->[0] && $s->[0] != 0){
+						# This is a problem!
+						$probes{$s->[1]} = "firebrick1";
+					}
+				}
+			}
+		}else{
+			# Now to check to see if there are any big movements of markers within the same chromosome
+			# Continuity check -- if the probes are mapped in the wrong order or inverted order, paint them all
+			for(my $x = 1; $x < scalar(@rows) - 1; $x++){
+				my $revcheck = $rows[$x]->[3] - $rows[$x -1]->[3];
+				my $forcheck = $rows[$x + 1]->[3] - $rows[$x]->[3];
+				
+				# Checking if there are alternating negative numbers to determine ordering
+				if(($revcheck > 0 && $forcheck < 0) || ($revcheck < 0 && $forcheck > 0)){
+					if($rows[$x]->[0] != 0){
+						$probes{$rows[$x]->[1]} = "firebrick1";
+					}
+				}
+			}
+			
+			# Distance check -- if the probes are > 1 mb away from the previous probe, paint them
+			for(my $x = 1; $x < scalar(@rows); $x++){
+				if(abs($rows[$x]->[3] - $rows[$x - 1]->[3]) > 1000000 ){
+					$probes{$rows[$x]->[1]} = "firebrick1";
+				}
+			}
+		}
+		
+		# OK, we've checked it out. Time to remove the number of steps from the window region
+		$rowcount -= $step;
+		for(my $x = 0; $x < $step && $x < scalar(@rows); $x++){
+			shift(@rows);
+		}
+	}
+}
+
+close $IN;
+
+foreach my $row (@probeOrder){
+	my $color = $probes{$row->[0]};
+	print {$OUT} $row->[0] . "\t" . $row->[1] . "\t" . $row->[2] . "\t$color\n";
+}
+
+close $OUT;
+exit;
+
+```
+
+Now to associate the probes with the revised colors, and print them in a GWAS manhattan plot.
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[3];} close IN; open(IN, "< $ARGV[1]"); $l = <IN>; print "snp\tchr\tpos\tlog10p\tcolor\n"; while(<IN>){chomp; $_ =~ s/\r//g; @s = split(/,/); $color = $h{$s[0]}; print "$s[0]\t$s[1]\t$s[2]\t$s[5]\t$color\n";} close IN;' ADAPTmap_ARS1_mismatched_6_3.tab Peulh_AGIN_assembly.csv > Peulh_AGIN_assembly_colorized_pvalues.tab
+```
+
+Finally, to go to town in R to generate the genome wide plot and the individual chromosome data. 
+
+```R
+input <- read.delim("Peulh_AGIN_assembly_colorized_pvalues.tab")
+input.filtered <- input[input$chr != 0,]
+source("sample_lattice_plot.R")
+ann<-rep(1, length(input.filtered$log10p))
+ann[with(input.filtered, color=="firebrick1")]<-2
+ann <- factor(ann, levels=1:2, labels=c("", "moved"))
+
+input.filtered$log10p <- as.numeric(levels(input.filtered$log10p))[input.filtered$log10p]
+input.filtered$chr <- factor(input.filtered$chr, levels = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, "X"))
+
+ann <-rep(1,length(input.filtered$log10p))
+ann[with(input.filtered, color == "firebrick1")] <- 2
+ann<-factor(ann, levels=1:2, labels=c("","missing"))
+
+manhattan.plot(input.filtered$chr, input.filtered$pos, input.filtered$log10p, annotate=ann, sig.level=2e-6, ylim=c(0,6))
+```
+
+Something was really wrong with the function. Trying with a different manhattan plot function:
+
+```R
+library(qqman)
+input.altered <- data.frame(input.filtered$snp, input.filtered$chr, input.filtered$pos, 10^-input.filtered$log10p)
+colnames(input.altered) <- c("SNP", "CHR", "BP", "P")
+
+input.altered.noX <- input.altered[input.altered$CHR != "X",]
+input.altered.noX$CHR <- as.numeric(levels(input.altered.noX$CHR))[input.altered.noX$CHR]
+snpsOfInterest <-input.filtered[input.filtered$color == "firebrick1", "snp"]
+
+# Whole genome with highlights
+manhattan(input.altered.noX, highlight = snpsOfInterest, ylim=c(0,9), cex = 0.5)
+
+# Chr12
+manhattan(subset(input.altered.noX, CHR == 12), highlight = snpsOfInterest, ylim=c(0,9), cex = 0.5, cex.axis = 0.8)
+```
+
+We selected chr28 instead. Let me pull the region around the two markers that almost show significance for Body size.
+
+```R
+# Here is our region that we want to plot
+input.filtered[input.filtered$chr == 28 & input.filtered$pos > 41900000 & input.filtered$pos < 42560000,]
