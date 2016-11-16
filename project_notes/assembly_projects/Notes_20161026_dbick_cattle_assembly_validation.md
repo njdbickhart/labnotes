@@ -25,3 +25,61 @@ ls /mnt/nfs/nfs2/SequenceData/Dominette/Dominette_NextSeq_data/*/*.fastq.gz | pe
 # UMD3
 perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs dominette_nextseq_file_list.tab --output umd3 --reference ../../Genomes/Bos_taurus.UMD3.1.73.fa --config ./quick_pipeline.cnfg --threads 4
 
+```
+
+Serge's pipeline only works with SGE. I need to hijack some of his commands to run Lumpy and the other tools without using his full pipeline.
+
+```bash
+# Preparing discordant and split read bam files
+samtools view -b -F 1294 btau4/dominette_merged_btau4.bam > btau4/dominette_merged_btau4.discordants.bam
+samtools view -h btau4/dominette_merged_btau4.bam \
+          | ~/lumpy-sv/scripts/extractSplitReads_BwaMem -i stdin \
+          | samtools view -Sb - \
+          > btau4/dominette_merged_btau4.splitters.bam
+
+samtools index btau4/dominette_merged_btau4.discordants.bam
+samtools index btau4/dominette_merged_btau4.splitters.bam
+
+# Lumpy analysis
+pars=`samtools view btau4/dominette_merged_btau4.bam | head -n100000 | ~/lumpy-sv/scripts/pairend_distro.py -r 150 -X 4 -N 10000 -o btau4/dominette_merged_btau4.histo`
+mean=`echo $pars | grep 'mean' | awk '{print $1}' |sed s/mean://g`
+sd=`echo $pars |grep 'mean' | awk '{print $NF}' |sed s/stdev://g`
+MIN=`echo "$mean $sd" |awk '{printf("%d\n", $1-3*$2)}' |awk '{if ($1 < 0) print 0}'`
+MAX=`echo "$mean $sd" |awk '{printf("%d\n", $1+3*$2)}'`
+
+PE=""
+SR=""
+
+PE="$PE -pe id:sample,bam_file:btau4/dominette_merged_btau4.discordants.bam,histo_file:btau4/dominette_merged_btau4.histo,mean:$mean,stdev:$sd,read_length:150,min_non_overlap:150,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20"
+SR="$SR -sr id:sample,bam_file:btau4/dominette_merged_btau4.splitters.bam,back_distance:10,min_mapping_threshold:20,weight:1,min_clip:20"
+lumpy -mw 4 -tt 0 $PE $SR > btau4/dominette_merged_btau4.lumpy.vcf
+
+# FRC bam
+PE=""
+PE="$PE --pe-sam btau4/dominette_merged_btau4.bam --pe-max-insert $MAX"
+FRC $PE --genome-size $GS --output btau4/dominette_merged_btau4
+
+# Freebayes
+$FREEBAYES -C 2 -0 -O -q 20 -z 0.02 -E 0 -X -u -p 1 -F 0.5 -b btau4/dominette_merged_btau4.bam -v btau4/dominette_merged_btau4.bayes.vcf -f $ASM
+
+# QV estimate
+NUM_SNP=`cat btau4/dominette_merged_btau4.bayes.vcf |grep -v "#" | awk -F "\t" '{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$8}' | tr ';' ' ' | sed s/AB=//g | awk -v WEIGHT=$WEIGHT '{if ($6 > WEIGHT) print $0}' | awk -v SUM=0 '{if (length($4) == length($5)) { SUM+=length($4); } else if (length($4) < length($5)) { SUM+=length($5)-length($4); } else { SUM+=length($4)-length($5)}} END { print SUM}'`
+
+NUM_BP=`samtools depth btau4/dominette_merged_btau4.bam |awk '{if ($NF >= 3) SUM++; } END { print SUM}'`
+QV=`echo "$NUM_SNP $NUM_BP" | awk '{print (-10*log($1/$2)/log(10))}'`
+echo $QV > btau4/dominette_merged_btau4.qv
+```
+
+I consolidated the above code into a shell script that can run on each merged bam file in sequence.
+
+```bash
+sh serge_script_oneshot.sh btau4/dominette_merged_btau4 /mnt/iscsi/vnx_gliu_7/reference/bosTau4.fa.gz
+
+sh serge_script_oneshot.sh umd3/dominette.merged.umd3 /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa
+```
+
+I am also queuing up the new assembly (pre pilon).
+
+```bash
+bwa index canu/topolish.filledWithCanuAndPBJelly.fasta.gz ; samtools faidx canu/topolish.filledWithCanuAndPBJelly.fasta.gz ; perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs dominette_nextseq_file_list.tab --output canu --reference canu/topolish.filledWithCanuAndPBJelly.fasta.gz --config ./quick_pipeline.cnfg --threads 4
+```
