@@ -191,3 +191,12 @@ samtools faidx tims_fastas_vector_trimmed.fa RP42-168O11_LRC RP42-141D20_LRC RPC
 bwa mem /mnt/nfs/nfs2/dbickhart/dominette_asm/canu/topolish.filledWithCanuAndPBJelly.fasta.gz tims_unpolished_lrcs.fa > tims_unpolished_lrcs.sam
 
 perl -lane 'if($F[0] =~ /^@/){next;}else{$e = 0; while($F[5] =~ /(\d+)(\D{1})/g){if($2 eq "M" || $2 eq "D" || $2 eq "S" || $2 eq "X"){$e += $1;}} $e += $F[3]; $l = $e - $F[3]; print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$e\t$l";}' < tims_unpolished_lrcs.sam
+
+# Highlighting a particular region now
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/canu/topolish.filledWithCanuAndPBJelly.fasta 18:63325473-63465228 > canu_assembly_lrc_region.fa
+samtools faidx tims_fastas_vector_trimmed.fa RP42-168O11_LRC > RP42-168O11_LRC.fa
+bwa mem /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa RP42-168O11_LRC.fa > RP42-168O11_LRC.sam
+
+perl -lane 'if($F[0] =~ /^@/){next;}else{$e = 0; while($F[5] =~ /(\d+)(\D{1})/g){if($2 eq "M" || $2 eq "D" || $2 eq "S" || $2 eq "X"){$e += $1;}} $e += $F[3]; $l = $e - $F[3]; print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$e\t$l";}' < RP42-168O11_LRC.sam
+
+samtools faidx /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa chr18:63342820-63479594 > umd3_lrc_region.fa
