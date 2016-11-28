@@ -9,6 +9,7 @@ These are my notes on the conclusion of the analysis of the goat reference genom
 * [Preparing data for NCBI](#ncbi)
 * [Centromere repeat check](#centromere)
 * [Gap check update](#gapupdate)
+* [RH map probe aligns](#rhmapaligns)
 
 <a name="correlation"></a>
 ## Spearman rank correlation of Lachesis
@@ -2214,3 +2215,30 @@ We selected chr28 instead. Let me pull the region around the two markers that al
 ```R
 # Here is our region that we want to plot
 input.filtered[input.filtered$chr == 28 & input.filtered$pos > 41900000 & input.filtered$pos < 42560000,]
+```
+<a name="rhmapaligns"></a>
+## RH map probe aligns
+
+I need to check the RH order on each assembly so that Ben can align the data in a comparison plot. Here is the RH map probe fasta location:
+
+* /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta
+
+And here are the assemblies that I need to align against:
+
+* /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4BNG/papadum-v4bng-pilon.full.fa
+* /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Lachesis-2015-10-22-min/papadum-v5lachesis.full.fa
+* /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/goat_assembly/rh_map/assembly_aligns
+
+```bash
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Lachesis-2015-10-22-min/papadum-v5lachesis.full.fa /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta > lachesis_min_rhprobe_order.sam
+
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/Papadum-v4BNG/papadum-v4bng-pilon.full.fa /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta > bng_rhprobe_order.sam
+
+bwa mem /mnt/nfs/nfs2/GoatData/Goat-Genome-Assembly/BGI_chi_2/CHIR_2.0_fixed.fa /mnt/nfs/nfs2/GoatData/RH_map/RHmap_probe_sequences.fasta > chir2_rhprobe_order.sam
+
+
+perl -lane 'if($F[0] =~ /^@/){next;}else{if($F[2] eq "*"){$F[2] = "UNMAP"; $F[3] = "UNMAP";} print "$F[0]\t$F[2]\t$F[3]";}' < lachesis_min_rhprobe_order.sam > lachesis_min_rhprobe_order.tab
+
+perl -lane 'if($F[0] =~ /^@/){next;}else{if($F[2] eq "*"){$F[2] = "UNMAP"; $F[3] = "UNMAP";} print "$F[0]\t$F[2]\t$F[3]";}' < bng_rhprobe_order.sam > bng_rhprobe_order.tab

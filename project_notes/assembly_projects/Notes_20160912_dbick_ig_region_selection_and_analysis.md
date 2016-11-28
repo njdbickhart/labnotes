@@ -150,3 +150,44 @@ CH240_231B16    2       1       ScbfJmS_2297    5662    2       ScbfJmS_1659    
 ```
 
 **NOTE: The RPCI-42 clone that we need is: 567N23**
+
+## SNP selection and curation
+
+I need to test the feasibility of selecting SNPs from the new cattle assembly vs the individual contigs. Let's prepare the contigs for alignment and then align the entirety of John's holstein to them for subsequent variant calling.
+
+Here's what I need to do:
+* organize the contigs into a larger fasta file
+* align dominette's data to them and pilon correct them
+* align john's holstein data to the uncorrected contigs
+* prepare a table with distinguishing SNPs for each contig
+
+Let's start with the preparation:
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/immune_grant/assembly_wgs_align
+
+```bash
+# Getting John's holsteins into a format that lets me run my alignment program on them
+ls /mnt/cifs/bickhart-qnap/john_holstein/*/Project_AIPL/*/*.fastq.gz | perl -e '%h; while(<>){chomp; @b = split(/\//); @s = split(/[\_\.]/, $b[-1]); $h{$s[0]}->{$b[5]}->{$s[4]}->{$s[2]}->{$s[3]} = join("/", @b);} foreach my $an (keys(%h)){foreach my $flow (keys(%{$h{$an}})){ foreach my $split (keys(%{$h{$an}->{$flow}})){ foreach my $lane (keys(%{$h{$an}->{$flow}->{$split}})){ print $h{$an}->{$flow}->{$split}->{$lane}->{"R1"} . "\t" . $h{$an}->{$flow}->{$split}->{$lane}->{"R2"} . "\t$flow\t$an\n";}}}}' > john_animals_list.spreadsheet.simple
+
+# I used vim to edit this list to remove the single file entries
+
+# preparing the contig fastas for pilon correction
+cat /mnt/nfs/nfs2/dbickhart/transfer/tim_assemblies/LIB144*.fasta > tims_fastas_vector_trimmed.fa
+# I used vim to change the fasta headers into the actual clone names
+bwa index tims_fastas_vector_trimmed.fa; samtools faidx tims_fastas_vector_trimmed.fa
+
+# I'm just going to use a subsection of the reads from the dominette lung tissue list here
+bwa mem tims_fastas_vector_trimmed.fa /mnt/nfs/nfs2/SequenceData/Dominette/Dominette_NextSeq_data/Run_1/LIB18483_S1_L003_R1_001.fastq.gz /mnt/nfs/nfs2/SequenceData/Dominette/Dominette_NextSeq_data/Run_1/LIB18483_S1_L003_R2_001.fastq.gz | samtools view -bS -F 4 - | samtools sort -o tims_fastas_vector_trimmed.bam -T tims -
+
+```
+
+I need a figure to show a good comparison with the old assembly. Let's do an alignment of the LRC cluster to get the positions of these genes on UMD and the canu assembly.
+
+```bash
+# First extract the fastas
+samtools faidx tims_fastas_vector_trimmed.fa RP42-168O11_LRC RP42-141D20_LRC RPCI42_65A17_LRC > tims_unpolished_lrcs.fa
+
+# Canu alignment
+bwa mem /mnt/nfs/nfs2/dbickhart/dominette_asm/canu/topolish.filledWithCanuAndPBJelly.fasta.gz tims_unpolished_lrcs.fa > tims_unpolished_lrcs.sam
+
+perl -lane 'if($F[0] =~ /^@/){next;}else{$e = 0; while($F[5] =~ /(\d+)(\D{1})/g){if($2 eq "M" || $2 eq "D" || $2 eq "S" || $2 eq "X"){$e += $1;}} $e += $F[3]; $l = $e - $F[3]; print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$e\t$l";}' < tims_unpolished_lrcs.sam
