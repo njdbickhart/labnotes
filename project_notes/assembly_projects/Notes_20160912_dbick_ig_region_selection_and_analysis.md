@@ -200,3 +200,6 @@ bwa mem /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa RP42-168O11_LRC
 perl -lane 'if($F[0] =~ /^@/){next;}else{$e = 0; while($F[5] =~ /(\d+)(\D{1})/g){if($2 eq "M" || $2 eq "D" || $2 eq "S" || $2 eq "X"){$e += $1;}} $e += $F[3]; $l = $e - $F[3]; print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$e\t$l";}' < RP42-168O11_LRC.sam
 
 samtools faidx /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa chr18:63342820-63479594 > umd3_lrc_region.fa
+
+samtools index tims_fastas_vector_trimmed.bam
+~/jdk1.8.0_05/bin/java -Xmx80g -jar ~/pilon-1.16.jar --genome tims_fastas_vector_trimmed.fa --frags tims_fastas_vector_trimmed.bam --diploid --nostrays --threads 10 --output tims_fastas_vector_pilon
