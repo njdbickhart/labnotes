@@ -610,3 +610,36 @@ perl -lane '$type = "1000"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~
 perl -lane '$type = "1000"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_2_3_6.txt >> current_list_of_animals.tab
 perl -lane '$type = "Liu"; open(IN, "echo $F[0] | key2ID2 |"); $l = <IN>; $l =~ s/^\s+//; @s = split(/\s+/, $l); print "$s[0]\t$s[1]\t$type"; close IN;' < group_3_5_6.txt >> current_list_of_animals.tab
 ```
+
+
+## Processing Joel's data
+
+Most of the files are on the 306 server; however, the Genome Canda data remains on the 3850. Rather than take a year and a half to transfer this data, I'm going to generate a BCF in situ and then copy that over.
+
+Here's the pipeline:
+
+* samtools mpileup -- bcf
+* bcftools merge -- all bcfs into one
+* bcftools call -- on the superset bcf file
+
+That should merge the datasets into a good block without needing to transfer huge files around. 
+
+Some problems I need to fix: 
+
+* Steve did not add read groups to his bams
+* The 1000 bulls data is in the UMD upper case "Chr" format
+
+Just because I need to change Steve's bams in any case, I will reformat them with the upper case "Chr" to conform to the 1000 bulls UMD3 version.
+
+First, let's get the 3850 data out of the way before Monday:
+
+> 3850: /seq1/genome_canada
+
+```bash
+samtools mpileup -go genome.canada.raw.bcf -f ../reference/umd_3_1_reference_1000_bull_genomes.fa HOLCANM000005279989.bam HOLCANM000006026421.bam HOLCANM000100745543.bam HOLDEUM000000253642.bam HOLGBRM000000598172.bam HOLITAM006001001962.bam HOLUSAM000002265005.bam HOLUSAM000002297473.bam HOLUSAM000017129288.bam HOLUSAM000017349617.bam HOLUSAM000123066734.bam HOLUSAM000132973942.bam
+
+# That was going to take forever. Going to script it to go faster
+for i in *.bam; do echo -n "$i,"; done; echo
+perl ~/perl_toolchain/sequence_data_scripts/samtoolsMpileupFork.pl -r ../reference/umd_3_1_reference_1000_bull_genomes.fa -i HOLCANM000005279989.bam,HOLCANM000006026421.bam,HOLCANM000100745543.bam,HOLDEUM000000253642.bam,HOLGBRM000000598172.bam,HOLITAM006001001962.bam,HOLUSAM000002265005.bam,HOLUSAM000002297473.bam,HOLUSAM000017129288.bam,HOLUSAM000017349617.bam,HOLUSAM000123066734.bam,HOLUSAM000132973942.bam -o genome_canada -n 10
+```
+
