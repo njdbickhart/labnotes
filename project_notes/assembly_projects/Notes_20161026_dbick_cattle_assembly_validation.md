@@ -83,3 +83,89 @@ I am also queuing up the new assembly (pre pilon).
 ```bash
 bwa index canu/topolish.filledWithCanuAndPBJelly.fasta.gz ; samtools faidx canu/topolish.filledWithCanuAndPBJelly.fasta.gz ; perl ~/perl_toolchain/sequence_data_pipeline/runMergedBamPipeline.pl --fastqs dominette_nextseq_file_list.tab --output canu --reference canu/topolish.filledWithCanuAndPBJelly.fasta.gz --config ./quick_pipeline.cnfg --threads 4
 ```
+
+OK, the shell script had a few problems. For starters, freebayes can't handle gzipped fastas. Rerunning the last steps of the pipeline.
+
+```bash
+# btau4
+samtools depth dominette_merged_btau4.bam | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if($s[2] >= 3){$c++;}} print "$c\n";'
+	2697640645
+freebayes -C 2 -0 -O -q 20 -z 0.02 -E 0 -X -u -p 2 -F 0.5 -b dominette_merged_btau4.bam -v dominette_merged_btau4.bayes.vcf -f /mnt/iscsi/vnx_gliu_7/reference/bosTau4.fa
+perl -e '$c = 0; while(<>){chomp; @F = split(/\t/); if($F[0] =~ /^#/){next;} ($ab) = $F[7] =~ /AB=(.{1,10})\;ABP/; if($ab < 0.65){next;}else{ $la = length($F[3]); $lb = length($F[4]); if($la == $lb){$c++;}elsif($la < $lb){$c += $lb - $la;}else{$c += $la - $lb;}}} print "$c\n";' < dominette_merged_btau4.bayes.vcf
+	281999
+
+perl -e '$ns = 281999; $nb = 2697640645; print (-10 * log($ns/$nb)/log(10)); print "\n";'
+	39.8073652818702 # Btau4 qv
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f dominette_merged_btau4_Features.txt -c 1
+Entry   Count
+COMPR_PE        6407
+HIGH_COV_PE     4406
+HIGH_NORM_COV_PE        3671
+HIGH_OUTIE_PE   988
+HIGH_SINGLE_PE  3247
+HIGH_SPAN_PE    9240
+LOW_COV_PE      135529
+LOW_NORM_COV_PE 137377
+STRECH_PE       16385
+
+perl -lane '$F[10] =~ s/TYPE://g; print "$F[10]";' < dominette_merged_btau4.lumpy.vcf | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0
+Entry   Count
+DELETION        12870
+DUPLICATION     1305
+INTERCHROM      9031
+INVERSION       2152
+
+# Errors per 100 mbp = (25358 / 28.0) = 905.64
+
+# umd3
+samtools depth dominette.merged.umd3.bam | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if($s[2] >= 3){$c++;}} print "$c\n";'
+	2633997017
+freebayes -C 2 -0 -O -q 20 -z 0.02 -E 0 -X -u -p 2 -F 0.5 -b dominette.merged.umd3.bam -v dominette.merged.umd3.bayes.vcf -f ../../../Genomes/Bos_taurus.UMD3.1.73.fa
+perl -e '$c = 0; while(<>){chomp; @F = split(/\t/); if($F[0] =~ /^#/){next;} ($ab) = $F[7] =~ /AB=(.{1,10})\;ABP/; if($ab < 0.65){next;}else{ $la = length($F[3]); $lb = length($F[4]); if($la == $lb){$c++;}elsif($la < $lb){$c += $lb - $la;}else{$c += $la - $lb;}}} print "$c\n";' < dominette.merged.umd3.bayes.vcf
+	300091
+
+perl -e '$ns = 300091; $nb = 2633997017; print (-10 * log($ns/$nb)/log(10)); print "\n";'
+	39.4336230805122 # UMD3 qv
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f dominette.merged.umd3_Features.txt -c 1
+Entry   Count
+COMPR_PE        12348
+HIGH_COV_PE     7660
+HIGH_NORM_COV_PE        7169
+HIGH_OUTIE_PE   2303
+HIGH_SINGLE_PE  1295
+HIGH_SPAN_PE    4135
+LOW_COV_PE      64527
+LOW_NORM_COV_PE 67417
+STRECH_PE       21891
+
+perl -lane '$F[10] =~ s/TYPE://g; print "$F[10]";' < dominette.merged.umd3.lumpy.vcf | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0
+Entry   Count
+DELETION        13963
+DUPLICATION     2493
+INTERCHROM      8711
+INVERSION       5470
+
+# Errors per 100 mbp = (30637 / 28.0) = 1094.18
+```
+
+OK, let's summarize things:
+
+| Feature | Btau4 | UMD3 | Description
+| :--- | ---: | ---: | :--- |
+| QV | 39.80 | 39.43 | Phred-based assessment of INDEL and SNP errors in assembly |
+| Errors / 100 Mbp | 905.64 | 1094.18 | Ratio of Lumpy SV calls per 100 Mbp |
+| DELETION | 12870 | 13963 | Lumpy-SV deletions |
+| DUPLICATION | 1305 | 2493 | Lumpy-SV duplications |
+| INTERCHROM | 9031 |  8711 | Lumpy-SV interchromosome regions |
+| INVERSION | 2152 |  5470 | Lumpy-SV inversions |
+|COMPR_PE         |   6407|12348| Areas with low CE statistics |
+|HIGH_COV_PE      |   4406|7660| Higher read coverage |
+|HIGH_NORM_COV_PE |   3671|7169| High coverage of normal paired-end reads |
+|HIGH_OUTIE_PE    |    988|2303| Regions with high numbers of misoriented or distant pairs |
+|HIGH_SINGLE_PE   |   3247|1295| Regions with high numbers of unmapped pairs |
+|HIGH_SPAN_PE     |   9240|4135| Regions with high numbers of disc. pairs that map to different scaffolds |
+|LOW_COV_PE       | 135529|64527| Low read coverage |
+|LOW_NORM_COV_PE  | 137377|67417| Low coverage of normal paired-end reads |
+|STRECH_PE        |  16385|21891| Areas with high CE statistics |
