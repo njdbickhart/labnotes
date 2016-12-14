@@ -643,3 +643,32 @@ for i in *.bam; do echo -n "$i,"; done; echo
 perl ~/perl_toolchain/sequence_data_scripts/samtoolsMpileupFork.pl -r ../reference/umd_3_1_reference_1000_bull_genomes.fa -i HOLCANM000005279989.bam,HOLCANM000006026421.bam,HOLCANM000100745543.bam,HOLDEUM000000253642.bam,HOLGBRM000000598172.bam,HOLITAM006001001962.bam,HOLUSAM000002265005.bam,HOLUSAM000002297473.bam,HOLUSAM000017129288.bam,HOLUSAM000017349617.bam,HOLUSAM000123066734.bam,HOLUSAM000132973942.bam -o genome_canada -n 10
 ```
 
+I started reformatting Steve's bams on Fry:
+
+> Fry(251): /mnt/nfs/nfs2/bickhart-users/bard_reheader_bams
+
+```bash
+for i in /mnt/nfs/nfs2/bickhart-users/BDickhart-CF-BARD/*/bwa-out/*.bam; do entry=`basename $i | cut -d'.' -f1`; echo $entry; sbatch reheaderScript.sh $i $entry; done
+```
+
+I gave each task 48 hours to complete -- not sure if that is enough! Here is the script I wrote to process each BAM:
+
+> /mnt/nfs/nfs2/bickhart-users/bard_reheader_bams/reheaderScript.sh
+
+```bash
+#!/usr/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=4
+#SBATCH --mem=16000
+#SBATCH --workdir=/mnt/nfs/nfs2/bickhart-users/bard_reheader_bams/bams
+#SBATCH --time=2880
+#SBATCH --output=/mnt/nfs/nfs2/bickhart-users/bard_reheader_bams/stdout/reheader.%N.%j.out
+#SBATCH --error=/mnt/nfs/nfs2/bickhart-users/bard_reheader_bams/stderr/reheader.%N.%j.err
+
+module load samtools/1.3-20-gd49c73b
+
+basename=`basename $1 | cut -d'.' -f1`
+cd /mnt/nfs/nfs2/bickhart-users/bard_reheader_bams/bams
+time samtools view -h $1 | sed 's/chr/Chr/g' | samtools view -bS - | samtools addreplacerg -r '@RG\tID:$basename[0]\tPL:Illumina\tLB:$basename[0]\tSM:$basename[0]' -o ${basename}.reheader.bam -
+wait
+```
