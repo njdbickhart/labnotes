@@ -672,3 +672,10 @@ cd /mnt/nfs/nfs2/bickhart-users/bard_reheader_bams/bams
 time samtools view -h $1 | sed 's/chr/Chr/g' | samtools view -bS - | samtools addreplacerg -r '@RG\tID:$basename[0]\tPL:Illumina\tLB:$basename[0]\tSM:$basename[0]' -o ${basename}.reheader.bam -
 wait
 ```
+
+
+Now to index them all.
+
+```bash
+for i in `ls bams/*.bam`; do sbatch indexBams.sh $i; done
+```
