@@ -678,4 +678,10 @@ Now to index them all.
 
 ```bash
 for i in `ls bams/*.bam`; do sbatch indexBams.sh $i; done
+
+ls bams | grep -v 'JE' > holstein_reheader_bam.list
+# Going to try the list input in samtools
+
+perl -lane '$F[0] =~ s/c/C/; print $F[0];' < /mnt/nfs/nfs2/dbickhart/samtools_chr_segs.txt > /mnt/nfs/nfs2/dbickhart/umd3_cap_samtools_segs.txt
+
 ```
