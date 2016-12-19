@@ -684,4 +684,6 @@ ls bams | grep -v 'JE' > holstein_reheader_bam.list
 
 perl -lane '$F[0] =~ s/c/C/; print $F[0];' < /mnt/nfs/nfs2/dbickhart/samtools_chr_segs.txt > /mnt/nfs/nfs2/dbickhart/umd3_cap_samtools_segs.txt
 
+perl -lane 'system("sbatch mpileupScript.sh holstein_reheader_bam.list $F[0]");' < ../../dbickhart/umd3_cap_samtools_segs.txt
+
 ```
