@@ -686,4 +686,43 @@ perl -lane '$F[0] =~ s/c/C/; print $F[0];' < /mnt/nfs/nfs2/dbickhart/samtools_ch
 
 perl -lane 'system("sbatch mpileupScript.sh holstein_reheader_bam.list $F[0]");' < ../../dbickhart/umd3_cap_samtools_segs.txt
 
+# Some files took longer than the 1600 minutes I originally designated. I requeued them with an sbatch with 2000+ minutes
 ```
+
+
+I now need to transfer some files over to the 3850 and to identify which 100 bull project bams I need to still process.
+
+> 3850: /seq1
+
+```bash
+# Getting the lists ready so that I'm not analyzing redundant bulls
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl bickhart/side_projects/joels_bulls/joels_bulls_we_already_have.list bickhart/side_projects/joels_bulls/100_bulls_holsteins.list bickhart/side_projects/joels_bulls/canadian_bulls.list
+File Number 1: bickhart/side_projects/joels_bulls/joels_bulls_we_already_have.list
+File Number 2: bickhart/side_projects/joels_bulls/100_bulls_holsteins.list
+File Number 3: bickhart/side_projects/joels_bulls/canadian_bulls.list
+Set     Count
+1;2     6
+1;2;3   3
+1;3     9
+2       28
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1_2 bickhart/side_projects/joels_bulls/joels_bulls_we_already_have.list bickhart/side_projects/joels_bulls/100_bulls_holsteins.list bickhart/side_projects/joels_bulls/canadian_bulls.list
+File Number 1: bickhart/side_projects/joels_bulls/joels_bulls_we_already_have.list
+File Number 2: bickhart/side_projects/joels_bulls/100_bulls_holsteins.list
+HOUSA000002040728
+HOUSA000002147486
+HOUSA000122358313
+HOUSA000001697572
+HOUSA000002290977
+HOUSA000002103297
+
+```
+
+> Blade14: /mnt/nfs/nfs2/dbickhart/joel_1000_bulls_data
+
+```
+# Copying files over to the shared drive
+for i in HOUSA000002040728 HOUSA000002147486 HOUSA000122358313 HOUSA000001697572 HOUSA000002290977 HOUSA000002103297; do name=${i}.reformatted.sorted.bam; echo $name; cp /mnt/cifs/bickhart-qnap/1000_bulls_bams/$name ./ & done
+```
+
+
