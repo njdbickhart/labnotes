@@ -725,4 +725,16 @@ HOUSA000002103297
 for i in HOUSA000002040728 HOUSA000002147486 HOUSA000122358313 HOUSA000001697572 HOUSA000002290977 HOUSA000002103297; do name=${i}.reformatted.sorted.bam; echo $name; cp /mnt/cifs/bickhart-qnap/1000_bulls_bams/$name ./ & done
 ```
 
+Now, indexing and processing them.
+
+> Fry: /mnt/nfs/nfs2/bickhart-users/bard_reheader_bams/
+
+```bash
+for i in `ls /mnt/nfs/nfs2/dbickhart/joel_1000_bulls_data/*.bam`; do sbatch indexBams.sh $i; done
+
+# Now to process them
+ls /mnt/nfs/nfs2/dbickhart/joel_1000_bulls_data/*.bam > 100_bulls_holstein_bam.list
+perl -lane 'system("sbatch mpileupScript.sh 100_bulls_holstein_bam.list $F[0]");' < ../../dbickhart/umd3_cap_samtools_segs.txt
+```
+
 
