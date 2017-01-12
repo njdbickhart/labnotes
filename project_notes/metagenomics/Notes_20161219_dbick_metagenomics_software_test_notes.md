@@ -6,6 +6,7 @@ These are my notes on tinkering around on previously generated metagenomics and 
 
 ## Table of Contents
 * [The Austrian Acidosis dataset summary](#austriansummary)
+* [Meta-analysis of metagenomics WGS data](#metanalysis)
 
 
 <a name="austriansummary"></a>
@@ -46,3 +47,18 @@ mkdir fastqs
 mv ./*.fastq ./fastqs/
 ```
 
+<a name="metanalysis"></a>
+## Meta-analysis of metagenomics WGS data
+
+I think that there are a number of studies on SRA that consist of WGS experiments on cattle rumen. I am hoping to download just the cattle data, process it through [MASH](https://github.com/marbl/Mash) and then identify inter-individual variability/WGS coverage bias using the dataset.
+
+I have selected a large group of WGS experiments from SRA, and I have removed mischaracterized datasets that point to chicken, pig or other ruminants. The list of files is in SharedFolders/metagenomics/metanalysis/sra_file_accession_list.csv
+
+I am now going to download the list of fastqs from SRA to perform the downstream analysis.
+
+> Fry: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/datasources
+
+```bash
+# sending off the list of accession entries to fastq-dump
+cat accession_list.txt | xargs -I {} sbatch --nodes 1 --tasks-per-node 1 --mem 500 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/sratoolkit.2.8.1-centos_linux64/bin/fastq-dump.2 -I --split-files {}"
+```
