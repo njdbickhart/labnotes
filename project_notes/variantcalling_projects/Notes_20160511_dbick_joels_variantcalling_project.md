@@ -849,4 +849,8 @@ mkdir vcfs
 
 # And the submission of the "all animals" bcfs for calling
 ls bcfs/all_animals_subset_Chr*.bcf | xargs -I {} sbatch callSNPs.sh {}
+
+mkdir annotation
+ls vcfs | xargs -I {} sbatch annotateSNPs.sh {}
+
 ```
