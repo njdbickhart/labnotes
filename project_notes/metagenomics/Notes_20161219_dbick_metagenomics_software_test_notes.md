@@ -62,3 +62,10 @@ I am now going to download the list of fastqs from SRA to perform the downstream
 # sending off the list of accession entries to fastq-dump
 cat accession_list.txt | xargs -I {} sbatch --nodes 1 --tasks-per-node 1 --mem 500 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/sratoolkit.2.8.1-centos_linux64/bin/fastq-dump.2 -I --split-files {}"
 ```
+
+Now I need to try to generate Mash sketches. First, I'd like to see how kmer size impacts MASH sketch attributes. Let's test this out on a range of sizes.
+
+```bash
+mkdir sketch_test
+#noise filter = 2, 15mer
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 15 -r -m 2 -o sketch_test/DRR017219_15 datasources/DRR017219_1.fastq datasources/DRR017219_2.fastq"

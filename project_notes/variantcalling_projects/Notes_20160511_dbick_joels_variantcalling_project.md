@@ -852,5 +852,8 @@ ls bcfs/all_animals_subset_Chr*.bcf | xargs -I {} sbatch callSNPs.sh {}
 
 mkdir annotation
 ls vcfs | xargs -I {} sbatch annotateSNPs.sh {}
+ls annotation/*.vcf | xargs -I {} sbatch --mem=2000 --wrap="perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_scripts/annotatedSNPRegionToTabFile.pl -v {} -a -o {}.tab"
 
+perl -e '@fs = `ls annotation/*.tab`; chomp(@fs); %h; foreach $f (@fs){@segs = split(/_/, $f); $h{$segs[3]}->{$segs[4]} = $f;} foreach my $chr (keys(%h)){my @files; foreach my $part (sort {$a <=> $b} keys(%{$h{$chr}})){ push(@files, $h{$chr}->{$part});} print "$chr\t" . join(" ", @files) . "\n"; $string = join(" ", @files); system("cat $string > $chr.sequenced.files.tab");}'
+ls Chr*.tab | xargs -I {} sbatch --mem=200 --wrap="gzip {}"
 ```
