@@ -69,3 +69,27 @@ Now I need to try to generate Mash sketches. First, I'd like to see how kmer siz
 mkdir sketch_test
 #noise filter = 2, 15mer
 sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 15 -r -m 2 -o sketch_test/DRR017219_15 datasources/DRR017219_1.fastq datasources/DRR017219_2.fastq"
+
+# std output follows
+Sketching datasources/DRR017219_1.fastq...
+Sketching datasources/DRR017219_2.fastq...
+Estimated genome size: 2.1573e+08
+Estimated coverage:    7.202
+Estimated genome size: 2.29383e+08
+Estimated coverage:    7.105
+Writing to sketch_test/DRR017219_15.msh...
+
+mv slurm-653995.out ./sketch_test/DRR017219_15.out
+
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 18 -r -m 2 -o sketch_test/DRR017219_18 datasources/DRR017219_1.fastq datasources/DRR017219_2.fastq"
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 21 -r -m 2 -o sketch_test/DRR017219_21 datasources/DRR017219_1.fastq datasources/DRR017219_2.fastq"
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 24 -r -m 2 -o sketch_test/DRR017219_24 datasources/DRR017219_1.fastq datasources/DRR017219_2.fastq"
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 32 -r -m 2 -o sketch_test/DRR017219_32 datasources/DRR017219_1.fastq datasources/DRR017219_2.fastq"
+
+
+# In order to estimate the distance between sketches, they must be the same kmer size
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 15 -r -m 2 -o sketch_test/DRR019503_15 datasources/DRR019503_1.fastq datasources/DRR019503_2.fastq"
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 18 -r -m 2 -o sketch_test/DRR019503_18 datasources/DRR019503_1.fastq datasources/DRR019503_2.fastq"
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 21 -r -m 2 -o sketch_test/DRR019503_21 datasources/DRR019503_1.fastq datasources/DRR019503_2.fastq"
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 24 -r -m 2 -o sketch_test/DRR019503_24 datasources/DRR019503_1.fastq datasources/DRR019503_2.fastq"
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 32 -r -m 2 -o sketch_test/DRR019503_32 datasources/DRR019503_1.fastq datasources/DRR019503_2.fastq"
