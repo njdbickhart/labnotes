@@ -4,6 +4,7 @@
 
 ## Table of Contents
 * [Sequence alignment and summary statistics](#stats)
+* [Polished assembly](#polish)
 
 <a name="stats"></a>
 ## Sequence alignment and summary statistics
@@ -169,3 +170,17 @@ OK, let's summarize things:
 |LOW_COV_PE       | 135529|64527| Low read coverage |
 |LOW_NORM_COV_PE  | 137377|67417| Low coverage of normal paired-end reads |
 |STRECH_PE        |  16385|21891| Areas with high CE statistics |
+
+<a name="polished"></a>
+## Polished assembly
+
+Now that we have the polished assembly back from Aleksey, it's time to process it.
+
+```bash
+module load bwa
+module load samtools/1.3-20-gd49c73b
+
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="bwa index polished.fa"
+sbatch --mem=2000 --nodes=1 --ntasks-per-node=1 --wrap="samtools faidx polished.fa"
+
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="java -Xmx19g -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f polished.fa -o polished.gaps.bed -s polished.gaps.stats"
