@@ -77,6 +77,8 @@ I consolidated the above code into a shell script that can run on each merged ba
 sh serge_script_oneshot.sh btau4/dominette_merged_btau4 /mnt/iscsi/vnx_gliu_7/reference/bosTau4.fa.gz
 
 sh serge_script_oneshot.sh umd3/dominette.merged.umd3 /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa
+
+sh serge_script_oneshot.sh canu/canu.dominette.topolish canu/topolish.filledWithCanuAndPBJelly.fasta
 ```
 
 I am also queuing up the new assembly (pre pilon).
@@ -149,27 +151,43 @@ INTERCHROM      8711
 INVERSION       5470
 
 # Errors per 100 mbp = (30637 / 28.0) = 1094.18
+
+
+## Computomix
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f canu/canu.dominette.topolish_Features.txt -c 1
+Entry   Count
+COMPR_PE        6526
+HIGH_COV_PE     7333
+HIGH_NORM_COV_PE        5759
+HIGH_OUTIE_PE   80
+HIGH_SINGLE_PE  118
+HIGH_SPAN_PE    5982
+LOW_COV_PE      52772
+LOW_NORM_COV_PE 50719
+STRECH_PE       16752
+
+lumpy -mw 4 -tt 0 -pe id:sample,bam_file:canu.dominette.topolish.discordants.bam,histo_file:canu.dominette.topolish.histo,mean:628.478,stdev:168.47,read_length:150,min_non_overlap:150,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20 -sr id:sample,bam_file:canu.dominette.topolish.splitters.bam,back_distance:10,min_mapping_threshold:20,weight:1,min_clip:20 > canu.dominette.topolish.lumpy.vcf
 ```
 
 OK, let's summarize things:
 
-| Feature | Btau4 | UMD3 | Description
-| :--- | ---: | ---: | :--- |
-| QV | 39.80 | 39.43 | Phred-based assessment of INDEL and SNP errors in assembly |
-| Errors / 100 Mbp | 905.64 | 1094.18 | Ratio of Lumpy SV calls per 100 Mbp |
-| DELETION | 12870 | 13963 | Lumpy-SV deletions |
-| DUPLICATION | 1305 | 2493 | Lumpy-SV duplications |
-| INTERCHROM | 9031 |  8711 | Lumpy-SV interchromosome regions |
-| INVERSION | 2152 |  5470 | Lumpy-SV inversions |
-|COMPR_PE         |   6407|12348| Areas with low CE statistics |
-|HIGH_COV_PE      |   4406|7660| Higher read coverage |
-|HIGH_NORM_COV_PE |   3671|7169| High coverage of normal paired-end reads |
-|HIGH_OUTIE_PE    |    988|2303| Regions with high numbers of misoriented or distant pairs |
-|HIGH_SINGLE_PE   |   3247|1295| Regions with high numbers of unmapped pairs |
-|HIGH_SPAN_PE     |   9240|4135| Regions with high numbers of disc. pairs that map to different scaffolds |
-|LOW_COV_PE       | 135529|64527| Low read coverage |
-|LOW_NORM_COV_PE  | 137377|67417| Low coverage of normal paired-end reads |
-|STRECH_PE        |  16385|21891| Areas with high CE statistics |
+| Feature | Btau4 | UMD3 | Computomix | Description
+| :--- | ---: | ---: | ---: |:--- |
+| QV | 39.80 | 39.43 | | Phred-based assessment of INDEL and SNP errors in assembly |
+| Errors / 100 Mbp | 905.64 | 1094.18 | | Ratio of Lumpy SV calls per 100 Mbp |
+| DELETION | 12870 | 13963 |  | Lumpy-SV deletions |
+| DUPLICATION | 1305 | 2493 | | Lumpy-SV duplications |
+| INTERCHROM | 9031 |  8711 | | Lumpy-SV interchromosome regions |
+| INVERSION | 2152 |  5470 |  | Lumpy-SV inversions |
+|COMPR_PE         |   6407|12348| 6526|Areas with low CE statistics |
+|HIGH_COV_PE      |   4406|7660| 7333| Higher read coverage |
+|HIGH_NORM_COV_PE |   3671|7169| 5759 |High coverage of normal paired-end reads |
+|HIGH_OUTIE_PE    |    988|2303| 80| Regions with high numbers of misoriented or distant pairs |
+|HIGH_SINGLE_PE   |   3247|1295| 118 |Regions with high numbers of unmapped pairs |
+|HIGH_SPAN_PE     |   9240|4135| 5982 |Regions with high numbers of disc. pairs that map to different scaffolds |
+|LOW_COV_PE       | 135529|64527| 52772 |Low read coverage |
+|LOW_NORM_COV_PE  | 137377|67417| 50719 |Low coverage of normal paired-end reads |
+|STRECH_PE        |  16385|21891| 16752 |Areas with high CE statistics |
 
 <a name="polished"></a>
 ## Polished assembly
