@@ -5,6 +5,7 @@
 ## Table of Contents
 * [Sequence alignment and summary statistics](#stats)
 * [Polished assembly](#polish)
+* [SNP remapping and stats](#snps)
 
 <a name="stats"></a>
 ## Sequence alignment and summary statistics
@@ -167,27 +168,36 @@ LOW_NORM_COV_PE 50719
 STRECH_PE       16752
 
 lumpy -mw 4 -tt 0 -pe id:sample,bam_file:canu.dominette.topolish.discordants.bam,histo_file:canu.dominette.topolish.histo,mean:628.478,stdev:168.47,read_length:150,min_non_overlap:150,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20 -sr id:sample,bam_file:canu.dominette.topolish.splitters.bam,back_distance:10,min_mapping_threshold:20,weight:1,min_clip:20 > canu.dominette.topolish.lumpy.vcf
+
+perl -lane '$F[10] =~ s/TYPE://g; print "$F[10]";' < canu/canu.dominette.topolish.lumpy.vcf  | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0
+Entry   Count
+DELETION        4272
+DUPLICATION     320
+INTERCHROM      2132
+INVERSION       487
+
+
 ```
 
 OK, let's summarize things:
 
-| Feature | Btau4 | UMD3 | Computomix | Description
-| :--- | ---: | ---: | ---: |:--- |
-| QV | 39.80 | 39.43 | | Phred-based assessment of INDEL and SNP errors in assembly |
-| Errors / 100 Mbp | 905.64 | 1094.18 | | Ratio of Lumpy SV calls per 100 Mbp |
-| DELETION | 12870 | 13963 |  | Lumpy-SV deletions |
-| DUPLICATION | 1305 | 2493 | | Lumpy-SV duplications |
-| INTERCHROM | 9031 |  8711 | | Lumpy-SV interchromosome regions |
-| INVERSION | 2152 |  5470 |  | Lumpy-SV inversions |
-|COMPR_PE         |   6407|12348| 6526|Areas with low CE statistics |
-|HIGH_COV_PE      |   4406|7660| 7333| Higher read coverage |
-|HIGH_NORM_COV_PE |   3671|7169| 5759 |High coverage of normal paired-end reads |
-|HIGH_OUTIE_PE    |    988|2303| 80| Regions with high numbers of misoriented or distant pairs |
-|HIGH_SINGLE_PE   |   3247|1295| 118 |Regions with high numbers of unmapped pairs |
-|HIGH_SPAN_PE     |   9240|4135| 5982 |Regions with high numbers of disc. pairs that map to different scaffolds |
-|LOW_COV_PE       | 135529|64527| 52772 |Low read coverage |
-|LOW_NORM_COV_PE  | 137377|67417| 50719 |Low coverage of normal paired-end reads |
-|STRECH_PE        |  16385|21891| 16752 |Areas with high CE statistics |
+| Feature | Btau4 | UMD3 | Computomix | Aleksey |Description |
+| :--- | ---: | ---: | ---: | ---: |:--- |
+| QV | 39.80 | 39.43 | | | Phred-based assessment of INDEL and SNP errors in assembly |
+| Errors / 100 Mbp | 905.64 | 1094.18 | | | Ratio of Lumpy SV calls per 100 Mbp |
+| DELETION | 12870 | 13963 |  | | Lumpy-SV deletions |
+| DUPLICATION | 1305 | 2493 | | | Lumpy-SV duplications |
+| INTERCHROM | 9031 |  8711 | | | Lumpy-SV interchromosome regions |
+| INVERSION | 2152 |  5470 |  | | Lumpy-SV inversions |
+|COMPR_PE         |   6407|12348| 6526| 9000 | Areas with low CE statistics |
+|HIGH_COV_PE      |   4406|7660| 7333| 10098 | Higher read coverage |
+|HIGH_NORM_COV_PE |   3671|7169| 5759 | 7944 | High coverage of normal paired-end reads |
+|HIGH_OUTIE_PE    |    988|2303| 80| 79 | Regions with high numbers of misoriented or distant pairs |
+|HIGH_SINGLE_PE   |   3247|1295| 118 | 251 |Regions with high numbers of unmapped pairs |
+|HIGH_SPAN_PE     |   9240|4135| 5982 | 14180 |Regions with high numbers of disc. pairs that map to different scaffolds |
+|LOW_COV_PE       | 135529|64527| 52772 | 100814 |Low read coverage |
+|LOW_NORM_COV_PE  | 137377|67417| 50719 | 105271 |Low coverage of normal paired-end reads |
+|STRECH_PE        |  16385|21891| 16752 | 15079 |Areas with high CE statistics |
 
 <a name="polished"></a>
 ## Polished assembly
@@ -202,3 +212,52 @@ sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="bwa index polished.fa"
 sbatch --mem=2000 --nodes=1 --ntasks-per-node=1 --wrap="samtools faidx polished.fa"
 
 sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="java -Xmx19g -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f polished.fa -o polished.gaps.bed -s polished.gaps.stats"
+sbatch --nodes=1 --mem=2000 --ntasks-per-node=8 --wrap 'samtools merge -c -p --threads 8 polished.merged.dominette.bam polishedAsm.NextSeq.dominette.dominette.LIB18483_S1_L001_001.bam polishedAsm.NextSeq.dominette.dominette.LIB18483_S1_L002_001.bam polishedAsm.NextSeq.dominette.dominette.LIB18483_S1_L003_001.bam polishedAsm.NextSeq.dominette.dominette.LIB18483_S1_L004_001.bam'
+
+sbatch --nodes=1 --ntasks-per-node=1 --mem=1000 --wrap='samtools index bwa-out/polished.merged.dominette.bam'
+sbatch serge_script_oneshot.sh polished/bwa-out/polished.merged.dominette polished/polished.fa
+
+# Lumpy failed because of weird scripting errors. Rerunning...
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="module load lumpy-sv/0.2.12-51-g16b6876; samtools view polished.merged.dominette.bam | tail -n+100000 | /opt/agil_cluster/lumpy-sv-0.2.12-51-g16b6876/bin/../scripts/pairend_distro.py -r 150 -X 4 -N 10000 -o polished.merged.dominette.histo"
+
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="module load lumpy-sv/0.2.12-51-g16b6876; lumpy -mw 4 -tt 0 -pe id:dominette,bam_file:polished.merged.dominette.bam,histo_file:polished.merged.dominette.histo,mean:626.926292629,stdev:193.453829908,read_length:150,min_non_overlap:150,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20 > polished.merged.dominette.lumpy.vcf"
+```
+
+<a name="ctx"></a>
+## Computomix assembly
+
+The polished assembly looks corrupted... I'm going to run a comparison with the real computomix assembly to see how that panned out.
+
+> fry: /mnt/nfs/nfs2/dbickhart/dominette_asm/ctx
+
+```bash
+sh create_bwa_batchfiles.sh dominette_nextseq_file_list.tab
+sbatch --nodes=1 --ntasks-per-node=2 --mem=10000 --wrap="module load bwa; module load samtools; bwa index CTX3.fasta; samtools faidx CTX3.fasta"
+
+sleep 3h; find batchfiles-bwa/ -name *.sh | xargs -I {} sbatch {}
+
+```
+
+<a name="snps"></a>
+## SNP remapping and stats
+
+These are my notes on the remapping of SNP probes from the HD array to the new assembly. I have two main goals here:
+
+* Generate a SNP location list for Paul and John to check
+* Determine how many SNP locations have moved from UMD3
+
+> 3850: /home/bickhart
+```bash
+perl -e 'for($x = 0; $x < 6; $x++){<>;} while(<>){chomp; if($_ =~ /^#/){next;} @s = split(/,/); @b = split(/[\[\]]/, $s[6]); $b[2] =~ tr/ACGT/TGCA/; $b[2] = reverse($b[2]); print ">$s[1].f\n$b[0]\n>$s[1].r\n$b[2]\n";} close IN;' < /work1/grw/chips/GH2/GGP_HDv2_B_StrandReport_FDT_V1.csv > ggp_probe_design.fa
+
+perl -e 'open(O1, "> ggp_probe_design.1.fa"); open(O2, "> ggp_probe_design.2.fa"); while($n1 = <>){ $s1 = <>; $n2 = <>; $s2 = <>; $n1 =~ s/.f//; $n2 =~ s/.r//; print O1 "$n1$s1"; print O2 "$n2$s2"; }' < ggp_probe_design.fa
+```
+
+> pwd: /home/dbickhart/share/btau4_data
+
+```bash
+# I converted the BovineHD data into single line fasta entries.
+```
+
+
+
