@@ -181,14 +181,14 @@ INVERSION       487
 
 OK, let's summarize things:
 
-| Feature | Btau4 | UMD3 | Computomix | Aleksey |Description |
+| Feature | Btau4 | UMD3 | Serge | Aleksey |Description |
 | :--- | ---: | ---: | ---: | ---: |:--- |
-| QV | 39.80 | 39.43 | | | Phred-based assessment of INDEL and SNP errors in assembly |
-| Errors / 100 Mbp | 905.64 | 1094.18 | | | Ratio of Lumpy SV calls per 100 Mbp |
-| DELETION | 12870 | 13963 |  | | Lumpy-SV deletions |
-| DUPLICATION | 1305 | 2493 | | | Lumpy-SV duplications |
-| INTERCHROM | 9031 |  8711 | | | Lumpy-SV interchromosome regions |
-| INVERSION | 2152 |  5470 |  | | Lumpy-SV inversions |
+| QV | 39.80 | 39.43 | 32.78 | 38.85 | Phred-based assessment of INDEL and SNP errors in assembly |
+| Errors / 100 Mbp | 905.64 | 1094.18 | 257 | 213.75 | Ratio of Lumpy SV calls per 100 Mbp |
+| DELETION | 12870 | 13963 | 4272 | 1363 | Lumpy-SV deletions |
+| DUPLICATION | 1305 | 2493 | 320 | 611 | Lumpy-SV duplications |
+| INTERCHROM | 9031 |  8711 | 2132| 3943 | Lumpy-SV interchromosome regions |
+| INVERSION | 2152 |  5470 | 487 | 68 | Lumpy-SV inversions |
 |COMPR_PE         |   6407|12348| 6526| 9000 | Areas with low CE statistics |
 |HIGH_COV_PE      |   4406|7660| 7333| 10098 | Higher read coverage |
 |HIGH_NORM_COV_PE |   3671|7169| 5759 | 7944 | High coverage of normal paired-end reads |
@@ -221,7 +221,33 @@ sbatch serge_script_oneshot.sh polished/bwa-out/polished.merged.dominette polish
 sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="module load lumpy-sv/0.2.12-51-g16b6876; samtools view polished.merged.dominette.bam | tail -n+100000 | /opt/agil_cluster/lumpy-sv-0.2.12-51-g16b6876/bin/../scripts/pairend_distro.py -r 150 -X 4 -N 10000 -o polished.merged.dominette.histo"
 
 sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="module load lumpy-sv/0.2.12-51-g16b6876; lumpy -mw 4 -tt 0 -pe id:dominette,bam_file:polished.merged.dominette.bam,histo_file:polished.merged.dominette.histo,mean:626.926292629,stdev:193.453829908,read_length:150,min_non_overlap:150,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20 > polished.merged.dominette.lumpy.vcf"
+
+./vcfToBedpe -i polished/bwa-out/polished.merged.dominette.lumpy.vcf -o polished/bwa-out/polished.merged.dominette.lumpy.bedpe
+
+perl -e '$c = 0; while(<>){chomp; @F = split(/\t/); if($F[0] =~ /^#/){next;} ($ab) = $F[7] =~ /AB=(.{1,10})\;ABP/; if($ab < 0.65){next;}else{ $la = length($F[3]); $lb = length($F[4]); if($la == $lb){$c++;}elsif($la < $lb){$c += $lb - $la;}else{$c += $la - $lb;}}} print "$c\n";' < polished.merged.dominette.bayes.vcf
+353921
+samtools depth polished.merged.dominette.bam | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if($s[2] >= 3){$c++;}} print "$c\n";'
+2720125193
+perl -e 'chomp(@ARGV); $ns = $ARGV[0]; $nb = $ARGV[1]; print (-10 * log($ns/$nb)/log(10)); print "\n";' 353921 2720125193
+38.8568256039133
+
+# Checking to see if the SNPs and indels correspond to lumpy SV calls
+# Pulling lumpy calls into beds and then pulling only the >65% AB percentile variants from the freebayes output
+perl -lane 'if($F[0] =~ /^#/){next;} if($F[1] < 0){ $F[1] = 0;} if($F[3] < 0){$F[3] = 0;} if($F[10] eq "BND"){print "$F[0]\t$F[1]\t$F[2]\t$F[10]"; print "$F[3]\t$F[4]\t$F[5]\t$F[10]";}else{print "$F[0]\t$F[1]\t$F[5]\t$F[10]";}' < polished.merged.dominette.lumpy.bedpe > polished.merged.dominette.lumpy.bed
+perl -lane 'if($F[0] =~ /^#/){next;} ($ab) = $F[7] =~ /AB=(.{1,10})\;ABP/; if($ab < 0.65){next;} $e = $F[1] + 1; print "$F[0]\t$F[1]\t$e";' < polished.merged.dominette.bayes.vcf > polished.merged.dominette.bayes.bed
+intersectBed -a polished.merged.dominette.lumpy.bed -b polished.merged.dominette.bayes.bed -c | perl -lane 'if($F[4] > 0){print $_;}' | wc -l
+2417   <- total SNPs/INDELs within lumpy predicted discordant regions (~24% of total)
+perl -lane 'if($F[0] =~ /^#/){next;} ($ab) = $F[7] =~ /AB=(.{1,10})\;ABP/; if($ab < 0.65){next;} $e = $F[1] + 1; print "$F[0]\t$F[1]\t$e";' < polished.merged.dominette.bayes.vcf > polished.merged.dominette.bayes.bed
+[dbickhart@vm-agil-251-fry bwa-out]$ intersectBed -a polished.merged.dominette.lumpy.bed -b polished.merged.dominette.bayes.bed -c | perl -lane 'if($F[4] > 0){print $_;}' | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 3 -m
 ```
+### Variants within lumpy sv coordinates in polished assembly
+|Entry | Count|
+|:-----|-----:|
+|BND   |  1436|
+|DEL   |   506|
+|DUP   |   432|
+|INV   |    43|
+
 
 <a name="ctx"></a>
 ## Computomix assembly
@@ -235,6 +261,33 @@ sh create_bwa_batchfiles.sh dominette_nextseq_file_list.tab
 sbatch --nodes=1 --ntasks-per-node=2 --mem=10000 --wrap="module load bwa; module load samtools; bwa index CTX3.fasta; samtools faidx CTX3.fasta"
 
 sleep 3h; find batchfiles-bwa/ -name *.sh | xargs -I {} sbatch {}
+sbatch --nodes=1 --ntasks-per-node=10 --mem=5000 --wrap="module load samtools/1.3-20-gd49c73b; samtools merge -c -p -@ 9 polishedAsm.NextSeq.dominette.merged.bam polishedAsm.NextSeq.dominette.dominette.LIB18483_S1_L001_001.bam polishedAsm.NextSeq.dominette.dominette.LIB18483_S1_L002_001.bam polishedAsm.NextSeq.dominette.dominette.LIB18483_S1_L003_001.bam polishedAsm.NextSeq.dominette.dominette.LIB18483_S1_L004_001.bam; samtools index polishedAsm.NextSeq.dominette.merged.bam;"
+
+sbatch ../serge_script_oneshot.sh bwa-out/polishedAsm.NextSeq.dominette.merged CTX3.fasta dominette
+```
+
+## Other assemblies
+
+Aleksey made two additional assemblies that need to be run through the pipeline.
+
+> fry: /mnt/nfs/nfs2/dbickhart/dominette_asm/
+
+```bash
+#### Polished.final ####
+mkdir polished.final
+cd polished.final
+
+sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 --wrap="module load bwa; module load samtools; wget ftp://ftp.genome.umd.edu/pub/dominette/polished.final.fa.gz; gunzip polished.final.fa.gz; bwa index polished.final.fa; samtools faidx polished.final.fa;"
+
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b alignments -t ../dominette_nextseq_file_list.tab -f polished.final.fa -m
+
+#### Topolish no 1b ####
+mkdir topolish.no1b
+cd topolish.no1b
+
+sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 --wrap="module load bwa; module load samtools; wget ftp://ftp.genome.umd.edu/pub/dominette/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta.gz; gunzip topolish.filledWithCanuAndPBJelly.withX.no1b.fasta.gz; bwa index topolish.filledWithCanuAndPBJelly.withX.no1b.fasta; samtools faidx topolish.filledWithCanuAndPBJelly.withX.no1b.fasta;"
+
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b alignments -t ../dominette_nextseq_file_list.tab -f topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -m
 
 ```
 
