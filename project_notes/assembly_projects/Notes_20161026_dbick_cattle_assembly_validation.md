@@ -365,6 +365,13 @@ sbatch serge_script_oneshot.sh run2only/topolish.no1b/dominette/dominette.sorted
 Rerunning only on run1 data
 
 ```bash
+mkdir run1only
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b umd3 -t ../dominette_run1_only_nextseq_file_list.tab -f /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b canu -t ../dominette_run1_only_nextseq_file_list.tab -f ../canu/topolish.filledWithCanuAndPBJelly.fasta -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b ctx -t ../dominette_run1_only_nextseq_file_list.tab -f ../ctx/CTX3.fasta -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b polished -t ../dominette_run1_only_nextseq_file_list.tab -f ../polished/polished.fa -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b polished.final -t ../dominette_run1_only_nextseq_file_list.tab -f ../polished.final/polished.final.fa -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b topolish.no1b -t ../dominette_run1_only_nextseq_file_list.tab -f ../topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -m
 
 ```
 
