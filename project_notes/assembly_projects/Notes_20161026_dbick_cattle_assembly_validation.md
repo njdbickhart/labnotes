@@ -280,6 +280,7 @@ cd polished.final
 sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 --wrap="module load bwa; module load samtools; wget ftp://ftp.genome.umd.edu/pub/dominette/polished.final.fa.gz; gunzip polished.final.fa.gz; bwa index polished.final.fa; samtools faidx polished.final.fa;"
 
 perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b alignments -t ../dominette_nextseq_file_list.tab -f polished.final.fa -m
+sbatch serge_script_oneshot.sh polished.final/alignments/dominette/dominette.sorted.merged polished.final/polished.final.fa dominette
 
 #### Topolish no 1b ####
 mkdir topolish.no1b
@@ -288,6 +289,82 @@ cd topolish.no1b
 sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 --wrap="module load bwa; module load samtools; wget ftp://ftp.genome.umd.edu/pub/dominette/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta.gz; gunzip topolish.filledWithCanuAndPBJelly.withX.no1b.fasta.gz; bwa index topolish.filledWithCanuAndPBJelly.withX.no1b.fasta; samtools faidx topolish.filledWithCanuAndPBJelly.withX.no1b.fasta;"
 
 perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b alignments -t ../dominette_nextseq_file_list.tab -f topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -m
+sbatch serge_script_oneshot.sh topolish.no1b/alignments/dominette/dominette.sorted.merged topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta dominette
+
+# Damn, I suspect that Slurm automatically kills jobs that post with an ampersand. Going to queue up FRC and lumpy using separate commands
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 --wrap="module load lumpy-sv/0.2.12-51-g16b6876; lumpy -mw 4 -tt 0  -pe id:dominette,bam_file:topolish.no1b/alignments/dominette/dominette.sorted.merged.discordants.bam,histo_file:topolish.no1b/alignments/dominette/dominette.sorted.merged.histo,mean:626.861177885,stdev:184.997331276,read_length:150,min_non_overlap:150,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20 > topolish.no1b/alignments/dominette/dominette.sorted.merged.lumpy.2.vcf"
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 --wrap="module load FRC_align/1.3.0-5b3f53e; FRC  --pe-sam topolish.no1b/alignments/dominette/dominette.sorted.merged.bam --pe-max-insert 1181 --genome-size 2800000000 --output topolish.no1b/alignments/dominette/dominette.sorted.merged.2"
+
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 --wrap="module load lumpy-sv/0.2.12-51-g16b6876; lumpy -mw 4 -tt 0  -pe id:dominette,bam_file:polished.final/alignments/dominette/dominette.sorted.merged.discordants.bam,histo_file:polished.final/alignments/dominette/dominette.sorted.merged.histo,mean:666.1878,stdev:182.802370146,read_length:150,min_non_overlap:150,discordant_z:5,back_distance:10,weight:1,min_mapping_threshold:20 > polished.final/alignments/dominette/dominette.sorted.merged.lumpy.2.vcf"
+```
+
+#### Update of stats table
+
+| Feature | Btau4 | UMD3 | Serge | Aleksey | polished.final | topolish.no1b |Description |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |:--- |
+| QV | 39.80 | 39.43 | 32.78 | 38.85 | 38.23 | 40.87 |Phred-based assessment of INDEL and SNP errors in assembly |
+| Errors / 100 Mbp | 905.64 | 1094.18 | 257 | 213.75 | | | Ratio of Lumpy SV calls per 100 Mbp |
+| DELETION | 12870 | 13963 | 4272 | 1363 | | | Lumpy-SV deletions |
+| DUPLICATION | 1305 | 2493 | 320 | 611 | | | Lumpy-SV duplications |
+| INTERCHROM | 9031 |  8711 | 2132| 3943 | | | Lumpy-SV interchromosome regions |
+| INVERSION | 2152 |  5470 | 487 | 68 | | | Lumpy-SV inversions |
+|COMPR_PE         |   6407|12348| 6526| 9000 | 68847 | 174622 | Areas with low CE statistics |
+|HIGH_COV_PE      |   4406|7660| 7333| 10098 | 10320 | 7214 | Higher read coverage |
+|HIGH_NORM_COV_PE |   3671|7169| 5759 | 7944 | 8185 | 5481 | High coverage of normal paired-end reads |
+|HIGH_OUTIE_PE    |    988|2303| 80| 79 | 133 | 122 | Regions with high numbers of misoriented or distant pairs |
+|HIGH_SINGLE_PE   |   3247|1295| 118 | 251 | 306 | 92 | Regions with high numbers of unmapped pairs |
+|HIGH_SPAN_PE     |   9240|4135| 5982 | 14180 | 14993 | 5166 | Regions with high numbers of disc. pairs that map to different scaffolds |
+|LOW_COV_PE       | 135529|64527| 52772 | 100814 | 107927 | 58672 | Low read coverage |
+|LOW_NORM_COV_PE  | 137377|67417| 50719 | 105271 | 111927 | 57701 | Low coverage of normal paired-end reads |
+|STRECH_PE        |  16385|21891| 16752 | 15079 | 39885 | 94925 | Areas with high CE statistics |
+
+
+Now to generate a FRC curve to compare stats.
+
+```R
+data.serge <- read.delim("canu/canu.dominette.topolish_FRC.txt", sep=" ", header=FALSE)
+data.aleksey <- read.delim("polished/bwa-out/polished.merged.dominette_FRC.txt", sep=" ", header=FALSE)
+data.topolish <- read.delim("topolish.no1b/alignments/dominette/dominette.sorted.merged_FRC.txt", sep=" ", header=FALSE)
+data.final <- read.delim("polished.final/alignments/dominette/dominette.sorted.merged_FRC.txt", sep=" ", header=FALSE)
+pdf(file="frc_curve_fourasms.pdf", useDingbats=FALSE)
+
+plot(data.serge$V1, data.serge$V2, type="l", col="red")
+lines(data.aleksey$V1, data.aleksey$V2, col="green")
+lines(data.topolish$V1, data.topolish$V2, col="blue")
+lines(data.final$V1, data.final$V2, col="brown")
+legend("topleft", legend = c("Serge", "Aleksey1", "Aleksey2", "topolishNob1"), col = c("red", "green", "blue", "brown"))
+dev.off()
+
+pdf(file="frc_curve_threeasms.pdf", useDingbats=FALSE)
+plot(data.aleksey$V1, data.aleksey$V2, col="green", type="l")
+lines(data.topolish$V1, data.topolish$V2, col="blue")
+lines(data.final$V1, data.final$V2, col="brown")
+legend("topleft", legend = c("Aleksey1", "Aleksey2", "topolishNoB1"), lty=c(1,1), lwd=c(2,2), col = c("green", "blue", "brown"))
+
+```
+
+Rerunning only on run2 data
+
+```bash
+mkdir run2only
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b umd3 -t ../dominett_run2_only_files.tab -f /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b canu -t ../dominett_run2_only_files.tab -f ../canu/topolish.filledWithCanuAndPBJelly.fasta -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b ctx -t ../dominett_run2_only_files.tab -f ../ctx/CTX3.fasta -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b polished -t ../dominett_run2_only_files.tab -f ../polished/polished.fa -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b polished.final -t ../dominett_run2_only_files.tab -f ../polished.final/polished.final.fa -m
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b topolish.no1b -t ../dominett_run2_only_files.tab -f ../topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -m
+
+sbatch serge_script_oneshot.sh run2only/canu/dominette/dominette.sorted.merged canu/topolish.filledWithCanuAndPBJelly.fasta dominette
+sbatch serge_script_oneshot.sh run2only/ctx/dominette/dominette.sorted.merged ctx/CTX3.fasta dominette
+sbatch serge_script_oneshot.sh run2only/umd3/dominette/dominette.sorted.merged /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa dominette
+sbatch serge_script_oneshot.sh run2only/polished/dominette/dominette.sorted.merged polished/polished.fa dominette
+sbatch serge_script_oneshot.sh run2only/polished.final/dominette/dominette.sorted.merged polished.final/polished.final.fa dominette
+sbatch serge_script_oneshot.sh run2only/topolish.no1b/dominette/dominette.sorted.merged topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta dominette
+```
+
+Rerunning only on run1 data
+
+```bash
 
 ```
 
