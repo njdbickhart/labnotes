@@ -373,6 +373,13 @@ perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b pol
 perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b polished.final -t ../dominette_run1_only_nextseq_file_list.tab -f ../polished.final/polished.final.fa -m
 perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b topolish.no1b -t ../dominette_run1_only_nextseq_file_list.tab -f ../topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -m
 
+# Running all of the diagnostic scripts as dependent jobs
+sbatch --dependency=afterok:656252 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/topolish.no1b/dominette/dominette.sorted.merged topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta dominette
+sbatch --dependency=afterok:656247 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/polished.final/dominette/dominette.sorted.merged polished.final/polished.final.fa dominette
+sbatch --dependency=afterok:656242 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/polished/dominette/dominette.sorted.merged polished/polished.fa dominette
+sbatch --dependency=afterok:656237 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/ctx/dominette/dominette.sorted.merged ctx/CTX3.fasta dominette
+sbatch --dependency=afterok:656232 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/canu/dominette/dominette.sorted.merged canu/topolish.filledWithCanuAndPBJelly.fasta dominette
+sbatch --dependency=afterok:656227 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/umd3/dominette/dominette.sorted.merged /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa dominette
 ```
 
 <a name="snps"></a>
