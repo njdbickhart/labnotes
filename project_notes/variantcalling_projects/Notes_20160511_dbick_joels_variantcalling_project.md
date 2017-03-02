@@ -857,3 +857,24 @@ ls annotation/*.vcf | xargs -I {} sbatch --mem=2000 --wrap="perl /mnt/nfs/nfs2/b
 perl -e '@fs = `ls annotation/*.tab`; chomp(@fs); %h; foreach $f (@fs){@segs = split(/_/, $f); $h{$segs[3]}->{$segs[4]} = $f;} foreach my $chr (keys(%h)){my @files; foreach my $part (sort {$a <=> $b} keys(%{$h{$chr}})){ push(@files, $h{$chr}->{$part});} print "$chr\t" . join(" ", @files) . "\n"; $string = join(" ", @files); system("cat $string > $chr.sequenced.files.tab");}'
 ls Chr*.tab | xargs -I {} sbatch --mem=200 --wrap="gzip {}"
 ```
+
+I need to combine the files. Here are my commands to do so:
+
+```bash
+# 1000 bulls data
+perl -e '$h = <>; chomp $h; @s = split(/\t/, $h); @b = @s[10..49]; print join("\n", @b); print "\n"' < Chr10_joels_holstein_subsection.tab > 1000_bulls_joel_subset.list
+
+# Attempt to merge the data together
+perl -e '$h = <>; chomp $h; @s = split(/\t/, $h); @b = @s[10..49]; print join("\n", @b); print "\n"' < joel_combined_holstein_Chr10.sorted.tab > combined_holstein_file.list
+
+# New reprocessed data
+perl -e '$h = <>; chomp $h; @s = split(/\t/, $h); @b = @s[10..52]; print join("\n", @b); print "\n"' < Chr10.sequenced.files.tab > reprocessed_bulls_joel_subset.list
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl combined_holstein_file.list 1000_bulls_joel_subset.list reprocessed_bulls_joel_subset.list
+File Number 1: combined_holstein_file.list
+File Number 2: 1000_bulls_joel_subset.list
+File Number 3: reprocessed_bulls_joel_subset.list
+Set     Count
+1;2     22
+1;3     18
+3       25

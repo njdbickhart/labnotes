@@ -28,6 +28,6 @@ bamfiles <- append(bamfiles, c("PC1/PC1.merged.bam"))
 # Generating windows and getting read counts
 chrnames <- c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr22", "chr23", "chr24", "chr25", "chr26", "chr27", "chr28", "chr29", "chrX")
 
-bamDataRanges <- lapply(chrnames, function(chr){var <- getReadCountsFromBAM(bamfiles, mode="paired", WL=1000, refSeqName=chr, parallel=4); return(c(var, chr))})
+bamDataRanges <- lapply(chrnames, function(chr){var <- getReadCountsFromBAM(bamfiles, mode="paired", WL=1000, refSeqName=chr); return(c(var, chr))})
 
 
