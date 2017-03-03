@@ -878,3 +878,9 @@ Set     Count
 1;2     22
 1;3     18
 3       25
+
+# OK, so we'll merge the 22 animals that we originally had into the reprocessed animals to generate a vcf file
+# I can try a manual SNP merger here -- not sure if that will work!
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o combined_holstein_file.list 1000_bulls_joel_subset.list reprocessed_bulls_joel_subset.list
+
+for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.tab; echo $joel; perl subsectionTabFile.pl group_1_2.txt $joel > ${chr}_joels_holstein_subsection.refined.tab; done
