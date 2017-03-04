@@ -884,3 +884,5 @@ Set     Count
 perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o combined_holstein_file.list 1000_bulls_joel_subset.list reprocessed_bulls_joel_subset.list
 
 for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.tab; echo $joel; perl subsectionTabFile.pl group_1_2.txt $joel > ${chr}_joels_holstein_subsection.refined.tab; done
+
+for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.refined.tab; sequence=${chr}.sequenced.files.tab; sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 --wrap="perl combine_tab_format_files.pl $joel $sequence ${chr}_joels_complete.tab; gzip ${chr}_joels_complete.tab;"; done
