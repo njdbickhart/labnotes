@@ -5,6 +5,7 @@
 ## Table of Contents
 * [Sequence alignment and summary statistics](#stats)
 * [Polished assembly](#polish)
+* [Recombination map alignment and problem region identification](#recomb)
 * [SNP remapping and stats](#snps)
 
 <a name="stats"></a>
@@ -380,6 +381,67 @@ sbatch --dependency=afterok:656242 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickha
 sbatch --dependency=afterok:656237 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/ctx/dominette/dominette.sorted.merged ctx/CTX3.fasta dominette
 sbatch --dependency=afterok:656232 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/canu/dominette/dominette.sorted.merged canu/topolish.filledWithCanuAndPBJelly.fasta dominette
 sbatch --dependency=afterok:656227 serge_script_oneshot.sh /mnt/nfs/nfs2/dbickhart/dominette_asm/run1only/umd3/dominette/dominette.sorted.merged /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa dominette
+
+for i in `ls run1only/*/dominette/dominette.sorted.merged.lumpy.vcf`; do dir=`dirname $i`; echo $dir; ./vcfToBedpe -i $i -o $dir/dominette.sorted.merged.lumpy.bedpe; done
+perl ../../bickhart-users/binaries/GoatAssemblyScripts/assembly_frc_benchmarking/summarizeAnalysisSlurm.pl -b run1only/canu/dominette/dominette.sorted.merged,run1only/ctx/dominette/dominette.sorted.merged,run1only/polished/dominette/dominette.sorted.merged,run1only/polished.final/dominette/dominette.sorted.merged,run1only/topolish.no1b/dominette/dominette.sorted.merged,run1only/umd3/dominette/dominette.sorted.merged -n canu,ctx,polished,polished.final,topolish.no1b,umd3 -o slurm_summary_stats_run2only.md
+```
+
+|Entry            | canu | ctx |polished|p.final|topolish.no1b| umd3|
+|:----------------|-----:|-----:|-----:|-----:|-----:|-----:|
+|BND              |  3157|   842|  4077|  3298|  2681| 13258|
+|INV              |    85|    83|   110|    99|    73|  2157|
+|DEL              |  1593|  1348|  2159|  2013|  1491| 12069|
+|DUP              |   450|   458|  1120|  1202|   439|  3222|
+|HIGH_COV_PE      |  7419|  7498|  9743|  9844|  7234|  6605|
+|HIGH_NORM_COV_PE |  5567|  5573|  7581|  7656|  5464|  5849|
+|HIGH_OUTIE_PE    |    85|    41|    80|    95|    90|  2280|
+|HIGH_SINGLE_PE   |   191|   242|   234|   253|    83|  1289|
+|HIGH_SPAN_PE     |  9926|  9480| 13695| 13784|  4986|  3959|
+|LOW_COV_PE       | 42779| 36226| 75878| 76200| 55912| 50934|
+|LOW_NORM_COV_PE  | 41385| 34820| 82166| 82693| 55203| 55638|
+|STRECH_PE        | 27257| 25495| 26656| 25697| 27470| 28936|
+|COMPR_PE         | 13937| 17704| 28604| 24878| 14454| 22221|
+|QV               |    41|    41|    40|    40|    41|    41|
+
+
+Plotting the data in an FRC curve in R
+
+```R
+data.canu <- read.delim("run1only/canu/dominette/dominette.sorted.merged_FRC.txt", sep=" ", header=FALSE)
+data.ctx <- read.delim("run1only/ctx/dominette/dominette.sorted.merged_FRC.txt", sep=" ", header=FALSE)
+data.polished <- read.delim("run1only/polished/dominette/dominette.sorted.merged_FRC.txt", sep=" ", header=FALSE)
+data.polished.final <- read.delim("run1only/polished.final/dominette/dominette.sorted.merged_FRC.txt", sep=" ", header=FALSE)
+data.topolish.no1b <- read.delim("run1only/topolish.no1b/dominette/dominette.sorted.merged_FRC.txt", sep=" ", header=FALSE)
+data.umd3 <- read.delim("run1only/umd3/dominette/dominette.sorted.merged_FRC.txt", sep=" ", header=FALSE)
+
+pdf(file="frc_curve_run1only_data_frc.pdf", useDingbats=FALSE)
+
+plot(data.canu$V1, data.canu$V2, type="l", col="red")
+lines(data.ctx$V1, data.ctx$V2, col="blue")
+lines(data.polished$V1, data.polished$V2, col="green")
+lines(data.polished.final$V1, data.polished.final$V2, col="brown")
+lines(data.topolish.no1b$V1, data.topolish.no1b$V2, col="purple")
+lines(data.umd3$V1, data.umd3$V2, col="orange")
+legend("topleft", legend = c("canu", "ctx", "polished", "polished.final", "topolish.no1b", "umd3"), lty=c(1,1), lwd=c(2,2), col=c("red", "blue", "green", "brown", "purple", "orange"))
+
+dev.off()
+```
+
+OK our decision was to go with the topolish.no1b assembly.
+
+<a name="recomb"></a>
+## Recombination map alignment and problem region identification 
+
+Using the recombination map information, I need to remap probes and identify breakpoints in order. Bob has data on his comparisons with the linkage map he has in his database. Both the recombination map and linkage map are highly similar, so they are all but interchangeable. I am going to remap probes and identify the major breakpoints.
+
+First things first, let's extract the fasta sequence from the manifest file.
+
+> Fry: /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination
+
+```bash
+perl -e 'for(my $x = 0; $x < 8; $x++){<>;} while(<>){chomp; @s = split(/,/); print ">$s[1].$s[9].$s[10]\n$s[5]\n";}' < rcmap_manifest.csv > rcmap_manifest.fa
+
+sbatch alignAndOrderSnpProbes.pl -a ../topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -p rcmap_manifest.fa -o rcmap_test_run_topolish.no1b
 ```
 
 <a name="snps"></a>
