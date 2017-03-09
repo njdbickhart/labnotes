@@ -442,6 +442,97 @@ First things first, let's extract the fasta sequence from the manifest file.
 perl -e 'for(my $x = 0; $x < 8; $x++){<>;} while(<>){chomp; @s = split(/,/); print ">$s[1].$s[9].$s[10]\n$s[5]\n";}' < rcmap_manifest.csv > rcmap_manifest.fa
 
 sbatch alignAndOrderSnpProbes.pl -a ../topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -p rcmap_manifest.fa -o rcmap_test_run_topolish.no1b
+
+# Testing canu alignments on topolish:
+perl alignAndOrderSnpProbes.pl -n toPolishVsCanu.long1coords -o toPolishVsCanuTest
+
+# Identifying regions that have zero read coverage in topolish
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=1 --wrap="module load bedtools/2.25.0; bedtools genomecov -ibam topolish.no1b/alignments/dominette/dominette.sorted.merged.bam -g topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -d | perl -lane 'if($F[2] == 0){print $_;}' > topolish.no1b/topolish.no1b.bases_zero_cov.tab"
+
+perl condense_zero_cov_regions.pl topolish.no1b.cov.tab topolish.no1b.bases_zero_cov.bed
+
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 --wrap="module load java/jdk1.8.0_92; java -Xmx10g -jar ../../../bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -o topolish.filledWithCanuAndPBJelly.withX.no1b.gaps.bed -s topolish.filledWithCanuAndPBJelly.withX.no1b.gaps.stats"
+
+# Removing zero coverage bases under 5bp (most indels
+perl -lane 'if($F[2] - $F[1] > 5){print $_;}' < topolish.no1b.bases_zero_cov.bed > topolish.no1b.bases_zero_cov.gt5bp.bed
+wc -l topolish.no1b.bases_zero_cov.bed topolish.no1b.bases_zero_cov.gt5bp.bed
+  97988 topolish.no1b.bases_zero_cov.bed
+  74211 topolish.no1b.bases_zero_cov.gt5bp.bed
+
+intersectBed -a topolish.filledWithCanuAndPBJelly.withX.no1b.gaps.bed -b topolish.no1b.bases_zero_cov.gt5bp.bed -wa | wc -l
+521 <- that's all 520 gaps + some bases on the side
+
+intersectBed -a topolish.no1b.bases_zero_cov.gt5bp.bed -b topolish.filledWithCanuAndPBJelly.withX.no1b.gaps.bed -v > topolish.no1b.bases_zero_cov.gt5bp.nogaps.bed
+
+wc -l topolish.no1b.bases_zero_cov.gt5bp.nogaps.bed
+	73690 topolish.no1b.bases_zero_cov.gt5bp.nogaps.bed  <- thats 74211 zero cov - 521 gaps
+
+
+```
+
+
+#### condense_zero_cov_regions.pl
+```perl
+#!/usr/bin/perl
+# A quick one-shot script designed to process a bedtools coverage bed file to identify regions of zero coverage
+
+my $usage = "perl $0 <input bedtools coverage tab> <output zero coverage bed>\n";
+
+chomp(@ARGV);
+
+open(my $IN, "< $ARGV[0]") || die "$usage";
+open(my $OUT, "> $ARGV[1]");
+my $chr = "NA"; my $start = 0; my $end = 0; my $inzero = 0;
+
+my $h = <$IN>;
+chomp $h; my @first = split(/\t/, $h);
+$chr = $first[0];
+while(my $line = <$IN>){
+        chomp $line;
+        my @segs = split(/\t/, $line);
+        if($segs[0] ne $chr){
+                if($inzero){
+                        print {$OUT} "$chr\t$start\t$end\n";
+                        $inzero = 0;
+                        $start = 0; $end = 0;
+                }
+                $chr = $segs[0];
+        }elsif($inzero && $segs[2] != 0){
+                print {$OUT} "$chr\t$start\t$end\n";
+                $inzero = 0;
+                $start = 0; $end = 0;
+        }elsif($segs[2] == 0 && !$inzero){
+                $inzero = 1;
+                $start = $segs[1];
+                $end = $segs[1];
+        }elsif($inzero){
+                $end = $segs[1];
+        }
+}
+close $IN;
+
+if($inzero){
+        print {$OUT} "$chr\t$start\t$end\n";
+}
+close $OUT;
+exit;
+```
+
+<a name="longrange"></a>
+## Fixing longrange issues in cattle asms
+
+Aleksey used Bob's guides to correct the misplaced contigs on topolish.no1b. I'm going to run his assemblies through the pipeline to see how they stack up.
+
+> /mnt/nfs/nfs2/dbickhart/dominette_asm/revised_sv_cattle_asms
+
+```bash
+sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 --wrap="module load bwa; module load samtools; wget ftp://ftp.genome.umd.edu/pub/dominette/topolish.filledWithCanuAndPBJelly.withX.no1b.4rev.6rev.8fix.7rev.9fix.11fix.13rev.14rev.16fix.16rev.18rev.19rev.20fix.21fix.23fix.24rev.26fix.29rev.fasta; mv topolish.filledWithCanuAndPBJelly.withX.no1b.4rev.6rev.8fix.7rev.9fix.11fix.13rev.14rev.16fix.16rev.18rev.19rev.20fix.21fix.23fix.24rev.26fix.29rev.fasta topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa; bwa index topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa; samtools faidx topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa"
+
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 --dependency=afterok:656502 --wrap="perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b nosplit -t ../dominette_run1_only_nextseq_file_list.tab -f topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa -m"
+
+sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 --wrap="module load bwa; module load samtools; wget ftp://ftp.genome.umd.edu/pub/dominette/topolish.filledWithCanuAndPBJelly.withX.no1b.4rev.6rev.8fix.7rev.9fix.11fix.13rev.14rev.16fix.16rev.18rev.19rev.20fix.21fix.23fix.24rev.26fix.29rev.split.fasta; mv topolish.filledWithCanuAndPBJelly.withX.no1b.4rev.6rev.8fix.7rev.9fix.11fix.13rev.14rev.16fix.16rev.18rev.19rev.20fix.21fix.23fix.24rev.26fix.29rev.split.fasta topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa; bwa index topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa;  samtools faidx topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa"
+
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 --dependency=afterok:656504 --wrap="perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b split -t ../dominette_run1_only_nextseq_file_list.tab -f topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa -m"
 ```
 
 <a name="snps"></a>
