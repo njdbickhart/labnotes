@@ -533,6 +533,11 @@ sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 --dependency=afterok:656502 --wr
 sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 --wrap="module load bwa; module load samtools; wget ftp://ftp.genome.umd.edu/pub/dominette/topolish.filledWithCanuAndPBJelly.withX.no1b.4rev.6rev.8fix.7rev.9fix.11fix.13rev.14rev.16fix.16rev.18rev.19rev.20fix.21fix.23fix.24rev.26fix.29rev.split.fasta; mv topolish.filledWithCanuAndPBJelly.withX.no1b.4rev.6rev.8fix.7rev.9fix.11fix.13rev.14rev.16fix.16rev.18rev.19rev.20fix.21fix.23fix.24rev.26fix.29rev.split.fasta topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa; bwa index topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa;  samtools faidx topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa"
 
 sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 --dependency=afterok:656504 --wrap="perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b split -t ../dominette_run1_only_nextseq_file_list.tab -f topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa -m"
+
+sbatch serge_script_oneshot.sh topolish.no1b/nosplit/dominette/dominette.sorted.merged topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa dominette
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 --wrap="module load bedtools/2.25.0; bedtools genomecov -ibam topolish.no1b/nosplit/dominette/dominette.sorted.merged.bam -bga > topolish.no1b/nosplit/dominette/dominette.sorted.merged.bedtools.cov.tab"
+
+sbatch --dependency=afterok:656510 serge_script_oneshot.sh topolish.no1b/split/dominette/dominette.sorted.merged topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa dominette
 ```
 
 <a name="snps"></a>
