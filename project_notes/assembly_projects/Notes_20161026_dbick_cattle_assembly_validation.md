@@ -538,6 +538,117 @@ sbatch serge_script_oneshot.sh topolish.no1b/nosplit/dominette/dominette.sorted.
 sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 --wrap="module load bedtools/2.25.0; bedtools genomecov -ibam topolish.no1b/nosplit/dominette/dominette.sorted.merged.bam -bga > topolish.no1b/nosplit/dominette/dominette.sorted.merged.bedtools.cov.tab"
 
 sbatch --dependency=afterok:656510 serge_script_oneshot.sh topolish.no1b/split/dominette/dominette.sorted.merged topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.split.fa dominette
+
+sbatch --mem=2000 --nodes=1 --ntasks-per-node=1 --wrap="perl -lane 'if($F[3] == 0){print $_;}' < nosplit/dominette/dominette.sorted.merged.bedtools.cov.tab > nosplit/dominette/dominette.sorted.merged.bedtools.zero.cov.tab"
+```
+
+OK, I now need to correct chromosome 6 as that was the remaining error after Serge and Bob's manual edits.
+
+From Bob's slack post:
+
+> btw @dbickhart if you want to fix chr6, just replace the scaffold in aleksey's topolish from about position 113620307 to the end with canu contig tig00001238 and make the scaffold 6 start at 16698095
+
+Serge:
+
+> 113162819
+this seems to be my last good position 
+before it jumps to the 1238 tig
+
+From the long1coords that Serge provided, it looked like tig00001238 should be aligned in reverse to the start of the 109,733,389 portion of chr6. Also, to avoid duplicating the contig, I need to remove up to the 4,651,327 bp in the beginning. I will check alignments of reads to confirm both. I need to be careful!!! The coordinates on the nucmer plot are reversed! I will check with a brief alignment of the "ends" of tig0001238 to make sure.
+
+Another issue is chromosome X. From the alignments of Canu contigs to ChrX, it looks like there is a huge "gap" in Aleksey's X chromosome that spans tig00009294. There is also a section of tig00001361 that appears to be a "gap" in Aleksey's X. Finally, tig00001577 has an inversion. I'm going to check against the X chr mapping probes first and then align reads to each contig to check.
+
+```bash
+# mapping to Canu mhap asm
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 --wrap="module load bwa; bwa index canu.mhap.all.fasta; perl recombination/alignAndOrderSnpProbes.pl -a canu.mhap.all.fasta -p recombination/rcmap_manifest.fa -o recombination/canu.mhap.rcmap"
+
+# Grepping contigs that I need for alignment
+mkdir rdcheck
+samtools faidx canu.mhap.all.fasta tig00001238 tig00009294 tig00001361 tig00001577 > rdcheck/canu_tigs_1238_9294_1361_1577.fa
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 --wrap="module load bwa; bwa index rdcheck/canu_tigs_1238_9294_1361_1577.fa"
+
+
+# Fixing chr6
+mkdir chr_fixing
+# Testing hypothesis on contig coordinates
+bwa mem topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa chr_fixing/tig00001238_orientation.fa > chr_fixing/tig00001238_orientation.sam
+	tig00001238:1-1000      16      6       4650322 60
+	# So the long coord file I have is correct. 	
+	# remove topolish6:97,358,809-end
+	# tig00001238:4684386-end  orient:-   needs to go on the beginning of the chr6 scaffold
+	# tig00009764:1-end orient:- needs to go on the end of the chr6 scaffold
+	
+# Starting the process
+samtools faidx topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa 6:1-97358809 > chr_fixing/topolish.fixed.chr6.1_97mb.fa
+samtools faidx canu.mhap.all.fasta tig00001238:4684386-20561998 > chr_fixing/tig00001238_segment.fa
+samtools faidx canu.mhap.all.fasta tig00009764:1-1716403 > chr_fixing/tig00009764_segment.fa
+
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i tig00001238_segment.fa,topolish.fixed.chr6.1_97mb.fa,tig00009764_segment.fa -d '-,+,-' -o topolish.fixed.chr6.fixed.fa"
+
+# Testing
+samtools faidx topolish.fixed.chr6.fixed.fa 6:1000-2000 6:4000-5000 6:100000000-100001000 6:100003000-100004000 > new_chr6_test.fa
+bwa mem ../topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa new_chr6_test.fa > new_chr6_test.sam
+# So far, so good!
+
+
+# Whoops! Hold the phone! Now I know why tig00009764 was broken up -- it has a misassembly with chr17 in the middle
+# Just confirmed with alignment images and the recombination map
+samtools faidx ../canu.mhap.all.fasta tig00009764:1-503775 > tig00009764_broken_segment2.fa
+samtools faidx ../canu.mhap.all.fasta tig00009764:646287-1716403 > tig00009764_broken_segment1.fa
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i tig00001238_segment.fa,topolish.fixed.chr6.1_97mb.fa,tig00009764_broken_segment1.fa,tig00009764_broken_segment2.fa -d '-,+,-,-' -o topolish.fixed.chr6.fixed.tig9764.fa"
+
+# Testing the recombination map to determine if the chr is assembled correctly
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 --wrap="module load bwa; bwa index canu.mhap.all.fasta; perl recombination/alignAndOrderSnpProbes.pl -a topolish.fixed.chr6.fixed.tig9764.fa -p ../recombination/rcmap_manifest.fa -o topolish.fixed.chr6.fixed.tig9764.rcmap"
+
+# OK, now to generate the final fasta
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 --wrap="module load bwa; bwa index topolish.fixed.chr6.fixed.tig9764.fa; perl ../recombination/alignAndOrderSnpProbes.pl -a topolish.fixed.chr6.fixed.tig9764.fa -p ../recombination/rcmap_manifest.fa -o topolish.fixed.chr6.fixed.tig9764.rcmap"
+
+# There appears to be a flaw within tig00001238. Going to try to fix it quickly
+	6       107394629       107585442       6       12834838        12636238        -       190813  198600
+	6       107678393       108677334       6       2197697 1249100 -       998941  948597
+	6       108756884       109835444       6       61567   1169965 +       1078560 1108398
+	6       109951981       114580517       6       12501415        7908900 -       4628536 4592515
+
+samtools faidx topolish.fixed.chr6.fixed.tig9764.fa 6:2197697-12636238 > topolish.fixed.chr6.fixed.tig9764.seg1.fa
+samtools faidx topolish.fixed.chr6.fixed.tig9764.fa 6:1-1169965 > topolish.fixed.chr6.fixed.tig9764.seg2.fa
+samtools faidx topolish.fixed.chr6.fixed.tig9764.fa 6:1249100-2197697 > topolish.fixed.chr6.fixed.tig9764.seg3.fa
+samtools faidx topolish.fixed.chr6.fixed.tig9764.fa 6:12636238-114810314 > topolish.fixed.chr6.fixed.tig9764.seg4.fa
+
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i topolish.fixed.chr6.fixed.tig9764.seg1.fa,topolish.fixed.chr6.fixed.tig9764.seg2.fa,topolish.fixed.chr6.fixed.tig9764.seg3.fa,topolish.fixed.chr6.fixed.tig9764.seg4.fa -d '+,-,+,+' -o topolish.fixed.chr6.fixed.tig9764.resegment.fa"
+
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 --wrap="module load bwa; bwa index topolish.fixed.chr6.fixed.tig9764.resegment.fa; perl ../recombination/alignAndOrderSnpProbes.pl -a topolish.fixed.chr6.fixed.tig9764.resegment.fa -p ../recombination/rcmap_manifest.fa -o topolish.fixxed.chr6.fixed.tig9764.resegment.rcmap"
+```
+
+Testing chr6 joining site locally
+
+> pwd: 
+
+```bash
+perl -lane 'if($F[-1] == 6 && $F[0] >= 103583644 ){print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[-2]\t$F[-1]";}' < toPolishFixedVsUMD.long1coords | perl -e '$c = 99999999999; while(<>){chomp; @s = split(/\t/); if($s[2] < $c){$c = $s[2];} if($s[3] < $c){$c = $s[3]}} print "$c\n";'
+101,794,133 <- lowest coordinate on chr6 topolish that maps before the break in UMD3
+
+# Canu alignments in the region
+# canu start	end				topolishstart	end				canu		topolish
+#4430139		 4636418 		207602  		1196    		tig00001238     6
+#4684386		 4778294 		109732733       109638725       tig00001238     6
+#12438116        12589926        101927289       101775379       tig00001238     6
+#12602754        12661935        101762438       **101703071**       tig00001238     6
+
+# Decision time! I'm going to clip at the canu alignment point because: 
+# (A) it's further down the scaffold and (b) it is the first point on the scaffold that encompasses the contig
+
+# New info on the scaffold:
+grep 'tig00009764' toPolishFixedVsCanu.long1coords
+17195   243277  97874325        97647946        226083  226380  99.69   1716403 118271633       13.17   0.19    tig00009764     6
+253491  353408  97637095        97536971        99918   100125  99.69   1716403 118271633       5.82    0.08    tig00009764     6
+371604  530882  97518207        97358809        159279  159399  99.84   1716403 118271633       9.28    0.13    tig00009764     6
+516824  640797  68269511        68145464        123974  124048  99.77   1716403 73196606        7.22    0.17    tig00009764     17
+641983  752892  101420619       101309680       110910  110940  99.96   1716403 118271633       6.46    0.09    tig00009764     6
+759484  914975  101303111       101147546       155492  155566  99.92   1716403 118271633       9.06    0.13    tig00009764     6
+922504  1045799 101140028       101016649       123296  123380  99.89   1716403 118271633       7.18    0.10    tig00009764     6
+1064989 1678373 100997497       100383750       613385  613748  99.87   1716403 118271633       35.74   0.52    tig00009764     6
+
+# OK, so tig00009764 looks to be better. I'll start my clipping at the 97358809 start site instead
 ```
 
 <a name="snps"></a>
