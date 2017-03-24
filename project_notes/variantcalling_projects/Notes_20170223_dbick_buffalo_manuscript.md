@@ -30,4 +30,14 @@ chrnames <- c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "c
 
 bamDataRanges <- lapply(chrnames, function(chr){var <- getReadCountsFromBAM(bamfiles, mode="paired", WL=1000, refSeqName=chr); return(c(var, chr))})
 
+# It crashed
+```
 
+OK, I need to generate the windows myself, load them with values, and then load them into R to run cn.mops.
+
+```bash
+# Making blind, naive, non overlapping windows
+perl -lane 'for(my $x = 1; $x < $F[1]; $x += 1000){my $e = ($x + 1000 > $F[1])? $F[1] : $x + 1000; if($e - $x < 500){next;} print "$F[0]\t$x\t$e";}' < ../../reference/umd3_kary_nmask_hgap.fa.fai > umd3_naive_1kb_nonovlp_wins.bed
+
+# Doing RD counts in those windows
+for i in ITWB*/ITWB*.merged.bam; do folder=`echo $i | cut -d'/' -f1`; echo $folder; samtools bedcov umd3_naive_1kb_nonovlp_wins.bed $i > ${folder}/${folder}.1kb.rd.bed; done

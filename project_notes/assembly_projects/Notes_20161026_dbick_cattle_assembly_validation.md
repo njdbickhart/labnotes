@@ -959,6 +959,88 @@ sub determineConsensus{
 }
 ```
 
+##ARS-UCD1.0.4 creation
+
+Using Bob's guidelines and a few more problem regions identified from my scan of the rcmap.
+
+> fry:/mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/ver_4_corrections
+
+```bash
+# Let's grep out all of the chromosomes I need
+samtools faidx ../ARS-UCD1.0.3.fa 21 > ver_3_21.fa
+samtools faidx ../ARS-UCD1.0.3.fa 27 > ver_3_27.fa
+samtools faidx ../ARS-UCD1.0.3.fa 2 > ver_3_2.fa
+samtools faidx ../ARS-UCD1.0.3.fa 10 > ver_3_10.fa
+samtools faidx ../ARS-UCD1.0.3.fa 9 > ver_3_9.fa
+for i in `ls *.fa`; do echo $i; samtools faidx $i; done
+
+# chr21
+# Region: 21:33382423-34381237  
+# Should be inverted and placed further up the chromosome.
+# RCmap positions and canu contig confirmed
+# chr21: Segments: 21:1-33382000: +, , 21:34471679-60613291: +, 21:33382423-34381237: -, 21:60613291-71144717
+samtools faidx ver_3_21.fa 21:1-33382000 > chr21_seg1.fa
+samtools faidx ver_3_21.fa 21:34471679-60613291 > chr21_seg2.fa
+samtools faidx ver_3_21.fa 21:33382423-34381237 > chr21_seg3.fa
+samtools faidx ver_3_21.fa 21:60613291-71144717 > chr21_seg4.fa
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chr21_order.list.tab -o version_4_fixed_chr21.fa -p 100"
+
+# chr27
+# Segment belongs on chr27
+# ARS-BFGL-NGS-91530      21      34418807        +       27      36664
+# Segments: 21:34386001-34435280:+ to chr27, beginning of chromosome
+# considering confirmed as it fits in with another inversion discovered by the rcmap
+# chr27: 21:34386001-34435280:+ 27:1-end:+
+samtools faidx ver_3_21.fa 21:34386001-34435280 > chr27_seg1.fa 
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chr27_order.list.tab -o version_4_fixed_chr27.fa -p 100"
+
+# chr2
+# ARS-BFGL-NGS-52539      2       121810158       +       10      18743955
+# Here's the area on chr2
+#ARS-BFGL-NGS-28919      2       121315884       -       2       122146355
+#ARS-BFGL-NGS-40444      2       121967868       -       2       122409628
+# Our chr difference: 600kb, UMD3: 300kb. Difficult to break
+# Trusting in Bob's dbsnp mappings here
+# chr2: chr2:1-121673581: + chr2:121843925-end
+samtools faidx ver_3_2.fa 2:1-121673581 > chr2_seg1.fa
+samtools faidx ver_3_2.fa 2:121843925-136330933 > chr2_seg2.fa
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chr2_order.list.tab -o version_4_fixed_chr2.fa -p 100"
+
+# chr10
+# segments:
+# chr10: 10:1-18651720:+, 2:121708673-121823734:+, 10:18853496-end
+samtools faidx ver_3_10.fa 10:1-18651720 > chr10_seg1.fa
+samtools faidx ver_3_2.fa 2:121708673-121823734 > chr10_seg2.fa
+samtools faidx ver_3_10.fa 10:18853496-103693712 > chr10_seg3.fa
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chr10_order.list.tab -o version_4_fixed_chr10.fa -p 100"
+
+# chr9
+# I have no X markers and no other linkage information. My plan is just to remove the region and place it as a "special"
+# leftover contig
+# segments:
+# chr9: 9:1-104017834:+ 9:112550012-end:+, 9:104017834-112550012 to contig_x_unplaced.
+samtools faidx ver_3_9.fa 9:1-104017834 >chr9_seg1.fa
+samtools faidx ver_3_9.fa 9:112550012-113852591 > chr9_seg2.fa
+samtools faidx ver_3_9.fa 9:104017834-112550012 > extra_9_contig.fa
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chr9_order.list.tab -o version_4_fixed_chr9.fa -p 100"
+
+# Now stitching together most of the autosomes
+sbatch ../reorder_fasta.pl ARS_UCDpreV4.fa ../ARS-UCD1.0.3.fa correction_fastas.v4.list
+# Adding the unplaced X chromosome contig
+cat ARS_UCDpreV4.fa extra_9_contig.fa > ../ARS-UCD1.0.4.fa
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 --wrap="samtools faidx ARS-UCD1.0.4.fa; gzip ARS-UCD1.0.4.fa;"
+```
+
+Summary: made corrections to 5 chromosomes from ARS-UCD1.0.3.fa. 
+
+* chr2: removed 2:121708673-121823734 and added it to the middle of chr10
+* chr21: 
+	* removed 21:33382423-34381237 and moved it to the beginning of chr27
+	* inverted and moved 21:33382423-34381237 further down the chromosome
+* chr9: removed 9:104017834-112550012 and placed it in "contig_x_unplaced"
+* chr10: see above
+* chr27: see above
+
 <a name="snps"></a>
 ## SNP remapping and stats
 
