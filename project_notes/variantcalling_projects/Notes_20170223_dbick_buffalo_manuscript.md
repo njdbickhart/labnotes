@@ -41,3 +41,20 @@ perl -lane 'for(my $x = 1; $x < $F[1]; $x += 1000){my $e = ($x + 1000 > $F[1])? 
 
 # Doing RD counts in those windows
 for i in ITWB*/ITWB*.merged.bam; do folder=`echo $i | cut -d'/' -f1`; echo $folder; samtools bedcov umd3_naive_1kb_nonovlp_wins.bed $i > ${folder}/${folder}.1kb.rd.bed; done
+``` 
+
+Now to load them into cn.mops! Not sure how to begin here as the data entry is a specific type of GRanges object. I can attempt to load them as a raw data matrix instead.
+
+```R
+bedfiles <- list.files(recursive=TRUE, indlue.dirs=TRUE, pattern="ITWB.+.1kb.rd.bed$")
+fileIds <- sapply(strsplit(bedfiles, "/"), "[[", 1)
+
+# reading all files in as a list for subsetting later
+rdtables <- lapply(bedfiles, function(bed){var <- read.delim(file=bed, sep="\t", header=FALSE, col.names=c("chr", "start", "end", "value")); fname <- sapply(strsplit(bed, "/"), "[[", 1); return(c(var, fname))})
+
+coords <- data.frame(chr=rdtables[[1]]$chr, start=rdtables[[1]]$start, end=rdtables[[1]]$end)
+library("GenomicRanges")
+# Taking advantage of built-in coercion here
+GRangeObj <- as(coords, "GRanges")
+
+```

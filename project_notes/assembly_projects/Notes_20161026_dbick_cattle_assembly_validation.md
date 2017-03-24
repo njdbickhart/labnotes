@@ -467,6 +467,9 @@ intersectBed -a topolish.no1b.bases_zero_cov.gt5bp.bed -b topolish.filledWithCan
 wc -l topolish.no1b.bases_zero_cov.gt5bp.nogaps.bed
 	73690 topolish.no1b.bases_zero_cov.gt5bp.nogaps.bed  <- thats 74211 zero cov - 521 gaps
 
+# Dammit! The coordinates in the manifest file are for UMD3, not the rc map!
+# Correcting it
+perl -e 'chomp(@ARGV); my %h; open($IN, "< $ARGV[0]"); <$IN>; while(<$IN>){chomp; @s = split(/,/); $h{$s[0]} = [$s[1], $s[2]];} close $IN; open($IN, "< $ARGV[1]"); for(my $x = 0; $x < 8; $x++){<$IN>;} while(<$IN>){chomp; @s = split(/,/); if(exists($h{$s[1]})){$chr = $h{$s[1]}->[0]; $pos = $h{$s[1]}->[1]; print ">$s[1].$chr.$pos\t$s[5]\n";}else{print ">$s[1].$s[9].$s[10]\t$s[5]\n";}}' /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_hits.csv /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.csv | perl -e '%d; while($l = <>){chomp $l; @s = split(/\t/, $l); @n = split(/\./, $s[0]); $d{$n[1]}->{$n[2]} = $l;} foreach my $chr (sort{$a <=> $b} keys(%d)){foreach my $pos (sort{$a <=> $b} keys(%{$d{$chr}})){ @h = split(/\t/, $d{$chr}->{$pos}); print "$h[0]\n$h[1]\n";}}' > /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest_correct.sorted.fa
 
 ```
 
@@ -959,7 +962,7 @@ sub determineConsensus{
 }
 ```
 
-##ARS-UCD1.0.4 creation
+## ARS-UCD1.0.4 creation
 
 Using Bob's guidelines and a few more problem regions identified from my scan of the rcmap.
 
@@ -1040,6 +1043,123 @@ Summary: made corrections to 5 chromosomes from ARS-UCD1.0.3.fa.
 * chr9: removed 9:104017834-112550012 and placed it in "contig_x_unplaced"
 * chr10: see above
 * chr27: see above
+
+
+## ARS-UCD1.0.5 creation
+
+A bunch of remaining issues to address and some leftover scaffolds to place.
+
+> fry: /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/ver_5_corrections
+
+```bash
+# Leftovers
+# Intersecting the rough coordinates of the Leftover contig insertions with gaps
+# This is the easiest way to incorporate them into the ASM without causing more headaches!
+intersectBed -a leftover_regions.1.0.3.bed -b ARS-UCD1.0.3.fa.gap.bed
+19      43249193        43249217        Leftover_ScbfJmS_1654
+
+# Chr6
+# There are errors on the beginning and end of the chromosome
+# Also, there is a missing portion near the beginning, from UMD_6:1471923-3780334
+# The chr6 situation is pretty complex actually:
+# End of the chr:
+	BTA-77952-no-rs *       0       +       6       119396306
+	Hapmap46942-BTA-114876  6       102019559       +       6       126619789
+	BTB-01782372    6       102377773       +       6       126981782
+	BTB-01534933    6       102824316       -       6       127576198
+	Hapmap44179-BTA-102481  6       102876193       -       6       127720898
+	BTB-01544044    6       102898160       +       6       127742938
+	Hapmap43685-BTA-77920   6       103146861       +       6       128026956
+	BTA-09585-no-rs 6       103246085       -       6       128135281
+	Hapmap55617-rs29025460  6       103672694       +       6       128567814
+	Hapmap53146-ss46526085  6       104115364       +       6       129056666
+	BTB-00284077    6       104254666       +       6       129209793
+	BTB-00283603    6       104773093       -       6       129719477
+# Supposed breakpoint:
+	ARS-BFGL-NGS-83571      6       101891483       +       6       106495683
+	ARS-BFGL-NGS-111057     6       101912902       -       6       106517122
+	ARS-BFGL-NGS-1012       6       101946553       +       6       106546711
+	BovineHD0600029934      6       101951972       +       6       106552130
+	ARS-BFGL-NGS-79719      6       101978733       +       6       106578932
+	BovineHD0600029951      6       102007520       -       6       106607689
+	ARS-BFGL-NGS-112900     6       102046963       -       6       106647592
+	BovineHD0600029975      6       102102018       +       6       106703398
+	ARS-BFGL-NGS-112084     6       102157017       +       6       106758901
+	BovineHD0600030003      6       102184676       -       6       106786536
+	ARS-BFGL-NGS-28350      6       102206464       +       6       106808225
+
+# Based on Bob's linkage map, The early-102 fragments appear to be a separate block
+# Let's be conservative and link only the regions that have consensus recmap and linkage map positioning
+# Segments:
+# 6:1643535-2914396 :+, 6:1-1354912 +, 6:3125221-101848529 +, 6:104959826-114187345 +, 6:102019559-104831017 +
+samtools faidx ../ARS-UCD1.0.4.fa 6:1643535-2914396 > chr6_seg1.fa
+samtools faidx ../ARS-UCD1.0.4.fa 6:1-1354912 > chr6_seg2.fa
+samtools faidx ../ARS-UCD1.0.4.fa 6:3125221-101848529 > chr6_seg3.fa
+samtools faidx ../ARS-UCD1.0.4.fa 6:104959826-114187345 > chr6_seg4.fa
+samtools faidx ../ARS-UCD1.0.4.fa 6:102019559-104831017 > chr6_seg5.fa
+
+# Chr7
+# This is based on coordinates from ARS-UCD1.0.3, so I need to replicate results here
+# Chr7 is an easy fix because it was not modified in 1.0.3
+# Bob's linkage map and the recmap are a bit fuzzy as to the placement of the chr10 segment. I will be a bit 
+# conservative here as well
+# segments:
+# 7:1-109601269 +, 7:109766892-109870666 +, 10:93631977-94139219 +
+# I saved the last "chunk" of chr7 instead of discarding it
+samtools faidx ../ARS-UCD1.0.3.fa 7:1-109601269 > chr7_seg1.fa
+samtools faidx ../ARS-UCD1.0.3.fa 7:109766892-109870666 > chr7_seg2.fa
+samtools faidx ../ARS-UCD1.0.3.fa 10:93631977-94139219 > chr7_seg3.fa
+
+# Chr10
+# I need to redo the ARS-UCD v3 recipe for this chromosome
+# ARS_UCD-1.0.3 coords!!
+# segments:
+# chr10: 10:1-18853496 +, 2:121708673-121823734:+, 10:18853496-93553629, 10:94259680-103693712:+
+samtools faidx ../ARS-UCD1.0.3.fa 10:1-18853496 > chr10_seg1.fa
+samtools faidx ../ARS-UCD1.0.3.fa 2:121708673-121823734 > chr10_seg2.fa
+samtools faidx ../ARS-UCD1.0.3.fa 10:18853496-93553629 > chr10_seg3.fa
+samtools faidx ../ARS-UCD1.0.3.fa 10:94259680-103693712 > chr10_seg4.fa
+
+# Chr26
+# There is a chunk that needs to be moved to around the 38 mb region.
+# 26:2664716-3081519 + belongs between 26:24034259 and 26:24055998 according to the recmap
+# But there is also evidence that it belongs somewhere between 50734383 and 50756585 from a probe on the recmap and most of the linkage map
+# I'll go with the linkage map here and hope for the best
+# segments:
+# 26:1-2628677 +, 26:3172062-50734383 +, 26:2664716-3081519 +, 26:50756585-51553036 +
+samtools faidx ../ARS-UCD1.0.4.fa 26:1-2628677 > chr26_seg1.fa
+samtools faidx ../ARS-UCD1.0.4.fa 26:3172062-50734383 > chr26_seg2.fa
+samtools faidx ../ARS-UCD1.0.4.fa 26:2664716-3081519 > chr26_seg3.fa
+samtools faidx ../ARS-UCD1.0.4.fa 26:50756585-51553036 > chr26_seg4.fa
+
+# Chr19
+# This is a new addition
+# Lack of information may mean that the orientation is wrong on my insertion -- we'll have to live with it!
+# Segments:
+# 19:1-43249193 +, Leftover_ScbfJmS_1654 +, 19:43249217-63373019 +
+samtools faidx ../ARS-UCD1.0.4.fa 19:1-43249193 > chr19_seg1.fa
+samtools faidx ../ARS-UCD1.0.4.fa Leftover_ScbfJmS_1654 > chr19_seg2.fa
+samtools faidx ../ARS-UCD1.0.4.fa 19:43249217-63373019 > chr19_seg3.fa
+
+# Generating order files
+perl -e '@fs = `ls *.fa`; foreach $f (@fs){print $f; chomp $f; ($c) = $f =~ /(chr.+)_seg.+.fa/; open($OUT, ">> $c.order.list"); print {$OUT} "$f\t+\n"; close $OUT;}'
+# Submitting revision fasta entries
+for i in `ls *order.list`; do chr=`echo $i | cut -d'.' -f1`; echo $chr; sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i $i -o version_5_fixed_${chr}.fa -p 100"; done
+
+ls version_*.fa > correction_fastas.v5.list
+# I added Leftover_ScbfJmS_1654 to a removal list so that it isn't duplicated in the v5 assembly
+sbatch ../reorder_fasta.pl ../ARS-UCD1.0.5.fa ../ARS-UCD1.0.4.fa correction_fastas.v5.list
+
+# So, this should be the 1.0.4 changes as well as the updated chromosomes above
+```
+
+Summary: made changes to 5 chromosomes using a combination of v3 and v4 fasta information
+
+* chr10: section from chr2 is placed properly, removed the portion that is the telomere for chr7
+* chr7: added the telomeric portion from chr10 to the end of this chr. Also, resectioned portions of the sub-telomeric region
+* chr6: fixed a translocation in the beginning of the chr and shuffled the end to match the recmap coordinates
+* chr26: moved the misplaced chunk from the 24 Mb to the subtelomeric region. Recmap coordinates were mixed on the placement of this section -- trusted the linkage map here
+* chr19: placed Leftover_ScbfJmS_1654 into a gap region near the 43 Mb
 
 <a name="snps"></a>
 ## SNP remapping and stats
