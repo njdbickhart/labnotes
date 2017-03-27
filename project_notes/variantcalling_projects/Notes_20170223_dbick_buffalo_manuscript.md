@@ -57,4 +57,13 @@ library("GenomicRanges")
 # Taking advantage of built-in coercion here
 GRangeObj <- as(coords, "GRanges")
 
+rdVals <- data.frame(sapply(rdtables, "[[", 4))
+colnames(rdVals) <- sapply(strsplit(bedfiles, "/"), "[[", 1)
+for(i in colnames(rdVals)){mcols(GRangeObj)[i] <- rdVals[,i]}
+
+library(cn.mops)
+res <- cn.mops(GRangeObj)
+
 ```
+
+A successful run! Now to try to sort out the results.

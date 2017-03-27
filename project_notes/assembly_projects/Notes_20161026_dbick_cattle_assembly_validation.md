@@ -1161,6 +1161,66 @@ Summary: made changes to 5 chromosomes using a combination of v3 and v4 fasta in
 * chr26: moved the misplaced chunk from the 24 Mb to the subtelomeric region. Recmap coordinates were mixed on the placement of this section -- trusted the linkage map here
 * chr19: placed Leftover_ScbfJmS_1654 into a gap region near the 43 Mb
 
+## ARS-UCD1.0.6 creation
+
+There are still some remaining issues with chr26 that need to be addressed. I will do my best to catalogue and fix them.
+
+```bash
+mkdir ver_6_corrections
+cd ver_6_corrections
+# chr26
+# 26:50191200-50579551  between 23490975 and 23512714
+# 26:15016528-15315313:- between 25749185 and 25818753
+# 26:15349938-15465426:- between 50050681 and 50119386
+# segments:
+# 26:1-15016528:+, 26:15465426-23490975:+, 26:50191200-50579551:+, 26:23512714-25749185:+, 26:15016528-15315313:-, 26:25818753-50050681:+, 26:15349938-15465426:-, 26:50050681-50119386:+, 26:50953848-51404555:-, 26:50119386-50856968:+
+samtools faidx ../ARS-UCD1.0.5.fa 26:1-15016528 > chr26_seg1.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:15465426-23490975 > chr26_seg2.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:50191200-50579551 > chr26_seg3.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:23512714-25749185 > chr26_seg4.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:15016528-15315313 > chr26_seg5.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:25818753-50050681 > chr26_seg6.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:15349938-15465426 > chr26_seg7.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:50050681-50119386 > chr26_seg8.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:50953848-51404555 > chr26_seg9.fa
+samtools faidx ../ARS-UCD1.0.5.fa 26:50119386-50856968 > chr26_seg10.fa
+
+# chr5
+# There's one inversion remaining
+# segments:
+# 5:1-79055811:+, 5:79055811-79460974:-, 5:79460974-120000469
+samtools faidx ../ARS-UCD1.0.5.fa 5:1-79055811 > chr5_seg1.fa
+samtools faidx ../ARS-UCD1.0.5.fa 5:79055811-79460974 > chr5_seg2.fa
+samtools faidx ../ARS-UCD1.0.5.fa 5:79460974-120000469 > chr5_seg3.fa
+
+# chr8
+# There's one inversion remaining
+# segments:
+# 8:1-87651142:+, 8:87651142-87861659:-, 8:87861659-113220712:+
+samtools faidx ../ARS-UCD1.0.5.fa 8:1-87651142 > chr8_seg1.fa
+samtools faidx ../ARS-UCD1.0.5.fa 8:87651142-87861659 > chr8_seg2.fa
+samtools faidx ../ARS-UCD1.0.5.fa 8:87861659-113220712 > chr8_seg3.fa
+
+# chr18
+# There's one inversion remaining
+# segments:
+# 18:1-62366442:+, 18:62366442-62533251:-, 18:62533251-65953167:+
+samtools faidx ../ARS-UCD1.0.5.fa 18:1-62366442 > chr18_seg1.fa
+samtools faidx ../ARS-UCD1.0.5.fa 18:62366442-62533251 > chr18_seg2.fa
+samtools faidx ../ARS-UCD1.0.5.fa 18:62533251-65953167 > chr18_seg3.fa
+
+# Now to generate the intermediary order files
+perl -e '@fs = `ls *.fa`; foreach $f (@fs){print $f; chomp $f; ($c) = $f =~ /(chr.+)_seg.+.fa/; open($OUT, ">> $c.order.list"); print {$OUT} "$f\t+\n"; close $OUT;}'
+# Submitting version 6 corrections
+for i in `ls *order.list`; do chr=`echo $i | cut -d'.' -f1`; echo $chr; sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i $i -o version_6_fixed_${chr}.fa -p 100"; done
+
+# Wrapping it all together
+ls version_6_fixed_chr*.fa > correction_fastas.v6.list
+sbatch ../reorder_fasta.pl ../ARS-UCD1.0.6.fa ../ARS-UCD1.0.5.fa correction_fastas.v6.list
+
+sbatch --dependency=afterok:658590 --nodes=1 --mem=4000 --ntasks-per-node=1 --wrap="samtools faidx ARS-UCD1.0.6.fa; gzip ARS-UCD1.0.6.fa;"
+```
+
 <a name="snps"></a>
 ## SNP remapping and stats
 
