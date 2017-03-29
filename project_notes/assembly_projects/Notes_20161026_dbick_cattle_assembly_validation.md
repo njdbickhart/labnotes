@@ -471,6 +471,11 @@ wc -l topolish.no1b.bases_zero_cov.gt5bp.nogaps.bed
 # Correcting it
 perl -e 'chomp(@ARGV); my %h; open($IN, "< $ARGV[0]"); <$IN>; while(<$IN>){chomp; @s = split(/,/); $h{$s[0]} = [$s[1], $s[2]];} close $IN; open($IN, "< $ARGV[1]"); for(my $x = 0; $x < 8; $x++){<$IN>;} while(<$IN>){chomp; @s = split(/,/); if(exists($h{$s[1]})){$chr = $h{$s[1]}->[0]; $pos = $h{$s[1]}->[1]; print ">$s[1].$chr.$pos\t$s[5]\n";}else{print ">$s[1].$s[9].$s[10]\t$s[5]\n";}}' /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_hits.csv /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.csv | perl -e '%d; while($l = <>){chomp $l; @s = split(/\t/, $l); @n = split(/\./, $s[0]); $d{$n[1]}->{$n[2]} = $l;} foreach my $chr (sort{$a <=> $b} keys(%d)){foreach my $pos (sort{$a <=> $b} keys(%{$d{$chr}})){ @h = split(/\t/, $d{$chr}->{$pos}); print "$h[0]\n$h[1]\n";}}' > /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest_correct.sorted.fa
 
+# Dammit all again! Aparently they truncated the "ARS" from the probe name and prevented exact matching!
+perl -lane '$_ =~ s/BFGL/ARS-BFGL/; print $_;' < ../recombination/rcmap_hits.csv > ../recombination/rcmap_hits.renamed.csv
+
+perl -e 'chomp(@ARGV); my %h; open($IN, "< $ARGV[0]"); <$IN>; while(<$IN>){chomp; @s = split(/,/); $h{$s[0]} = [$s[1], $s[2]];} close $IN; open($IN, "< $ARGV[1]"); for(my $x = 0; $x < 9; $x++){<$IN>;} while(<$IN>){chomp; @s = split(/,/); if(exists($h{$s[1]})){$chr = $h{$s[1]}->[0]; $pos = $h{$s[1]}->[1]; print ">$s[1].$chr.$pos\t$s[5]\n";}else{print ">$s[1].$s[9].$s[10]\t$s[5]\n";}}' ../recombination/rcmap_hits.renamed.csv /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.csv | perl -e '%d; while($l = <>){chomp $l; @s = split(/\t/, $l); @n = split(/\./, $s[0]); $d{$n[1]}->{$n[2]} = $l;} foreach my $chr (sort{$a <=> $b} keys(%d)){foreach my $pos (sort{$a <=> $b} keys(%{$d{$chr}})){ @h = split(/\t/, $d{$chr}->{$pos}); print "$h[0]\n$h[1]\n";}}' > /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest_correct.sorted.fa
+
 ```
 
 
@@ -1209,6 +1214,21 @@ samtools faidx ../ARS-UCD1.0.5.fa 18:1-62366442 > chr18_seg1.fa
 samtools faidx ../ARS-UCD1.0.5.fa 18:62366442-62533251 > chr18_seg2.fa
 samtools faidx ../ARS-UCD1.0.5.fa 18:62533251-65953167 > chr18_seg3.fa
 
+# chr21/27
+# There's still a problem where the middle of chr21 should be on the centromeric end of chr27
+# chr27
+# segments:
+# 21:59921624-60423769:-, 27:1-44587378:+
+# chr21
+# segments:
+# 21:1-59921624:+ 21:60423769-71054155:+
+samtools faidx ../ARS-UCD1.0.5.fa 21:59921624-60423769 > chr27_seg1.fa
+samtools faidx ../ARS-UCD1.0.5.fa 27:1-44587378 > chr27_seg2.fa
+
+samtools faidx ../ARS-UCD1.0.5.fa 21:1-59921624 > chr21_seg1.fa
+samtools faidx ../ARS-UCD1.0.5.fa 21:60423769-71054155 > chr21_seg2.fa
+
+
 # Now to generate the intermediary order files
 perl -e '@fs = `ls *.fa`; foreach $f (@fs){print $f; chomp $f; ($c) = $f =~ /(chr.+)_seg.+.fa/; open($OUT, ">> $c.order.list"); print {$OUT} "$f\t+\n"; close $OUT;}'
 # Submitting version 6 corrections
@@ -1219,7 +1239,60 @@ ls version_6_fixed_chr*.fa > correction_fastas.v6.list
 sbatch ../reorder_fasta.pl ../ARS-UCD1.0.6.fa ../ARS-UCD1.0.5.fa correction_fastas.v6.list
 
 sbatch --dependency=afterok:658590 --nodes=1 --mem=4000 --ntasks-per-node=1 --wrap="samtools faidx ARS-UCD1.0.6.fa; gzip ARS-UCD1.0.6.fa;"
+
+sbatch --mem=1000 --nodes=1 --ntasks-per-node=1 --wrap="gunzip ARS-UCD1.0.6.fa.gz"
+sbatch --dependency=afterok:659517 ../bob_reorder/process_and_qv_fasta.sh ARS-UCD1.0.6.fa
 ```
+
+Summary:
+
+* chr21/27: moved 60mb region of chr21 to the centromere of chr27. Resectioned chr21 to remove the portion
+* chr18: fixed an inversion in the recmap
+* chr8: fixed an inversion in the recmap
+* chr5: fixed an inversion in the recmap
+* chr26: fixed 3 translocations identified in the recmap
+
+## ARS-UCD version 1.0.7
+
+Just a few remaining issues and a cleanup of the X chromosome.
+
+> fry: /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/ver_7_corrections
+
+```bash
+# chr26
+# segments
+# 26:1-23042279:+, 26:23378404-50280000:+, 26:23147752-23375335:+ 26:50280080-end:+
+samtools faidx ../ARS-UCD1.0.6.fa 26:1-23042279 > chr26_seg1.fa
+samtools faidx ../ARS-UCD1.0.6.fa 26:23378404-50280000 > chr26_seg2.fa
+samtools faidx ../ARS-UCD1.0.6.fa 26:23147752-23375335 > chr26_seg3.fa
+samtools faidx ../ARS-UCD1.0.6.fa 26:50280080-51571003 > chr26_seg4.fa
+
+# chr21/27
+# There is a small portion that I missed with my last cropping. 
+# chr27
+# segments
+# 27:1-476547:+, 21:59579708-59921726:-, 27:535053-45089624:+
+# chr21
+# segments:
+# 21:1-59501475:+, 21:60203895-70552111
+samtools faidx ../ARS-UCD1.0.6.fa 27:1-476547 > chr27_seg1.fa
+samtools faidx ../ARS-UCD1.0.6.fa 21:59579708-59921726 > chr27_seg2.fa
+samtools faidx ../ARS-UCD1.0.6.fa 27:535053-45089624 > chr27_seg3.fa
+
+samtools faidx ../ARS-UCD1.0.6.fa 21:1-59501475 > chr21_seg1.fa
+samtools faidx ../ARS-UCD1.0.6.fa 21:60203895-70552111 > chr21_seg2.fa
+
+# chrX
+# I need to invert the entire thing
+# I will leave the unplaced x contig for now -- hopefully the Hi-C data will provide guidance here
+
+# Generating the order lists
+perl -e '@fs = `ls *.fa`; foreach $f (@fs){print $f; chomp $f; ($c) = $f =~ /(chr.+)_seg.+.fa/; open($OUT, ">> $c.order.list"); print {$OUT} "$f\t+\n"; close $OUT;}'
+# Submitting version7 fixes
+for i in `ls *order.list`; do chr=`echo $i | cut -d'.' -f1`; echo $chr; sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i $i -o version_7_fixed_${chr}.fa -p 100"; done
+
+```
+
 
 <a name="snps"></a>
 ## SNP remapping and stats
