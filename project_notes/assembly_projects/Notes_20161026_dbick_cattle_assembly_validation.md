@@ -6,6 +6,12 @@
 * [Sequence alignment and summary statistics](#stats)
 * [Polished assembly](#polish)
 * [Recombination map alignment and problem region identification](#recomb)
+* [Assembly Correction](#corr)
+	* [v1.0.3](#three)
+	* [v1.0.4](#four)
+	* [v1.0.5](#five)
+	* [v1.0.6](#six)
+	* [v1.0.7](#seven)
 * [SNP remapping and stats](#snps)
 
 <a name="stats"></a>
@@ -526,8 +532,8 @@ close $OUT;
 exit;
 ```
 
-<a name="longrange"></a>
-## Fixing longrange issues in cattle asms
+<a name="corr"></a>
+## Cattle Assembly correction
 
 Aleksey used Bob's guides to correct the misplaced contigs on topolish.no1b. I'm going to run his assemblies through the pipeline to see how they stack up.
 
@@ -551,6 +557,9 @@ sbatch --mem=2000 --nodes=1 --ntasks-per-node=1 --wrap="perl -lane 'if($F[3] == 
 ```
 
 OK, I now need to correct chromosome 6 as that was the remaining error after Serge and Bob's manual edits.
+
+<a name="three"></a>
+### V1.0.3
 
 From Bob's slack post:
 
@@ -966,8 +975,8 @@ sub determineConsensus{
         return \@consensus, \@values;
 }
 ```
-
-## ARS-UCD1.0.4 creation
+<a name="four"></a>
+### ARS-UCD1.0.4 creation
 
 Using Bob's guidelines and a few more problem regions identified from my scan of the rcmap.
 
@@ -1049,8 +1058,8 @@ Summary: made corrections to 5 chromosomes from ARS-UCD1.0.3.fa.
 * chr10: see above
 * chr27: see above
 
-
-## ARS-UCD1.0.5 creation
+<a name="five"></a>
+### ARS-UCD1.0.5 creation
 
 A bunch of remaining issues to address and some leftover scaffolds to place.
 
@@ -1166,7 +1175,8 @@ Summary: made changes to 5 chromosomes using a combination of v3 and v4 fasta in
 * chr26: moved the misplaced chunk from the 24 Mb to the subtelomeric region. Recmap coordinates were mixed on the placement of this section -- trusted the linkage map here
 * chr19: placed Leftover_ScbfJmS_1654 into a gap region near the 43 Mb
 
-## ARS-UCD1.0.6 creation
+<a name="six"></a>
+### ARS-UCD1.0.6 creation
 
 There are still some remaining issues with chr26 that need to be addressed. I will do my best to catalogue and fix them.
 
@@ -1252,7 +1262,8 @@ Summary:
 * chr5: fixed an inversion in the recmap
 * chr26: fixed 3 translocations identified in the recmap
 
-## ARS-UCD version 1.0.7
+<a name="seven"></a>
+### ARS-UCD version 1.0.7
 
 Just a few remaining issues and a cleanup of the X chromosome.
 
@@ -1292,7 +1303,7 @@ perl -e '@fs = `ls *.fa`; foreach $f (@fs){print $f; chomp $f; ($c) = $f =~ /(ch
 for i in `ls *order.list`; do chr=`echo $i | cut -d'.' -f1`; echo $chr; sbatch --nodes=1 --mem=50000 --ntasks-per-node=4 --wrap="module load java/jdk1.8.0_92; java -Xmx49g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i $i -o version_7_fixed_${chr}.fa -p 100"; done
 
 ```
-
+The autosome corrections are ready, but they're minor and we decided to delay the creation of this assembly fasta until the Hi-C data comes in. The big question is what to do with the X chromosome, as the linkage map and recombination map are little help here, and it is very difficult to assemble.
 
 <a name="snps"></a>
 ## SNP remapping and stats
