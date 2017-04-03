@@ -6,6 +6,8 @@ These are my notes on the generation of SV, MEI and other variant calls on the b
 
 ## Table of Contents
 * [Setting the stage](#stage)
+* [Tangram run](#tangram)
+* [Melt run](#melt)
 
 
 ## Setting the stage
@@ -249,3 +251,23 @@ pdf(file="buffalo_cnmops_shroom2_test_8521.pdf", useDingbats=FALSE)
 plot(res, which=8521)
 dev.off()
 ```
+<a name="tangram"></a>
+## Tangram run
+
+I figure that more than one method is needed to confirm the MEI associations I made previously. 
+
+I need to convert the bams from BWA format to Mosaik first. Then I'll run Tangram to try to ID the MEI.
+
+> /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams
+
+```bash
+for i in */*.merged.bam; do name=`echo $i | cut -d'/' -f1`; echo $name; ~/Tangram/bin/tangram_bam --input $i --ref /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa --output $name/${name}.tangram.bam; samtools index $name/${name}.tangram.bam; done
+ITWB10
+Segmentation fault (core dumped)
+```
+
+This is a known issue on the github repo. Since the repo is dead, other users are suggesting that another tool is used instead. Shortest software run, ever!
+
+<a name="melt"></a>
+## Melt run
+
