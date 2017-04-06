@@ -886,3 +886,16 @@ perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o combine
 for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.tab; echo $joel; perl subsectionTabFile.pl group_1_2.txt $joel > ${chr}_joels_holstein_subsection.refined.tab; done
 
 for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.refined.tab; sequence=${chr}.sequenced.files.tab; sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 --wrap="perl combine_tab_format_files.pl $joel $sequence ${chr}_joels_complete.tab; gzip ${chr}_joels_complete.tab;"; done
+```
+
+## 1k bulls annotation of vcfs
+
+Just starting the SNPeff run for now -- will need to run my filtration script on each VCF individually afterwards. 
+
+> 3850: /seq1
+
+```bash
+for i in `seq 1 10`; do chr="Chr$i"; vcf=${chr}"-beagle-Run6.vcf.gz"; echo $vcf; ~/jdk1.8.0_45/bin/java -jar ~/snpEff/snpEff.jar eff -c ~/snpEff/snpEff.config -s 1kbulls_annotated_run6_vcfs/${chr}.snpeff.stats -csvStats UMD3.1.79 1kbulls_run6_vcfs/$vcf | gzip > 1kbulls_annotated_run6_vcfs/${chr}.1kbulls.annotated.vcf.gz; done
+for i in `seq 11 25`; do chr="Chr$i"; vcf=${chr}"-beagle-Run6.vcf.gz"; echo $vcf; ~/jdk1.8.0_45/bin/java -jar ~/snpEff/snpEff.jar eff -c ~/snpEff/snpEff.config -s 1kbulls_annotated_run6_vcfs/${chr}.snpeff.stats -csvStats UMD3.1.79 1kbulls_run6_vcfs/$vcf | gzip > 1kbulls_annotated_run6_vcfs/${chr}.1kbulls.annotated.vcf.gz; done
+for i in `seq 26 29` X; do chr="Chr$i"; vcf=${chr}"-beagle-Run6.vcf.gz"; echo $vcf; ~/jdk1.8.0_45/bin/java -jar ~/snpEff/snpEff.jar eff -c ~/snpEff/snpEff.config -s 1kbulls_annotated_run6_vcfs/${chr}.snpeff.stats -csvStats UMD3.1.79 1kbulls_run6_vcfs/$vcf | gzip > 1kbulls_annotated_run6_vcfs/${chr}.1kbulls.annotated.vcf.gz; done
+```
