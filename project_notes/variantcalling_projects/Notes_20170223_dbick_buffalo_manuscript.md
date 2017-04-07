@@ -271,3 +271,24 @@ This is a known issue on the github repo. Since the repo is dead, other users ar
 <a name="melt"></a>
 ## Melt run
 
+I need to generate a list of mobile element consensus sequences. I'll target 3 to start. My fasta sampling sites are within the Repeatmasker repeat libraries. Specifically here:
+
+> Blade14: ~/RepeatMasker/Libraries/20150807/bos_taurus/*
+
+Let's start by pulling BovB, a good L1 LINE and maybe a SINE.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams
+
+```bash
+mkdir melt
+samtools faidx /home/dbickhart/RepeatMasker/Libraries/20150807/bos_taurus/longlib
+samtools faidx /home/dbickhart/RepeatMasker/Libraries/20150807/bos_taurus/longlib 'BovB#LINE/RTE-BovB' > melt/BovB.fa
+
+samtools faidx /home/dbickhart/RepeatMasker/Libraries/20150807/bos_taurus/longlib 'L1_BT#LINE/L1' > melt/L1_BT.fa
+
+samtools faidx /home/dbickhart/RepeatMasker/Libraries/20150807/bos_taurus/shortcutlib
+samtools faidx /home/dbickhart/RepeatMasker/Libraries/20150807/bos_taurus/shortcutlib 'MIR#SINE/MIR' > melt/mir.fa
+
+# Now I need to generate the bed file for the locations on UMD3
+cd melt/
+~/RepeatMasker/RepeatMasker -pa 15 -species cow -no_is /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa
