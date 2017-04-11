@@ -292,3 +292,28 @@ samtools faidx /home/dbickhart/RepeatMasker/Libraries/20150807/bos_taurus/shortc
 # Now I need to generate the bed file for the locations on UMD3
 cd melt/
 ~/RepeatMasker/RepeatMasker -pa 15 -species cow -no_is /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa
+
+perl -e '<>; <>; <>; while(<>){$_ =~ s/^\s+//; chomp; @s = split(/\s+/); if($s[9] eq "L1_BT"){print "$s[4]\t$s[5]\t$s[6]\t$s[9]\n";}}' < /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa.out > umd3_kary.L1_BT.bed
+perl -e '<>; <>; <>; while(<>){$_ =~ s/^\s+//; chomp; @s = split(/\s+/); if($s[9] eq "BovB"){print "$s[4]\t$s[5]\t$s[6]\t$s[9]\n";}}' < /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa.out > umd3_kary.BovB.bed
+perl -e '<>; <>; <>; while(<>){$_ =~ s/^\s+//; chomp; @s = split(/\s+/); if($s[9] eq "MIR"){print "$s[4]\t$s[5]\t$s[6]\t$s[9]\n";}}' < /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa.out > umd3_kary.MIR.bed
+
+# I also need Bowtie-2 indicies
+bowtie2-build /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.bowtie2
+
+# Now to make the zip files
+# I'm going to use an error rate of 10 to start with each -- not sure if this is a good error rate!
+# Except for the L1 which is an error rate of 3 in the human data they cite
+~/jdk1.8.0_05/bin/java -jar ~/MELTv2.0.2/MELT.jar BuildTransposonZIP BovB.fa umd3_kary.BovB.bed BovB 10
+~/jdk1.8.0_05/bin/java -jar ~/MELTv2.0.2/MELT.jar BuildTransposonZIP L1_BT.fa umd3_kary.L1_BT.bed L1BT 3
+~/jdk1.8.0_05/bin/java -jar ~/MELTv2.0.2/MELT.jar BuildTransposonZIP mir.fa umd3_kary.MIR.bed MIR 10
+
+# I need to make different working directories
+mkdir BovB
+mkdir L1BT
+mkdir MIR
+
+# Preprocessing
+for i in ../ITWB*/*.bam; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx2G -jar ~/MELTv2.0.2/MELT.jar Preprocess $i /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa & done
+
+# BovB alignment
+for i in `ls ../ITWB*/*merged.bam | grep -v 9`; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx2G -jar ~/MELTv2.0.2/MELT.jar IndivAnalysis -w BovB/ -l $i -c 20 -h /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -t BovB/BovB_MELT.zip & done

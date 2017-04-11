@@ -7,6 +7,8 @@ These are my notes on tinkering around on previously generated metagenomics and 
 ## Table of Contents
 * [The Austrian Acidosis dataset summary](#austriansummary)
 * [Meta-analysis of metagenomics WGS data](#metanalysis)
+	* [MASH sketching](#mash)
+	* [MetaSpades assembly](#metaspades)
 
 
 <a name="austriansummary"></a>
@@ -54,6 +56,10 @@ I think that there are a number of studies on SRA that consist of WGS experiment
 
 I have selected a large group of WGS experiments from SRA, and I have removed mischaracterized datasets that point to chicken, pig or other ruminants. The list of files is in SharedFolders/metagenomics/metanalysis/sra_file_accession_list.csv
 
+
+<a name="mash"></a>
+### MASH sketching 
+
 I am now going to download the list of fastqs from SRA to perform the downstream analysis.
 
 > Fry: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/datasources
@@ -93,3 +99,55 @@ sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux6
 sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 21 -r -m 2 -o sketch_test/DRR019503_21 datasources/DRR019503_1.fastq datasources/DRR019503_2.fastq"
 sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 24 -r -m 2 -o sketch_test/DRR019503_24 datasources/DRR019503_1.fastq datasources/DRR019503_2.fastq"
 sbatch --mem=20000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 32 -r -m 2 -o sketch_test/DRR019503_32 datasources/DRR019503_1.fastq datasources/DRR019503_2.fastq"
+
+```
+
+OK, I have an email from Serge that gives me good advice for clustering the data I've gathered.
+
+> 1. You can use the sketch here:
+RefSeqSketchesDefaults.msh.gz
+However, if you are comparing mash sketches of a metagenome to a reference it isn’t going to do the right thing. It is using a similarity score (so full sequence represented by metagenome compared to full refseq genome) whereas you want a contains version instead. This sketch should work fine for clonal samples. This has been on our todo list but we haven’t finished it.
+>
+>2. The option is -r -m 2 (or a larger number) which is an exact filter vs the bloom filter and does a better job removing noise.
+>
+> 3. We’ve generally used sketch = 10000, kmer=21 for clustering Illumina metagenomic datasets.
+
+
+I need to sketch all of the data files, then get a good outgroup and then do a dist comparison.
+
+> fry: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects
+
+```bash
+mkdir meta_sketches
+for i in `cat datasources/accession_list.txt`; do echo $i; sbatch --mem=10000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 21 -s 10000 -r -m 2 -o meta_sketches/${i}_21mer_10k datasources/${i}_1.fastq datasources/${i}_2.fastq"; done
+
+```
+
+<a name="metaspades"></a>
+### MetaSpades assembly
+
+First, a test run of spades on the cluster with the meta tag runtime option:
+
+> fry: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms
+
+```bash
+sbatch --nodes=1 --mem=200000 --ntasks-per-node=16 -p assemble2 ../../binaries/SPAdes-3.10.1-Linux/bin/metaspades.py -o DRR017219 -pe1-1 ../datasources/DRR017219_1.fastq -pe1-2 ../datasources/DRR017219_2.fastq
+	ImportError: No module named spades_init
+	# I need to add a Python path environmental variable here
+
+sbatch --nodes=1 --mem=200000 --ntasks-per-node=16 -p assemble2 --wrap="PYTHONPATH=$PYTHONPATH:/mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms; ../../binaries/SPAdes-3.10.1-Linux/bin/metaspades.py -o DRR017219 -1 ../datasources/DRR017219_1.fastq -2 ../datasources/DRR017219_2.fastq "
+
+# Just testing a few things while it runs:
+grep '>' /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms/DRR017219//K21/final_contigs.fasta | wc -l
+12174565  <- that's 12 million contigs 
+sbatch --nodes=1 --ntasks-per-node=1 --mem=1000 --wrap="module load samtools; samtools faidx /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms/DRR017219//K21/final_contigs.fasta"
+cat /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms/DRR017219//K21/final_contigs.fasta.fai | cut -f2 | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+	total   6357025
+	Minimum 22
+	Maximum 12160
+	Average 60.678315
+	Median  24
+	Standard Deviation      98.195571
+	Mode(Highest Distributed Value) 22
+
+# OK, so this is to be expected. The assembly only takes me halfway the binning is what's needed next.
