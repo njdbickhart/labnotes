@@ -317,3 +317,6 @@ for i in ../ITWB*/*.bam; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx2G -jar ~/MELTv2
 
 # BovB alignment
 for i in `ls ../ITWB*/*merged.bam | grep -v 9`; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx2G -jar ~/MELTv2.0.2/MELT.jar IndivAnalysis -w BovB/ -l $i -c 20 -h /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -t BovB/BovB_MELT.zip & done
+
+# I got allot of memory overhead errors. Increasing the JVM max memory size
+for i in `ls ../ITWB*/*merged.bam | grep -v 9`; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx6G -jar ~/MELTv2.0.2/MELT.jar IndivAnalysis -w BovB/ -l $i -c 20 -h /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -t BovB/BovB_MELT.zip & done
