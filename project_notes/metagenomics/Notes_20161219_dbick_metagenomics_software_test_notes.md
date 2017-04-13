@@ -151,3 +151,19 @@ cat /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms/DRR017219//K2
 	Mode(Highest Distributed Value) 22
 
 # OK, so this is to be expected. The assembly only takes me halfway the binning is what's needed next.
+# Spades finished after 3 days of running. Here's the final tally:
+grep '>' /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms/DRR017219/contigs.fasta | wc -l
+	1,677,688
+
+grep '>' /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms/DRR017219/scaffolds.fasta | wc -l
+	1,677,530	<- only a few fewer than the contigs! Not much scaffolding information
+
+# Lets gear up for the whole project
+head -n 47 ../datasources/accession_list.txt > assembler2.list
+tail -n 46 ../datasources/accession_list.txt > assembler3.list
+
+# Assemble2
+for i in `cat assembler2.list`; do echo $i; sbatch --nodes=1 --mem=200000 --ntasks-per-node=30 -p assemble2 -o ${i}.out -e ${i}.err --wrap="PYTHONPATH=$PYTHONPATH:/mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms; ../../binaries/SPAdes-3.10.1-Linux/bin/metaspades.py -o $i -t 30 -m 200 -1 ../datasources/${i}_1.fastq -2 ../datasources/${i}_2.fastq "; done
+
+# Assemble3
+for i in `cat assembler3.list`; do echo $i; sbatch --nodes=1 --mem=200000 --ntasks-per-node=30 -p assemble3 -o ${i}.out -e ${i}.err --wrap="PYTHONPATH=$PYTHONPATH:/mnt/nfs/nfs2/bickhart-users/metagenomics_projects/spades_asms; ../../binaries/SPAdes-3.10.1-Linux/bin/metaspades.py -o $i -t 30 -m 200 -1 ../datasources/${i}_1.fastq -2 ../datasources/${i}_2.fastq "; done
