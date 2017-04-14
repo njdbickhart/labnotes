@@ -8,6 +8,7 @@ These are my notes on the generation of SV, MEI and other variant calls on the b
 * [Setting the stage](#stage)
 * [Tangram run](#tangram)
 * [Melt run](#melt)
+* [Yak comparison](#yak)
 
 
 ## Setting the stage
@@ -320,3 +321,74 @@ for i in `ls ../ITWB*/*merged.bam | grep -v 9`; do echo $i; ~/jdk1.8.0_05/bin/ja
 
 # I got allot of memory overhead errors. Increasing the JVM max memory size
 for i in `ls ../ITWB*/*merged.bam | grep -v 9`; do echo $i; ~/jdk1.8.0_05/bin/java -Xmx6G -jar ~/MELTv2.0.2/MELT.jar IndivAnalysis -w BovB/ -l $i -c 20 -h /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -t BovB/BovB_MELT.zip & done
+```
+
+<a name="yak"></a>
+## Yak comparison
+
+This is a list of the commands I used to process the Yak files similar to the buffalo. I need to run the following commands on each file individually:
+
+* Jarms 500bp windows
+* RAPTR-SV preprocessing
+* MEIDivet on the RAPTR-SV divet file
+* SAMTOOLS bedcov on raw read counts for cn.mops
+
+And for the group collectively:
+
+* Samtools mpileup
+* cn.mops on the bedcov
+
+I will make up two scripts to process these on the cluster so I can generate the information automatically.
+
+#### individual_analysis.sh
+
+```bash
+#!/usr/bin/sh
+# This is a collection script to automate the processing of each yak bam into useful data
+# $1 = bam used in the analysis
+# $2 = reference genome used
+#SBATCH --nodes=1
+#SBATCH --mem=35000
+#SBATCH --ntasks-per-node=7
+
+module load java/jdk1.8.0_121
+module load samtools
+
+# adding direct link to binary so that RAPTR-SV runs
+BINARY=/mnt/nfs/nfs2/bickhart-users/binaries
+export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/mrsfast:$PATH
+
+BASE=`basename $1 | cut -d'.' -f1`
+# JARMS
+mkdir jarms
+java -Xmx30g -jar $BINARY/JARMs/store/JaRMS.jar call -i $1 -f $2 -o jarms/${BASE}.jarms -w 500
+
+# RAPTR-SV
+mkdir raptr
+mkdir temp
+java -Xmx34g -jar $BINARY/RAPTR-SV/store/RAPTR-SV.jar preprocess -i $1 -o raptr/${BASE}.raptr -r $2 -g -m 100000000 -p temp -t 6
+
+# MEI-DIVET
+mkdir mei
+java -Xmx30g -jar $BINARY/MEIDivetID/store/MEIDivetID.jar -i raptr/${BASE}.raptr.preprocess.D.divet -r /mnt/nfs/nfs2/dbickhart/buffalo/gene_data/umd3_ensgene_2kb_upstream.bed -o mei/${BASE}.MEIDivet
+
+# Generating raw read windows
+mkdir rdwins
+samtools bedcov /mnt/nfs/nfs2/dbickhart/buffalo/gene_data/umd3_naive_1kb_nonovlp_wins.bed $1 > rdwins/${BASE}.rawrd.wins.bed
+```
+
+> fry: /mnt/nfs/nfs2/dbickhart/buffalo/yak/yak_bams
+
+```bash
+for i in `ls */*.sorted.bam`; do echo $i; sbatch ../../individual_analysis.sh $i /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa ; done
+
+# Whoops! JARMS v9's jar is corrupt! Downgrading and trying again with a shortened script
+for i in `ls */*.sorted.bam`; do echo $i; sbatch ../../jarms_sep_run.sh $i /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa ; done
+
+# Running the SNP calling as a big block 
+cd snpcalls
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 --wrap="module load samtools; module load bcftools; samtools mpileup -ugf /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa ../SRR3112415/SRR3112415.sorted.bam ../SRR3112417/SRR3112417.sorted.bam ../SRR3112418/SRR3112418.sorted.bam ../SRR3112421/SRR3112421.sorted.bam ../SRR3112425/SRR3112425.sorted.bam ../SRR3112426/SRR3112426.sorted.bam ../SRR3112428/SRR3112428.sorted.bam ../SRR3112431/SRR3112431.sorted.bam ../SRR3112432/SRR3112432.sorted.bam ../SRR3112433/SRR3112433.sorted.bam ../SRR3112434/SRR3112434.sorted.bam ../SRR3112439/SRR3112439.sorted.bam ../SRR3112440/SRR3112440.sorted.bam ../SRR3112441/SRR3112441.sorted.bam | bcftools call -vmO z -o yak_snp_calls.vcf.gz"
+cd ..
+```
+
+
