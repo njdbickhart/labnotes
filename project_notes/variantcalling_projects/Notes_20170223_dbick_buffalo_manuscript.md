@@ -391,4 +391,10 @@ sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 --wrap="module load samtools; m
 cd ..
 ```
 
+Damn, the RAPTR-SV processing is running into a wall on Steve's cluster. I need to generate just the divets, so let me try that first.
+
+TODO: write samToDivet.pl in the following directory
+
+> fry: /mnt/nfs/nfs2/dbickhart/buffalo
+
 
