@@ -398,3 +398,51 @@ TODO: write samToDivet.pl in the following directory
 > fry: /mnt/nfs/nfs2/dbickhart/buffalo
 
 
+## Generating figures and tables
+
+Figure strategy:
+1. Small schema of survey
+2. Venn of genes with SVs, MEI, or SNPs upstream
+3. Examples of identified SVs, MEI, etc
+
+Table strategy:
+1. Input dataset statistics (samples, mapped reads, etc)
+2. Number of variants identified 
+
+Supplemental strategy
+1. Large SV tables
+2. Additional SVPV plots
+3. Heatmaps of certain genes for read depth profiles
+
+I am going to try to run with just the buffalo data at this time. My goal is to ID real TFBS and real CNV locations using SVPV for a figure.
+
+SVPV needs SV VCF files as input (annoying). I'll have to generate these in order to run the program. Hopefully I will generate a huge list of pdfs and then have the leisure of scanning them for interesting events.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams
+
+```bash
+# I need to generate a list of chromosome IDs from the BAM headers
+samtools view -H ../ITWB15/ITWB15.merged.bam | grep '@SQ' | perl -lane '$F[1] =~ s/SN://g; $F[2] =~ s/LN://g; print "##contig=<ID=$F[1],length=$F[2]>";'
+
+# this is the command I will use to join the different files
+cat ../jarms/ITWB10.filtered.dels.bed ../jarms/ITWB11.filtered.dels.bed | sort -k 1,1 -k2,2n | mergeBed -i stdin -c 4,5 -o collapse | head
+
+chr1    94001   100000  ITWB10  0.2656999881467868
+chr1    113501  121000  ITWB11  0.22925861608387316
+chr1    875001  879500  ITWB11,ITWB10   0.1635907305519774,0.13096004668439276
+chr1    3727501 3735500 ITWB10  0.4147666729709639
+chr1    5256501 5261500 ITWB11,ITWB10   0.10947693270024103,0.1343105166689682
+
+chr15   70302685        .     G       <DUP>   .       PASS    IMPRECISE;SVTYPE=DUP;SVMETHOD=EMBL.DELLYv0.7.3;CHR2=chr15;END=70303402;INSLEN=0;PE=85;MAPQ=60;CT=5to3;CIPOS=-9,9;CIEND=-9,9;RDRATIO=1.26233;AC=2;AN=6     GT:GL:GQ:FT:RCL:RC:RCR:CN:DR:DV:RR:RV   0/1:-77.3372,0,-245.037:10000:PASS:141:438:177:3:44:17:0:0        0/1:-124.327,0,-244.227:10000:PASS:187:461:155:3:46:25:0:0
+
+perl convert_file_to_vcf.pl -a ../jarms/ITWB10.filtered.dels.bed,../jarms/ITWB10.filtered.dups.bed,../jarms/ITWB11.filtered.dels.bed,../jarms/ITWB11.filtered.dups.bed,../jarms/ITWB12.filtered.dels.bed,../jarms/ITWB12.filtered.dups.bed,../jarms/ITWB13.filtered.dels.bed,../jarms/ITWB13.filtered.dups.bed,../jarms/ITWB14.filtered.dels.bed,../jarms/ITWB14.filtered.dups.bed,../jarms/ITWB15.filtered.dels.bed,../jarms/ITWB15.filtered.dups.bed,../jarms/ITWB1.filtered.dels.bed,../jarms/ITWB1.filtered.dups.bed,../jarms/ITWB2.filtered.dels.bed,../jarms/ITWB2.filtered.dups.bed,../jarms/ITWB3.filtered.dels.bed,../jarms/ITWB3.filtered.dups.bed,../jarms/ITWB4.filtered.dels.bed,../jarms/ITWB4.filtered.dups.bed,../jarms/ITWB5.filtered.dels.bed,../jarms/ITWB5.filtered.dups.bed,../jarms/ITWB6.filtered.dels.bed,../jarms/ITWB6.filtered.dups.bed,../jarms/ITWB7.filtered.dels.bed,../jarms/ITWB7.filtered.dups.bed -b ITWB10,ITWB10,ITWB11,ITWB11,ITWB12,ITWB12,ITWB13,ITWB13,ITWB14,ITWB14,ITWB15,ITWB15,ITWB1,ITWB1,ITWB2,ITWB2,ITWB3,ITWB3,ITWB4,ITWB4,ITWB5,ITWB5,ITWB6,ITWB6,ITWB7,ITWB7 -f /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -t jarms -o jarms_calls.vcf
+
+# That worked quite well! Now to do the same for cnmops
+head ../buffalo_cnmops_cnvrs.tab
+seqnames        start   end     width   strand  ITWB1   ITWB10  ITWB11  ITWB12  ITWB13  ITWB14  ITWB15  ITWB2   ITWB3   ITWB4   ITWB5   ITWB6   ITWB7
+1       chr1    96001   100001  4001    *       CN2     CN2     CN2     CN2     CN2     CN3     CN2     CN2     CN2     CN2     CN2     CN2     CN2
+2       chr1    511001  515001  4001    *       CN2     CN3     CN3     CN3     CN3     CN6     CN3     CN2     CN2     CN2     CN2     CN2     CN2
+
+perl convert_file_to_vcf.pl -a ../buffalo_cnmops_cnvrs.tab -b cnmops -f /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -t cnmops -o cnmops_calls.vcf
+
+# I need to debug this portion of the script before I can proceed.
