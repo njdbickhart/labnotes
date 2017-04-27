@@ -1305,6 +1305,19 @@ for i in `ls *order.list`; do chr=`echo $i | cut -d'.' -f1`; echo $chr; sbatch -
 ```
 The autosome corrections are ready, but they're minor and we decided to delay the creation of this assembly fasta until the Hi-C data comes in. The big question is what to do with the X chromosome, as the linkage map and recombination map are little help here, and it is very difficult to assemble.
 
+#### Restart and final assembly
+
+We need to make a big decision about the X chromosome. I'm going to gather some stats to see how we should place the contig_x_unplaced and other factors.
+
+> fry: /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing
+
+```bash
+mkdir nucmer_v6
+cd nucmer_v6/
+samtools faidx ../ARS-UCD1.0.6.fa X > v6_chrX.fa
+for i in `perl -lane 'if(length($F[0]) <=2){next;}else{print $F[0];}' < ../ARS-UCD1.0.6.fa.fai`; do samtools faidx ../ARS-UCD1.0.6.fa $i >> v6_unplaced.fa; done
+
+
 <a name="snps"></a>
 ## SNP remapping and stats
 

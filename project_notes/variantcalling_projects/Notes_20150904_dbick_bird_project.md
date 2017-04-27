@@ -14,6 +14,7 @@ These are my commands and notes on the CNV calling on a wild bird dataset.
 * [Consolidating Tandem Dup information for Morgan](#consol)
 	* [Strong Tandem Candidates](#strongtandem)
 	* [Other Tandem Candidates](#othertandem)
+* [Checking deletions](#delcheck)
 
 <a name="stats"></a>
 ## BAM file summary statistics
@@ -584,3 +585,21 @@ jcf7180005229501        1703    1828    jcf7180005229501        1703    1828    
 
 Just one with 18 eversion signals! I think that's about all 
 
+<a name="delcheck"></a>
+## Checking deletions
+
+Chris and David want to identify heterozygous deletions, but my  test was agnostic to deletion category because I assumed they were looking for potential misassemblies. I will attempt to ID these heterozygotes from the data.
+
+> Blade14: 
+
+```bash
+# Removal of gaps and intersection with corrected read depth windows
+intersectBed -a sj.cor.jarms.calls.gccorr.dels.norpt.bed -b fasta/MorganFinal1KbReplicate_v3.gaps.bed -f 0.5 -r -v | intersectBed -a stdin -b sj.cor.jarms.calls.bed.gccorr.corr.bed -wa -wb | head
+
+# Identification of homozygous deletions that are likely homozygous
+# Any deletion area that has any window with 5 reads or less
+intersectBed -a sj.cor.jarms.calls.gccorr.dels.norpt.bed -b fasta/MorganFinal1KbReplicate_v3.gaps.bed -f 0.5 -r -v | intersectBed -a stdin -b sj.cor.jarms.calls.bed.gccorr.corr.bed -wa -wb | perl -e '%c; %z; while(<>){chomp; @s = split(/\t/); $in = "$s[0]:$s[1]-$s[2]"; $c{$in} += 1; if($s[6] <= 5){$z{$in} += 1;}} $d = 0; $m = 0; foreach $v (keys(%c)){$j = $c{$v}; $k = 0; if(exists($z{$v})){ $k = $z{$v};} if($k / $j > 0.011){$m++;} $d++;} print "dels: $d\thomozygous dels: $m\n";'
+dels: 14472     homozygous dels: 1307
+
+# The discrepancy between the count of dels here (14,472) and above (14,666) is due to a problem with the numbering of end segments on the gccorr.bed file
+```
