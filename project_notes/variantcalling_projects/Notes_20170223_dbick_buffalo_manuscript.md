@@ -445,4 +445,73 @@ seqnames        start   end     width   strand  ITWB1   ITWB10  ITWB11  ITWB12  
 
 perl convert_file_to_vcf.pl -a ../buffalo_cnmops_cnvrs.tab -b cnmops -f /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa -t cnmops -o cnmops_calls.vcf
 
-# I need to debug this portion of the script before I can proceed.
+# OK, now I need to try to include the MEI events
+# On second thought, it's too difficult and is likely to not coincide with my dup/del calls
+
+wget http://hgdownload.soe.ucsc.edu/goldenPath/bosTau8/database/refGene.txt.gz
+gunzip refGene.txt.gz
+
+mkdir plots
+for i in `ls ../ITWB*/ITWB*.merged.bam | grep -v 9`; do echo -n "${i},"; done; echo
+
+~/SVPV/SVPV -vcf JaRMS:jarms_calls.vcf,cnMops:cnmops_calls.vcf -o plots -aln ../ITWB10/ITWB10.merged.bam,../ITWB11/ITWB11.merged.bam,../ITWB12/ITWB12.merged.bam,../ITWB13/ITWB13.merged.bam,../ITWB14/ITWB14.merged.bam,../ITWB15/ITWB15.merged.bam,../ITWB1/ITWB1.merged.bam,../ITWB2/ITWB2.merged.bam,../ITWB3/ITWB3.merged.bam,../ITWB4/ITWB4.merged.bam,../ITWB5/ITWB5.merged.bam,../ITWB6/ITWB6.merged.bam,../ITWB7/ITWB7.merged.bam -samples ITWB10,ITWB11,ITWB12,ITWB13,ITWB14,ITWB15,ITWB1,ITWB2,ITWB3,ITWB4,ITWB5,ITWB6,ITWB7 -ref_gene refGene.txt -rgi
+# Note: I had to remove the blank line and "start" artifact in cnmops output to get this to work
+```
+
+Now I want to identify the number of genes that have each category of variant in the 2kb upstream regions.
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams
+
+```bash
+cat buffalo_umd3_comparative_snp.hom.2kb_upstream.bed | cut -f4 | sort | uniq > gene_venns/buffalo_upstream_snp_genes.list
+intersectBed -a ../gene_data/umd3_ensgene_2kb_upstream.bed -b buffalo_cnmops_cnvrs.bed | cut -f4 | sort | uniq > gene_venns/buffalo_upstream_cnmops_genes.list
+intersectBed -a ../gene_data/umd3_ensgene_2kb_upstream.bed -b jarms/buffalo_combined_cnvrs.bed | cut -f4 | sort | uniq > gene_venns/buffalo_upstream_jarms_genes.list
+cp mei_calls/buffalo.group_13_plus.txt gene_venns/buffalo_upstream_mei_genes.list
+
+wc -l *.list
+  1163 buffalo_upstream_cnmops_genes.list
+   409 buffalo_upstream_jarms_genes.list
+   312 buffalo_upstream_mei_genes.list
+ 24497 buffalo_upstream_snp_genes.list
+ 26381 total
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl buffalo_upstream_cnmops_genes.list buffalo_upstream_jarms_genes.list buffalo_upstream_mei_genes.list buffalo_upstream_snp_genes.list
+	File Number 1: buffalo_upstream_cnmops_genes.list
+	File Number 2: buffalo_upstream_jarms_genes.list
+	File Number 3: buffalo_upstream_mei_genes.list
+	File Number 4: buffalo_upstream_snp_genes.list
+	Set     Count
+	1       3
+	1;2     6
+	1;2;4   115
+	1;3;4   35
+	1;4     1004
+	2       32
+	2;3;4   3
+	2;4     253
+	3;4     274
+	4       22813
+
+# Interesting that there are no 4-way entries!
+# These genes are likely insertions
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 2_3_4 buffalo_upstream_cnmops_genes.list buffalo_upstream_jarms_genes.list buffalo_upstream_mei_genes.list buffalo_upstream_snp_genes.list
+	File Number 2: buffalo_upstream_jarms_genes.list
+	File Number 3: buffalo_upstream_mei_genes.list
+	File Number 4: buffalo_upstream_snp_genes.list
+ENSBTAG00000047603.1	<- unknown with 3 exons
+ENSBTAG00000045654.1	<- known pseudogene
+ENSBTAG00000036098.3	<- unknown with 2 exons
+
+# now to make a venn!
+```
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/gene_venns
+
+```R
+# I was getting errors because the SNP list is so large, it could not redesign the edges without making them negative
+venn.plot <-draw.quad.venn(area1 = 1163, area2 = 409, area3 = 312, area4 = 1684, n12 = 6, n13 = 0, n123 = 0, n124 = 115, n134 = 35, n14 = 1005, n23 = 0, n234 = 3, n24 = 253, n34 = 274, n1234 = 0, category = c("cn.mops", "JaRMS", "MEI", "SNP"), fill = c("orange", "red", "green", "blue"), lty = "dashed", cex = 2, cat.cex = 2, direct.area = TRUE);
+pdf(file="upstream_gene_intersections_buffalo.pdf", useDingbats=FALSE)
+grid.draw(venn.plot)
+dev.off()
+
+# Didn't work!
