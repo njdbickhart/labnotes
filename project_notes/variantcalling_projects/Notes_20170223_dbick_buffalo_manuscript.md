@@ -515,3 +515,39 @@ grid.draw(venn.plot)
 dev.off()
 
 # Didn't work!
+# I think I get it: it needs tallies of all of the pairwise comparisons instead of a direct count
+venn.plot <-draw.quad.venn(area1 = 1163, area2 = 409, area3 = 312, area4 = 22813, n12 = 121, n13 = 35, n14 = 1154, n23 = 3, n24 = 368, n34 = 309, n123 = 0, n124 = 115, n134 = 35, n234 = 3, n1234 = 0, category = c("cn.mops", "JaRMS", "MEI", "SNP"), fill = c("orange", "red", "green", "blue"), lty = "dashed", cex = 2, cat.cex = 2, cat.col = c("orange", "red", "green", "blue"))
+pdf(file="upstream_gene_intersections_buffalo.pdf", useDingbats=FALSE)
+grid.draw(venn.plot)
+dev.off()
+```
+
+#### Table generation
+
+> Blade14: /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/gene_venns
+
+```bash
+# Calculating segdups
+cd /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms
+
+perl -lane 'print "$F[1]\t$F[2]\t$F[3]";' < ./buffalo_fixed_segdups.tab | bed_length_sum.pl
+        Interval Numbers:       130
+        Total Length:           349870
+        Length Average:         2691.30769230769
+        Length Median:          1249
+        Min Length:             1499
+        Max Length:             999
+        Length Stdev:           7148.79888119586
+
+intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buffalo_jarms_common_del_regions.bed -b /mnt/iscsi/vnx_gliu_7/100_base_run/jarms/cattle_background_dels_cnvrs.bed -v | bed_length_sum.pl
+        Interval Numbers:       5061
+        Total Length:           40826500
+        Length Average:         8066.8840150168
+        Length Median:          2500
+        Min Length:             17500
+        Max Length:             4000
+        Length Stdev:           24375.0320464921
+
+# Seg dup intersections
+perl -lane 'print "$F[1]\t$F[2]\t$F[3]";' < ./buffalo_fixed_segdups.tab | intersectBed -a ../../gene_data/umd3_ensgene.bed -b stdin | cut -f4 | sort | uniq | wc -l
+30

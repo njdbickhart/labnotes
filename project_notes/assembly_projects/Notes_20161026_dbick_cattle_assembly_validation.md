@@ -1317,6 +1317,23 @@ cd nucmer_v6/
 samtools faidx ../ARS-UCD1.0.6.fa X > v6_chrX.fa
 for i in `perl -lane 'if(length($F[0]) <=2){next;}else{print $F[0];}' < ../ARS-UCD1.0.6.fa.fai`; do samtools faidx ../ARS-UCD1.0.6.fa $i >> v6_unplaced.fa; done
 
+# OK, I need to grep out the unique portion of contig_X_unplaced first
+# I am going to identify the location based on my nucmer alignments
+grep 'contig_X' ../nucmer_v6/v6_unplaced.dna.mcoords
+	6843956 6847028 5584488 5587541 3073    3054    98.99   167517504       8532179 0.00    0.04    X       contig_X_unplaced
+	6858730 6897501 6536498 6575266 38772   38769   99.93   167517504       8532179 0.02    0.45    X       contig_X_unplaced
+
+# so the biggest gap is located here: 5587541-6536498
+samtools faidx ../ARS-UCD1.0.6.fa contig_X_unplaced:5587541-6536498 > contig_X_unplaced_trimmed.fa
+
+ls version_7_fixed_chr2*.fa > correction_fastas_v7.list
+# I added all of the "alt_contig" and "alt_X" entries from Bob's list to the final correction document
+perl -lane 'if(!defined($F[1])){print "$_\tremove";}else{print $_;}' < correction_fastas_v7.list > temp
+mv temp correction_fastas_v7.list
+sbatch ../reorder_fasta.pl ../ARS-UCD1.0.7.fa ../ARS-UCD1.0.6.fa correction_fastas_v7.list
+sbatch --dependency=afterok:676815 --nodes=1 --mem=4000 --ntasks-per-node=1 --wrap="samtools faidx ../ARS-UCD1.0.7.fa; gzip ../ARS-UCD1.0.7.fa"
+```
+
 
 <a name="snps"></a>
 ## SNP remapping and stats
@@ -1325,6 +1342,8 @@ These are my notes on the remapping of SNP probes from the HD array to the new a
 
 * Generate a SNP location list for Paul and John to check
 * Determine how many SNP locations have moved from UMD3
+
+
 
 > 3850: /home/bickhart
 ```bash

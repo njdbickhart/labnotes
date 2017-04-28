@@ -603,3 +603,27 @@ dels: 14472     homozygous dels: 1307
 
 # The discrepancy between the count of dels here (14,472) and above (14,666) is due to a problem with the numbering of end segments on the gccorr.bed file
 ```
+
+> Fry: /mnt/nfs/nfs2/dbickhart/transfer/seabury
+
+```bash
+perl -lane 'if($F[0] =~ /Region/){next;}else{print "$F[1]\t$F[2]\t$F[3]";}' < JoePM_dels_annotation_regions.tab > JoePM_dels_simple.bed
+
+# Removal of gaps
+intersectBed -a JoePM_dels_simple.bed -b Genome_JoeSCF1kb_NewAgrilife2015_AdapterRemove.gaps.bed -f 0.5 -r -v | wc -l
+5568
+
+# Identification of homozygous deletions without gaps
+intersectBed -a JoePM_dels_simple.bed -b Genome_JoeSCF1kb_NewAgrilife2015_AdapterRemove.gaps.bed -f 0.5 -r -v | intersectBed -a stdin -b pe.cor.jarms.200bp.gccorr.bed -wa -wb | perl -e '%c; %z; while(<>){chomp; @s = split(/\t/); $in = "$s[0]:$s[1]-$s[2]"; $c{$in} += 1; if($s[6] <= 5){$z{$in} += 1;}} $d = 0; $m = 0; foreach $v (keys(%c)){$j = $c{$v}; $k = 0; if(exists($z{$v})){ $k = $z{$v};} if($k / $j > 0.011){$m++;} $d++;} print "dels: $d\thomozygous dels: $m\n";'
+dels: 5568      homozygous dels: 1464
+
+# so only 4,104 het deletions in Bobwhite
+# Checking number of windows with 5 or fewer reads
+wc -l pe.cor.jarms.200bp.gccorr.bed
+	6160811 pe.cor.jarms.200bp.gccorr.bed
+
+perl -lane 'if($F[3] <= 5){print $_;}' < pe.cor.jarms.200bp.gccorr.bed | wc -l
+1056883 <- whoops! That's too many! Gotta see if I can reduce it to ~ 5%
+perl -lane 'if($F[3] <= 0){print $_;}' < pe.cor.jarms.200bp.gccorr.bed | wc -l
+1007151 <- this is as low as it goes!
+```
