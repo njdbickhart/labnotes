@@ -626,4 +626,10 @@ perl -lane 'if($F[3] <= 5){print $_;}' < pe.cor.jarms.200bp.gccorr.bed | wc -l
 1056883 <- whoops! That's too many! Gotta see if I can reduce it to ~ 5%
 perl -lane 'if($F[3] <= 0){print $_;}' < pe.cor.jarms.200bp.gccorr.bed | wc -l
 1007151 <- this is as low as it goes!
+
+# printing out the deletions
+intersectBed -a JoePM_dels_simple.bed -b Genome_JoeSCF1kb_NewAgrilife2015_AdapterRemove.gaps.bed -f 0.5 -r -v | intersectBed -a stdin -b pe.cor.jarms.200bp.gccorr.bed -wa -wb | perl -e '%c; %z; while(<>){chomp; @s = split(/\t/); $in = "$s[0]:$s[1]-$s[2]"; $c{$in} += 1; if($s[6] <= 5){$z{$in} += 1;}} $d = 0; $m = 0; foreach $v (keys(%c)){$j = $c{$v}; $k = 0; if(exists($z{$v})){ $k = $z{$v};} ($chr, $st, $en) = $v =~ /(.+):(\d+)-(\d+)/; if($k / $j > 0.011){print "$chr\t$st\t$en\thom\n";}else{print "$chr\t$st\t$en\thet\n";} $d++;}' | sort -k1,1 -k2,2n > pe.cor.filtered.dels.bed
+
+intersectBed -a sj.cor.jarms.calls.gccorr.dels.norpt.bed -b fasta/MorganFinal1KbReplicate_v3.gaps.bed -f 0.5 -r -v | intersectBed -a stdin -b sj.cor.jarms.calls.bed.gccorr.corr.bed -wa -wb | perl -e '%c; %z; while(<>){chomp; @s = split(/\t/); $in = "$s[0]:$s[1]-$s[2]"; $c{$in} += 1; if($s[6] <= 5){$z{$in} += 1;}} $d = 0; $m = 0; foreach $v (keys(%c)){$j = $c{$v}; $k = 0; if(exists($z{$v})){ $k = $z{$v};} ($chr, $st, $en) = $v =~ /(.+):(\d+)-(\d+)/; if($k / $j > 0.011){print "$chr\t$st\t$en\thom\n";}else{print "$chr\t$st\t$en\thet\n";} $d++;}' | sort -k1,1 -k2,2n > sj.cor.filtered.dels.bed
 ```
+
