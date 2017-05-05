@@ -1305,6 +1305,57 @@ for i in `ls *order.list`; do chr=`echo $i | cut -d'.' -f1`; echo $chr; sbatch -
 ```
 The autosome corrections are ready, but they're minor and we decided to delay the creation of this assembly fasta until the Hi-C data comes in. The big question is what to do with the X chromosome, as the linkage map and recombination map are little help here, and it is very difficult to assemble.
 
+<a name="eight"></a>
+## ARS-UCD version 1.0.8
+
+This is placement of a large portion of a canu-assembled contig on the X chromosome and the inversion of the X. I think that we're done after this.
+
+> fry: /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/ver_8_corrections
+
+```bash
+# ChrX
+# I just need to separate the X chromosome and reattach a segment of tig1361. I also need to invert the whole thing
+# tig1361 should also be inverted
+# segments:
+# X:50589701-167517504, -, tig00001361:8222080-15875483, -, X:1-42423604, -
+samtools faidx ../ARS-UCD1.0.7.fa X:50589701-167517504 > chrx_seg1.fa
+samtools faidx ../../rdcheck/canu_tigs_1238_9294_1361_1577.fa tig00001361:8222080-15875483 > chrx_seg2.fa
+samtools faidx ../ARS-UCD1.0.7.fa X:1-42423604 > chrx_seg3.fa
+
+~/jdk1.8.0_05/bin/java -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chrx.order.list -o version_8_fixed_chrx.fa -p 100
+ls version_8_fixed_chrx.fa > correction_fastas.v8.list
+# Whoops! I may have accidentally left out the previous corrections! Making sure that these corrections have been incorporated
+ls ../ver_7_corrections/version_7_fixed_chr2*.fa >> correction_fastas.v8.list
+
+# I need to get rid of the module loading for each system command if the module isn't available!
+cp ../reorder_fasta.pl ./reorder_fasta_noslurm.pl
+vim ./reorder_fasta_noslurm.pl
+perl ./reorder_fasta_noslurm.pl ../ARS-UCD1.0.8.fa ../ARS-UCD1.0.7.fa correction_fastas.v8.list
+```
+
+<a name="nine"></a>
+## ARS-UCD version 1.0.9
+
+This is the final step, where we remove the last portion of the PAR X that was mistakenly placed on chr12.
+
+> assembler2: /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/ver_9_corrections
+
+```bash
+# OK I just need to remove a section of chr12 and stitch the chromosome back together
+# Segments:
+# chr12:1-71027332:+, chr12:71703378-87827655
+samtools faidx ../ARS-UCD1.0.8.fa 12:1-71027332 > chr12_seg1.fa
+samtools faidx ../ARS-UCD1.0.8.fa 12:71703378-87827655 > chr12_seg2.fa
+
+ls *.fa > chr12_order.list
+module load java/jdk1.8.0_92
+sbatch --mem=15000 --nodes=1 --ntasks-per-node=4 --wrap="java -Xmx15g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chr12_order.list -o version_9_fixed_chr12.fa -p 100"
+
+ls version_9_fixed_chr12.fa > correction_fastas.v9.list
+sbatch ../reorder_fasta.pl ../ARS-UCD1.0.9.fa ../ARS-UCD1.0.8.fa correction_fastas.v9.list
+sbatch --dependency=afterok:678828 --nodes=1 --mem=5000 --ntasks-per-node=1 --wrap="samtools faidx ../ARS-UCD1.0.9.fa; gzip ../ARS-UCD1.0.9.fa;"
+```
+
 #### Restart and final assembly
 
 We need to make a big decision about the X chromosome. I'm going to gather some stats to see how we should place the contig_x_unplaced and other factors.
@@ -1333,6 +1384,7 @@ mv temp correction_fastas_v7.list
 sbatch ../reorder_fasta.pl ../ARS-UCD1.0.7.fa ../ARS-UCD1.0.6.fa correction_fastas_v7.list
 sbatch --dependency=afterok:676815 --nodes=1 --mem=4000 --ntasks-per-node=1 --wrap="samtools faidx ../ARS-UCD1.0.7.fa; gzip ../ARS-UCD1.0.7.fa"
 ```
+
 
 
 <a name="snps"></a>
