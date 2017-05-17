@@ -1385,7 +1385,25 @@ sbatch ../reorder_fasta.pl ../ARS-UCD1.0.7.fa ../ARS-UCD1.0.6.fa correction_fast
 sbatch --dependency=afterok:676815 --nodes=1 --mem=4000 --ntasks-per-node=1 --wrap="samtools faidx ../ARS-UCD1.0.7.fa; gzip ../ARS-UCD1.0.7.fa"
 ```
 
+OK, I am going to run the Pilon and QC steps of the final assembly. First, let's get everything ready.
 
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_110
+
+```bash
+sbatch --nodes=1 --ntasks-per-node=1 --mem=10000 --wrap="module load bwa; bwa index ARS-UCD1.0.10.fasta"
+
+# OOPs! I need to get the SRA fastq files ready for alignment!
+for i in `ls /mnt/nfs/nfs2/SequenceData/Dominette/dominette_ilmn/*.sra`; do echo $i; sbatch --nodes=1 --ntasks-per-node=1 --mem=5000 --wrap="fastq-dump -O dominette_fastqs --split-files $i"; done
+
+# Checking recmap coords
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 --wrap="perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.10.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.fa -o ars_ucd_v110_recmap"
+# Also for the v9 assembly
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 --wrap="perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/ARS-UCD1.0.9.fa -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.fa -o ars_ucd_v110_recmap"
+
+# Aligning hiseq data to check read depth coverage
+perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t dominette_fastqs/dominette_fastq_list.tab -f ARS-UCD1.0.10.fasta -m
+
+```
 
 <a name="snps"></a>
 ## SNP remapping and stats

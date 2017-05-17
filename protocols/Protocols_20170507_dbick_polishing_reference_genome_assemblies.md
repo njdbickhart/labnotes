@@ -33,6 +33,16 @@ Now to generate the protocol.xml. The working directory:
 And now to submit via SGE.
 
 ```bash
-qsub pbjelly_run_sge.sh
+# -V carries over environmental variables
+qsub -V pbjelly_run_sge.sh
+```
+
+After several attempts I was able to get it to work; however, the submission script is flawed because it takes tons of time to process a single file with diminishing returns for the number of processors devoted to the task. I'm going to try to separate the files for parallel processing.
+
+First, let's find out how many flowcells are present in the data.
+
+```bash
+echo "perl getNumFlowcells.pl /Jake/PacBio/transfer/Dominette_genome_USMARC_179cells.fastq USMARC_fc_counts.tab" | qsub
+echo "perl getNumFlowcells.pl /Jake/PacBio/transfer/UC_Davis_filtered_subreads.fastq UC_Davis_fc_count.tab" | qsub -N "fc_count"
 ```
 

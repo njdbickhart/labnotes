@@ -886,6 +886,9 @@ perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o combine
 for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.tab; echo $joel; perl subsectionTabFile.pl group_1_2.txt $joel > ${chr}_joels_holstein_subsection.refined.tab; done
 
 for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.refined.tab; sequence=${chr}.sequenced.files.tab; sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 --wrap="perl combine_tab_format_files.pl $joel $sequence ${chr}_joels_complete.tab; gzip ${chr}_joels_complete.tab;"; done
+
+# Retrying with java program:
+for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.refined.tab; sequence=${chr}.sequenced.files.tab; sbatch --nodes=1 --ntasks-per-node=2 --mem=10000 --wrap="module load java/jdk1.8.0_121; java -Xmx10g -jar ../binaries/LargeVCFParser/store/LargeVCFParser.jar mergetab -f $sequence -s $joel -o ${chr}_joel_combine_java.tab; gzip ${chr}_joel_combine_java.tab"; done
 ```
 
 ## 1k bulls annotation of vcfs
