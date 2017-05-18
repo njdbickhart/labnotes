@@ -1403,6 +1403,10 @@ sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 --wrap="perl /mnt/nfs/nfs2/dbic
 # Aligning hiseq data to check read depth coverage
 perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t dominette_fastqs/dominette_fastq_list.tab -f ARS-UCD1.0.10.fasta -m
 
+# While I wait for all of this, and to confirm most of what I've already seen, let's start running nucmer plots
+for i in 1a `seq 2 29` X; do echo $i; ver9=nucmer/ars_v9_${i}.fa; ver10=nucmer/ars_v10_${i}.fa; sbatch --nodes=1 --ntasks-per-node=1 --mem=5000 --wrap="samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/ARS-UCD1.0.9.fa $i > $ver9; samtools faidx ARS-UCD1.0.10.fasta $i > $ver10"; done
+for i in 1a `seq 2 29` X; do echo $i; ver9=ars_v9_${i}.fa; ver10=ars_v10_${i}.fa; sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh $ver9 $ver10; done
+
 ```
 
 <a name="snps"></a>
