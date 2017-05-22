@@ -889,6 +889,10 @@ for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsectio
 
 # Retrying with java program:
 for i in `seq 1 29`; do chr=`echo "Chr"$i`; joel=${chr}_joels_holstein_subsection.refined.tab; sequence=${chr}.sequenced.files.tab; sbatch --nodes=1 --ntasks-per-node=2 --mem=10000 --wrap="module load java/jdk1.8.0_121; java -Xmx10g -jar ../binaries/LargeVCFParser/store/LargeVCFParser.jar mergetab -f $sequence -s $joel -o ${chr}_joel_combine_java.tab; gzip ${chr}_joel_combine_java.tab"; done
+
+mkdir joel_java_final_combine
+mv Chr*joel_combine_java.tab.gz ./joel_java_final_combine/
+sbatch --mem=2000 --ntasks-per-node=1 --nodes=1 --wrap="tar -czvf joel_java_final_combine.tar.gz joel_java_final_combine"
 ```
 
 ## 1k bulls annotation of vcfs

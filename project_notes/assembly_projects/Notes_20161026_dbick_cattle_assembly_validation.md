@@ -1407,6 +1407,27 @@ perl ~/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl -b ali
 for i in 1a `seq 2 29` X; do echo $i; ver9=nucmer/ars_v9_${i}.fa; ver10=nucmer/ars_v10_${i}.fa; sbatch --nodes=1 --ntasks-per-node=1 --mem=5000 --wrap="samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/ARS-UCD1.0.9.fa $i > $ver9; samtools faidx ARS-UCD1.0.10.fasta $i > $ver10"; done
 for i in 1a `seq 2 29` X; do echo $i; ver9=ars_v9_${i}.fa; ver10=ars_v10_${i}.fa; sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh $ver9 $ver10; done
 
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="module load samtools; samtools index ars_110_dominette_aligns.bam"
+sbatch --dependency=afterok:679103 /mnt/nfs/nfs2/dbickhart/dominette_asm/chr_fixing/generate_coverage_bed.sh ars_110_dominette_aligns.bam ../../ARS-UCD1.0.10.fasta
+
+# Now to test the regions
+sbatch --mem=20000 --nodes=1 --ntasks-per-node=2 --wrap="java -Xmx20g -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ARS-UCD1.0.10.fasta -o ARS-UCD1.0.10.gaps.bed -s ARS-UCD1.0.10.gaps.stats"
+sbatch convert_mcoords_to_cov_gaps.pl -m ../../nucmer/ars_v10_X.dna.mcoords -g ars_v10_v9_cov_gaps.bed -t 500
+
+# Zero coverage regions, without gaps, that are present only in ARS-UCD version 1.0.10
+intersectBed -a ars_v10_v9_cov_gaps.bed -b ../../ARS-UCD1.0.10.gaps.bed -v | intersectBed -a stdin -b ars_110_dominette_aligns.bam.zcov.merged.bed | perl -lane '$diff = $F[2] - $F[1]; print "$F[0]\t$F[1]\t$F[2]\t$diff";' | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[3];}print "$c\n";'
+74,690
+
+# It checks out, I think. Time to start polishing
+```
+
+Note: ARS-UCD1.0.11.s.fasta is the version of the 11 assembly that Serge generated through Arrow. The base fasta was prepared using the fastq file to extract the fasta sequence.
+
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_111
+
+```bash
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="module load bwa; bwa index ARS-UCD1.0.11.fasta"
+
 ```
 
 <a name="snps"></a>
