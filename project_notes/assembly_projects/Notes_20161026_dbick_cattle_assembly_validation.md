@@ -12,6 +12,7 @@
 	* [v1.0.5](#five)
 	* [v1.0.6](#six)
 	* [v1.0.7](#seven)
+* [Polishing the assembly](#polish)
 * [SNP remapping and stats](#snps)
 
 <a name="stats"></a>
@@ -1385,6 +1386,9 @@ sbatch ../reorder_fasta.pl ../ARS-UCD1.0.7.fa ../ARS-UCD1.0.6.fa correction_fast
 sbatch --dependency=afterok:676815 --nodes=1 --mem=4000 --ntasks-per-node=1 --wrap="samtools faidx ../ARS-UCD1.0.7.fa; gzip ../ARS-UCD1.0.7.fa"
 ```
 
+<a name="polish"></a>
+## Polishing the assembly
+
 OK, I am going to run the Pilon and QC steps of the final assembly. First, let's get everything ready.
 
 > assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_110
@@ -1428,6 +1432,45 @@ Note: ARS-UCD1.0.11.s.fasta is the version of the 11 assembly that Serge generat
 ```bash
 sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="module load bwa; bwa index ARS-UCD1.0.11.fasta"
 
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl  -b polish -t polishing_dominette_illumina.tab -f ARS-UCD1.0.11.fasta -m
+
+# Ack! All of the NextSeq files failed midway through because of read pair synchronization issues!
+# While I try to reprocess the NextSeq files, I'm going to run the SRA data files as well.
+
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl  -b altalign -t altalign_dominette_illumina.tab -f ARS-UCD1.0.11.fasta -m
+
+# Test run of a new java program to try to reconcile the fastq files
+sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 --wrap="module load java/jdk1.8.0_121; java -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar pair -f /mnt/nfs/nfs2/brosen/projects/ARS-UCD/Dominette_NextSeq_data/LIB18483_S1_L001_R1_001.fastq -r /mnt/nfs/nfs2/brosen/projects/ARS-UCD/Dominette_NextSeq_data/LIB18483_S1_L001_R2_001.fastq -o dominette_fastqs/LIB18483_S1_L001_001"
+
+```
+
+#### Pilon run
+
+I now need to run Pilon on the aligned data. Given the directory structure of the cluster, I want to test this out first to see how everything works.
+
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_111
+
+```bash
+mkdir pilon
+# Testing the first contig in the fasta index file
+sbatch --nodes=1 --ntasks-per-node=2 --mem=3500 --wrap="java -Xmx3g -jar /opt/agil_cluster/pilon/1.22/pilon-1.22.jar --frags altalign/dominette/dominette.sorted.merged.bam --frags nextseq/dominette/dominette.sorted.merged.bam --outdir pilon --output Leftover_ScbfJmS_660_Leftover_ScbfJmS_322 --vcfqe --diploid --fix bases --targets Leftover_ScbfJmS_660_Leftover_ScbfJmS_322 --genome ARS-UCD1.0.11.fasta"
+
+#NOTE: the program will eat up as much memory as I can give it, so it crashes without proper memory support
+perl runPilonErrorCorrection.pl ARS-UCD1.0.11.fasta /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_111/altalign/dominette/dominette.sorted.merged.bam /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_111/nextseq/dominette/dominette.sorted.merged.bam
+
+# Damn, some of the higher memory tasks were unable to be queued!
+# Queueing the high mem jobs on the assemblers
+for i in 1a 2 3 4 5 6; do sbatch -o pilon/outLog/${i}.out -e pilon/errLog/${i}.err --nodes=1 --ntasks-per-node=2 --mem=168000 -p assemble2 --wrap="module load java/jdk1.8.0_131; java -Xmx166g -jar /opt/agil_cluster/pilon/1.22/pilon-1.22.jar --frags altalign/dominette/dominette.sorted.merged.bam --frags nextseq/dominette/dominette.sorted.merged.bam --outdir pilon --output ${i} --vcfqe --diploid --fix bases --targets ${i} --genome ARS-UCD1.0.11.fasta"; done
+
+for i in X 7 8 9 10 11; do sbatch -o pilon/outLog/${i}.out -e pilon/errLog/${i}.err --nodes=1 --ntasks-per-node=2 --mem=168000 -p assemble3 --wrap="module load java/jdk1.8.0_131; java -Xmx166g -jar /opt/agil_cluster/pilon/1.22/pilon-1.22.jar --frags altalign/dominette/dominette.sorted.merged.bam --frags nextseq/dominette/dominette.sorted.merged.bam --outdir pilon --output ${i} --vcfqe --diploid --fix bases --targets ${i} --genome ARS-UCD1.0.11.fasta"; done
+
+# Now for the remaining, smaller jobs
+perl -lane 'if(! -e "pilon/$F[0].fasta"){print $F[0];}' < ARS-UCD1.0.11.fasta.fai | grep -P '^[LS]' > remaining_to_be_polished.list
+
+for i in `cat remaining_to_be_polished.list`; do sbatch -o pilon/outLog/${i}.out -e pilon/errLog/${i}.err --nodes=1 --ntasks-per-node=2 --mem=8500 --wrap="module load java/jdk1.8.0_131; java -Xmx8g -jar /opt/agil_cluster/pilon/1.22/pilon-1.22.jar --frags altalign/dominette/dominette.sorted.merged.bam --frags nextseq/dominette/dominette.sorted.merged.bam --outdir pilon --output ${i} --vcfqe --diploid --fix bases --targets ${i} --genome ARS-UCD1.0.11.fasta"; done
+
+# and to summarize the corrections made:
+perl condense_pilon_output_script.pl pilon/outLog/ > current_pilon_summary_stats.tab
 ```
 
 <a name="snps"></a>
