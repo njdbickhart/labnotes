@@ -1047,6 +1047,11 @@ sbatch ../reorder_fasta.pl ARS_UCDpreV4.fa ../ARS-UCD1.0.3.fa correction_fastas.
 # Adding the unplaced X chromosome contig
 cat ARS_UCDpreV4.fa extra_9_contig.fa > ../ARS-UCD1.0.4.fa
 sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 --wrap="samtools faidx ARS-UCD1.0.4.fa; gzip ARS-UCD1.0.4.fa;"
+
+# Reversing orientation based on Bob's May 17th Pbjelly comparison
+perl -lane 'if($F[1] eq "-"){open(OUT, "> temp.tab"); print OUT "$F[0]\t$F[1]"; close OUT; system("java -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i temp.tab -o $F[0].rev -p 100");}' < pilon_fasta_list.tab
+
+perl -lane 'system("cat $F[0] >> ../ars_ucd_112/v12_asm_pilonheads.fa");' < pilon_fasta_list.tab
 ```
 
 Summary: made corrections to 5 chromosomes from ARS-UCD1.0.3.fa. 
@@ -1471,6 +1476,51 @@ for i in `cat remaining_to_be_polished.list`; do sbatch -o pilon/outLog/${i}.out
 
 # and to summarize the corrections made:
 perl condense_pilon_output_script.pl pilon/outLog/ > current_pilon_summary_stats.tab
+
+# I need to polish contig_x_unplaced now
+# Changing the name to contig_X_unplaced
+samtools faidx ARS-UCD1.0.11.fasta contig_X_unplaced:5587541-6536498 > contig_x_unplaced_pilon/contig_x_unplaced.fa
+
+samtools view -h altalign/dominette/dominette.sorted.merged.bam contig_X_unplaced:5587541-6536498:1-978860 | perl -ne '$_ =~ s/contig_X_unplaced:5587541-6536498/contig_X_unplaced/g; print $_;' | samtools view -bS -o contig_x_unplaced_pilon/altalign.contigxunplaced.bam -
+samtools index contig_x_unplaced_pilon/altalign.contigxunplaced.bam
+
+samtools view -h nextseq/dominette/dominette.sorted.merged.bam contig_X_unplaced:5587541-6536498:1-978860 | perl -ne '$_ =~ s/contig_X_unplaced:5587541-6536498/contig_X_unplaced/g; print $_;' | samtools view -bS -o contig_x_unplaced_pilon/nextseq.contigxunplaced.bam -
+samtools index contig_x_unplaced_pilon/nextseq.contigxunplaced.bam
+
+sbatch --mem=10000 --nodes=1 --ntasks-per-node=1 --wrap="bwa index contig_x_unplaced_pilon/contig_x_unplaced.fa"
+samtools faidx contig_x_unplaced_pilon/contig_x_unplaced.fa
+
+# The slurm queue was acting up, so I had to use this unqueued script
+module load java/jdk1.8.0_131; java -Xmx19g -jar /opt/agil_cluster/pilon/1.22/pilon-1.22.jar --frags contig_x_unplaced_pilon/altalign.contigxunplaced.bam --frags contig_x_unplaced_pilon/nextseq.contigxunplaced.bam --outdir contig_x_unplaced --output contig_x_unplaced.pilon --vcfqe --diploid --fix bases --targets contig_X_unplaced --genome contig_x_unplaced_pilon/contig_x_unplaced.fa
+Pilon version 1.22 Wed Mar 15 16:38:30 2017 -0400
+Genome: contig_x_unplaced_pilon/contig_x_unplaced.fa
+Target: contig_X_unplaced:1-978860
+Fixing snps, indels
+Input genome size: 978860
+Processing contig_X_unplaced:1-978860
+frags contig_x_unplaced_pilon/nextseq.contigxunplaced.bam: coverage 167
+frags contig_x_unplaced_pilon/altalign.contigxunplaced.bam: coverage 31
+Total Reads: 1667864, Coverage: 198, minDepth: 20
+Confirmed 952894 of 978860 bases (97.35%)
+Corrected 88 snps; corrected 56 small insertions totaling 81 bases, 20 small deletions totaling 37 bases
+Large collapsed region: contig_X_unplaced:305711-354116 size 48406
+Large collapsed region: contig_X_unplaced:386244-407347 size 21104
+Large collapsed region: contig_X_unplaced:623130-651978 size 28849
+Large collapsed region: contig_X_unplaced:657173-724539 size 67367
+Large collapsed region: contig_X_unplaced:726565-743257 size 16693
+Large collapsed region: contig_X_unplaced:868649-920969 size 52321
+Large collapsed region: contig_X_unplaced:923600-972500 size 48901
+contig_X_unplaced:1-978860 log:
+Finished processing contig_X_unplaced:1-978860
+Writing updated contig_X_unplaced_pilon to contig_x_unplaced/contig_x_unplaced.pilon.fasta
+Mean frags coverage: 198
+Mean total coverage: 198
+
+# Now that it's all fixed, time to order and orient it
+ls /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_111/pilon/*.fasta | sort | perl -lane 'print "$F[0]\t+";' > pilon_fasta_list.tab
+echo -e "/mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_111/contig_x_unplaced/contig_x_unplaced.pilon.fasta\t+" >> pilon_fasta_list.tab
+
+
 ```
 
 <a name="snps"></a>
