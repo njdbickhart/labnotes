@@ -1520,6 +1520,18 @@ Mean total coverage: 198
 ls /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_111/pilon/*.fasta | sort | perl -lane 'print "$F[0]\t+";' > pilon_fasta_list.tab
 echo -e "/mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_111/contig_x_unplaced/contig_x_unplaced.pilon.fasta\t+" >> pilon_fasta_list.tab
 
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/generateAlignSlurmScripts.pl  -b align -t next_seq_files_validation.tab -f ARS-UCD1.0.12.fasta.gz -m
+
+sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/serge_script_oneshot.sh align/dominette/dominette.sorted.merged ARS-UCD1.0.12.fasta dominette
+/mnt/nfs/nfs2/dbickhart/dominette_asm/vcfToBedpe -i align/dominette/dominette.sorted.merged.lumpy.vcf -o align/dominette/dominette.sorted.merged.lumpy.bedpe
+
+perl ../../bickhart-users/binaries/GoatAssemblyScripts/assembly_frc_benchmarking/summarizeAnalysisSlurm.pl -b run1only/canu/dominette/dominette.sorted.merged,run1only/ctx/dominette/dominette.sorted.merged,run1only/polished/dominette/dominette.sorted.merged,run1only/polished.final/dominette/dominette.sorted.merged,run1only/topolish.no1b/dominette/dominette.sorted.merged,run1only/umd3/dominette/dominette.sorted.merged,/mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_112/align/dominette/dominette.sorted.merged -n canu,ctx,polished,polished.final,topolish.no1b,umd3,ver12 -o cattle_asms_summary_stats_v12.md
+```
+
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_112
+
+```bash
+
 
 ```
 
@@ -1546,5 +1558,20 @@ perl -e 'open(O1, "> ggp_probe_design.1.fa"); open(O2, "> ggp_probe_design.2.fa"
 # I converted the BovineHD data into single line fasta entries.
 ```
 
-
+|Category         |canu  | ctx  | polished | polished.final | topolish.no1b | umd3 | ver12 |
+|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|
+|BND              |  3157|   842|  4077|  3298|  2681| 13258|  2382|
+|COMPR_PE         | 13937| 17704| 28604| 24878| 14454| 22221|  7322|
+|DEL              |  1593|  1348|  2159|  2013|  1491| 12069|  1084|
+|DUP              |   450|   458|  1120|  1202|   439|  3222|   354|
+|HIGH_COV_PE      |  7419|  7498|  9743|  9844|  7234|  6605|  7778|
+|HIGH_NORM_COV_PE |  5567|  5573|  7581|  7656|  5464|  5849|  6092|
+|HIGH_OUTIE_PE    |    85|    41|    80|    95|    90|  2280|   106|
+|HIGH_SINGLE_PE   |   191|   242|   234|   253|    83|  1289|    80|
+|HIGH_SPAN_PE     |  9926|  9480| 13695| 13784|  4986|  3959|  4765|
+|INV              |    85|    83|   110|    99|    73|  2157|    67|
+|LOW_COV_PE       | 42779| 36226| 75878| 76200| 55912| 50934| 55655|
+|LOW_NORM_COV_PE  | 41385| 34820| 82166| 82693| 55203| 55638| 53091|
+|QV               |    41|    41|    40|    40|    41|    41|    40|
+|STRECH_PE        | 27257| 25495| 26656| 25697| 27470| 28936| 18861|
 
