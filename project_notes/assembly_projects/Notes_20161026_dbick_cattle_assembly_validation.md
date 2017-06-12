@@ -1528,12 +1528,82 @@ sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/serge_script_oneshot.sh align/domin
 perl ../../bickhart-users/binaries/GoatAssemblyScripts/assembly_frc_benchmarking/summarizeAnalysisSlurm.pl -b run1only/canu/dominette/dominette.sorted.merged,run1only/ctx/dominette/dominette.sorted.merged,run1only/polished/dominette/dominette.sorted.merged,run1only/polished.final/dominette/dominette.sorted.merged,run1only/topolish.no1b/dominette/dominette.sorted.merged,run1only/umd3/dominette/dominette.sorted.merged,/mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_112/align/dominette/dominette.sorted.merged -n canu,ctx,polished,polished.final,topolish.no1b,umd3,ver12 -o cattle_asms_summary_stats_v12.md
 ```
 
-> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_112
+#### v1.0.13
+
+This is likely to be the final version. The changes list is very small and constitutes only one removal, one inversion and one new contig inclusion. Since few bases are being altered, we will likely not polish this version of the assembly.
+
+Changes:
+* Invert chr10 telomere
+* Remove mtDNA hit on chrX
+* Add new mtDNA contig
+* Identify and mask stretches of bases less than 5bp long
+* Rebuild fasta using individual contig fasta files
+
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_113
 
 ```bash
+# Identifying short stretches of bases
+# there's only the one: 
+# 26:23086082-23086085
 
+# chr10
+# This is just an inversion of the region identified by Serge
+# His last alignment corresponds with a large gap at the end of the chromosome, so I will break at the beginning of the gap and reorder the segment with 100bp gap padding (instead of the original 5kb gap!)
+# Order:
+# 10:1-102170177:+ , 10:102175176-103157611:-
+mkdir v12_segments
+mkdir v12_final_contigs
+samtools faidx ../ars_ucd_112/ARS-UCD1.0.12.fasta 10:1-102170177 > v12_segments/chr10_seg1.fa
+samtools faidx ../ars_ucd_112/ARS-UCD1.0.12.fasta 10:102175176-103157611 > v12_segments/chr10_seg2.fa
 
+vim chr10_order.list
+java -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chr10_order.list -o v12_final_contigs/10.fasta -p 100
+vim v12_final_contigs/10.fasta # To remove the "merged" fasta head
+
+# chrX
+# I need to convert Serge's v11 X coords to v12 first
+# v11 coords: X:38890116-38903460
+samtools faidx ../ars_ucd_111/ARS-UCD1.0.11.fasta X:38890116-38903460 > mt_mapping_coords.fa
+cat cow.mit.fasta >> mt_mapping_coords.fa
+sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 --wrap="module load bwa; bwa mem ../ars_ucd_112/ARS-UCD1.0.12.fasta mt_mapping_coords.fa > mt_mapping_coords.sam"
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_scripts/BriefSamOutFormat.pl -s mt_mapping_coords.sam
+
+# It looks like the mtDNA coords and the region of the X match up with the following area: X:38890932-38904279
+# However, there's a small portion at the end of the mt contig that is skewed towards the front: X:38887938-38890932
+# I'm going to strip all matching coordinates
+
+# Order:
+# X:1-38887938:+, X:38904279-167334494:+
+samtools faidx ../ars_ucd_112/ARS-UCD1.0.12.fasta X:1-38887938 > v12_segments/chrX_seg1.fa
+samtools faidx ../ars_ucd_112/ARS-UCD1.0.12.fasta X:38904279-167334494 > v12_segments/chrX_seg2.fa
+
+vim chrX_order.list
+java -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chrX_order.list -o v12_final_contigs/X.fasta -p 100
+
+# OK, now to build the final fasta:
+for i in 1 2 3 4 5 6 7 8 9; do echo $i; samtools faidx ../ars_ucd_112/ARS-UCD1.0.12.fasta $i >> ARS-UCD1.0.13.fasta; done
+cat v12_final_contigs/10.fasta >> ARS-UCD1.0.13.fasta
+for i in `seq 11 29`; do echo $i; samtools faidx ../ars_ucd_112/ARS-UCD1.0.12.fasta $i >> ARS-UCD1.0.13.fasta; done
+cat v12_final_contigs/X.fasta >> ARS-UCD1.0.13.fasta
+cat cow.mit.fasta >> ARS-UCD1.0.13.fasta
+sort -k1 ../ars_ucd_112/ARS-UCD1.0.12.fasta.fai | perl -lane 'if($F[0] =~ /^\d/ || $F[0] =~ /^X/){next;} if($F[2] == -1){open(IN, "samtools faidx ../ars_ucd_111/pilon/$F[0].fasta $F[0]_pilon |"); while(<IN>){chomp; $_ =~ s/_pilon//g; print "$_";} close IN; }else{system("samtools faidx ../ars_ucd_112/ARS-UCD1.0.12.fasta $F[0]");}' >> ARS-UCD1.0.13.fasta
+
+# I need to remove that one solitary base
+vim lone_g_base.bed
+maskFastaFromBed -fi ARS-UCD1.0.13.fasta -bed lone_g_base.bed -fo temp_masked.fa
+java -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f temp_masked.fa -o temp_masked.gaps.bed -s temp_masked.gaps.stats
+mv temp_masked.fa ARS-UCD1.0.13.fasta
+
+# Compressing
+sbatch --nodes=1 --ntasks-per-node=8 --mem=10000 --wrap="md5sum ARS-UCD1.0.13.fasta > ARS-UCD1.0.13.md5; pigz ARS-UCD1.0.13.fasta"
 ```
+
+Summary:
+* chr10 telomeric region (10:102175176-103157611) inverted
+* chrX regions matching mtDNA contig removed X:38887938-38904279
+* mtDNA contig added
+* The single "g" nucleotide on chr26 was masked (26:23086082-23086085)
+* 37 leftover contigs added back into v13 from their absence in v12 (unintended)
 
 <a name="snps"></a>
 ## SNP remapping and stats
