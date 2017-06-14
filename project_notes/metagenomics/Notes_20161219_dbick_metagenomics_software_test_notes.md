@@ -121,6 +121,18 @@ I need to sketch all of the data files, then get a good outgroup and then do a d
 mkdir meta_sketches
 for i in `cat datasources/accession_list.txt`; do echo $i; sbatch --mem=10000 --nodes=1 --ntasks-per-node=5 --wrap="../binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 21 -s 10000 -r -m 2 -o meta_sketches/${i}_21mer_10k datasources/${i}_1.fastq datasources/${i}_2.fastq"; done
 
+# Combine meta_sketches
+ls meta_sketches/*.msh > combined_meta_sketchs.list
+../binaries/mash-Linux64-v1.1.1/mash paste -l meta_sketches/combined_profile combined_meta_sketchs.list
+
+# Now to automate Mash distance estimation for each sketch
+for i in `ls *_10k.msh`; do echo $i; sbatch --mem=8000 --nodes=1 --ntasks-per-node=3 --wrap="../../binaries/mash-Linux64-v1.1.1/mash dist -p 3 -t combined_profile.msh $i > $i.dist"; done
+```
+
+I am also generating distance profiles with SourMash. Should be comparable and generates easy comparison heatmaps.
+
+```bash
+# I was only able to install sourmash thus far.
 ```
 
 <a name="metaspades"></a>
