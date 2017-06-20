@@ -1605,6 +1605,33 @@ Summary:
 * The single "g" nucleotide on chr26 was masked (26:23086082-23086085)
 * 37 leftover contigs added back into v13 from their absence in v12 (unintended)
 
+#### Confirming polished assembly
+
+```bash
+sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/serge_script_oneshot.sh align/dominette/dominette.sorted.merged ARS-UCD1.0.13.fasta dominette
+cd /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_113/align/dominette/
+/mnt/nfs/nfs2/dbickhart/dominette_asm/vcfToBedpe -i dominette.sorted.merged.lumpy.vcf -o dominette.sorted.merged.lumpy.bedpe
+
+cd /mnt/nfs/nfs2/dbickhart/dominette_asm/
+perl ../../bickhart-users/binaries/GoatAssemblyScripts/assembly_frc_benchmarking/summarizeAnalysisSlurm.pl -b run1only/topolish.no1b/dominette/dominette.sorted.merged,run1only/umd3/dominette/dominette.sorted.merged,/mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_112/align/dominette/dominette.sorted.merged,/mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_113/align/dominette/dominette.sorted.merged -n topolish.no1b,umd3,ver12,ver13 -o cattle_asms_summary_stats_v13.md
+
+cd /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_113/align/dominette/
+
+# More BND than expected. Going to check on them
+grep 'SVTYPE=BND' dominette.sorted.merged.lumpy.bedpe | perl -lane 'print "$F[0];$F[3]";' | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 > v13_bnd_trans_counts.tab
+grep 'SVTYPE=BND' ../../../ars_ucd_112/align/dominette/dominette.sorted.merged.lumpy.bedpe | perl -lane 'print "$F[0];$F[3]";' | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 > v12_bnd_trans_counts.tab
+
+diff v13_bnd_trans_counts.tab v12_bnd_trans_counts.tab
+
+# The differences look really random. Testing a few contigs out for sequence similarity
+samtools faidx ../../ARS-UCD1.0.13.fasta Leftover_ScbfJmS_2140 > v13_scbfjms_2140.fa
+samtools faidx ../../../ars_ucd_112/ARS-UCD1.0.12.fasta Leftover_ScbfJmS_2140 > v12_scbfjms_2140.fa
+diff v13_scbfjms_2140.fa v12_scbfjms_2140.fa
+
+
+
+```
+
 <a name="snps"></a>
 ## SNP remapping and stats
 
@@ -1628,20 +1655,55 @@ perl -e 'open(O1, "> ggp_probe_design.1.fa"); open(O2, "> ggp_probe_design.2.fa"
 # I converted the BovineHD data into single line fasta entries.
 ```
 
-|Category         |canu  | ctx  | polished | polished.final | topolish.no1b | umd3 | ver12 |
-|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|
-|BND              |  3157|   842|  4077|  3298|  2681| 13258|  2382|
-|COMPR_PE         | 13937| 17704| 28604| 24878| 14454| 22221|  7322|
-|DEL              |  1593|  1348|  2159|  2013|  1491| 12069|  1084|
-|DUP              |   450|   458|  1120|  1202|   439|  3222|   354|
-|HIGH_COV_PE      |  7419|  7498|  9743|  9844|  7234|  6605|  7778|
-|HIGH_NORM_COV_PE |  5567|  5573|  7581|  7656|  5464|  5849|  6092|
-|HIGH_OUTIE_PE    |    85|    41|    80|    95|    90|  2280|   106|
-|HIGH_SINGLE_PE   |   191|   242|   234|   253|    83|  1289|    80|
-|HIGH_SPAN_PE     |  9926|  9480| 13695| 13784|  4986|  3959|  4765|
-|INV              |    85|    83|   110|    99|    73|  2157|    67|
-|LOW_COV_PE       | 42779| 36226| 75878| 76200| 55912| 50934| 55655|
-|LOW_NORM_COV_PE  | 41385| 34820| 82166| 82693| 55203| 55638| 53091|
-|QV               |    41|    41|    40|    40|    41|    41|    40|
-|STRECH_PE        | 27257| 25495| 26656| 25697| 27470| 28936| 18861|
+Now to align the data to the polished assembly and generate some stats.
+
+> Assembler2: /mnt/nfs/nfs2/dbickhart/dominette_asm/snps/
+
+```bash
+# HD probes
+sbatch --nodes=1 --mem=8000 --ntasks-per-node=1 --wrap="module load bwa; bwa mem /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_113/ARS-UCDv1.0.13.fa BovineHD_B1.probeseq.fa > BovineHD_B1.probes.ars_ucdv13.sam"
+
+# GGP probes
+sbatch --nodes=1 --mem=8000 --ntasks-per-node=1 --wrap="module load bwa; bwa mem /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_113/ARS-UCDv1.0.13.fa ggp_probe_design.1.fa ggp_probe_design.2.fa > ggp_probes.ars_ucdv13.sam"
+
+# OK, let's count some stats on the HD first
+## HD data
+# Samflags:
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_scripts/BriefSamOutFormat.pl -s BovineHD_B1.probes.ars_ucdv13.sam | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 1
+Entry   Count
+0       387439
+16      387103
+4       3420		<- unmapped
+
+# Align length
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_scripts/BriefSamOutFormat.pl -s BovineHD_B1.probes.ars_ucdv13.sam | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 5
+Entry   Count
+50      777962
+
+# Chromosome count
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_scripts/BriefSamOutFormat.pl -s BovineHD_B1.probes.ars_ucdv13.sam | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 2 > BovineHD_B1.chr_snp_count.tab
+
+# OK, pretty easy to format
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_scripts/BriefSamOutFormat.pl -s BovineHD_B1.probes.ars_ucdv13.sam | perl -lane '$s = 0; if($F[1] == 4){$s = -1;}elsif($F[1] == 16){$s = $F[3] - 1;}else{$s = $F[4] + 1;} print "$F[0]\t$F[2]\t$s";' > BovineHD_B1.snplocations.tab
+
+```
+
+## QC master table
+
+|Category         |canu  | ctx  | polished | polished.final | topolish.no1b | umd3 | ver12 | ver13 |
+|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|:----------------|:---|
+|BND              |  3157|   842|  4077|  3298|  2681| 13258|  2382|  2388|
+|COMPR_PE         | 13937| 17704| 28604| 24878| 14454| 22221|  7322|  7342|
+|DEL              |  1593|  1348|  2159|  2013|  1491| 12069|  1084|  1083|
+|DUP              |   450|   458|  1120|  1202|   439|  3222|   354|   353|
+|HIGH_COV_PE      |  7419|  7498|  9743|  9844|  7234|  6605|  7778|  7858|
+|HIGH_NORM_COV_PE |  5567|  5573|  7581|  7656|  5464|  5849|  6092|  6116|
+|HIGH_OUTIE_PE    |    85|    41|    80|    95|    90|  2280|   106|   105|
+|HIGH_SINGLE_PE   |   191|   242|   234|   253|    83|  1289|    80|    80|
+|HIGH_SPAN_PE     |  9926|  9480| 13695| 13784|  4986|  3959|  4765|  4815|
+|INV              |    85|    83|   110|    99|    73|  2157|    67|    67|
+|LOW_COV_PE       | 42779| 36226| 75878| 76200| 55912| 50934| 55655| 55733|
+|LOW_NORM_COV_PE  | 41385| 34820| 82166| 82693| 55203| 55638| 53091| 53188|
+|QV               |    41|    41|    40|    40|    41|    41|    40|    40|
+|STRECH_PE        | 27257| 25495| 26656| 25697| 27470| 28936| 18861| 18897|
 

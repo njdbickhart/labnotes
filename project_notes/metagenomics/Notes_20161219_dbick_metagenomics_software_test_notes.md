@@ -127,6 +127,24 @@ ls meta_sketches/*.msh > combined_meta_sketchs.list
 
 # Now to automate Mash distance estimation for each sketch
 for i in `ls *_10k.msh`; do echo $i; sbatch --mem=8000 --nodes=1 --ntasks-per-node=3 --wrap="../../binaries/mash-Linux64-v1.1.1/mash dist -p 3 -t combined_profile.msh $i > $i.dist"; done
+
+# now to generate a phylip formatted distance matrix
+perl ~/sperl/metagenomics_scripts/convertMashToPhylip.pl -f meta_sketches -o meta_sketches/phylip_dist.matrix
+
+# Finally, I need to learn how to generate a phylip tree!
+module load phylip/3.696
+neighbor
+
+# The "outtree" file is now useable for plotting trees
+```
+
+```R
+library(ape)
+library(Biostrings)
+library(ggtree)
+tree <- read.tree(file="outtree")
+ls <- data.frame(x1=0, x2=0.5, y1=0, y2=0)
+ggtree(tree) + geom_segment(data=ls, aes(x=x1, xend=x2, y=y1, yend=y2))
 ```
 
 I am also generating distance profiles with SourMash. Should be comparable and generates easy comparison heatmaps.
