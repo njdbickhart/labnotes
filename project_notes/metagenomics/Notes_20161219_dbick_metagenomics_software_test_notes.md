@@ -138,6 +138,8 @@ neighbor
 # The "outtree" file is now useable for plotting trees
 ```
 
+R code to generate ordination plots and to test the use of hierarchical clustering to categorize different classes of metagenomes:
+
 ```R
 library(ape)
 library(Biostrings)
