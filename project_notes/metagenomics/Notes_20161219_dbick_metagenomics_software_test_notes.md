@@ -145,6 +145,146 @@ library(ggtree)
 tree <- read.tree(file="outtree")
 ls <- data.frame(x1=0, x2=0.5, y1=0, y2=0)
 ggtree(tree) + geom_segment(data=ls, aes(x=x1, xend=x2, y=y1, yend=y2))
+
+# the tree looks good, but I want to also generate a heatmap
+library(gplots)
+matrix_data <- read.delim("phylip_dist.matrix", header=FALSE, sep=" ")
+library(dplyr)
+library(tidyr)
+
+# Now to reformat the dataframe to remove some of the artifacts needed by phylip
+samplenames <- filter(matrix_data, V1 != 170) %>% select(V1)
+samplenames <- samplenames[,1] # To make it into a vector
+
+matrix_data.format <- filter(matrix_data, V1 != 170) %>% select(-V1)
+row.names(matrix_data.format) <- samplenames
+colnames(matrix_data.format) <- samplenames
+
+library(colorspace)
+library(dendextend)
+library(stringr)
+
+# Now to assign colors based on sample categories
+metadata <- read.delim("sra_file_accession_list.csv", header=TRUE, sep=",")
+metadata.categories <- select(metadata, Run, Platform, Tissue, Sampling.Method, Breed)
+summary(metadata.categories)
+metadata.categories$Abbv <- str_sub(metadata.categories$Run, start=-8)
+# Getting the replication count
+abbr_run_names <- data.frame(name=str_sub(samplenames, start=-10, end=8))
+abbr_run_names <- group_by(abbr_run_names, name)
+summarize(abbr_run_names, n())
+colnames(abbr_run_names) <- c("Abbv", "Count")
+metadata.categories.final <- na.omit(left_join(filter(metadata.categories, Platform == "ILLUMINA"), abbr_run_names, by="Abbv"))
+
+# I had  not included the Ion torrent and 454 data into the dataset, so these were removed
+# Note that dplyr throws stuff into a new "table" format object that does not respond to R's base summarize function
+
+# Picking the tissue type first
+# Duplicates the colors because each sample is duplicated in paired end fashion!
+cat_col <- rep(rev(rainbow_hcl(6))[as.numeric(metadata.categories.final$Tissue)], metadata.categories.final$Count)
+
+# Testing clustering methods for correlation
+hclust_methods <- c("ward.D", "single", "complete", "average", "mcquitty", "median", "centroid", "ward.D2")
+iris_dendlist <- dendlist()
+for(i in seq_along(hclust_methods)){ hc_meta <- hclust(as.dist(matrix_data.format), method = hclust_methods[i]); iris_dendlist <- dendlist(iris_dendlist, as.dendrogram(hc_meta))}
+names(iris_dendlist) <- hclust_methods
+
+# Now to check the correlation of clustering methods
+meta_dendlist_corr <- cor.dendlist(iris_dendlist)
+library(corrplot)
+corrplot(meta_dendlist_corr, "pie", "lower")
+dev.copy2pdf(file="hclust_meta_corrplot.pdf", useDingbats=FALSE)
+
+# Average and Ward.D look quite different, let's plot a tanglegram to see the differences
+iris_dendlist %>% dendlist(which = c(1,4)) %>% ladderize %>% set("rank_branches") %>% tanglegram(common_subtrees_color_branches = TRUE) # 1 is Ward.D and 4 is Average
+dev.copy2pdf(file="ward_vs_avg_meta_clusttanglegram.pdf", useDingbats=FALSE)
+
+# Plotting all methods to compare
+par(mfrow = c(2,4))
+for(i in 1:8){iris_dendlist[[i]] %>% set("branches_k_color", k=2) %>% plot(axes= FALSE, horiz = TRUE); title(names(iris_dendlist)[i])}
+
+# Finally, let's try to compare these methods against the number of clusters we hoped to get
+# Note: the clusters assume that the order of the data is the cluster order -- not the case here!
+get_ordered_5_clusters <- function(dend){cutree(dend, k=5)[order.dendrogram(dend)]}
+dend_5_clusters <- lapply(iris_dendlist, get_ordered_5_clusters)
+compare_clusters_to_meta <- function(clus){FM_index(clus, rep(1:5, c(36, 26, 2, 34, 72)), assume_sorted_vectors = TRUE)}
+clusters_performance <- sapply(dend_5_clusters, compare_clusters_to_meta)
+dotchart(sort(clusters_performance), xlim = c(0.4,1), xlab = "Fowlkes-Mallows Index", main = "Performance of clustering algorithms on metagenomics hashes", pch = 19)
+
+# So now that I have the routine, let's try a better reassignment
+library(hashmap)
+catLookup <- hashmap(c("Rumen", "Foot", "Manure", "Nasal", "Oral"), c(1,2,3,4,5))
+ordered_cats <- rep(metadata.categories.final$Tissue, each=2)
+get_ordered_5_clusters <- function(dend){catLookup[[ordered_cats[order.dendrogram(dend)]]]}
+dend_5_clusters <- lapply(iris_dendlist, get_ordered_5_clusters)
+clusters_performance <- sapply(dend_5_clusters, compare_clusters_to_meta)
+dotchart(sort(clusters_performance), xlim = c(0.2,1), xlab = "Fowlkes-Mallows Index", main = "Performance of clustering algorithms on metagenomics hashes", pch = 19)
+
+#So the "single" method is the best
+dev.copy2pdf(file="fm_index_comparison_methods.pdf", useDingbats=FALSE)
+
+## Generating the heatmap
+
+singleClust <- hclust(as.dist(matrix_data.format), method="single")
+singleDend <- as.dendrogram(singleClust)
+labels_colors(singleDend) <- rainbow_hcl(5)[get_ordered_5_clusters(singleDend)]
+singleDend <- color_branches(singleDend, k=5)
+
+library(gplots)
+some_col_func <- function(n) rev(colorspace::heat_hcl(n, c = c(80, 30), l = c(30, 90), power = c(1/5, 1.5)))
+gplots::heatmap.2(as.matrix(matrix_data.format), main = "Metagenome Tissue MASH Clustering", dendrogram = "row", Rowv = singleDend, Colv = "NA", trace = "none", denscol = "grey", density.info = "density", RowSideColors = rev(labels_colors(singleDend)), col = some_col_func)
+dev.copy2pdf(file="MASH_heatmap.pdf", useDingbats=FALSE)
+gplots::heatmap.2(as.matrix(matrix_data.format), main = "Metagenome Tissue MASH Clustering", dendrogram = "none", Rowv = "NA", Colv = "NA", trace = "none", denscol = "grey", density.info = "density", RowSideColors = rev(labels_colors(singleDend)), col = some_col_func)
+dev.copy2pdf(file="MASH_heatmap_noclust.pdf", useDingbats=FALSE)
+# Colors for final legend
+rainbow_hcl(5)
+	[1] "#E495A5" "#BDAB66" "#65BC8C" "#55B8D0" "#C29DDE"
+
+# Rumen = pink = #E495A5
+# Foot = tan = #BDAB66
+# Manure = light green = #65BC8C
+# Nasal = light blue = #55B8D0
+# Oral = light purple = #C29DDE
+
+# One last test, let's make a plot colored by sampling method
+sampLookup <- hashmap(c("Biopsy", "Digester", "Fecal", "Fiber", "Oral", "Stomach Tube", "Swab"), c(1,2,3,4,5,6,7))
+ordered_samp_cats <- rep(metadata.categories.final$Sampling.Method, 2)
+get_ordered_7_clusters <- function(dend){sampLookup[[ordered_samp_cats[order.dendrogram(dend)]]]}
+labels_colors(singleDend) <- rainbow_hcl(7)[get_ordered_7_clusters(singleDend)]
+singleDend <- color_branches(singleDend, k=7)
+
+gplots::heatmap.2(as.matrix(matrix_data.format), main = "Metagenome Tissue MASH Clustering", dendrogram = "row", Rowv = singleDend, Colv = "NA", trace = "none", denscol = "grey", density.info = "density", RowSideColors = rev(labels_colors(singleDend)), col = some_col_func)
+gplots::heatmap.2(as.matrix(matrix_data.format), main = "Metagenome Tissue MASH Clustering", dendrogram = "none", Rowv = "NA", Colv = "NA", trace = "none", denscol = "grey", density.info = "density", RowSideColors = rev(labels_colors(singleDend)), col = some_col_func)
+
+rainbow_hcl(7)
+[1] "#E495A5" "#CEA472" "#9CB469" "#56BD96" "#46BAC8" "#99A9E2" "#D497D3"
+# Biopsy	= pink = #E495A5
+# Digester = tan = #CEA472
+# Fecal  = light green = #9CB469
+# Fiber = light blue-green = #56BD96
+# Oral = light cyan = #46BAC8
+# Stomach Tube = light purple = #99A9E2
+# Swab
+```
+
+Finally, I'm going to attempt an Nonmetric MDS to see how the data fall out.
+
+```R
+library(MASS)
+fit <- isoMDS(as.dist(matrix_data.format), k=2)
+plot(fit$points[,1], fit$points[,2], xlab="Coordinate 1", ylab="Coordinate 2", main = "MASH distance Nonmetric MDS", pch = c(15,16,17,18,25)[catLookup[[ordered_cats]]], col = c("blue", "dark green", "yellow", "orange", "red")[catLookup[[ordered_cats]]])
+legend("topleft", c("Rumen", "Foot", "Manure", "Nasal", "Oral"), pch = c(15,16,17,18,25), col = c("blue", "dark green", "yellow", "orange", "red"), cex = 1.25)
+
+# It looked good, but I had a stress value above 19. Anything above 0.3 is considered suspect!
+library(vegan)
+ord <- metaMDS(as.dist(matrix_data.format), trymax=100)
+# It took 94 cycles to reach convergence
+
+plot(ord, type="n")
+orditorp(ord, display="sites", col=c("blue", "dark green", "purple", "orange", "red")[catLookup[[ordered_cats]]], pch = c(15,16,17,18,25)[catLookup[[ordered_cats]]])
+legend("bottomleft", c("Rumen", "Foot", "Manure", "Nasal", "Oral"), pch = c(15,16,17,18,25), col = c("blue", "dark green", "purple", "orange", "red"), cex = 1.25, text.col = c("blue", "dark green", "purple", "orange", "red"))
+
+# The 
 ```
 
 I am also generating distance profiles with SourMash. Should be comparable and generates easy comparison heatmaps.
