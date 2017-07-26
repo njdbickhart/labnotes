@@ -7,6 +7,8 @@ These are my notes and cmdline commands for running the variant analysis pipelin
 ## Table of Contents
 * [Testing the setup on NextSeq500 data](#testone)
 * [Restarting the pipeline](#restart)
+* [Pilot phase 1 UMD3 align](#umd1)
+* [Alignment to modified ARSUCD-v14](#arsucd)
 
 <a name="testone"></a>
 ## Testing the setup on NextSeq500 data
@@ -145,3 +147,91 @@ samtools merge -h HOUSA000055181279/HOUSA000055181279.header.sam -@ 5 HOUSA00005
 
 # Indexing the merged bam
 samtools index HOUSA000055181279/HOUSA000055181279.merge.bam
+```
+
+<a name="umd1"></a>
+## Pilot phase 1 UMD3 align
+
+I am going to set up an initial alignment of the reads against the UMD3 reference genome while I wait for the cattle assembly to go public on NCBI. First, I need to tag all bam sequence sent by WUSTL in my spreadsheet tab file.
+
+The relational data for library name and bam ID are found in this file in my sequencing projects folder:
+* final_UNALIGNED_samplemap_june_2017.xlsx
+
+> Assembler 2: /mnt/nfs/nfs2/bickhart-users/natdb_sequencing
+
+```bash
+# Generating a file list
+ls /mnt/nfs/SequenceData/wustl/set*/*/*/*/*.bam > wustl_bam_file_locs.list
+
+# Copying library and animal name info to the server
+vim wustl_relational_info.tab
+dos2unix wustl_relational_info.tab
+
+# Now, removing the "BTAN-" identifier and formatting the spreadsheet information
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; $_ =~ s/BTAN-//g; @s = split(/\t/); $data{$s[2]} = [$s[0], $s[1]];} close IN; open(IN, "< $ARGV[1]"); while($l = <IN>){chomp $l; @s = split(/\//, $l); $d = $data{$s[-1]}; print "$l\t$d->[0]\t$d->[1]\n";} close IN;' wustl_relational_info.tab wustl_bam_file_locs.list > wustl_formatted_bam_data.tab
+```
+
+Scratch the UMD3 align -- Bob will take care of that faster than I can. I will instead work on alignment to a modified new reference containing the IGC haplotypes.
+
+<a name="arsucd"></a>
+## Alignment to modified ARSUCD-v14
+
+I've copied Ben's ARS-UCDv14 to the following directory:
+
+> /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114/ARS-UCD1.0.14.clean.fasta
+
+The fasta has 73 missing supplementary scaffolds (contaminants or vectors) and 5 chromosomes/scaffolds with changes compared to v13.
+
+```R
+v13 <- read.delim("../ars_ucd_113/ARS-UCD1.0.13.fasta.fai", header=FALSE)
+v14 <- read.delim("ARS-UCD1.0.14.clean.fasta.fai", header=FALSE)
+library(dplyr)
+
+joined_summary <- left_join(v13[,c(1,2)], v14[,c(1,2)], by="V1")
+filter(joined_summary, is.na(V2.y)) %>% count
+# 73 missing
+filter(joined_summary, V2.x != V2.y)
+#                     V1      V2.x      V2.y
+#1                    10 103152713 103152712
+#2 Leftover_ScbfJmS_1601     18130     18110
+#3 Leftover_ScbfJmS_1857     26100     26078
+#4 Leftover_ScbfJmS_1867    214469    214448
+#5 Leftover_ScbfJmS_1961     37852     37820
+```
+
+I am going to add several scaffolds to this assembly and make a separate (v14+igc) assembly version for alignment. Based on Doro's email, I should keep/modify the following fastas:
+
+> Contigs for SNP discovery
+I had a look through your list of BAC clones and compared them with the final BAC overview list I created last year (attached to this email). The good news is that a lot of the BACs do not need to be included in the alignment/mapping exercise (see table below).
+
+>1)	NKC – all clones that contain NKC can be taken out. The reference assembly is good for this region and we have not found haplotypes that differed in gene content. 
+
+>2)	MHC – most of the BAC clones that contain MHC aligned to regions that are not part of the classical class I polymorphic region. The one clone to keep is the LIB14427_MHC which contains a different class I haplotype to the reference genome. 
+
+>3)	LRC – most LRC clones are actually not LRC or contain polymorphic LILR or KIR genes. The one to keep in the analysis is the LIB14413_LRC, as it contains LILR genes.
+
+>We do have a few more additional files that can be added to the haplotype list, which are attached as fasta files to this email. The summary below includes all files to be included.
+
+>MHC
+>1)	TPI_4222_MHC classI haplotype: This was sequenced and assembled from BAC clones at Pirbright. This haplotype contains 4 classical MHC genes (gene 1, gene 2, gene 4, gene 6).
+>2)	Dominette_MHC class I haplotype: This is essentially the classical class I region from the reference genome UMD3.1. This haplotype contains 2 classical MHC genes (gene 5 and gene 2).
+>3)	LIB14427_MHC class I haplotype (from your list): This is a partial haplotype containing 2 classical MHC genes (gene 3 and gene2).
+
+>LRC
+>1)	TPI_4222_KIR haplotype 1: This was sequenced and assembled from BAC clones at Pirbright. This haplotype contains the KIR region.
+>2)	LIB14413_LRC (from your list), contains LILR genes
+>3)	LIB14604_CH240_391K10: Another partial KIR haplotype.
+>4)	LIB14602_CH240-370M3: contains LILR genes
+
+>We would say that before you decide to include any of the above please take a quick look at how similar they are to the ARS reference you are using so you get an idea of what to expect.
+
+So, I need to do nucmer comparisons with the novel haplotype fragments, and then keep only two of the previously assembled BAC haplotypes: LIB14413_LRC and LIB14427_MHC. First the nucmer aligns.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc
+
+```bash
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/CH240_391K10_polished.fasta
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/Domino_MHCclassI_gene2-5hapl.fasta
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/LRC_CH240_370M3.fas
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/TPI4222_A14_MHCclassI.fas
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/TPI_4222_LRC_hap1.fas
