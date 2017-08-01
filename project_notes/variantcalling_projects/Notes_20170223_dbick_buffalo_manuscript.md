@@ -551,3 +551,31 @@ intersectBed -a /mnt/iscsi/vnx_gliu_7/ruminant_project/goat_buff_bams/jarms/buff
 # Seg dup intersections
 perl -lane 'print "$F[1]\t$F[2]\t$F[3]";' < ./buffalo_fixed_segdups.tab | intersectBed -a ../../gene_data/umd3_ensgene.bed -b stdin | cut -f4 | sort | uniq | wc -l
 30
+
+# Now, the easy stuff where I just copy over the tables I've already generated
+mv snpEff_genes.txt /mnt/nfs/nfs2/dbickhart/buffalo/tables/combined_buffalo_snpeff_genes_table.tab
+cp buffalo_cnmops_cnvrs.tab /mnt/nfs/nfs2/dbickhart/buffalo/tables/combined_buffalo_cn.mops_detected_cnvrs.tab
+
+# Now I want to make a full annotated Jarms CNVR dataset for deletions with the cn.mops INI significance
+cp buffalo_cnmops_inicalls.filtered.merged.bed ./jarms/
+cd jarms
+
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d genedb.list -i ITWB_dup_file.list -o buffalo_jarms_deletion_combined_cn.mops -t
+# The INI significant entries greatly outweigh the count of actual CNVRs. I'm going to trim them.
+
+perl -e '$h = <>; print "$h"; while(<>){chomp; @s = split(/\t/); if($s[4] == 1 && $s[5] =~ /INI_SIG/){next;}else{print join("\t", @s); print "\n";}}' < buffalo_jarms_deletion_combined_cn.mops_regions.tab > buffalo_jarms_deletion_combined_cn.mops_regions.filtered.tab
+
+wc -l buffalo_jarms_deletion_combined_cn.mops_regions.tab buffalo_jarms_deletion_combined_cn.mops_regions.filtered.tab
+  360654 buffalo_jarms_deletion_combined_cn.mops_regions.tab
+   13445 buffalo_jarms_deletion_combined_cn.mops_regions.filtered.tab
+  374099 total
+
+# Now to do the same with the MEI calls
+cd mei_calls
+# Condensing down my MEIDivet file into flat bed format
+for i in ITWB*.filtered.putative.mei; do echo $i; perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' < $i > $i.bed; done
+for i in *.filtered.putative.mei.bed; do basename=`echo $i | cut -d'.' -f1`; echo -e "$i\t$basename"; done > mei_file_list.tab
+# I need to add the upstream gene region annotations
+
+~/jdk1.8.0_05/bin/java -jar ~/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d genedb.list -i mei_file_list.tab -o buffalo_combined_full_MEI_detections -t
+cp buffalo_combined_full_MEI_detections_regions.tab /mnt/nfs/nfs2/dbickhart/buffalo/tables/

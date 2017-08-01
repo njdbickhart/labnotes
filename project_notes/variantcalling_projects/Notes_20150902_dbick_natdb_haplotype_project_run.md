@@ -230,8 +230,74 @@ So, I need to do nucmer comparisons with the novel haplotype fragments, and then
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc
 
 ```bash
+java -jar ../../binaries/CombineFasta/store/CombineFasta.jar standardize -f /mnt/nfs/nfs2/dbickhart/igc/TPI4222_A14_MHCclassI.fas -o TPI4222_A14_MHCclassI.fasta
+java -jar ../../binaries/CombineFasta/store/CombineFasta.jar standardize -f /mnt/nfs/nfs2/dbickhart/igc/CH240_391K10_polished.fasta -o CH240_391K10_polished.fasta
+java -jar ../../binaries/CombineFasta/store/CombineFasta.jar standardize -f /mnt/nfs/nfs2/dbickhart/igc/Domino_MHCclassI_gene2-5hapl.fasta -o Domino_MHCclassI_gene2-5hapl.fasta
+java -jar ../../binaries/CombineFasta/store/CombineFasta.jar standardize -f /mnt/nfs/nfs2/dbickhart/igc/LRC_CH240_370M3.fas -o LRC_CH240_370M3.fasta
+java -jar ../../binaries/CombineFasta/store/CombineFasta.jar standardize -f /mnt/nfs/nfs2/dbickhart/igc/TPI_4222_LRC_hap1.fas -o TPI_4222_LRC_hap1.fasta
+
+
 sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/CH240_391K10_polished.fasta
 sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/Domino_MHCclassI_gene2-5hapl.fasta
 sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/LRC_CH240_370M3.fas
 sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/TPI4222_A14_MHCclassI.fas
 sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta /mnt/nfs/nfs2/dbickhart/igc/TPI_4222_LRC_hap1.fas
+
+# Damn, the reference file size was too large. Going to use the whole chromosome as the reference instead
+# chr23 for MHC and chr18 for LRC. NKC is apparently well covered in this assembly!
+samtools faidx ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta 23 > ver14_chr23.fa
+samtools faidx ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta 18 > ver14_chr18.fa
+
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ver14_chr23.fa TPI4222_A14_MHCclassI.fasta
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ver14_chr23.fa Domino_MHCclassI_gene2-5hapl.fasta
+
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ver14_chr18.fa TPI_4222_LRC_hap1.fasta
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ver14_chr18.fa CH240_391K10_polished.fasta
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ver14_chr18.fa LRC_CH240_370M3.fasta
+
+# Rewriting fasta headers according to the filenames and associations
+head *.fasta
+==> CH240_391K10_polished.fasta <==
+>CH240_391K10_Vector_Trim_polished
+==> Domino_MHCclassI_gene2-5hapl.fasta <==
+>CH103G5_and_CH463M1_and_CH252J17
+==> LRC_CH240_370M3.fasta <==
+>CH240_370M3
+==> TPI4222_A14_MHCclassI.fasta <==
+>TPI4222_A14_MHCclassI
+==> TPI_4222_LRC_hap1.fasta <==
+>HF_LRC_hap1
+
+
+cat *.fasta > pirbright_combined.fa
+vim pirbright_combined.fa
+
+# Now selecting the USDA haplotypes that Doro suggested were not redundant
+samtools faidx /mnt/nfs/nfs2/dbickhart/igc/usda_cumulative_igc_haplotypes.fa LIB14427_MHC LIB14413_LRC > usda_nonredundant_haplotypes.fa
+
+# And finally, sending them all to the final fasta
+cat ../ars_ucd_114/ARS-UCD1.0.14.clean.fasta pirbright_combined.fa usda_nonredundant_haplotypes.fa > ARS-UCD1.0.14.clean.wIGCHaps.fasta
+# Parity check to ensure that it is all present and clear
+samtools faidx ARS-UCD1.0.14.clean.wIGCHaps.fasta
+
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="module load bwa; bwa index ARS-UCD1.0.14.clean.wIGCHaps.fasta"
+
+# OK, now we're ready to run. Just want to make sure that I'm generating a proper script, so I will test one bam file for alignment now
+head -n1 ../../../bickhart-users/natdb_sequencing/wustl_formatted_bam_data.tab > test_spreadsheet_subset.tab
+```
+
+I need to switch folders to generate the scripts since my pipeline was not designed to run outside of the working directory!
+
+> Assembler2: /mnt/nfs/nfs1/derek.bickhart/CDDR-Project
+
+```bash
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/alignBamReadsSlurm.pl -b test -t /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/test_spreadsheet_subset.tab -f /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta
+sbatch test/001HO05072/scripts/bwaAlign_555751224267203.sh
+
+# I learned that I added error codes about the fasta reference being in the right directory. Since the NFS2 mount
+# is pretty hammered, it might make sense to copy the reference files to this directory too.
+cp /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta* ./
+
+# Steve asked me to submit all of the jobs so that they're ready to go when he restarts the cluster
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/alignBamReadsSlurm.pl -b aligns -t /mnt/nfs/nfs2/bickhart-users/natdb_sequencing/wustl_formatted_bam_data.tab -f ARS-UCD1.0.14.clean.wIGCHaps.fasta -m
+#	Generated 2629 alignment scripts for 173 samples!
