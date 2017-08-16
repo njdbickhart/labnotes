@@ -50,8 +50,90 @@ for i in cheryl/*/*.subreads.bam; do name=`basename $i | cut -d'.' -f1`; echo $n
 # Sketching all Illumina reads from stdin
 for i in illuminaR*/YMRewriteFilterGbase*fq; do cat $i; done | mash sketch -p 3 -k 21 -s 10000 -r -m 2 -o illumina_filtered_non-interleaved -
 
+# Sketching pacbio reads separately from bam
 for i in *.bam; do name=`echo $i | cut -d'.' -f1`; echo $name; samtools fastq $i | mash sketch -p 3 -k 21 -s 10000 -r -m 2 -o $name - ; done
 
 for i in ./*.bam; do name=`basename $i | cut -d'.' -f1`; echo $name; samtools fastq $i | mash sketch -p 3 -k 21 -s 10000 -r -m 2 -o $name - ; done
 
+# It's also only fair that I create a combined sketch from each facility's instrument for comparison
+# Tim's first (RSII and Sequel)
+cat LIB*.fastq | mash sketch -p 3 -k 21 -s 10000 -r -m 2 -o pacbio_rsii_summary -
+for i in ./*/m54033*.bam; do samtools fastq $i; done | mash sketch -p 3 -k 21 -s 10000 -r -m 2 -o pacbio_sequel_tim_summary -
+
+# Cheryl's second (Sequel and CCS'ed reads)
+find ./ -name '*.bam' | grep -v 'scraps' | grep -v 'm54033' | xargs -I{} samtools fastq {} | mash sketch -p 3 -k 21 -s 10000 -r -m 2 -o pacbio_sequel_cheryl_summary -
+cat ./*/*.fastq | mash sketch -p 3 -k 21 -s 10000 -r -m 2 -o ../pacbio_ccs_cheryl_summary -
+
+# Nanopore read sketching is relatively straightforward; all of my generated data will be sketched together
 for i in `find ./nanopore -name "*.fastq"`; do cat $i ; done | mash sketch -p 3 -k 21 -s 10000 -r -m 2 -o nanopore_yu_morrison_fastq -
+
+```
+
+
+## Mash sketch generation of outgroups
+
+I want to include the cattle manure sample studies and the [Hess et al](https://www.ncbi.nlm.nih.gov/pubmed/21273488) dataset as "outgroups" to compare with our new dataset MASH profiles.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/
+
+```bash
+# The Hess et al. survey
+sbatch --nodes=1 --ntasks-per-node=6 --mem=10000 --partition=assemble3 --wrap='for i in SRR094166_1.fastq.gz SRR094166_2.fastq.gz SRR094403_1.fastq.gz SRR094403_2.fastq.gz SRR094405_1.fastq.gz SRR094405_2.fastq.gz SRR094415_1.fastq.gz SRR094415_2.fastq.gz SRR094416_1.fastq.gz SRR094416_2.fastq.gz SRR094417_1.fastq.gz SRR094417_2.fastq.gz SRR094418_1.fastq.gz SRR094418_2.fastq.gz SRR094419_1.fastq.gz SRR094419_2.fastq.gz SRR094424_1.fastq.gz SRR094424_2.fastq.gz SRR094427_1.fastq.gz SRR094427_2.fastq.gz SRR094428_1.fastq.gz SRR094428_2.fastq.gz SRR094429_1.fastq.gz SRR094437_1.fastq.gz SRR094437_2.fastq.gz SRR094926_1.fastq.gz SRR094926_2.fastq.gz; do gunzip -c datasources/$i ; done | /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 21 -s 10000 -r -m 2 -o illumina_hess_combined - '
+
+# Manure sample survey
+sbatch --nodes=1 --ntasks-per-node=6 --mem=10000 --partition=assemble3 --wrap='for i in SRR2329878_1.fastq.gz SRR2329878_2.fastq.gz SRR2329910_1.fastq.gz SRR2329910_2.fastq.gz SRR2329939_1.fastq.gz SRR2329939_2.fastq.gz SRR2329962_1.fastq.gz SRR2329962_2.fastq.gz; do gunzip -c datasources/$i; done | /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v1.1.1/mash sketch -p 5 -k 21 -s 10000 -r -m 2 -o illumina_manure_combined - '
+
+# I transferred all of the files to my linux VM for distance comparison
+```
+
+## Mash distance estimation and concatenation
+
+OK, now to generate the distance matrix and to create ordination plots.
+
+> pwd: /home/dbickhart/share/metagenomics/pilot_project/mash_profiles
+
+```bash
+ls illumina_filtered_non-interleaved.msh illumina_hess_combined.msh illumina_manure_combined.msh FNFAE24738.msh nanopore_yu_morrison_fastq.msh pacbio_ccs_cheryl_summary.msh pacbio_rsii_summary.msh pacbio_sequel_cheryl_summary.msh pacbio_sequel_tim_summary.msh > combined_summary_sketches.list
+
+mash paste -l combined_summary_sketches combined_summary_sketches.list
+
+for i in `cat combined_summary_sketches.list`; do echo $i; mash dist -p 3 -t combined_summary_sketches.msh $i > $i.combined.dist; done
+mkdir combined_dist
+mv *.dist ./combined_dist/
+
+# Because most of my sketches were done based on standard input, I have to be creative in how I paste the distance matricies together
+# You can see the file IDs in the mash "info" field. 
+perl -lane 'open(IN, "< combined_dist/$F[0].combined.dist"); $h = <IN>; $d = <IN>; chomp $d; @dsegs = split(/\t/, $d); $dsegs[0] = $F[0]; print join("\t", @dsegs);' < combined_summary_sketches.list > combined_dist/combined_distance.matrix
+
+# Now to read it in and do some plotting in R
+```
+
+My goal here is a rapid NMDS with the following simplistic categories:
+
+* Illumina
+* Nanopore
+* PacBio
+* Outgroup (combined manure profile)
+
+```R
+library(MASS)
+library(vegan)
+
+# just in case I need them
+library(dplyr)
+library(tidyr)
+
+mash_data <- read.delim("combined_dist/combined_distance.matrix", header=FALSE)
+entry_names <- mash_data[,1]
+mash_data.format <- select(mash_data, -V1)
+rownames(mash_data.format) <- entry_names
+colnames(mash_data.format) <- entry_names
+
+ord <- metaMDS(as.dist(mash_data.format), trymax=100)
+# Only took 20 iterations
+
+# Base Vegan plotting polymorhpic functions did not work on the data. Had to hack out the NMDS coords
+plot(scores(ord), col=c("red", "blue", "blue", "green", "red", "purple", "purple", "purple", "purple"), pch= c(15, 15, 16, 15, 16, 16, 17, 15, 15))
+legend("bottomleft", c("UKNano", "USIllum", "Hess", "Manure", "USNano", "PBCCS", "PBRSII", "PBCheryl", "PBTim"), col=c("red", "blue", "blue", "green", "red", "purple", "purple", "purple", "purple"), pch= c(15, 15, 16, 15, 16, 16, 17, 15, 15))
+dev.copy2pdf(file="combined_profile_nmds_vegan.pdf", useDingbats=FALSE)
+```
