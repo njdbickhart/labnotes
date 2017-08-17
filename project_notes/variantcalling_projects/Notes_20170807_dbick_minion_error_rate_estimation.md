@@ -2,6 +2,8 @@
 ---
 *8/7/2017*
 
+## MinION error rate estimation
+
 These are my notes for rapidly generating an assessment of MinION read error rates using a Lambda control run. I will be calculating a per-read error rate using alignment of each read to the lambda reference genome, calculating reference edit distance and then dividing it by the read length.
 
 > linux box: /home/dbickhart/share/nanopore/lambda_pass_test
@@ -128,3 +130,27 @@ if __name__ == '__main__':
          .format(sys.argv[1], num, high, low, avg, stdev))
 ```
 
+
+## MinION read length distribution
+
+I will calculate this histogram from the first successful Yu and Morrison run just to save some time.
+
+> Linux_box: /home/dbickhart/share/metagenomics/pilot_project
+
+```bash
+# Generating a quick list of read lengths
+for i in nanopore/yu_and_morrison_3/*.fastq; do perl -e 'while(<>){$s = <>; $p = <>; $q = <>; print length($s); print "\n";}' < $i; done > yu_and_morrison_3_readlengths.list
+
+wc -l yu_and_morrison_3_readlengths.list 
+#	1268557 yu_and_morrison_3_readlengths.list
+```
+
+Now to load the values into R and to generate a histogram.
+
+```R 
+values <- read.delim("yu_and_morrison_3_readlengths.list", header=FALSE)
+colnames(values) <- c("ReadLength")
+
+ggplot(data=values, aes(ReadLength)) + geom_histogram() + scale_y_log10() + scale_x_continuous(labels = scales::comma) + ggtitle("MinION Rumen Sample Read Lengths") + ylab("Log10 Read Counts") + xlab("Read Length (bp)") + theme(plot.title = element_text(hjust = 0.5))
+dev.copy2pdf(file="minion_readlength_rumen_count.pdf", useDingbats=FALSE)
+```
