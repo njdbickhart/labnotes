@@ -1707,3 +1707,56 @@ perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_scripts/
 |QV               |    41|    41|    40|    40|    41|    41|    40|    40|
 |STRECH_PE        | 27257| 25495| 26656| 25697| 27470| 28936| 18861| 18897|
 
+
+## Problems with assembly 
+
+Bob found some regions of UMD3 that are apparently not present in the ARS-UCD assembly. Checking them now.
+
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ars_ucd_14_igc_rmask
+
+```bash
+module load bedtools/2.26.0
+grep 'chain' combined_chain/chr6.chain | perl -lane 'if($F[6] >= 1445418 && $F[5] <= 3818492){print "$F[2]\t$F[5]\t$F[6]\t$F[4]\t$F[7]\t$F[10]\t$F[11]\t$F[9]\t$F[12]";}' | sortBed -i stdin > umd_6_1445418_3818492_mappings.bed
+
+# Writing a script to automate this
+perl check_coordinates.pl combined_chain/chr6.chain 5221411 6782370 umd_6_5221411_6782370_mappings.bed
+for i in "20:25315005-25372272" "21:33417070-33470664" "21:55762119-55792041" "21:59812700-60709528"; do chr=`echo $i | cut -d':' -f1`; start=`echo $i | cut -d':' -f2 | cut -d'-' -f1`; end=`echo $i | cut -d':' -f2 | cut -d'-' -f2`; echo $start $end $chr; perl check_coordinates.pl combined_chain/chr${chr}.chain $start $end umd_${chr}_${start}_${end}_mappings.bed; done
+
+head -n 99 *_mappings.bed
+```
+
+And the script I wrote:
+
+#### check_coordinates.pl
+
+```perl
+#!/usr/bin/perl
+# A formalized script to wrap this shell command:
+# grep 'chain' combined_chain/chr6.chain | perl -lane 'if($F[6] >= 1445418 && $F[5] <= 3818492){print "$F[2]\t$F[5]\t$F[6]\t$F[4]\t$F[7]\t$F[10]\t$F[11]\t$F[9]\t$F[12]";}' | sortBed -i stdin
+
+use strict;
+
+chomp(@ARGV);
+my $usage = "A utility to check blat alignments from one chr to another\nperl $0 <chain file> <start coord> <end coord> <output file>\n";
+
+unless(scalar(@ARGV) == 4){
+        print $usage;
+        exit;
+}
+
+open(my $IN, "grep 'chain' $ARGV[0] |") || die "Could not open chain file!\n$usage";
+open(my $OUT, "> temp");
+while(my $line = <$IN>){
+        chomp $line;
+        my @F = split(/\s+/, $line);
+        if($F[6] >= $ARGV[1] && $F[5] <= $ARGV[2]){
+                print {$OUT} "$F[2]\t$F[5]\t$F[6]\t$F[4]\t$F[7]\t$F[10]\t$F[11]\t$F[9]\t$F[12]\n";
+        }
+}
+close $IN;
+close $OUT;
+
+system("module load bedtools/2.26.0; cat temp | sortBed -i stdin > $ARGV[3]");
+system("rm temp");
+```
+
