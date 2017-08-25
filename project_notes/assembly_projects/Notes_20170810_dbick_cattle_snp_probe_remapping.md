@@ -388,3 +388,52 @@ summary(hd_full)
 
 count(filter(hd_full, abscdiff >= 1)) # 37934 
 ```
+
+## Testing regions of the assembly for completion
+
+I am going to check several canu haplotypes for alignment to the v14 reference.
+
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc
+
+```bash
+# Here is one tig section that Bob thinks is missing from the assembly
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/canu.mhap.all.fasta tig00000805:1691178-1744155 > tig00000805_1691178-1744155.fa
+
+bwa mem ../ARS-UCD1.0.14.clean.wIGCHaps.fasta tig00000805_1691178-1744155.fa > tig00000805_1691178-1744155.sam
+perl ~/sperl/sequence_data_scripts/BriefSamOutFormat.pl -s tig00000805_1691178-1744155.sam
+tig00000805:1691178-1744155     16      15      49017753        49022770        52978   60
+
+# Now to generate nucmer plots
+# liftover for the region from chr4 umd3
+perl check_coordinates.pl final_merged_chain/chr4.chain 96770424 96823498 tig00000805_chr4_coords.tab
+# That has it on chr4 in the new assembly as well. Going to make plots for both regions
+
+samtools faidx ../ARS-UCD1.0.14.clean.wIGCHaps.fasta 4:95900318-96000000 > ars_ucd_sub_4_95900318_96000000.fa
+samtools faidx ../ARS-UCD1.0.14.clean.wIGCHaps.fasta 15:49017753-49022770 > ars_ucd_sub_15_49017753_49022770.fa
+
+sh /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh tig00000805_1691178-1744155.fa ars_ucd_sub_4_95900318_96000000.fa
+sh /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh tig00000805_1691178-1744155.fa ars_ucd_sub_15_49017753_49022770.fa
+
+# Both gave errors for no alignment data to plot!
+rm ars_ucd_sub_*
+# We're trying whole chromosomes now
+samtools faidx ../ARS-UCD1.0.14.clean.wIGCHaps.fasta 4 > ars_ucd_sub_4.fa
+sh /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ars_ucd_sub_4.fa tig00000805_1691178-1744155.fa
+# No alignment data here as well!
+
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/canu.mhap.all.fasta tig00000805 > tig00000805.fa
+sh /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ars_ucd_sub_4.fa tig00000805.fa
+# I resized the gnuplot image, but only 3kb aligned!
+
+samtools faidx ../ARS-UCD1.0.14.clean.wIGCHaps.fasta 15 > ars_ucd_sub_15.fa
+sh /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh ars_ucd_sub_15.fa tig00000805.fa
+# 48027402 51365201
+
+ARS-BFGL-NGS-95780      4       95965226
+ARS-BFGL-NGS-95780      4       95965226        +       4       96754893
+Hapmap28499-BTA-142459  4       96007967        +       4       96861591
+
+
+samtools faidx ../ARS-UCD1.0.14.clean.wIGCHaps.fasta 4:95971185-96013926 > ars_ucd_probregion_4.fa
+samtools faidx /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa chr4 > umd3_chr4.fa
+sh ../../../binaries/run_nucmer_plot_automation_script.sh umd3_chr4.fa ars_ucd_probregion_4.fa
