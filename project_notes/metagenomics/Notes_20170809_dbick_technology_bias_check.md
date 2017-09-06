@@ -137,3 +137,26 @@ plot(scores(ord), col=c("red", "blue", "blue", "green", "red", "purple", "purple
 legend("bottomleft", c("UKNano", "USIllum", "Hess", "Manure", "USNano", "PBCCS", "PBRSII", "PBCheryl", "PBTim"), col=c("red", "blue", "blue", "green", "red", "purple", "purple", "purple", "purple"), pch= c(15, 15, 16, 15, 16, 16, 17, 15, 15))
 dev.copy2pdf(file="combined_profile_nmds_vegan.pdf", useDingbats=FALSE)
 ```
+
+## Illumina downsampling test
+
+I want to see how reproducible the mash profile is for different proportions of the Illumina data. Hopefully, I can get a good reproducibility curve from a progressive downsampling that shows a cutoff for identity.
+
+> pwd: /home/dbickhart/share/metagenomics/pilot_project/downsample
+
+```bash
+# a simple test on one fastq file
+perl ~/share/programs_source/Perl/perl_toolchain/metagenomics_scripts/downsampleIlluminaReads.pl ../illuminaR1/YMPrepCannula_S1_L001_R1_001.fastq.gz
+
+# Now for the whole shebang
+perl ~/share/programs_source/Perl/perl_toolchain/metagenomics_scripts/downsampleIlluminaReads.pl ../illuminaR1/YMPrepCannula_S1_L001_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L001_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L002_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L002_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L003_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L003_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L004_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L004_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L001_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L001_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L002_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L002_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L003_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L003_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L004_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L004_R2_001.fastq.gz
+
+# Now let's generate the distance matrix so that we can estimate the percent similarity to the original dataset
+for i in downsample*.msh; do name=`echo $i | cut -d'.' -f1,2`; echo $name; mash dist -t ../mash_profiles/illumina_filtered_non-interleaved.msh $i > $name.dist; done
+
+# The 20% only got down to 3% dissimilarity. I'm worried that the majority of mash sketches are picking up the same species and that abundance is killing things
+# Testing out with more gradients (5% intervals)
+perl ~/share/programs_source/Perl/perl_toolchain/metagenomics_scripts/downsampleIlluminaReads.pl ../illuminaR1/YMPrepCannula_S1_L001_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L001_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L002_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L002_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L003_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L003_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L004_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L004_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L001_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L001_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L002_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L002_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L003_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L003_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L004_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L004_R2_001.fastq.gz
+
+
+```

@@ -301,3 +301,4 @@ cp /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.
 # Steve asked me to submit all of the jobs so that they're ready to go when he restarts the cluster
 perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/alignBamReadsSlurm.pl -b aligns -t /mnt/nfs/nfs2/bickhart-users/natdb_sequencing/wustl_formatted_bam_data.tab -f ARS-UCD1.0.14.clean.wIGCHaps.fasta -m
 #	Generated 2629 alignment scripts for 173 samples!
+```

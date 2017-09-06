@@ -373,3 +373,5 @@ mkdir sickle
 
 for i in `cat accession_list.txt`; do echo $i; sbatch --nodes=1 --ntasks-per-node=2 --mem=5000 -o sickle/${i}_slurm.out --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/sickle/sickle pe -f ${i}_1.fastq -r ${i}_2.fastq -o sickle/${i}_sickle.1.fastq.gz -p sickle/${i}_sickle.2.fastq.gz -s sickle/${i}_singles.fastq.gz -t sanger -q 15 -l 36 -g"; done
 ```
+
+
