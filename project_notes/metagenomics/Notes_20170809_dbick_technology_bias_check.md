@@ -158,5 +158,21 @@ for i in downsample*.msh; do name=`echo $i | cut -d'.' -f1,2`; echo $name; mash 
 # Testing out with more gradients (5% intervals)
 perl ~/share/programs_source/Perl/perl_toolchain/metagenomics_scripts/downsampleIlluminaReads.pl ../illuminaR1/YMPrepCannula_S1_L001_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L001_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L002_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L002_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L003_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L003_R2_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L004_R1_001.fastq.gz ../illuminaR1/YMPrepCannula_S1_L004_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L001_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L001_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L002_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L002_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L003_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L003_R2_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L004_R1_001.fastq.gz ../illuminaR2/YMPrepCannula_S1_L004_R2_001.fastq.gz
 
+for i in downsample*.msh; do name=`echo $i | cut -d'.' -f1,2`; echo $name; mash dist -t downsampleSketch_1.0.msh $i > $name.dist; done
+# This time, the 5% dataset only reached 9% dissimilarity
 
+# Creating a table for loading to R
+perl -e '@f = `ls *.dist`; chomp(@f); for($x = scalar(@f) - 1; $x >= 0; $x--){open($IN, "< $f[$x]"); <$IN>; $v = <$IN>; chomp $v; $v =~ s/^\s+//g; ($b) = $f[$x] =~ m/downsampleSketch_(.+)\.dist/; $b *= 100; $v = 1 - $v; print "$b\t$v\n"; close $IN;}' > downsampleSimilarityMatrix.tab
 ```
+
+Now I'm going to load it into R and generate a line plot.
+
+```R
+simMatrix <- read.delim(file="downsampleSimilarityMatrix.tab", header=FALSE)
+colnames(simMatrix) <- c("sampling", "similarity")
+library(ggplot2)
+
+ggplot(data=simMatrix, aes(x = sampling, y = similarity)) + geom_line() + geom_point() + expand_limits(y=0.875) + xlab(label="Sampling percentage") + ylab(label="Similarity propotion (1 - Mash distance)")
+
+# I'd like to calculate the derivative as well to see if things are slowing down as we reach higher sampling
+

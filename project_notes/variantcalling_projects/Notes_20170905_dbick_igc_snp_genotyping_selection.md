@@ -121,6 +121,10 @@ bcftools stats -F /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-U
 # Generating plots of variant call stats
 mkdir plots
 plot-vcfstats -p plots/ igc_125_animals.calls.vcf.gz.stats
+
+# Processing each region separately
+bcftools concat -o LRC.combined.bcf -O b LRC1.mpileup.bcf LRC2.mpileup.bcf LRC3.mpileup.bcf LRC4.mpileup.bcf LRCA.mpileup.bcf
+bcftools concat -o MHC.combined.bcf -O b MHC1.mpileup.bcf MHC2.mpileup.bcf MHC3.mpileup.bcf MHCA.mpileup.bcf
 ```
 
 Some interesting features that are derived from the stats of this dataset:
@@ -129,3 +133,25 @@ Some interesting features that are derived from the stats of this dataset:
 * The majority of variants have a quality score of 998+, suggesting that larger sample sizes have given this dataset better quality
 
 **TODO tomorrow: make a box plot of variants per region per animal**
+
+I need to assign variant sites to different haplotypes within each subgroup. I suspect that the best way to do this will be through hierarchical clustering, as I do not know the number of haplotypes within my samples (I don't trust the AIP haplotypes in these regions). I will attempt to generate clusters within each subgroup and then assign variant sites to each haplogroup. I will then filter variants based on aligned read MAPQ scores directly adjacent to the site, within 36bp of each other.
+
+I think that I can use structure to assign clusters and then use that to try to backtrace marker assignments.
+
+```bash
+# first, to generate a suitable structure file for each vcf
+module load plink/2.00alM-2017-05-22
+# Running on the whole dataset to see how many variants are in LD
+plink2 --vcf igc_125_animals.calls.vcf.gz --indep-pairwise 50 5 0.5 --allow-extra-chr
+
+# OOPs! Each SNP needs an ID for this analysis!
+bcftools annotate -o igc_125_animals.calls.ids.vcf.gz -O z -I 'ARS\_PIRBRIGHT\_%CHROM\_%POS' igc_125_animals.calls.vcf.gz
+
+plink2 --vcf igc_125_animals.calls.ids.vcf.gz --indep-pairwise 50 5 0.5 --allow-extra-chr
+wc -l plink2.prune.in plink2.prune.out
+  20891 plink2.prune.in
+  38937 plink2.prune.out
+  59828 total
+
+# That's a good first filter, let's now try to run some PLINK clustering to identify individual clusters
+# Great, plink2 doesn't provide clustering algorithms!
