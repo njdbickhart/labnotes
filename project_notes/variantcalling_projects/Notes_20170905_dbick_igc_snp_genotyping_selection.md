@@ -155,3 +155,61 @@ wc -l plink2.prune.in plink2.prune.out
 
 # That's a good first filter, let's now try to run some PLINK clustering to identify individual clusters
 # Great, plink2 doesn't provide clustering algorithms!
+# Thankfully, Plink1.90 does.
+
+plink --vcf igc_125_animals.calls.ids.vcf.gz --extract plink2.prune.in --cluster --allow-extra-chr --threads 20 --double-id
+# Only one "cluster" present... a little dissappointing. 
+# Trying to calculate IBD
+plink --vcf igc_125_animals.calls.ids.vcf.gz --extract plink2.prune.in --genome --allow-extra-chr --threads 20 --double-id
+
+# Because of the small number of markers I have and the bias in marker selection (from the same polymorphic regions), the IBD estimates are pretty poor indicators of actual descent
+# One last filter: HWE
+plink --vcf igc_125_animals.calls.ids.vcf.gz --extract plink2.prune.in --hardy --allow-extra-chr --threads 20 --double-id
+
+perl -lane 'if($F[8] < 0.05){print $_;}' < plink.hwe | wc -l
+	5904 <- Let's test to see how many per "chromosome"
+
+perl -lane 'if($F[8] < 0.05){print $F[0];}' < plink.hwe | perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -c 0 -f stdin -m
+```
+#### Genetics filtered variant list
+
+|Entry                            | Count|
+|:--------------------------------|-----:|
+|18                               |    47|
+|23                               |   220|
+|CH240_370M3_LILR_LRC             |   182|
+|CH240_391K10_KIR                 |   109|
+|CHR                              |     1|
+|Domino_MHCclassI_gene2-5hap1_MHC |   760|
+|HF_LRC_hap1_KIR_LRC              |   527|
+|LIB14413_LRC                     |   186|
+|LIB14427_MHC                     |   647|
+|TPI4222_A14_MHCclassI_MHC        |  1328|
+
+OK, now I need to filter these by virtue of their flanking sequence map quality scores. The scheme will be to test the upstream and downstream 36 bp to assess the average MAPQ of the aligned reads. If the MAPQ is low (< 12 =~ 5% chance mapping site is incorrect) then I'll drop the read. The pileup takes several seconds to load, so it is infeasible to subset each time for each marker position. I'm going to generate a large flatfile and use a second script to process it.
+
+```bash
+perl -lane 'print "$F[0]"; system("samtools mpileup -s -O -r $F[0] -b igc_variant_list_bams.list >> igc_variant_pileup_regions.tab");' < igc_ars_ucd_v14_regions.tab
+
+# I need to remove SNP IDs that are not unique and HWEP violating SNPs first
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f plink2.prune.in -c 0 | perl -lane 'if($F[1] > 1){print $F[0];}' > plink2.prune.in.dups
+perl -lane 'if($F[0] eq "CHR"){next;} if($F[8] > 0.05){print $F[1];}' < plink.hwe > plink.hwe.remove
+
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl plink2.prune.in plink2.prune.in.dups plink.hwe.remove
+File Number 1: plink2.prune.in
+File Number 2: plink2.prune.in.dups
+File Number 3: plink.hwe.remove
+Set     Count
+1       5804
+1;2     5
+1;2;3   51
+1;3     14975
+
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o plink2.prune.in plink2.prune.in.dups plink.hwe.remove
+perl ~/sperl/sequence_data_scripts/assessSamtoolsMpileupMapQSNPMarkers.pl -v igc_125_animals.calls.ids.vcf.gz -l group_1.txt -m igc_variant_pileup_regions.tab -o igc_mapq_variant_sites.tab
+
+perl -d ~/sperl/sequence_data_scripts/assessSamtoolsMpileupMapQSNPMarkers.pl -v igc_125_animals.calls.ids.vcf.gz -l group_1.txt -m igc_variant_pileup_regions.tab -o igc_mapq_variant_sites.tab
+
+# my script was too cumbersome and pushed the limits of Perls' processing limits. 
+# I'm going to subset the data and work on it using other reliable tools
+perl -lane '$e = $F[1] + 1; $sum = 0; $c = 0; for($x = 7; $x < scalar(@F);$x += 5){if($F[$x] ne "*"){@bsegs = split(/,/, $F[$x]); $c += scalar(@bsegs); foreach $j (@bsegs){$sum += $j;}}} $avg = ($c > 0)? $sum / $c : 0; $sum = 0; $c = 0; print "$F[0]\t$F[1]\t$e\t$avg";' < igc_variant_pileup_regions.tab > igc_variant_pileup_regions.scores.bed
