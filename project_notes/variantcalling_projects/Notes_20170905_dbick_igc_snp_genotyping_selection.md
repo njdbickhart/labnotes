@@ -132,7 +132,22 @@ Some interesting features that are derived from the stats of this dataset:
 * HWE is not observed in the distribution of alleles in the population, with a bimodal distribution of allele frequencies
 * The majority of variants have a quality score of 998+, suggesting that larger sample sizes have given this dataset better quality
 
-**TODO tomorrow: make a box plot of variants per region per animal**
+Generating a plot of variants per chromosome per animal
+
+```R
+data <- read.delim("igc_125_animals.calls.ids.calls.peranimal.tab", header=FALSE)
+data.formated <- data[c("X18", "X23", "X5", "CH240_370M3_LILR_LRC", "CH240_391K10_KIR", "Domino_MHCclassI_gene2.5hap1_MHC", "HF_LRC_hap1_KIR_LRC", "LIB14413_LRC", "LIB14427_MHC", "TPI4222_A14_MHCclassI_MHC")]
+rownames(data.formated) <- data$X
+
+library(ggplot2)
+library(reshape2)
+
+data.formated.c <- data.frame(data.formated, count = c(1:125))
+data.melt <- melt(data.formated.c, id.vars="count", measure.vars = colnames(data.formated))
+ggplot(data.melt, aes(count, value, colour=variable)) + geom_point() + xlab(label="Holstein Bull Samples") + ylab(label="Variant counts per chromosome") + ggtitle(label="Variant counts per chromosome per animal")
+dev.copy2pdf(file="per_sample_variant_counts.pdf", useDingbats=FALSE)
+
+```
 
 I need to assign variant sites to different haplotypes within each subgroup. I suspect that the best way to do this will be through hierarchical clustering, as I do not know the number of haplotypes within my samples (I don't trust the AIP haplotypes in these regions). I will attempt to generate clusters within each subgroup and then assign variant sites to each haplogroup. I will then filter variants based on aligned read MAPQ scores directly adjacent to the site, within 36bp of each other.
 
@@ -179,7 +194,6 @@ perl -lane 'if($F[8] < 0.05){print $F[0];}' < plink.hwe | perl ~/sperl/bed_cnv_f
 |23                               |   220|
 |CH240_370M3_LILR_LRC             |   182|
 |CH240_391K10_KIR                 |   109|
-|CHR                              |     1|
 |Domino_MHCclassI_gene2-5hap1_MHC |   760|
 |HF_LRC_hap1_KIR_LRC              |   527|
 |LIB14413_LRC                     |   186|
@@ -212,4 +226,101 @@ perl -d ~/sperl/sequence_data_scripts/assessSamtoolsMpileupMapQSNPMarkers.pl -v 
 
 # my script was too cumbersome and pushed the limits of Perls' processing limits. 
 # I'm going to subset the data and work on it using other reliable tools
-perl -lane '$e = $F[1] + 1; $sum = 0; $c = 0; for($x = 7; $x < scalar(@F);$x += 5){if($F[$x] ne "*"){@bsegs = split(/,/, $F[$x]); $c += scalar(@bsegs); foreach $j (@bsegs){$sum += $j;}}} $avg = ($c > 0)? $sum / $c : 0; $sum = 0; $c = 0; print "$F[0]\t$F[1]\t$e\t$avg";' < igc_variant_pileup_regions.tab > igc_variant_pileup_regions.scores.bed
+perl -ne '@F = split(/\t/); $e = $F[1] + 1; $sum = 0; $c = 0; for($x = 7; $x < scalar(@F);$x += 5){if($F[$x] ne "*"){@bsegs = split(/,/, $F[$x]); $c += scalar(@bsegs); foreach $j (@bsegs){$sum += $j;}}} $avg = ($c > 0)? $sum / $c : 0; $sum = 0; $c = 0; print "$F[0]\t$F[1]\t$e\t$avg\n";' < igc_variant_pileup_regions.tab > igc_variant_pileup_regions.scores.bed
+
+# Now to select only the sites that we kept after HWE and LD pruning
+perl -lane 'if($F[1] eq "SNP"){next;}elsif($F[8] < 0.05){print $F[1]}' < plink.hwe > igc_125_animals.calls.ids.calls.passfilter.snpids
+perl -e 'chomp(@ARGV); open($IN, "< $ARGV[0]"); %snps; while(<$IN>){chomp; $snps{$_} = 1;} close $IN; open($IN, " gunzip -c $ARGV[1] |"); while(<$IN>){chomp; if($_ =~ /^#/){next;}else{@s = split(/\t/); if(exists($snps{$s[2]})){$e = $s[1] + 1; print "$s[0]\t$s[1]\t$e\t$s[2]\n";}}} close $IN;' igc_125_animals.calls.ids.calls.passfilter.snpids igc_125_animals.calls.ids.vcf.gz > igc_125_animals.calls.ids.calls.passfilter.bed
+
+# I think that there are some duplicate IDs -- checking really quickly
+cat igc_125_animals.calls.ids.calls.passfilter.bed | cut -f4 | sort | uniq | wc -l
+5882
+cat igc_125_animals.calls.ids.calls.passfilter.snpids | sort | uniq | wc -l
+5882
+
+# There are -- most likely due to multi-allelic sites. Let's find the duplicates and remove them
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f igc_125_animals.calls.ids.calls.passfilter.bed -c 3 | perl -lane 'if($F[1] > 1){print $F[0];}' > test_filtered.dupids
+perl -e '%exclude; chomp(@ARGV); open($IN, "< $ARGV[0]"); while(<$IN>){chomp; $exclude{$_} = 1;} close $IN; open($IN, "< $ARGV[1]"); while(<$IN>){chomp; @s = split(/\t/); unless(exists($exclude{$s[3]})){print "$_\n";}}' test_filtered.dupids igc_125_animals.calls.ids.calls.passfilter.bed > igc_125_animals.calls.ids.calls.passfilter.nodups.bed
+
+# Now for the association of Mapq sites with the variants
+perl ~/sperl/sequence_data_scripts/assessSamtoolsMpileupMapQSNPMarkers.pl -v igc_125_animals.calls.ids.calls.passfilter.nodups.bed -l igc_125_animals.calls.ids.calls.passfilter.snpids -m igc_variant_pileup_regions.scores.bed -o igc_125_animals.calls.ids.calls.passfilter.nodups.scores.bed
+
+# These are clearly higher quality markers in the best mapping locations
+perl -lane 'if($F[4] > 80 && $F[5] > 80){print $_;}' < igc_125_animals.calls.ids.calls.passfilter.nodups.scores.bed | wc -l
+1150
+
+# I will now take each of these markers, extract flanking sequence and map them back to the reference genome to assess mapping site quality scores.
+# If a 36 mer can't map reliably back to the reference, then we're in trouble!
+perl -lane 'if($F[4] > 80 && $F[5] > 80){print $_;}' < igc_125_animals.calls.ids.calls.passfilter.nodups.scores.bed > igc_125_animals.calls.ids.calls.passfilter.gt80scores.bed
+
+perl -lane '$s = $F[1] - 36; $e = $F[1] + 36; system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$s\-$F[1] >> igc_locs_mapping_test.fa"); system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$F[1]\-$e >> igc_locs_mapping_test.fa");' < igc_125_animals.calls.ids.calls.passfilter.gt80scores.bed
+
+bwa mem /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta igc_locs_mapping_test.fa > igc_locs_mapping_test.sam
+perl grep_marker_locs.pl < igc_locs_mapping_test.noheader.sam | perl -lane 'if($F[2] > 20 || $F[3] > 20){print $_;}' > igc_locs_mapping_test.mapq.assoc.tab
+
+# I only recovered sequence on a few chromosomes, but it is heavily filtered. 
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f igc_locs_mapping_test.mapq.assoc.tab -c 0 -m
+```
+
+#### Final filtration of markers by chromosome
+|Entry                     | Count|
+|:-------------------------|-----:|
+|18                        |     6|
+|5                         |   186|
+|CH240_370M3_LILR_LRC      |    10|
+|CH240_391K10_KIR          |     1|
+|HF_LRC_hap1_KIR_LRC       |    17|
+|LIB14413_LRC              |     9|
+|LIB14427_MHC              |    38|
+|TPI4222_A14_MHCclassI_MHC |    74|
+
+All three IGCs are represented, though some more so than others. Let's prepare the list, then compare them to the locations of the BovineHD markers to try to select equidistant markers.
+
+Thankfully, my old script to recursively select markers has survived! But I need to adapt it on a chromosome by chromosome basis to select the different markers.
+
+Now to generate the input data to the [script](https://github.com/njdbickhart/perl_toolchain/blob/master/snp_utilities/gmsSNPSelectionStrategyGreedy.pl):
+
+```bash
+perl generate_mapq_dataframe.pl igc_locs_mapping_test.mapq.assoc.tab igc_125_animals.calls.ids.vcf.gz > igc_locs_mapping_test.total.assoc.tab
+
+# Now I want to take the BovineHD remappings and see if we have covered any of our target haplotypes
+perl -lane 'open(IN, "gunzip -c ../cattle_asms/ars_ucd_114_igc/ars_ucd_14_igc_rmask/bovinehd_illumina.snplocs.ars-ucd14.bed.gz |"); while(<IN>){chomp; @s = split(/\t/); if($s[0] eq $F[0] && $s[1] < $F[2] && $s[1] >= $F[1]){print join("\t", @s);}} close IN;' < nkc_regions_ars14.bed > nkc_regions.bovineHDmarkers.bed
+
+# There were NO mappings to the assembled region of chr23
+# The chr18 coords can be refined to: 18:63110866-63132207, but the region is too difficult to map to
+# The NKC regions are pretty well dispersed on chr5
+perl -e '$min = 908089099; $max = 0; while(<>){chomp; @F = split(/\t/); if($F[0] eq "5"){if($min > $F[1]){$min = $F[1];} if($max < $F[2]){$max = $F[2];}}} print "$min\t$max\n";' < nkc_regions.bovineHDmarkers.bed
+98797892        99505322
+
+# Of the other chromosomes with VCF variants discovered, only CH240_370M3_LILR_LRC had Bovine HD markers (63 total).
+# I'm just going to select 6 equally spaced markers without regard to the BovineHD markerset -- so long as they don't overlap there's good reason to think that they're different
+
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 18 -i igc_locs_mapping_test.total.assoc.tab -s 63110866 -e 63144659 -d 500 -m 6 > LRCA_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 5 -i igc_locs_mapping_test.total.assoc.tab -s 98792567 -e 99508055 -d 500 -m 6 > NKCA_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 23 -i igc_locs_mapping_test.total.assoc.tab -s 28460024 -e 28533695 -d 500 -m 6 > MHCA_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c CH240_391K10_KIR -i igc_locs_mapping_test.total.assoc.tab -s 1 -e 100779 -d 500 -m 6 > LRC1_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c Domino_MHCclassI_gene2-5hap1_MHC -i igc_locs_mapping_test.total.assoc.tab -s 1 -e 339066 -d 500 -m 6 > MHC1_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c CH240_370M3_LILR_LRC -i igc_locs_mapping_test.total.assoc.tab -s 1 -e 179560 -d 500 -m 6 > LRC2_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c TPI4222_A14_MHCclassI_MHC -i igc_locs_mapping_test.total.assoc.tab -s 1 -e 407922 -d 500 -m 6 > MHC2_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c HF_LRC_hap1_KIR_LRC -i igc_locs_mapping_test.total.assoc.tab -s 1 -e 370760 -d 500 -m 6 > LRC3_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c LIB14427_MHC -i igc_locs_mapping_test.total.assoc.tab -s 1 -e 204406 -d 500 -m 6 > MHC3_snp_selections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c LIB14413_LRC -i igc_locs_mapping_test.total.assoc.tab -s 1 -e 133818 -d 500 -m 6 > LRC4_snp_selections.tab
+
+# Let's see how many markers we selected in total:
+wc -l *_snp_selections.tab
+   1 LRC1_snp_selections.tab
+   5 LRC2_snp_selections.tab
+   6 LRC3_snp_selections.tab
+   5 LRC4_snp_selections.tab
+   4 LRCA_snp_selections.tab
+   0 MHC1_snp_selections.tab
+   7 MHC2_snp_selections.tab
+   7 MHC3_snp_selections.tab
+   0 MHCA_snp_selections.tab
+   6 NKCA_snp_selections.tab
+  41 total
+
+```
+
+
+So, I've selected 41 variants for the first round. Let's pass the list to John to see if he agrees with the locations and/or wants to select different types of variants.
