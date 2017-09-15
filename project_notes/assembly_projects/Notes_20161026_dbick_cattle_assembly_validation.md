@@ -15,6 +15,8 @@
 * [Polishing the assembly](#polish)
 * [SNP remapping and stats](#snps)
 * [Large scale assembly error correction](#error_correction)
+	* [Recmap revision](#recmap_rev)
+	* [Nucmer coord strategy](#nuccoord)
 
 <a name="stats"></a>
 ## Sequence alignment and summary statistics
@@ -1808,3 +1810,319 @@ sbatch ../../../binaries/run_nucmer_plot_automation_script.sh arsv14.region11.ch
 
 # Now, Bob had run the Dominette WGS reads on the Topolish assembly and then used my script to realign the one-end-mapped reads onto the v14 assembly
 # I think that the alternative is what we need, so let's see if we can get better resolution here.
+samtools view -h -f 8 -F 260 /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/aligns/001HO05072/001HO05072.sorted.merged.bam 6:1280324-1318562 > arsv14.region11.001HO05072.oneendmapped.sam
+samtools view -h -f 4 -F 264 /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/aligns/001HO05072/001HO05072.sorted.merged.bam 6:1280324-1318562 > arsv14.region11.001HO05072.endunmapped.sam
+
+samtools merge arsv14.region11.001HO05072.combo.bam arsv14.region11.001HO05072.oneendmapped.sam arsv14.region11.001HO05072.endunmapped.sam
+samtools sort -n -T temp -o arsv14.region11.001HO05072.merged.rnsort.bam arsv14.region11.001HO05072.combo.bam
+
+# Aligning to the alternative reference
+perl ~/sperl/assembly_scripts/findUnmappedReadConsensus.pl -b arsv14.region11.001HO05072.merged.rnsort.bam -r /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa  -o arsv14.region11.001HO05072 -m 0 -t 8
+# Even with no mapq filter, the only mapped segment is:
+6       1307156 1307632 6       97883741        97884130
+
+# Trying some other assemblies
+perl ~/sperl/assembly_scripts/findUnmappedReadConsensus.pl -b arsv14.region11.001HO05072.merged.rnsort.bam -r /mnt/nfs/nfs2/dbickhart/dominette_asm/canu.mhap.all.fasta  -o canu.mhap.region11.001HO05072 -m 0 -t 8
+```
+
+<a name="recmap_rev"></a>
+#### Recmap revision
+
+I am now going to replicate some of what Bob found with the HD probeset just to get my bearings for extracting and realigning segments of the genome.
+
+```bash
+# First the HD probes
+sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ../ARS-UCD1.0.14.clean.wIGCHaps.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probeseq.fa -o arsv14.hdprobes
+sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probeseq.fa -o topolish.hdprobes
+
+# Now the recmap probes
+sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.fa -o topolish.recmap
+sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ../ARS-UCD1.0.14.clean.wIGCHaps.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.fa -o arsv14.recmap
+
+# 6       1431432; 6       3780334 # UMD3 recmap coordinates missing in ARSv14
+# Pulling marker names from the missing locations
+perl -lane 'if($F[4] == 6 && $F[5] <= 3780344 && $F[5] >= 1431432){print $F[0];}' < arsv14.recmap.tab > arsv14.recmap.missingmarkers.inregion.list
+
+# Extracting marker locations from the topolish assembly
+perl -e 'chomp(@ARGV); my %list; open($IN, "< $ARGV[0]"); while(<$IN>){chomp; $list{$_} = 1;} close $IN; open($IN, "< $ARGV[1]"); while(<$IN>){chomp; @s = split(/\t/); if(exists($list{$s[0]})){print join("\t", @s); print "\n";}} close $IN;' arsv14.recmap.missingmarkers.inregion.list topolish.recmap.tab
+
+# OK, the recmap to the rescue! The surgery on this segment of 6 was difficult because it was segmented in several locations here. I made the mistake in v1.0.4 by chopping too much of the terminal ends of a segment here
+
+#Upstream topolish marker maps 6       22253128; 6       22522377; 6       22536259 --- 6:22522377-22536259
+#Downstream topolish marker maps 6       20315220; 6       20344150; 6       20415862 --- 6:20315220-20344150
+
+# I'm now going to extract the consensus of those coordinates and walk the alignments of those sequence fragments to the ARS v14 assembly. The upstream marker coordinates will be the most difficult to reconcile because they're a segment break in the topolish assembly
+
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:22522377-22536259 > topolish.region11.upstream.recmap.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:20315220-20344150 > topolish.region11.downstream.recmap.fa
+
+perl ~/sperl/assembly_scripts/alignUnitigSectionsToRef.pl -f topolish.region11.upstream.recmap.fa -r ../ARS-UCD1.0.14.clean.wIGCHaps.fasta -o topolish.region11.upstream.recmap.tab
+Longest aligments:      chr     start   end     length
+                        6       2727712 2741595 13883
+
+perl ~/sperl/assembly_scripts/alignUnitigSectionsToRef.pl -f topolish.region11.downstream.recmap.fa -r ../ARS-UCD1.0.14.clean.wIGCHaps.fasta -o topolish.region11.downstream.recmap.tab
+Longest aligments:      chr     start   end     length
+                        X       1971585 151276646       149305061
+                        10      12132774        102258536       90125762
+                        2       12075857        85391476        73315619
+                        8       34649312        105871586       71222274
+                        7       13560259        78424026        64863767
+                        5       18284575        82234418        63949843
+                        1       37754588        101121559       63366971
+...
+
+# So, it's actually the downstream that is the problem! I chopped the upstream correctly but the downstream is where the breakpoint diverges
+# Let's reverse the coordinate maps
+#6       1277739; 6       1326120
+samtools faidx ../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6:1277739-1326120 > arsv14.region11.recmap.fa
+perl ~/sperl/assembly_scripts/alignUnitigSectionsToRef.pl -f arsv14.region11.recmap.fa -r /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta -o arsv14.region11.downstream.recmap.tab
+Longest aligments:      chr     start   end     length
+                        1a      51484272        136621491       85137219
+                        8       5148079 22867447        17719368
+                        6       17994767        22257127        4262360
+                        Leftover_ScbfJmS_1962   32      7038    7006
+                        Leftover_ScbfJmS_1097   66889   66929   40
+
+# Here are the relevant mappings from the tab file
+6:1277739-1326120       0       2000    6       22253128        22255128        9;3
+6:1277739-1326120       2000    3000    6       17994767        17995767        9
+6:1277739-1326120       3000    4000    6       22256127        22257127        9
+6:1277739-1326120       4000    5000    6       17996769        17997769        15
+6:1277739-1326120       5000    6000    Leftover_ScbfJmS_1962   32      1032    9
+6:1277739-1326120       6000    11000   6       17998768        18003772        60;60;59;60;16
+6:1277739-1326120       11000   12000   Leftover_ScbfJmS_1962   6038    7038    23
+6:1277739-1326120       12000   13000   6       18004772        18005772        18
+6:1277739-1326120       12000   13000   6       20392406        20392749        18
+6:1277739-1326120       12000   13000   Leftover_ScbfJmS_1097   66889   66929   0
+6:1277739-1326120       13000   14000   8       5148117 5149117 2
+
+
+# So it is clear that the breakpoint is in between the 12000-13000 bp range of the realignment (arsv14: 6:1289739-1290739)
+# Testing one final breakpoint set from the topolish assembly
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:18005772-20392406 > topolish.region11.full.recmap.fa
+perl ~/sperl/assembly_scripts/alignUnitigSectionsToRef.pl -f topolish.region11.full.recmap.fa -r ../ARS-UCD1.0.14.clean.wIGCHaps.fasta -o topolish.region11.full.recmap.tab
+Longest aligments:      chr     start   end     length
+                        X       217062  167058732       166841670
+                        1       183355  157530446       157347091
+                        2       516585  134762835       134246250
+                        4       426310  119719020       119292710
+                        5       114341  119377725       119263384
+						...
+
+# And the relevant segments:
+6:18005772-20392406     0       12000   Leftover_ScbfJmS_1962   10171   1001    60;60;60;60;60;60;60;60;60;60;60;60;60
+6:18005772-20392406     12000   14000   *       0       1000    0;0
+6:18005772-20392406     14000   15000   19      25523766        25524766        0
+...
+6:18005772-20392406     2378000 2379000 12      1797669 1798669 0
+6:18005772-20392406     2378000 2379000 2       10798739        10798795        0
+6:18005772-20392406     2379000 2380000 7       61327529        61328529        6
+6:18005772-20392406     2380000 2381000 X       10152536        10153536        1
+6:18005772-20392406     2381000 2382000 18      62149239        62150239        13
+6:18005772-20392406     2382000 2383000 6       1306751 1307751 60
+6:18005772-20392406     2382000 2383000 5       113079404       113079495       0
+6:18005772-20392406     2383000 2386634 6       1305752 1298200 60;60;9;0
+
+# The coords at the end are inverted, going to try to get 8kb more resolution
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:20380406-20420406 > topolish.region11.fiveprime.recmap.fa
+perl ~/sperl/assembly_scripts/alignUnitigSectionsToRef.pl -f topolish.region11.fiveprime.recmap.fa -r ../ARS-UCD1.0.14.clean.wIGCHaps.fasta -o topolish.region11.fiveprime.recmap.tab
+Longest aligments:      chr     start   end     length
+                        2       10798739        55511760        44713021
+                        16      10957259        30852796        19895537
+                        6       1306118 1330666 24548
+
+# No additional resolution whatsover -- the alignment coordinates shifted, even!
+
+# So here are my conclusions on the breakpoints:
+# ARSv14: 6:1289739-1290739 <- cut segments with breakpoints flanking these coordinates
+# Topolish: 6:18017772-20387406 <- add this segment in between the breakpoints and try to match the 5' end to the reference to avoid overlap.
+
+# Let's try to get the finetuned overlap coords with nucmer
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh arsv14.region11.recmap.fa topolish.region11.fiveprime.recmap.fa
+cat topolish.dna.mcoords
+25389   29825   12006   7554    4437    4453    98.52   48382   40001   9.17    11.13   6:1277739-1326120       6:20380406-20420406
+29824   48382   16904   35457   18559   18554   99.93   48382   40001   38.36   46.38   6:1277739-1326120       6:20380406-20420406
+
+# Nucmer refined coordinates:
+# ARSv14: 6:1289739-1303128		<- a potential loss of ~4kb
+# Topolish: 6:18017772-20387960	<- a gain of 2.3 megs
+
+# let's find the rest of chr6 that needs to be repaired
+perl -lane 'if($F[4] == 6 && $F[1] eq "*"){print $F[0];}' < arsv14.recmap.tab > arsv14.recmap.missingmarkers.fullchr6.list
+# removing the markers we just found a solution for:
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o arsv14.recmap.missingmarkers.fullchr6.list arsv14.recmap.missingmarkers.inregion.list
+File Number 1: arsv14.recmap.missingmarkers.fullchr6.list
+File Number 2: arsv14.recmap.missingmarkers.inregion.list
+Set     Count
+1       22
+1;2     47
+2       4	<- the mapped markers I used to orient myself near the region
+
+mv group_1.txt arsv14.recmap.missingmarkers.remaining.chr6.list
+perl -e 'chomp(@ARGV); my %list; open($IN, "< $ARGV[0]"); while(<$IN>){chomp; $list{$_} = 1;} close $IN; open($IN, "< $ARGV[1]"); while(<$IN>){chomp; @s = split(/\t/); if(exists($list{$s[0]})){print join("\t", @s); print "\n";}} close $IN;' arsv14.recmap.missingmarkers.remaining.chr6.list topolish.recmap.tab
+Hapmap28104-BTA-156698  6       27888668        -       6       12261839	# single probe
+BovineHD0600010244      6       16717302        -       6       36756588	# single probe
+# problem region 1	solid block, also missing flanks in topolish
+ARS-BFGL-NGS-35835      *       0       +       6       62788712
+ARS-BFGL-NGS-1852       6       16611338        -       6       62834920
+ARS-BFGL-NGS-109055     *       0       +       6       62933010
+# problem region 2  overzealous cropping near rearrangement area
+BovineHD0600029900      6       11497449        +       6       106463127	
+ARS-BFGL-NGS-83571      6       5407789 +       6       106495683
+ARS-BFGL-NGS-111057     6       5429230 -       6       106517122
+ARS-BFGL-NGS-1012       6       5450170 +       6       106546711
+BovineHD0600029934      6       5455590 +       6       106552130
+ARS-BFGL-NGS-79719      6       5482388 +       6       106578932
+BovineHD0600029951      6       5511199 -       6       106607689
+# problem region 3  overzealous cropping, but complex
+BTB-01699056    6       11581836        +       6       107394629 # this marker is probably fine
+	# This is the marker where I made the original crop: BovineHD0600030299 6       11780742
+ARS-BFGL-NGS-35366      6       6291894 +       6       107785745
+BovineHD0600030375      6       6299963 +       6       107794033
+# problem region 4 overzealous cropping again
+ARS-BFGL-NGS-53620      6       7401935 -       6       109800337
+ARS-BFGL-NGS-104207     6       7366692 -       6       109835444
+ARS-BFGL-NGS-28132      6       11916710        -       6       109951981
+ARS-BFGL-NGS-99549      6       11955725        -       6       109990555
+# problem region 5 overzealous cropping again
+BovineHD0600033290      6       631409  +       6       117005680
+UA-IFASA-3742   6       635376  +       6       117106304
+BovineHD0600033327      6       595885  +       6       117128088
+
+# Let's make a script to automate the fasta chopping and reference alignment so that I'm not manually entering commands the whole time
+# Running Regions 1, 2 and 5 as they fit into the automation script nicely
+for i in "ARS-BFGL-NGS-35835:ARS-BFGL-NGS-109055" "BovineHD0600029900:BovineHD0600029951" "BovineHD0600033290:BovineHD0600033327"; do marker1=`echo $i | cut -d':' -f1`; marker2=`echo $i | cut -d':' -f2`; echo $marker1 $marker2; perl automate_region_slicing.pl 6 $marker1 $marker2 simple; done
+
+# Only regions 2 and 5 had any reasonable coordinates from the automation
+head simple_topolish_arsv14_BovineHD0600029900_BovineHD0600029951.align.tab
+6:11454497-11497449     0       1000    6       101419997       101418042       60;60	<- the refined breakpoint coordinate is in this region on 6
+6:11454497-11497449     1000    2000    4       112092009       112093009       8
+
+# Damn, I just found out that this portion of chr6 needs to be resectioned anyways
+# ARS-BFGL-NGS-113808     6       101417991
+# seven recmap markers - region 2
+# Hapmap46942-BTA-114876  6       110667049 - BTB-01544044    6       111564390
+# 2 recmap markers - region 3
+# BovineHD0600030391      6       111638810 - BTB-00283603    6       113452764
+# four recmap markers - region 4
+# ARS-BFGL-NGS-100510     6       101420998 - Hapmap31504-BTA-159055  6       108334009
+# three recmap markers - region 5
+# ARS-BFGL-NGS-106139     6       108475033 - BTA-77952-no-rs 6       110661272
+
+# Welp, let's start placing segments! I want nucmer coords to try to separate out things
+samtools faidx ../../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6:101417991-113452764 > arsv14_disjunction_2_3_4_5_regions.fa
+
+# Because of the heterogeneity of the region in the ToPolish assembly, I need to grep out the segments individually
+# Here are the segments from the recmap:
+6       106495683       107259443       6       5407789 6158942 +       763760  751153	seg1
+6       107394629       107585442       6       11581836        11780742        +       190813  198906	seg2
+6       107678393       108677334       6       6337745 7287107 +       998941  949362	seg3
+6       108756884       109835444       6       8476461 7366692 -       1078560 1109769	seg4 (-)
+...
+6       114590231       116931851       6       714275  3017439 +       2341620 2303164	seg5
+6       117005680       117128088       6       631409  595885  -       122408  35524	seg6 (-)
+	
+# topolish segmentation
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:5407789-6158942 > segment1_topolish.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:11581836-11780742 > segment2_topolish.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:6337745-7287107 > segment3_topolish.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:7366692-8476461 > segment4_topolish.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:714275-3017439 > segment5_topolish.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:595885-631409 > segment6_topolish.fa
+
+for i in segment*_topolish.fa; do sbatch ../../../../binaries/run_nucmer_plot_automation_script.sh arsv14_disjunction_2_3_4_5_regions.fa $i; done
+# only segment 6 didn't align
+
+# Segment1 coords:
+perl -lane '$F[0] += 101417991; $F[1] += 101417991; $F[2] += 5407789; $F[3] += 5407789; print join("\t", @F);' < segment1_topolish.dna.mcoords
+110659283       110661273       5520965 5522955 1991    1991    100.00  12034774        751154  0.02    0.27    6:101417991-113452764   6:5407789-6158942
+# So the first portion of the alignment of topolish (1-113176 of segment1) didn't align to v14 which is almost the 172 kb Bob predicts is missing in his chunk 3.
+
+# Segment2 coords:
+head segment2_topolish.dna.mcoords
+9889742 10074425        14216   198907  184684  184692  99.98   12034774        198907  1.53    92.85   6:101417991-113452764   6:11581836-11780742
+# Only the first 14kb of this chunk belong to Bob's chunk4
+
+# Segment3 coords:
+# this aligned perfectly -- no change
+
+# Segment4 coords:
+#NOTE this is a wonderful inverted contig segment!
+head segment4_topolish.dna.mcoords
+...
+11893994        12034774        258612  117777  140781  140836  99.94   12034774        1109770 1.17    12.69   6:101417991-113452764   6:7366692-8476461
+# The first 117kb didn't align which is almost Bob's 136 kb in chunk 5
+
+# Segment5 coords:
+# This aligned just fine -- no change
+```
+
+<a name="nuccoord"></a>
+#### nucmer coord strategy
+
+Perhaps I'm going about this all wrong... it looks like v14 chr6 is ok on the coordinates apart from the translocation towards the end. Let's take the coordinates for both assemblies from nucmer, then find the missing portions, blast them against the recmap and pick up the pieces from there.
+
+```bash
+samtools faidx ../../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6 > arsv14_full_chr6.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6 > topolish_full_chr6.fa
+
+sh ../../../../binaries/run_nucmer_plot_automation_script.sh arsv14_full_chr6.fa topolish_full_chr6.fa
+# Going to pull out only the regions that had the largest unaligned portions
+perl -e 'my @data; while(<>){chomp; @s = split(/\t/); push(@data, [$s[2], $s[3], $s[0], $s[1]]);} @data = sort{$a->[0] <=> $b->[0]} @data; for(my $x = 1; $x < scalar(@data); $x++){$len = $data[$x]->[0] - $data[$x - 1]->[1]; if(abs($len) > 100000){print $data[$x - 1]->[1] . "\t" . $data[$x]->[0] . "\t" . $data[$x]->[2] . "\t" . $data[$x]->[3] . "\t$len\n";}}' < topolish_full_chr6.dna.mcoords
+# topolish side	v14 side					Bob's region matchups
+5348369 5520964 110659282       110661272       172595		<- region 3
+6163121 6337744 111499839       112449566       174623		<- region 4		
+7288424 7625303 113311984       113511924       336879
+7425340 7921167 113015980       113311881       495827
+7625303 7998504 112938563       113015978       373201
+7921093 8211911 112725163       112948557       290818
+7988511 8214860 112722280       112725220       226349
+8211909 8476467 112460345       112722927       264558		<- region 5 ballpark
+8213895 8486231 112449572       112459341       272336		<- region 6 ballpark
+11454547        11596051        111307732       111492416       141504	<- region 7 ballpark
+11787630        11983807        101418042       101419997       196177	<- region 8 ballpark
+16568563        16851015        1801309 2074398 282452
+17715004        17992497        1277468 1290324 277493
+18005358        18113794        84762251        84770807        108436
+18122345        20392411        1303127 1307563 2270066			<- region 11 ballpark
+22258174        22460340        2657475 2661085 202166			<- region 10 ballpark # Recmap shows no problem -- don't fix
+79966496        79247633        8390796 8393172 -718863
+79245245        79966634        60175490        60255169        721389
+
+# I already have refined coordinates for region 11. 
+# Let's lay out the strategy for piecing back together the chromosome
+# 1: v14 6:1-1289739 +
+# 2: topol 6:18017772-20387960 +	region 11
+# 3: v14 6:1303128-101418191 +
+# 4: topol 6:11787630-11983807 +	region 8
+# 5: v14 6:110667049-111308022 +	First reshuffle
+# 6: topol 6:11454547-11596051 +	region 7
+# 7: v14 6:111308022-111564390 + 	second reshuffle
+# 8: topol 6:6163121-6337744 +		region 4
+# 9: v14 6:111564500-113452764 + 	third reshuffle
+# 10: topol 6:8211909-8476467 +		region 5
+# 11: v14 6:101418000-110661272 +
+
+# Now to slice them all out and mix them all together
+mkdir chr6fix
+cd chr6fix/
+
+samtools faidx ../../../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6:1-1289739 > chr6_seg1.fa
+samtools faidx ../../../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6:1303128-101418191 > chr6_seg3.fa
+samtools faidx ../../../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6:110667049-111308022 > chr6_seg5.fa
+samtools faidx ../../../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6:111308022-111564390 > chr6_seg7.fa
+samtools faidx ../../../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6:111564500-113452764 > chr6_seg9.fa
+samtools faidx ../../../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6:101418000-110661272 > chr6_seg11.fa
+
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:18017772-20387960 > chr6_segs2.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:11787630-11983807 > chr6_segs4.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:11454547-11596051 > chr6_segs6.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:6163121-6337744 > chr6_segs8.fa
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:8211909-8476467 > chr6_segs10.fa
+
+for i in `seq 1 11`; do echo -e "chr6_seg"$i".fa\t+"; done > chr6_order.list
+java -Xmx65g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/CombineFasta.jar order -i chr6_order.list -o preliminary_v15_chr6.fa -p 100 -n "6"
+
+# The fasta index shows 3 megs of additional sequence. Now to test
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="bwa index preliminary_v15_chr6.fa"
+```
