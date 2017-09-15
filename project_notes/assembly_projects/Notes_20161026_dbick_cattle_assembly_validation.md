@@ -14,6 +14,7 @@
 	* [v1.0.7](#seven)
 * [Polishing the assembly](#polish)
 * [SNP remapping and stats](#snps)
+* [Large scale assembly error correction](#error_correction)
 
 <a name="stats"></a>
 ## Sequence alignment and summary statistics
@@ -1760,3 +1761,50 @@ system("module load bedtools/2.26.0; cat temp | sortBed -i stdin > $ARGV[3]");
 system("rm temp");
 ```
 
+<a name="error_correction"></a>
+## Large scale assembly error correction
+
+Bob found about 2 megabases of sequence that was chopped after we attempted to correct the ARSv1 assemblies. He discovered this during the HD probe realingments, but much of the problem was due to our use of the recmap to place segments. The recmap and linkage maps had large gaps that precluded accurate slicing of the chromosomes. These are some notes to try to reconcile discarded segments from the assembly.
+
+#### Region 11 (Leftover_ScbfJmS_1962)
+
+This region appears to be a floating remnant of a portion of the true chromosome 6 segment on the old "topolish" assembly. It is the majority of the missing sequence, and apparently portions of it were sliced off into a leftover contig when the assemblies were reconciled. Let's see if we can't pull discordant reads from the region of chr6 that corresponds to this alignment. From Ben's alignments, the ARS-UCDv14 assembly ends at 6:1290324-1307562
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/targeted_error
+
+```bash
+# First, let's assess read depth in the region for a real animal
+perl -e 'for($x = 1280324; $x < 1317562; $x += 1000){$e = $x + 1000; print "6\t$x\t$e\n";}' > region11_ars14_depth_coords.bed
+
+samtools view -h /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/aligns/001HO05072/001HO05072.sorted.merged.bam 6:1280324-1318562 |  samtools depth -b region11_ars14_depth_coords.bed - > region11_ars14_depth_coords.counts.bed
+```
+
+```R
+data <- read.delim("region11_ars14_depth_coords.counts.bed", header=FALSE)
+pdf(file="arsv14_chr6_region11_depth.pdf", useDingbats=FALSE)
+plot(as.numeric(data$V2), as.numeric(data$V3))
+dev.off()
+```
+There's definitely a lot of read depth dropoff in the area and it's highly repetitive. Let's see if we can extract read pairs that map to two separate chromosomes.
+
+```bash
+sbatch --nodes=1 --ntasks-per-node=1 --mem=10000 --wrap="samtools view /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/aligns/001HO05072/001HO05072.sorted.merged.bam 6:1280324-1318562 > region11_001HO05072_mappedreads.sam"
+
+wc -l region11_001HO05072_mappedreads.sam
+4093 region11_001HO05072_mappedreads.sam
+
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f region11_001HO05072_mappedreads.sam -c 6
+# The majority mapped to chr6, and no mappings to ScbfJmS_1962 as Bob had found. 19 mapped to chr2 and 16 to chr4
+samtools view /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/aligns/001HO05072/001HO05072.sorted.merged.bam Leftover_ScbfJmS_1962 | perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -c 6 -f stdin
+
+# Only one read to chr6 and again, the majority were to the same contig
+ST-E00268:255:HGKYNALXX:5:2124:19989:22053      129     Leftover_ScbfJmS_1962   5088    60      151M    6       61579908        0       TTAATTTCATGGCTGCAGTCACCATCTGCAGTGATTTTGGAGCCCCCCAAAATAAAGTCTGCCACTGTTTCTCCATCTATTTGCCATGAAGTGATGGGATCAGATGCCATGATCTTAGTTTTCTGAGTGTTGAACTTTAAGCCAACTTTTA   AAFAFJJJJJJJJJJJJJJJJJJJJFJJJJJJJJJJJJJJJJJJJJJJJJJFJJJJJJJJJJJJJAJJJJJJJJ7FJJJJJJJJJFFJJJJFFJJJAFFJJJFAFJJJ<JJFFJJJJF-FAAJJJ-FAJJJJJAJJJAFAAF7FFAJFFF<     NM:i:0  MD:Z:151        AS:i:151        XS:i:116        RG:Z:001HO05072-lib1
+
+# not even in the same ballpark, sadly. I'm going to have to use a different approach.
+# IDEA: I will try to get nucmer alignments of the missing region (and flanking sites) and to get recmap coordinate mappings
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta 6:18000094-20409546 > topolish.region11.chr6.fa
+samtools faidx ../ARS-UCD1.0.14.clean.wIGCHaps.fasta 6 > arsv14.region11.chr6.fa
+sbatch ../../../binaries/run_nucmer_plot_automation_script.sh arsv14.region11.chr6.fa topolish.region11.chr6.fa
+
+# Now, Bob had run the Dominette WGS reads on the Topolish assembly and then used my script to realign the one-end-mapped reads onto the v14 assembly
+# I think that the alternative is what we need, so let's see if we can get better resolution here.
