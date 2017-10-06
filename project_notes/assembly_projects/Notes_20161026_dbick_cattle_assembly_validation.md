@@ -17,6 +17,10 @@
 * [Large scale assembly error correction](#error_correction)
 	* [Recmap revision](#recmap_rev)
 	* [Nucmer coord strategy](#nuccoord)
+* [One last gasp: an automated way of correcting misassemblies](#lastgasp)
+	* [v1.0.15](#fifteen)
+	* [v1.0.16](#sixteen)
+	* [Unmapped marker tests](#unmapped)
 
 <a name="stats"></a>
 ## Sequence alignment and summary statistics
@@ -2127,7 +2131,7 @@ java -Xmx65g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/Combi
 sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="bwa index preliminary_v15_chr6.fa"
 sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a preliminary_v15_chr6.fa -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.fa -o preliminary_v15_chr6.recmap
 ```
-
+<a name="lastgasp"></a>
 ## One last gasp: an automated way of correcting misassemblies
 
 I think that this will be my last efforts at correcting the problems in this assembly. I have a plan for an automated means of combining several sources of information to correct the current problems in the assembly:
@@ -2194,6 +2198,7 @@ perl reorder_problem_markers.pl BovineHD_B1.probseq.umdcoords.fa umd3_problem_re
 
 Now that I have revised HD probe positions and a means of ordering things, let's try to grep out all missing sections of the v14 assembly that are in the ToPolish assembly. Then we'll add those sections to the v14 assembly and then hash it out from there.
 
+<a name="fifteen"></a>
 #### ARS-UCDv1.0.15
 
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/assembly_revision
@@ -2277,6 +2282,7 @@ samtools faidx ARS-UCD1.0.14.base.plus.missing.fasta 6 > arsv14_chr6.fa
 sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh arsv15_chr6.fa arsv14_chr6.fa
 ```
 
+<a name="sixteen"></a>
 ## Correcting mistaken areas for v16
 
 OK, this is just to fix an error in the incorporation of the missing sections onto v15. Let's start from scratch and validate all of the missing regions.
@@ -2373,4 +2379,54 @@ perl -e 'print "chr\tpos\trhchr\trhpos\n"; while(<>){chomp; @s = split(/\t/); pr
 source("/mnt/nfs/nfs2/bickhart-users/binaries/mick_watson_rhmap.R")
 
 data <- read.delim("ARS-UCD1.0.16.recmap.rtab")
+```
+
+<a name="unmapped"></a>
+#### Unmapped probe check
+
+This is just a quick test to see how the unmapped probes line up between assemblies.
+
+> Assembler2: 
+
+```bash
+bwa mem /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa | perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] eq "*"){print $F[0];}' > umd3_unmapped_probes.list
+
+bwa mem ARS-UCD1.0.16.base.fasta /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa | perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] eq "*"){print $F[0];}' > arsv16_unmapped_probes.list
+
+cat ARS-UCD1.0.14.clean.wIGCHaps.fasta.raw.probe.sam | perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] eq "*"){print $F[0];}' > arsv14_unmapped_probes.list
+cat topolish.filledWithCPBJ.withX.no1b.raw.probe.sam | perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] eq "*"){print $F[0];}' > topolish_unmapped_probes.list
+
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl umd3_unmapped_probes.list topolish_unmapped_probes.list arsv14_unmapped_probes.list arsv16_unmapped_probes.list
+
+File Number 1: umd3_unmapped_probes.list
+File Number 2: topolish_unmapped_probes.list
+File Number 3: arsv14_unmapped_probes.list
+File Number 4: arsv16_unmapped_probes.list
+Set     Count
+1       18
+1;2     1
+1;2;3;4 16
+2       86
+2;3;4   957
+2;4     1
+3       1466
+3;4     204
+4       105
+
+# Now to generate a plot in R
+
+# Additional comparisons
+bwa mem /mnt/nfs/nfs2/dbickhart/dominette_asm/canu.mhap.all.fasta /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa | perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] eq "*"){print $F[0];}' > canu_mhap_unmapped_probes.list
+bwa mem /mnt/nfs/nfs2/dbickhart/dominette_asm/canu.minimap.fasta /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa | perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] eq "*"){print $F[0];}' > canu_minimap_unmapped_probes.list
+
+
+```
+
+The Venn diagram plots for the initial four assemblies:
+
+```R
+library(VennDiagram)
+# This is just of the initial four assemblies
+venn.plot <- draw.quad.venn(area1 = 35, area2 = 1061, area3 = 2643, area4 = 1283, n12 = 17, n13 = 16, n14 = 16, n23 = 973, n24 = 974, n34 = 1177, n123 = 16, n134 = 16, n124 = 16, n234 = 957, n1234 = 16, category = c("umd3", "topolish", "v14", "v16"), fill = c("orange", "red", "green", "blue"), cex = 2, cat.cex = 2, cat.col = c("orange", "red", "green", "blue")) 
+dev.copy2pdf(file="unmapped_hdprobes.pdf", useDingbats=FALSE)
 ```
