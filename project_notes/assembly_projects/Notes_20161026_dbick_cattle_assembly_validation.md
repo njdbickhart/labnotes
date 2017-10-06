@@ -2125,4 +2125,252 @@ java -Xmx65g -jar /mnt/nfs/nfs2/bickhart-users/binaries/CombineFasta/store/Combi
 
 # The fasta index shows 3 megs of additional sequence. Now to test
 sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="bwa index preliminary_v15_chr6.fa"
+sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a preliminary_v15_chr6.fa -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest.fa -o preliminary_v15_chr6.recmap
+```
+
+## One last gasp: an automated way of correcting misassemblies
+
+I think that this will be my last efforts at correcting the problems in this assembly. I have a plan for an automated means of combining several sources of information to correct the current problems in the assembly:
+
+1. HD probe presence and order
+2. nucmer alignments
+3. LD maps
+
+Instead of laboring over manual ordering and orientation of chromosome fragments, I will let a program do all of the organization for me. First, I want to test out Jellyfish for repetitive kmer identification (I figure that repeats will be good sites for selecting breakpoints between markers).
+
+> Assembler 2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc
+
+```bash
+module load jellyfish/2.2.3
+sbatch --partition=assemble1 --nodes=1 --mem=200000 --ntasks-per-node=10 --wrap="jellyfish count -m 21 -s 2800M -t 10 -o ARS-UCD1.0.14.clean.wIGCHaps.jf ARS-UCD1.0.14.clean.wIGCHaps.fasta"
+jellyfish histo -o ARS-UCD1.0.14.clean.wIGCHaps.jf.histo -t 10 ARS-UCD1.0.14.clean.wIGCHaps.jf
+
+cat ARS-UCD1.0.14.clean.wIGCHaps.jf.histo | cut -d' ' -f2 | perl ~/sperl/bed_cnv_fig_table_pipeline/statStd.pl
+total   8552
+Minimum 1
+Maximum 1965479361
+Average 238297.096118
+Median  4
+Standard Deviation      21258817.588929
+Mode(Highest Distributed Value) 1
+```
+
+The majority of sites were unique, making a kmer presence of 2 being highly unusual.
+
+I'm now going to tag the HD probe fasta with UMD3.1 locations in order to allow my mapping program to estimate site locations and fragments.
+
+> pwd: 
+
+```bash
+# Markers without chromosome mappings are useless for my analysis -- getting rid of them
+perl -e 'for($x = 0; $x < 8; $x++){<>;} %data; while(<>){chomp; if($_ =~ /\[Controls\]/){last;} @s = split(/,/); if($s[9] == 0){next;} $data{$s[9]}->{$s[10]}->{$s[1]} = $s[5];} foreach my $chr (sort{$a cmp $b} keys(%data)){foreach my $pos (sort{$a <=> $b} keys(%{$data{$chr}})){foreach my $name (keys(%{data{$chr}->{$pos}})){ $seq = $data{$chr}->{$pos}->{$name}; print ">$name.$chr.$pos\n$seq\n";}}}' < BovineHD_B1.csv > BovineHD_B1.probseq.umdcoords.fa
+
+# Let's now compare positions against the other probe fasta
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %markers; while($h = <IN>){<IN>; chomp $h; $h =~ s/\>//; @hsegs = split(/\./, $h); $markers{$hsegs[0]} = [$hsegs[1], $hsegs[2]];} close IN; open(IN, "< $ARGV[1]"); while($h = <IN>){<IN>; chomp $h; $h =~ s/\>//; @hsegs = split(/\./, $h); if(exists($markers{$hsegs[0]})){push(@{$markers{$hsegs[0]}}, ($hsegs[1], $hsegs[2]));}} close IN; foreach my $m (keys(%markers)){if($markers{$m}->[1] != $markers{$m}->[3]){print "$m\t"; print join("\t", @{$markers{$m}}); print "\n";}}' rcmap_manifest_correct.sorted.fa BovineHD_B1.probseq.umdcoords.fa | wc -l
+2747	<- this is pretty much what the recmap coords predict as well
+
+# Columns 1 and 2 are the recmap adjusted coords. 3 and 4 are the original UMD3 coords; sorted by UMD3 coords
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %markers; while($h = <IN>){<IN>; chomp $h; $h =~ s/\>//; @hsegs = split(/\./, $h); $markers{$hsegs[0]} = [$hsegs[1], $hsegs[2]];} close IN; open(IN, "< $ARGV[1]"); while($h = <IN>){<IN>; chomp $h; $h =~ s/\>//; @hsegs = split(/\./, $h); if(exists($markers{$hsegs[0]})){push(@{$markers{$hsegs[0]}}, ($hsegs[1], $hsegs[2]));}} close IN; foreach my $m (sort{$markers{$a}->[2] cmp $markers{$b}->[2] || $markers{$a}->[3] <=> $markers{$b}->[3]}keys(%markers)){if($markers{$m}->[1] != $markers{$m}->[3]){print "$m\t"; print join("\t", @{$markers{$m}}); print "\n";}}' rcmap_manifest_correct.sorted.fa BovineHD_B1.probseq.umdcoords.fa > bovine_hd_marker_remaps.tab
+
+# Let's see if we can fix the intervening marker locations
+# From a review of the ordered marker map, I think that I can be judicious with my corrections
+# We don't need full fidelity, especially when allot of singleton markers cause issues, let's remove the singletons (no consecutive chromosome order) first
+
+# Hold it, let's remap the coordinates to the UMD3 assembly to generate segments, and then make corrections from there
+perl alignAndOrderSnpProbes.pl -a /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa -p rcmap_manifest_correct.sorted.fa -o umd3_recmap_corrections
+
+# Here are the problem regions:
+#umd	umds	umde		rec	recs	rece
+1	44569519	45113935	1	158140120	158140250
+10	87334818	87763271	7	112319175	112359270
+26	23129850	25982294	26	50280020	50800400
+21	59908966	60851192	27	1	35000
+6	106517123	109800287	6	126517122	129800337
+
+# This script revises the coords above and evenly spaces probes between them
+# Approximately 2000 probes are revised in this subset
+perl reorder_problem_markers.pl BovineHD_B1.probseq.umdcoords.fa umd3_problem_regions.tab > BovineHD_B1.probseq.rev1coords.fa
+```
+
+Now that I have revised HD probe positions and a means of ordering things, let's try to grep out all missing sections of the v14 assembly that are in the ToPolish assembly. Then we'll add those sections to the v14 assembly and then hash it out from there.
+
+#### ARS-UCDv1.0.15
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/assembly_revision
+
+```bash
+bwa mem ../ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa > ARS-UCD1.0.14.clean.wIGCHaps.fasta.raw.probe.sam
+bwa mem /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa > topolish.filledWithCPBJ.withX.no1b.fixed.nosplit.raw.probe.sam
+
+perl -lane 'if($F[2] eq "*"){print $F[0];}' < ARS-UCD1.0.14.clean.wIGCHaps.fasta.raw.probe.sam > ARS-UCD1.0.14.clean.wIGCHaps.unmapped
+perl -lane 'if($F[2] eq "*"){print $F[0];}' < topolish.filledWithCPBJ.withX.no1b.fixed.nosplit.raw.probe.sam > topolish.filledWithCPBJ.withX.no1b.fixed.nosplit.unmapped
+
+# Hmm, none of Bob's coordinates are matching with my version of toPolish. I'm going to have to grep out the segments that contain the HD probes myself.
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1 ARS-UCD1.0.14.clean.wIGCHaps.unmapped topolish.filledWithCPBJ.withX.no1b.fixed.nosplit.unmapped | perl -lane 'if($F[0] =~ /^File/){next;}else{print $F[0];}' | perl -e '@coords; while(<>){chomp; open(IN, "grep $_ topolish.filledWithCPBJ.withX.no1b.raw.probe.sam |"); $l = <IN>; close IN; chomp $l; @segs = split(/\t/, $l); push(@coords, [$segs[2], $segs[3]]);} @coords = sort{$a->[0] <=> $b->[0] || $a->[1] <=> $b->[1]} @coords; @refined; push(@refined, [$coords[0]->[0], $coords[0]->[1], $coords[0]->[1]]); for($x = 1; $x < scalar(@coords); $x++){if($refined[-1]->[0] == $coords[$x]->[0] && $refined[-1]->[2] + 50000 > $coords[$x]->[1] && $refined[-1]->[2] - 50000 < $coords[$x]->[1]){$refined[-1]->[2] = $coords[$x]->[1];}else{push(@refined, [$coords[$x]->[0], $coords[$x]->[1], $coords[$x]->[1]]);}} foreach my $c (@refined){print join("\t", @{$c}); print "\n";}' > portions_topolish_fixed_missing.tab
+
+perl -lane 'open(IN, "samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fixed.nosplit.fa $F[0]:$F[1]-$F[2] |"); while(<IN>){chomp; if($_ =~ /^>/){$_ =~ s/[:-]/_/g; print $_;}else{print $_;}} close IN;' < portions_topolish_fixed_missing.tab > chopped_from_v14.fa
+
+# Now to make up the base fasta for the comparisons
+cat ../ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta chopped_from_v14.fa > ARS-UCD1.0.14.base.plus.missing.fasta
+samtools faidx ARS-UCD1.0.14.base.plus.missing.fasta
+bwa index ARS-UCD1.0.14.base.plus.missing.fasta
+
+# And to generate the files that I need to process the data
+bwa mem ARS-UCD1.0.14.base.plus.missing.fasta /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa > ARS-UCD1.0.14.base.plus.missing.probes.sam
+sbatch --partition=assemble1 --nodes=1 --mem=200000 --ntasks-per-node=10 --wrap="jellyfish count -m 21 -s 2800M -t 10 -o ARS-UCD1.0.14.base.plus.missing.jf ARS-UCD1.0.14.base.plus.missing.fasta"
+
+java -jar CombineFasta.jar missassembly -s ARS-UCD1.0.14.base.plus.missing.probes.sam -f ARS-UCD1.0.14.base.plus.missing.fasta -j ARS-UCD1.0.14.base.plus.missing.jf -o ARS-UCD1.0.15.second 2> misassembly.run.log
+
+# The AGP file is OK, but it modifies the source far too much. I'm going to tweak it manually with what I know about the original coordinates.
+tail -n 35 ARS-UCD1.0.14.base.plus.missing.fasta.fai
+
+perl -lane 'if($F[0] ne $F[5] && $F[4] eq "D" && $F[5] =~ /.+_.+_.+/){print $_;}' < ARS-UCD1.0.15.second.agp | grep -v 'Leftover' | grep -v 'Domino_MHCclassI' | grep -v 'MHC' | grep -v 'LRC'
+# What follows are the condensed regions that were placed on the assembly using the HD marker order
+23      495089  501494  4       D       23_30714833_30721217    -20     6385    +
+26      387285  477148  2       D       26_333276_423139        -20     89843   +
+26      1280604 1312936 7       D       26_1189806_1206429      -20     16624   +
+26      11209159        11337614        26      D       26_11615113_11678432    1       63320    +
+26      33655271        33738216        111     D       26_36455221_36506035    -20     50794   +
+10      93957245        94035744        277     D       10_93572727_93604863    1       105051   +
+13      360285  374386  4       D       21_69920012_70058600    21     14081   +
+16      8941922 9257509 49      D       16_8021570_8201024      21     179455   +
+16      9610054 9691210 67      D       16_8505081_8563918      1       58838   +
+16      41219182        41227629        149     D       16_40025922_40034390    1       8448    +
+2       104849811       104864034       254     D       2_121679633_121693877   1       14224   +
+2       122421552       122433261       305     D       2_121828150_121839859   1       11710   +
+6       84527044        84876564        166     D       6_22271154_22457408     162824  112824  -
+6       86192110        86353468        203     D       6_20891768_20973292     1   81525   -
+6       86888429        91624964        213     D       6_18017525_20384180     1 2366656 -
+6       91764739        92079806        539     D       6_17722781_17881242     21  158462  -
+6       93043741        93426429        561     D       6_16569212_16763827     1  194616  -
+6       98027331        98407190        590     D       6_11787676_11983323     21  195648  -
+6       98623678        98878020        632     D       6_11457367_11595092     1  137726  -
+6       101828937       101877643       656     D       6_8486203_8522578       1   36376   -
+6       102968147       103207483       662     D       6_7292925_7417583       1  124638  -
+6       104187158       104511023       676     D       6_6165152_6329726       1  164575  -
+6       105177508       105495125       712     D       6_5348934_5511199       1  162266  -
+6       110169028       110353610       755     D       6_583968_679106 1   95139   -
+7       93984   390391  3       D       7_109635008_109765175   1   130168  -
+7       118104917       118217728       465     D       10_94144435_94249485    1   81202   -
+21      1163767 1224131 4       D       21_69920012_70058600    14100   74464   +
+21      1276588 1340715 6       D       21_69920012_70058600    74462   138589  +
+21      27681701        27692844        108     D       21_43605183_43790615    1  185412  -
+21      71076737        71146806        256     D       20_71893120_71931825    21   38706   -
+
+# I manually editted the agp file to remove extraneous deviations. There were lots! 
+# The file was originally 19,000 lines and is now closer to 2000
+
+# Combining the AGP into a fasta file
+java -jar CombineFasta.jar agp2fasta -f ARS-UCD1.0.14.base.plus.missing.fasta -a ARS-UCD1.0.15.second.agp -o ARS-UCD1.0.15.base.fasta
+
+# Testing the number of unmapped probes:
+bwa index ARS-UCD1.0.15.base.fasta
+bwa mem ARS-UCD1.0.15.base.fasta /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa > ARS-UCD1.0.15.base.hdprobes.sam
+
+# Also checking against the other datasets
+perl -lane 'if($F[0] =~ /^@/){next;}elsif($F[2] =~ /\*/){print $F[0];}' < ARS-UCD1.0.15.base.hdprobes.sam > ARS-UCD1.0.15.base.hdprobes.unmapped
+
+# I only mapped 67 probes! There's something wrong with the regions I added...
+# Checking quickly to see if it's a problem with my agp2fasta script or something else
+samtools faidx ARS-UCD1.0.15.base.fasta 6 > arsv15_chr6.fa
+samtools faidx ARS-UCD1.0.14.base.plus.missing.fasta 6 > arsv14_chr6.fa
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh arsv15_chr6.fa arsv14_chr6.fa
+```
+
+## Correcting mistaken areas for v16
+
+OK, this is just to fix an error in the incorporation of the missing sections onto v15. Let's start from scratch and validate all of the missing regions.
+
+```bash
+# First, pull all markers that were missing
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o ARS-UCD1.0.14.clean.wIGCHaps.unmapped topolish.filledWithCPBJ.withX.no1b.fixed.nosplit.unmapped ARS-UCD1.0.15.base.hdprobes.unmapped
+cat group_1.txt group_1_3.txt > arsv14_missing_probes_recoverable.list
+
+# Now, condense the coordinates with a custom script
+perl extract_missing_regions_from_sam.pl arsv14_missing_probes_recoverable.list topolish.filledWithCPBJ.withX.no1b.fixed.nosplit.raw.probe.sam > topolish.filledWithCPBJ.withX.no1b.fixed.nosplit.unmapped.bed
+
+cat topolish.filledWithCPBJ.withX.no1b.fixed.nosplit.unmapped.bed | perl ~/sperl/bed_cnv_fig_table_pipeline/sortBedFileSTDIN.pl | mergeBed -i stdin -d 20000 -c 4,5 -o sum,collapse > topolish.filledWithCPBJ.wX.no1b.f.nos.un.condensed.bed
+
+# OK, I found out the reason: Bob used the original ToPolish, no the "fixed' version.
+dos2unix bobs_chunk_coordinates_original_topolish.bed
+perl -lane 'open(IN, "samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/topolish.no1b/topolish.filledWithCanuAndPBJelly.withX.no1b.fasta $F[0]:$F[1]-$F[2] |"); while(<IN>){chomp; if($_ =~ /^>/){print ">$F[3]";}else{print $_;}} close IN;' < bobs_chunk_coordinates_original_topolish.bed > v15_missing_chunks.fa
+
+# I am going to confirm that the probes map this time though
+bwa index v15_missing_chunks.fa; bwa index ARS-UCD1.0.14.base.plus.v15missing.fasta
+perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while($h =<IN>){$s = <IN>; $h =~ /\>(.+)\n/; if(exists($h{$1})){print "$h$s";}} close IN;' arsv14_missing_probes_recoverable.list /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa > arsv14_missing_probes_recoverable.fa
+
+perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a v15_missing_chunks.fa -p arsv14_missing_probes_recoverable.fa -o arsv14_missing_probes_recoverable.hd
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f arsv14_missing_probes_recoverable.hd.tab -c 1
+Entry   Count
+*       161
+chunk_1 11
+chunk_10        39
+chunk_11        640
+chunk_12        13
+chunk_13        10
+chunk_14        27
+chunk_15        4
+chunk_16        3
+chunk_17        26
+chunk_18        13
+chunk_2 35
+chunk_20        27
+chunk_21        5
+chunk_22        32
+chunk_23        9
+chunk_24        5
+chunk_26        11
+chunk_27        8
+chunk_28        18
+chunk_29        28
+chunk_3 57
+chunk_4 34
+chunk_5 30
+chunk_6 7
+chunk_7 54
+chunk_8 109
+chunk_9 55
+
+# OK, now to generate the HD probe sam file
+samtools faidx ARS-UCD1.0.14.base.plus.v15missing.fasta
+sbatch --partition=assemble1 --nodes=1 --mem=200000 --ntasks-per-node=30 --wrap="jellyfish count -m 21 -s 2800M -t 30 -o ARS-UCD1.0.14.base.plus.v15missing.jf ARS-UCD1.0.14.base.plus.v15missing.fasta"
+
+bwa mem ARS-UCD1.0.14.base.plus.v15missing.fasta /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa > ARS-UCD1.0.14.base.plus.v15missing.probes.sam
+
+# now to go to town on the agp!
+java -jar CombineFasta.jar missassembly -s ARS-UCD1.0.14.base.plus.v15missing.probes.sam -f ARS-UCD1.0.14.base.plus.v15missing.fasta -j ARS-UCD1.0.14.base.plus.v15missing.jf -o ARS-UCD1.0.16.base
+
+# OK, here is the section of the agp file:
+perl -lane '%h = ("2" => 1, "6" => 1, "10" => 1, "16" => 1, "21" => 1, "26" => 1); if(exists($h{$F[0]})){print $_;}' < ARS-UCD1.0.16.base.agp > ARS-UCD1.0.16.base.modifiedchrs.agp
+perl -lane '%h = ("17" => 1, "9" => 1, "11" => 1, "27" => 1); if(exists($h{$F[0]})){print $_;}' < ARS-UCD1.0.16.base.agp > ARS-UCD1.0.16.base.modiiedchrs.addendum.agp
+
+# I edited the above two files substantially
+perl -lane '%h = ("2" => 1, "6" => 1, "10" => 1, "16" => 1, "21" => 1, "26" => 1, "17" => 1, "9" => 1, "11" => 1, "27" => 1); unless(exists($h{$F[0]}) || $F[0] =~ /chunk/){print "$F[0]\t1\t$F[1]\t1\tD\t$F[0]\t1\t$F[1]\t+";}' < ARS-UCD1.0.14.base.plus.v15missing.fasta.fai > ARS-UCD1.0.16.base.unmodifiedchrs.agp
+
+wc -l *.agp
+   9252 ARS-UCD1.0.15.edit.agp
+   2335 ARS-UCD1.0.15.second.agp
+  16872 ARS-UCD1.0.15.test.agp
+  17988 ARS-UCD1.0.16.base.agp
+    168 ARS-UCD1.0.16.base.modifiedchrs.agp
+     40 ARS-UCD1.0.16.base.modiiedchrs.addendum.agp
+   2200 ARS-UCD1.0.16.base.unmodifiedchrs.agp
+
+cat ARS-UCD1.0.16.base.modifiedchrs.agp ARS-UCD1.0.16.base.modiiedchrs.addendum.agp ARS-UCD1.0.16.base.unmodifiedchrs.agp > ARS-UCD1.0.16.base.full.modified.agp
+
+# Now to generate the fasta file
+java -jar CombineFasta.jar agp2fasta -f ARS-UCD1.0.14.base.plus.v15missing.fasta -a ARS-UCD1.0.16.base.full.modified.agp -o ARS-UCD1.0.16.base.fasta
+
+perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.16.base.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o ARS-UCD1.0.16.HD.probes
+perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.16.base.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest_correct.sorted.fa -o ARS-UCD1.0.16.recmap
+
+perl -e 'print "chr\tpos\trhchr\trhpos\n"; while(<>){chomp; @s = split(/\t/); print "$s[1]\t$s[2]\t$s[4]\t$s[5]\n";}' < ARS-UCD1.0.16.recmap.tab > ARS-UCD1.0.16.recmap.rtab
+
+# Now to print it out in R
+```
+
+```R
+source("/mnt/nfs/nfs2/bickhart-users/binaries/mick_watson_rhmap.R")
+
+data <- read.delim("ARS-UCD1.0.16.recmap.rtab")
 ```

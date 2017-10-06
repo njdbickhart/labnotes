@@ -5,8 +5,11 @@
 These are my notes on the selection and filtering of sequence variants suitable for genotyping large populations of cattle. The overall goal is to select 50 SNP targets for downstream genotyping and then branch out for there.
 
 ## Table of Contents
+* [Selecting regions for SNP analysis](#selecting)
+* [Generating VCFs for genomic region subsets](#generating)
+* [Including the last section of chr5 NKC](#last_sec)
 
-
+<a name="selecting"></a>
 ## Selecting regions for SNP analysis
 
 One of the problems with this project is that I have two haplotypes that represent each respective IGC on the reference. I need to identify which regions of the reference correspond to the IGCs first. The good news is that I have generated liftover files to help with this! Here are the locations of the IGC regions on the UMD3.1 reference:
@@ -81,6 +84,7 @@ cat igc_ars_ucd_v14_regions.tab
 	5:98792567-99508055     NKCA
 ```
 
+<a name="generating"></a>
 ## Generating VCFs for genomic region subsets
 
 From the CDDR's natdb project, I have about 127 bams consisting of animals of diverse backgrounds in the Holstein breed. This will likely be the most diverse genetic background I can throw at this project, so this is our best shot at checking the frequency of our assembled haplotypes against the normal reference genome.
@@ -324,3 +328,17 @@ wc -l *_snp_selections.tab
 
 
 So, I've selected 41 variants for the first round. Let's pass the list to John to see if he agrees with the locations and/or wants to select different types of variants.
+
+<a name="last_sec"></a>
+## Including the last section of chr5 NKC
+
+Doro and John rightly pointed out that we are missing markers from the tail end of the ARS-UCDv14 NKC region. The reason for this is that I incorrectly cropped out the tail end of this region from the 99.5 Mb to the 99.8 Mb region.
+
+Let's call SNPs in this area and then filter them using the same criteria as before. I am hoping to select about 5 more markers with reasonable MAF and mappability scores. **Target region is: 5:99,508,055-99,800,000**
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/natdb_sequencing
+
+```bash
+# Generating the bcf file
+sbatch ~/sperl/sequence_data_scripts/samtoolsSelectiveMpileup.pl -b igc_variant_list_bams.list -s 5:99508055-99800000 -n NKCA2 -f /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta
+

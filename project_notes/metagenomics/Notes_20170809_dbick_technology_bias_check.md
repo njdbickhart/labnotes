@@ -175,4 +175,22 @@ library(ggplot2)
 ggplot(data=simMatrix, aes(x = sampling, y = similarity)) + geom_line() + geom_point() + expand_limits(y=0.875) + xlab(label="Sampling percentage") + ylab(label="Similarity propotion (1 - Mash distance)")
 
 # I'd like to calculate the derivative as well to see if things are slowing down as we reach higher sampling
+```
 
+I just ran Tim's PCR free library and will be testing it out against the Nextera prep.
+
+```bash
+for i in illuminaR3PCRFree/*.fastq.gz; do echo -n "$i "; done; echo
+perl ~/share/programs_source/Perl/perl_toolchain/metagenomics_scripts/downsampleIlluminaReads.pl illuminaR3PCRFree/YMPrepCannula_S1_L001_R1_001.fastq.gz illuminaR3PCRFree/YMPrepCannula_S1_L001_R2_001.fastq.gz illuminaR3PCRFree/YMPrepCannula_S1_L002_R1_001.fastq.gz illuminaR3PCRFree/YMPrepCannula_S1_L002_R2_001.fastq.gz illuminaR3PCRFree/YMPrepCannula_S1_L003_R1_001.fastq.gz illuminaR3PCRFree/YMPrepCannula_S1_L003_R2_001.fastq.gz illuminaR3PCRFree/YMPrepCannula_S1_L004_R1_001.fastq.gz illuminaR3PCRFree/YMPrepCannula_S1_L004_R2_001.fastq.gz
+
+for i in downsample*.msh; do name=`echo $i | cut -d'.' -f1,2`; echo $name; mash dist -t downsampleSketch_1.0.msh $i > $name.dist; done
+perl -e '@f = `ls *.dist`; chomp(@f); for($x = scalar(@f) - 1; $x >= 0; $x--){open($IN, "< $f[$x]"); <$IN>; $v = <$IN>; chomp $v; $v =~ s/^\s+//g; ($b) = $f[$x] =~ m/downsampleSketch_(.+)\.dist/; $b *= 100; $v = 1 - $v; print "$b\t$v\n"; close $IN;}' > downsampleSimilarityMatrixR3.tab
+```
+
+It's the same profile -- low distances between the 5% and the 100% samples. I wonder if we have a substantial bias here? I will test it out on some of the assemblies other groups have prepared.
+
+```bash
+for i in ../../hungate/assembly_fasta/*.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; perl -e 'chomp(@ARGV); open(IN, "gunzip -c $ARGV[0] |"); while(<IN>){chomp; if($_ =~ /\>(.+)/){print ">$ARGV[1]\_$1\n";}else{print "$_\n";}}' $i $name >>  hungate_concatenated.fa; done
+
+samtools faidx hungate_concatenated.fa
+bwa index hungate_concatenated.fa
