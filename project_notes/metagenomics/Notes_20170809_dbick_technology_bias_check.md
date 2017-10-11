@@ -194,3 +194,22 @@ for i in ../../hungate/assembly_fasta/*.gz; do name=`basename $i | cut -d'.' -f1
 
 samtools faidx hungate_concatenated.fa
 bwa index hungate_concatenated.fa
+
+```
+
+## GenomeScope test
+
+Using a python script to download the tarballs of the reads from my Gdrive, I was able to get the data I needed to start the characterization. 
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina/illumina
+
+```bash
+ls *.fastq.gz | xargs -n 1 echo gunzip -c > generators
+sbatch --mem=200000 --ntasks-per-node=20 --nodes=1 -p assemble3 --wrap="jellyfish count -C -m 21 -s 1000000000 -t 10 -o YMPrepCannula_r1_21mer.jf -g generators -G 2"
+
+# Increased "high bound" of histos to 1,000,000.
+# If you don't increase this value, then all kmers with counts > 10,000 get slotted into the same bin
+sbatch --mem=30000 --ntasks-per-node=10 --nodes=1 -p assemble3 --wrap="jellyfish histo -t 10 --o YMPrepCannula_r1_21mer.histo -h 1000000 YMPrepCannula_r1_21mer.jf"
+
+# Downloading the other files from run3: 
+perl -e '%h = ("0BxbRXPCzWa5-Mkd6WmtLTDF2Sk0" => "YMPrepCannula_run3_L1_R1.fastq.gz", "0BxbRXPCzWa5-SE91UkVqU1hVeE0" => "YMPrepCannula_run3_L2_R1.fastq.gz", "0BxbRXPCzWa5-QVRCVFVRZXM1SkU" => "YMPrepCannula_run3_L2_R2.fastq.gz", "0BxbRXPCzWa5-WWJPcUJtcVY0eXc" => "YMPrepCannula_run3_L3_R1.fastq.gz", "0BxbRXPCzWa5-TlVoajNBN3l2TWs" => "YMPrepCannula_run3_L3_R2.fastq.gz", "0BxbRXPCzWa5-UHNocU8zR094d2s" => "YMPrepCannula_run3_L4_R1.fastq.gz", "0BxbRXPCzWa5-UWNPSmI3VWlIV1E" => "YMPrepCannula_run3_L4_R2.fastq.gz"); foreach my $k (keys(%h)){print "$h{$k}\n"; system("python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py $k /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina/$h{$k}")}'
