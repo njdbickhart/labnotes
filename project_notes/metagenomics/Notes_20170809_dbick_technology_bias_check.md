@@ -213,3 +213,155 @@ sbatch --mem=30000 --ntasks-per-node=10 --nodes=1 -p assemble3 --wrap="jellyfish
 
 # Downloading the other files from run3: 
 perl -e '%h = ("0BxbRXPCzWa5-Mkd6WmtLTDF2Sk0" => "YMPrepCannula_run3_L1_R1.fastq.gz", "0BxbRXPCzWa5-SE91UkVqU1hVeE0" => "YMPrepCannula_run3_L2_R1.fastq.gz", "0BxbRXPCzWa5-QVRCVFVRZXM1SkU" => "YMPrepCannula_run3_L2_R2.fastq.gz", "0BxbRXPCzWa5-WWJPcUJtcVY0eXc" => "YMPrepCannula_run3_L3_R1.fastq.gz", "0BxbRXPCzWa5-TlVoajNBN3l2TWs" => "YMPrepCannula_run3_L3_R2.fastq.gz", "0BxbRXPCzWa5-UHNocU8zR094d2s" => "YMPrepCannula_run3_L4_R1.fastq.gz", "0BxbRXPCzWa5-UWNPSmI3VWlIV1E" => "YMPrepCannula_run3_L4_R2.fastq.gz"); foreach my $k (keys(%h)){print "$h{$k}\n"; system("python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py $k /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina/$h{$k}")}'
+```
+
+I think that the GenomeScope model will break down at the high frequency of kmers in the datasets. Let's see if I can align error corrected Illumina reads to the data to identify variant sites within the error corrected reads.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/error_corrected_reads
+
+```bash
+sbatch --mem=15000 --nodes=1 --ntasks-per-node=1 --wrap="bwa index rumen_nanopore_corrected.fasta"
+```
+
+OK, that won't work because the read names are all overlapping due to the shear number of reads. Let's try with the original assemblies.
+
+```bash
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 0BxbRXPCzWa5-MGNXaWhlRXgwR00 rumen_pacbio_pilot_asm.fasta.gz
+gunzip rumen_pacbio_pilot_asm.fasta.gz
+sbatch --mem=15000 --nodes=1 --ntasks-per-node=1 --wrap="bwa index rumen_pacbio_pilot_asm.fasta"
+
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 0BxbRXPCzWa5-Q1VMa1RLOTNhWm8 rumen_nanopore_pilot_asm.fasta.gz
+gunzip rumen_nanopore_pilot_asm.fasta.gz
+sbatch --mem=15000 --nodes=1 --ntasks-per-node=1 --wrap="bwa index rumen_nanopore_pilot_asm.fasta"
+
+perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b pacbio -t illumina_reads.tab -f rumen_pacbio_pilot_asm.fasta -m
+perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b nanopore -t illumina_reads.tab -f rumen_nanopore_pilot_asm.fasta -m
+
+
+# Now to accumulate stats
+perl ~/sperl/sequence_data_scripts/getBamStats.pl -b nanopore/rumen/rumen.sorted.merged.bam
+Determining raw x coverage from 1 bams...
+BamName TotalReads      MappedReads     UnmappedReads   RawXCov MapXCov AvgRawChrcov    AvgMapChrcov
+nanopore/rumen/rumen.sorted.merged.bam  1,068,428,447      336,440,793       731,987,654       970.349316651647        305.556347266827        317.55390201709   284.210371661399
+
+perl ~/sperl/sequence_data_scripts/getBamStats.pl -b pacbio/rumen/rumen.sorted.merged.bam
+Determining raw x coverage from 1 bams...
+BamName TotalReads      MappedReads     UnmappedReads   RawXCov MapXCov AvgRawChrcov    AvgMapChrcov
+pacbio/rumen/rumen.sorted.merged.bam    1,028,994,158      437,357,636       591,636,522       328.668224704145        139.695212715602        152.607518056304  137.119932416167
+
+# Generating GC percentage data on each contig
+python3 calcGCcontentFasta.py -f rumen_pacbio_pilot_asm.fasta -o rumen_pacbio_pilot_asm.gc.tab -t 10
+
+# Gathering free data from each contig's name
+perl -ne 'chomp; @s = split(/\s+/); $j = $s[0]; $k = $s[1]; $k =~ s/len=//; $l = $s[2]; $l =~ s/reads=//; $m = $s[3]; $m =~ s/covStat=//; $o = $s[8]; print "$j\t$k\t$l\t$m\t$o\n";' < rumen_pacbio_pilot_asm.gc.tab > rumen_pacbio_pilot_asm.combined.stats.tab
+# columns are: 
+# tigname	length	numreads	covStat	gcperc
+
+samtools idxstats pacbio/rumen/rumen.sorted.merged.bam | grep -v '*' > rumen_pacbio_pilot_asm.idxstats.tab
+```
+
+I'm going to take this to R to start drawing plots and identifying correlations.
+
+```R
+data <- read.delim("rumen_pacbio_pilot_asm.combined.stats.tab", header=FALSE)
+idxdata <- read.delim("rumen_pacbio_pilot_asm.idxstats.tab", header=FALSE)
+
+colnames(data) <- c("contig", "length", "pbreads", "pbcov", "gcperc")
+colnames(idxdata) <- c("contig", "length", "ilmap", "ilunmap")
+
+library(dplyr)
+fulldata <- left_join(data, idxdata, by="contig")
+fulldata.filter <- select(fulldata, -length.y)
+
+# First, let's see how the data behaves in a correlation matrix
+cor(fulldata.filter[,2:7])
+            length    pbreads      pbcov     gcperc     ilmap    ilunmap
+length  1.00000000 0.50511970 0.97630081 0.10015184 0.1203805 0.01315528
+pbreads 0.50511970 1.00000000 0.51619721 0.04209997 0.1579580 0.01937891
+pbcov   0.97630081 0.51619721 1.00000000 0.08682802 0.1226578 0.01346729
+gcperc  0.10015184 0.04209997 0.08682802 1.00000000 0.0265572 0.01609518
+ilmap   0.12038054 0.15795800 0.12265784 0.02655720 1.0000000 0.98150715
+ilunmap 0.01315528 0.01937891 0.01346729 0.01609518 0.9815071 1.00000000
+
+# So, pacbio coverage is a stronger determinant of contig length and is only mildly biased by GC percentage
+# There's a very low correlation between the contigs size, number of reads and pbcoverage with illumina reads though
+cov(fulldata.filter[,2:7])
+              length      pbreads        pbcov       gcperc        ilmap
+length  1.160104e+08 3.478463e+05 4.541154e+07 9.581425e+01 1.863762e+08
+pbreads 3.478463e+05 4.087796e+03 1.425261e+05 2.390832e-01 1.451683e+06
+pbcov   4.541154e+07 1.425261e+05 1.864955e+07 3.330556e+01 7.614040e+07
+gcperc  9.581425e+01 2.390832e-01 3.330556e+01 7.889427e-03 3.390710e+02
+ilmap   1.863762e+08 1.451683e+06 7.614040e+07 3.390710e+02 2.066195e+10
+ilunmap 3.719469e+06 3.252418e+04 1.526675e+06 3.752761e+01 3.703493e+09
+             ilunmap
+length  3.719469e+06
+pbreads 3.252418e+04
+pbcov   1.526675e+06
+gcperc  3.752761e+01
+ilmap   3.703493e+09
+ilunmap 6.890721e+08
+
+# gcpercentage has a minor covariance with the illumina datasets, but is nothing to write home about
+# Printing out the correlations to show later
+library(corrplot)
+pdf(file="pacbio_asm_correlation_plot.pdf", useDingbats=FALSE)
+corrplot(cor(fulldata.filter[,2:7]), method="shade")
+dev.off()
+
+# Printing out a matrix of scatterplots
+pdf(file="pacbio_asm_scatterplots.pdf", useDingbats=FALSE)
+pairs(~length+pbreads+pbcov+gcperc+ilmap+ilunmap, data=fulldata.filter, main="PacBio summary stats plot")
+dev.off()
+
+# I should really check the correlation of illumina read coverage instead of counts
+# Also adding a proportion of unmapped illumina reads (based on the number of mapped reads)
+fulldata.filter <- mutate(fulldata.filter, ilcov = (ilmap * 150) / length, ilumapprop = ilunmap / ilmap)
+
+# Some final summary statistics
+summary(fulldata.filter[,2:9])
+     length          pbreads            pbcov              gcperc
+ Min.   :  1014   Min.   :   2.00   Min.   : -5113.3   Min.   :0.003254
+ 1st Qu.:  6304   1st Qu.:   3.00   1st Qu.:   494.4   1st Qu.:0.433027
+ Median :  9145   Median :   6.00   Median :  1487.8   Median :0.491760
+ Mean   : 11805   Mean   :  14.13   Mean   :  2767.4   Mean   :0.475510
+ 3rd Qu.: 14041   3rd Qu.:  12.00   3rd Qu.:  3381.8   3rd Qu.:0.534069
+ Max.   :247015   Max.   :7905.00   Max.   :101547.3   Max.   :0.991419
+     ilmap             ilunmap            ilcov            ilumapprop
+ Min.   :      31   Min.   :      0   Min.   :     0.9   Min.   :0.00000
+ 1st Qu.:    2039   1st Qu.:    180   1st Qu.:    41.3   1st Qu.:0.05700
+ Median :    4571   Median :    410   Median :    70.5   Median :0.09077
+ Mean   :   10994   Mean   :    884   Mean   :   137.1   Mean   :0.10406
+ 3rd Qu.:   10055   3rd Qu.:    843   3rd Qu.:   122.6   3rd Qu.:0.13656
+ Max.   :28080943   Max.   :5221720   Max.   :365098.5   Max.   :0.75493
+
+# Holy crap! There are some contigs with high mapped reads!
+fulldata.filter[fulldata.filter$ilcov > 10000,]
+           contig length pbreads   pbcov    gcperc    ilmap ilunmap     ilcov
+13108 tig00034561  11537     157 2552.65 0.9914189 28080943 5221720 365098.50
+25384 tig00058960   2477       3  304.61 0.2006459   201633   76230  12210.31
+38144 tig00092998   2571       6  308.03 0.1979774   261847   30359  15276.95
+      ilumapprop
+13108  0.1859524
+25384  0.3780631
+38144  0.1159418
+
+# OK, I checked in samtools and tig00034561 is almost all C's
+# tig00058960 has closest hit in a Musa acuminata kinase
+# tig00092998 has closest hit in a Macaca mulatta BAC
+
+fulldata.filter[fulldata.filter$ilumapprop > 0.5,]
+
+# tig00050777 had the highest proportion of unmapped reads at 0.75 
+# the last 200bp of the contig hit Gossypium hirsutum, which suggests plant contamination?
+
+# Let's try to cluster the dataset
+distances <- dist(fulldata.filter[,2:9])
+summary(distances)
+    Min.  1st Qu.   Median     Mean  3rd Qu.     Max.
+       9     4942     9476    19500    18780 28560000
+
+nrow(fulldata.filter)
+[1] 39781
+
+# We don't want to cluster every contig into a unique cluster. Let's stop with a k of 40 to start
+twcss <- sapply(1:kmax, function(k){kmeans(distances, k)$tot.withinss})

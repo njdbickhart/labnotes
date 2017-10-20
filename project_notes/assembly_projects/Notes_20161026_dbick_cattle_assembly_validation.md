@@ -2430,3 +2430,60 @@ library(VennDiagram)
 venn.plot <- draw.quad.venn(area1 = 35, area2 = 1061, area3 = 2643, area4 = 1283, n12 = 17, n13 = 16, n14 = 16, n23 = 973, n24 = 974, n34 = 1177, n123 = 16, n134 = 16, n124 = 16, n234 = 957, n1234 = 16, category = c("umd3", "topolish", "v14", "v16"), fill = c("orange", "red", "green", "blue"), cex = 2, cat.cex = 2, cat.col = c("orange", "red", "green", "blue")) 
 dev.copy2pdf(file="unmapped_hdprobes.pdf", useDingbats=FALSE)
 ```
+
+Checking Bob's LD plots to see if I can generate a relative order for the markers.
+
+```bash
+# Creating a graphviz plot template
+perl -e '<>; print "graph A \{\n"; while(<>){chomp; @s = split(/,/); print "\t$s[0] -> $s[1];\n";} print "\}\n";' < 171005_HD_LD_0.9_0.5.csv > 171005_HD_LD_0.9_0.5.graph
+
+# It didn't work very well -- the graph hung in a cyclic processing mode
+```
+
+<a name="seventeen"></a>
+## Generating v17 from modified AGP
+
+Ben ran some mapping analysis from the Canu assembly to try to place contigs and has some insertion points. I will take his modified AGP file and run it through my pipeline. The new placed "chunk" that I was unable to place before is chunk_14, and there are several canu.mhap.all.fasta tigs that he placed. Here are the tigs that need to be placed:
+
+* tig00000805
+* tig00002319
+* tig00009352
+* tig00009354
+* tig00001238
+* tig00009563
+* tig00009450
+* tig00009711
+* tig00009397
+* tig00009521
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/assembly_revision
+
+```bash
+# Getting the unique list of tigs from the agp that need to be in the base fasta
+grep 'tig0' ARS-UCD1.0.17.base.16and26fixed_BDR.agp | perl -lane 'print $F[5];' | sort | uniq
+tig00000805
+tig00001238
+tig00002319
+tig00009352
+tig00009354
+tig00009397
+tig00009450
+tig00009521
+tig00009563
+tig00009711
+
+for i in `grep 'tig0' ARS-UCD1.0.17.base.16and26fixed_BDR.agp | perl -lane 'print $F[5];' | sort | uniq `; do echo $i; samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/canu.mhap.all.fasta $i >> missing_in_16.fa; done
+# Check to see the info is there
+samtools faidx missing_in_16.fa
+
+# Generating v14 base + missing topolish chunks + missing canu.mhap chunks
+cat ARS-UCD1.0.14.base.plus.v15missing.fasta missing_in_16.fa > ARS-UCD1.0.15.base.plus.v15v16missing.fasta
+samtools faidx ARS-UCD1.0.15.base.plus.v15v16missing.fasta
+# BWA indexing using increased blocksize (-b = (genomesize) / 8) to improve speed
+bwa index -b 350000000 ARS-UCD1.0.15.base.plus.v15v16missing.fasta
+
+# That actually made it take 1.5 times longer!
+# Generating the fasta file
+java -jar CombineFasta.jar agp2fasta -f ARS-UCD1.0.15.base.plus.v15v16missing.fasta -a ARS-UCD1.0.17.base.16and26fixed_BDR.agp -o ARS-UCD1.0.17.base.fasta
+
+sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 --wrap="bwa index ARS-UCD1.0.17.base.fasta; perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.17.base.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o ARS-UCD1.0.17.base.HDprobes"
