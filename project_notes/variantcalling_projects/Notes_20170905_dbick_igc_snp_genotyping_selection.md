@@ -342,3 +342,10 @@ Let's call SNPs in this area and then filter them using the same criteria as bef
 # Generating the bcf file
 sbatch ~/sperl/sequence_data_scripts/samtoolsSelectiveMpileup.pl -b igc_variant_list_bams.list -s 5:99508055-99800000 -n NKCA2 -f /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta
 
+# I also need to process the LRC and MHC regions differently as well
+# LRC: 18:62400000-63450000
+# MHC: 23:28250235-28651950
+
+sbatch ~/sperl/sequence_data_scripts/samtoolsSelectiveMpileup.pl -b igc_variant_list_bams.list -s 18:62400000-63450000 -n LRCA2 -f /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta
+sbatch ~/sperl/sequence_data_scripts/samtoolsSelectiveMpileup.pl -b igc_variant_list_bams.list -s 23:28250235-28651950 -n MHCA2 -f /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta
+
