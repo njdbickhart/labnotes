@@ -349,3 +349,41 @@ sbatch ~/sperl/sequence_data_scripts/samtoolsSelectiveMpileup.pl -b igc_variant_
 sbatch ~/sperl/sequence_data_scripts/samtoolsSelectiveMpileup.pl -b igc_variant_list_bams.list -s 18:62400000-63450000 -n LRCA2 -f /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta
 sbatch ~/sperl/sequence_data_scripts/samtoolsSelectiveMpileup.pl -b igc_variant_list_bams.list -s 23:28250235-28651950 -n MHCA2 -f /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta
 
+bcftools index LRCA2.mpileup.bcf
+bcftools index MHCA2.mpileup.bcf
+
+# Skipping indels to avoid ID collisions downstream
+bcftools call -vmO z --skip-variants indels -o igc_125_animals.LRCA2.vcf.gz LRCA2.mpileup.bcf
+bcftools call -vmO z --skip-variants indels -o igc_125_animals.MHCA2.vcf.gz MHCA2.mpileup.bcf
+
+# generating IDs for each variant site
+for i in LRCA2 MHCA2; do echo $i; bcftools annotate -o igc_125_animals.${i}.ids.vcf.gz -O z -I 'ARS\_PIRBRIGHT\_%CHROM\_%POS' igc_125_animals.${i}.vcf.gz; done
+
+module load plink/2.00alM-2017-05-22
+# saving the first pruned IDs
+mv plink2.prune.in firsttry.plink2.prune.in
+mv plink2.prune.out firsttry.plink2.prune.out
+for i in LRCA2 MHCA2; do echo $i; plink2 --vcf igc_125_animals.${i}.ids.vcf.gz --indep-pairwise 50 5 0.5 --allow-extra-chr; mv plink2.prune.in ${i}.prune.in; mv plink2.prune.out ${i}.prune.out; done
+
+wc -l *.prune.*
+  20891 firsttry.plink2.prune.in
+  38937 firsttry.plink2.prune.out
+   5753 LRCA2.prune.in
+  12139 LRCA2.prune.out
+   1023 MHCA2.prune.in
+   2060 MHCA2.prune.out
+     56 plink2.prune.in.dups
+
+# removing markers that violate HWE
+module unload plink/2.00alM-2017-05-22
+module load plink/1.90b4.4-2017-05-21
+for i in LRCA2 MHCA2; do echo $i; plink --vcf igc_125_animals.${i}.ids.vcf.gz --extract ${i}.prune.in --hardy --allow-extra-chr --threads 20 --double-id; mv plink.hwe plink.${i}.hwe; done
+for i in LRCA2 MHCA2; do echo $i; perl -lane 'if($F[0] eq "CHR"){next;} if($F[8] > 0.05){print $F[1];}' < plink.${i}.hwe > plink.${i}.hwe.remove; done
+
+wc -l *.remove
+ 15116 plink.hwe.remove
+  4533 plink.LRCA2.hwe.remove  <- 1221 remaining
+   287 plink.MHCA2.hwe.remove	<- 737 remaining
+
+module load samtools
+for i in "18:62400000-63450000" "23:28250235-28651950"; do echo $i | perl -lane 'print "$F[0]"; system("samtools mpileup -s -O -r $F[0] -b igc_variant_list_bams.list >> igc_variant_pileup_regions.tab");'; done
