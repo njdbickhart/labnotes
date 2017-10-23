@@ -386,4 +386,23 @@ wc -l *.remove
    287 plink.MHCA2.hwe.remove	<- 737 remaining
 
 module load samtools
-for i in "18:62400000-63450000" "23:28250235-28651950"; do echo $i | perl -lane 'print "$F[0]"; system("samtools mpileup -s -O -r $F[0] -b igc_variant_list_bams.list >> igc_variant_pileup_regions.tab");'; done
+for i in "18:62400000-63450000" "23:28250235-28651950"; do echo $i | perl -lane 'print "$F[0]"; system("samtools mpileup -s -O -r $F[0] -b igc_variant_list_bams.list >> igc_variant_pileup_regions.new.tab");'; done
+
+perl -ne '@F = split(/\t/); $e = $F[1] + 1; $sum = 0; $c = 0; for($x = 7; $x < scalar(@F);$x += 5){if($F[$x] ne "*"){@bsegs = split(/,/, $F[$x]); $c += scalar(@bsegs); foreach $j (@bsegs){$sum += $j;}}} $avg = ($c > 0)? $sum / $c : 0; $sum = 0; $c = 0; print "$F[0]\t$F[1]\t$e\t$avg\n";' < igc_variant_pileup_regions.new.tab > igc_variant_pileup_regions.new.scores.bed
+
+for i in LRCA2 MHCA2; do echo $i; perl -lane 'if($F[0] eq "CHR"){next;} if($F[8] < 0.05){print $F[1];}' < plink.${i}.hwe >> new.region.hwe.keep; done
+
+for i in LRCA2 MHCA2; do echo $i; perl -e 'chomp(@ARGV); open($IN, "< $ARGV[0]"); %snps; while(<$IN>){chomp; $snps{$_} = 1;} close $IN; open($IN, " gunzip -c $ARGV[1] |"); while(<$IN>){chomp; if($_ =~ /^#/){next;}else{@s = split(/\t/); if(exists($snps{$s[2]})){$e = $s[1] + 1; print "$s[0]\t$s[1]\t$e\t$s[2]\n";}}} close $IN;' new.region.hwe.keep igc_125_animals.${i}.ids.vcf.gz > igc_125_animals.new.${i}.passfilter.bed; done
+
+# associating marker regions with mapq scores
+for i in LRCA2 MHCA2; do echo $i;  perl ~/sperl/sequence_data_scripts/assessSamtoolsMpileupMapQSNPMarkers.pl -v igc_125_animals.new.${i}.passfilter.bed -l new.region.hwe.keep -m igc_variant_pileup_regions.new.scores.bed -o igc_125_animals.new.calls.${i}.scores.bed; done
+
+cat igc_125_animals.new.calls.LRCA2.scores.gt80.bed igc_125_animals.new.calls.MHCA2.scores.gt80.bed | perl -lane '$s = $F[1] - 36; $e = $F[1] + 36; system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$s\-$F[1] >> igc_locs_new_mapping_test.fa"); system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$F[1]\-$e >> igc_locs_new_mapping_test.fa");'
+
+module load bwa; bwa mem /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta igc_locs_new_mapping_test.fa > igc_locs_new_mapping_test.sam
+perl grep_marker_locs.pl < igc_locs_new_mapping_test.sam | perl -lane 'if($F[2] > 20 || $F[3] > 20){print $_;}' > igc_locs_new_mapping.mapq.assoc.tab
+
+for i in LRCA2 MHCA2; do echo $i;  perl generate_mapq_dataframe.pl igc_locs_new_mapping.mapq.assoc.tab igc_125_animals.${i}.ids.vcf.gz >> igc_locs_new_mapping.total.assoc.tab; done
+
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 18 -i igc_locs_new_mapping.total.assoc.tab -s 62400000 -e 63450000 -d 500 -m 6 > LRCA2.new.snpselections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 23 -i igc_locs_new_mapping.total.assoc.tab -s 28250235 -e 28651950 -d 500 -m 6 > MHCA2.new.snpselections.tab
