@@ -2487,3 +2487,11 @@ bwa index -b 350000000 ARS-UCD1.0.15.base.plus.v15v16missing.fasta
 java -jar CombineFasta.jar agp2fasta -f ARS-UCD1.0.15.base.plus.v15v16missing.fasta -a ARS-UCD1.0.17.base.16and26fixed_BDR.agp -o ARS-UCD1.0.17.base.fasta
 
 sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 --wrap="bwa index ARS-UCD1.0.17.base.fasta; perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.17.base.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o ARS-UCD1.0.17.base.HDprobes"
+```
+
+Testing coverage around breakpoints of one region of the assembly to ensure proper tig placement.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/natdb_sequencing
+
+```bash
+perl -ane '@bsegs = split(/\//, $F[0]); @nsegs = split(/\./, $bsegs[-1]); open(IN, "samtools view $F[0] 7:67845000-67848000 |"); my %c; while(<IN>){chomp; @s = split(/\t/); if($s[4] == 0){next;} $bin = int((($s[3] - 67845000) / 200) + 0.5); if($bin < 0){$bin = 0;} $c{$bin} += 1;} close IN; print "$nsegs[0]"; for($x = 0; $x < 16; $x++){if(exists($c{$x})){print "\t$c{$x}";}else{print "\t0";}} print "\n";' < igc_variant_list_bams.list
