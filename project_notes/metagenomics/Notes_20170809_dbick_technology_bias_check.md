@@ -365,3 +365,16 @@ nrow(fulldata.filter)
 
 # We don't want to cluster every contig into a unique cluster. Let's stop with a k of 40 to start
 twcss <- sapply(1:kmax, function(k){kmeans(distances, k)$tot.withinss})
+# It took too long.
+```
+
+<a name="binning"></a>
+## Metagenomic binning test
+
+In order to help Serge, I promised to bin the error corrected Pacbio and Nanopore reads to try to separate them into separate clusters. First, to gather all of the data I need and to prepare the files.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/error_corrected_reads
+
+```bash
+# creating indicies for the reads -- may take a long time!
+for i in rumen_nanopore_corrected.fasta rumen_pacbio_corrected.fasta; do echo $i; sbatch --mem=10000 --ntasks-per-node=1 --nodes=1 --wrap="module load bwa; bwa index $i"; sbatch --mem=4000 --ntasks-per-node=1 --nodes=1 --wrap="module load samtools; samtools faidx $i"; done

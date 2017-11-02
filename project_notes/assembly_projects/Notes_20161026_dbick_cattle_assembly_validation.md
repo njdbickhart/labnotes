@@ -2488,3 +2488,22 @@ java -jar CombineFasta.jar agp2fasta -f ARS-UCD1.0.15.base.plus.v15v16missing.fa
 
 sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 --wrap="bwa index ARS-UCD1.0.17.base.fasta; perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.17.base.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o ARS-UCD1.0.17.base.HDprobes"
 
+```
+
+Testing coverage around breakpoints of one region of the assembly to ensure proper tig placement.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/natdb_sequencing
+
+```bash
+perl -ane '@bsegs = split(/\//, $F[0]); @nsegs = split(/\./, $bsegs[-1]); open(IN, "samtools view $F[0] 7:67845000-67848000 |"); my %c; while(<IN>){chomp; @s = split(/\t/); if($s[4] == 0){next;} $bin = int((($s[3] - 67845000) / 200) + 0.5); if($bin < 0){$bin = 0;} $c{$bin} += 1;} close IN; print "$nsegs[0]"; for($x = 0; $x < 16; $x++){if(exists($c{$x})){print "\t$c{$x}";}else{print "\t0";}} print "\n";' < igc_variant_list_bams.list
+```
+
+#### Generating version 18
+
+```bash
+# v17 assembly creation
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/canu.mhap.all.fasta tig00000206 > missing_in_17.fa
+cat ARS-UCD1.0.15.base.plus.v15v16missing.fasta missing_in_17.fa > ARS-UCD1.0.14.base.plus.v15v16v17missing.fasta
+
+sbatch --nodes=1 --ntasks-per-node=1 --mem=25000 --wrap="bwa index ARS-UCD1.0.14.base.plus.v15v16v17missing.fasta; java -jar CombineFasta.jar agp2fasta -f ARS-UCD1.0.14.base.plus.v15v16v17missing.fasta -a ARS-UCD1.0.18.base.agp -o ARS-UCD1.0.18.base.fasta; samtools faidx ARS-UCD1.0.18.base.fasta; bwa index ARS-UCD1.0.18.base.fasta; perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.18.base.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o ARS-UCD1.0.18.HDprobes"
+```
