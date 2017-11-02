@@ -2487,3 +2487,4 @@ bwa index -b 350000000 ARS-UCD1.0.15.base.plus.v15v16missing.fasta
 java -jar CombineFasta.jar agp2fasta -f ARS-UCD1.0.15.base.plus.v15v16missing.fasta -a ARS-UCD1.0.17.base.16and26fixed_BDR.agp -o ARS-UCD1.0.17.base.fasta
 
 sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 --wrap="bwa index ARS-UCD1.0.17.base.fasta; perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.17.base.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o ARS-UCD1.0.17.base.HDprobes"
+
