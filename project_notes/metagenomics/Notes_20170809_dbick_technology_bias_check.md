@@ -373,8 +373,20 @@ twcss <- sapply(1:kmax, function(k){kmeans(distances, k)$tot.withinss})
 
 In order to help Serge, I promised to bin the error corrected Pacbio and Nanopore reads to try to separate them into separate clusters. First, to gather all of the data I need and to prepare the files.
 
+#### MetaBat binning
+
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/error_corrected_reads
 
 ```bash
 # creating indicies for the reads -- may take a long time!
 for i in rumen_nanopore_corrected.fasta rumen_pacbio_corrected.fasta; do echo $i; sbatch --mem=10000 --ntasks-per-node=1 --nodes=1 --wrap="module load bwa; bwa index $i"; sbatch --mem=4000 --ntasks-per-node=1 --nodes=1 --wrap="module load samtools; samtools faidx $i"; done
+
+# Damn, I think that the script ran out of memory
+for i in rumen_nanopore_corrected.fasta rumen_pacbio_corrected.fasta; do echo $i; sbatch --mem=30000 --ntasks-per-node=1 --nodes=1 --wrap="module load bwa; bwa index $i"; done
+
+# The error corrected pacbio reads indexing is taking a long time for BWA!
+# Going to start the nanopore correction first
+perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b nanopore_reads -t illumina_reads.tab -f rumen_nanopore_corrected.fasta -m
+```
+
+#### 

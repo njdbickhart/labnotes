@@ -46,4 +46,20 @@ Workflow status 2/13 completed/total tasks
 Shutting down.
 Completed execution pbsmrtpipe v0.51.2. Workflow Failed in 4.84 sec (0.08 min) with exit code 1
 
+##############
+# Retrying   #
+##############
+
+# OK, so the problem is that the queue is wrong! I need to change the start and stop values for the SGE to proceed in a workflows xml file
+mkdir sge_smrtq
+cp /ext/smrtlink/install/smrtlink-release_5.0.1.9585/bundles/smrttools/install/smrttools-release_5.0.1.9578/private/pacbio/pythonpkgs/pbsmrtpipe/lib/python2.7/site-packages/pbsmrtpipe/cluster_templates/sge_pacbio_def66/start.tmpl ./sge_smrtq/
+cp /ext/smrtlink/install/smrtlink-release_5.0.1.9585/bundles/smrttools/install/smrttools-release_5.0.1.9578/private/pacbio/pythonpkgs/pbsmrtpipe/lib/python2.7/site-packages/pbsmrtpipe/cluster_templates/sge_pacbio_def66/stop.tmpl ./sge_smrtq/
+
+# I then modified the start.tmpl to use the correct queue: smrt.q
+# now to generate a workflow xml
+pbsmrtpipe show-workflow-options -o resequencing_workflow_template.xml
+
+# I changed ""pbsmrtpipe.options.cluster_manager"" to /Jake/home/derek.bickhart/ARS-UCDv1.0.18_polish/sge_smrtq/
+# OK, running it again with the change in workflows
+pbsmrtpipe pipeline-id pbsmrtpipe.pipelines.sa3_ds_resequencing_fat --preset-xml resequencing_template.xml --preset-xml resequencing_workflow_template.xml -e eid_subread:/ext/smrtlink/userdata/jobs_root/000/000632/tasks/pbcoretools.tasks.gather_subreadset-1/file.subreadset.xml -e eid_ref_dataset:ARS_UCDv1_0_18_ref/referenceset.xml
 ```
