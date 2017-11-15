@@ -355,15 +355,17 @@ bcftools index MHCA2.mpileup.bcf
 # Skipping indels to avoid ID collisions downstream
 bcftools call -vmO z --skip-variants indels -o igc_125_animals.LRCA2.vcf.gz LRCA2.mpileup.bcf
 bcftools call -vmO z --skip-variants indels -o igc_125_animals.MHCA2.vcf.gz MHCA2.mpileup.bcf
+bcftools call -vmO z --skip-variants indels -o igc_125_animals.NKC2.vcf.gz NKCA2.mpileup.bcf
 
 # generating IDs for each variant site
 for i in LRCA2 MHCA2; do echo $i; bcftools annotate -o igc_125_animals.${i}.ids.vcf.gz -O z -I 'ARS\_PIRBRIGHT\_%CHROM\_%POS' igc_125_animals.${i}.vcf.gz; done
+bcftools annotate -o igc_125_animals.NKC2.ids.vcf.gz -O z -I 'ARS\_PIRBRIGHT\_%CHROM\_%POS' igc_125_animals.NKC2.vcf.gz
 
 module load plink/2.00alM-2017-05-22
 # saving the first pruned IDs
 mv plink2.prune.in firsttry.plink2.prune.in
 mv plink2.prune.out firsttry.plink2.prune.out
-for i in LRCA2 MHCA2; do echo $i; plink2 --vcf igc_125_animals.${i}.ids.vcf.gz --indep-pairwise 50 5 0.5 --allow-extra-chr; mv plink2.prune.in ${i}.prune.in; mv plink2.prune.out ${i}.prune.out; done
+for i in LRCA2 MHCA2 NKC2; do echo $i; plink2 --vcf igc_125_animals.${i}.ids.vcf.gz --indep-pairwise 50 5 0.5 --allow-extra-chr; mv plink2.prune.in ${i}.prune.in; mv plink2.prune.out ${i}.prune.out; done
 
 wc -l *.prune.*
   20891 firsttry.plink2.prune.in
@@ -377,8 +379,8 @@ wc -l *.prune.*
 # removing markers that violate HWE
 module unload plink/2.00alM-2017-05-22
 module load plink/1.90b4.4-2017-05-21
-for i in LRCA2 MHCA2; do echo $i; plink --vcf igc_125_animals.${i}.ids.vcf.gz --extract ${i}.prune.in --hardy --allow-extra-chr --threads 20 --double-id; mv plink.hwe plink.${i}.hwe; done
-for i in LRCA2 MHCA2; do echo $i; perl -lane 'if($F[0] eq "CHR"){next;} if($F[8] > 0.05){print $F[1];}' < plink.${i}.hwe > plink.${i}.hwe.remove; done
+for i in LRCA2 MHCA2 NKC2; do echo $i; plink --vcf igc_125_animals.${i}.ids.vcf.gz --extract ${i}.prune.in --hardy --allow-extra-chr --threads 20 --double-id; mv plink.hwe plink.${i}.hwe; done
+for i in LRCA2 MHCA2 NKC2; do echo $i; perl -lane 'if($F[0] eq "CHR"){next;} if($F[8] > 0.05){print $F[1];}' < plink.${i}.hwe > plink.${i}.hwe.remove; done
 
 wc -l *.remove
  15116 plink.hwe.remove
@@ -386,23 +388,39 @@ wc -l *.remove
    287 plink.MHCA2.hwe.remove	<- 737 remaining
 
 module load samtools
-for i in "18:62400000-63450000" "23:28250235-28651950"; do echo $i | perl -lane 'print "$F[0]"; system("samtools mpileup -s -O -r $F[0] -b igc_variant_list_bams.list >> igc_variant_pileup_regions.new.tab");'; done
+for i in "18:62400000-63450000" "23:28250235-28651950" "5:99508055-99800000"; do echo $i | perl -lane 'print "$F[0]"; system("samtools mpileup -s -O -r $F[0] -b igc_variant_list_bams.list >> igc_variant_pileup_regions.new.tab");'; done
+for i in "5:99508055-99800000"; do echo $i | perl -lane 'print "$F[0]"; system("samtools mpileup -s -O -r $F[0] -b igc_variant_list_bams.list >> igc_variant_pileup_regions.NKC.tab");'; done
 
 perl -ne '@F = split(/\t/); $e = $F[1] + 1; $sum = 0; $c = 0; for($x = 7; $x < scalar(@F);$x += 5){if($F[$x] ne "*"){@bsegs = split(/,/, $F[$x]); $c += scalar(@bsegs); foreach $j (@bsegs){$sum += $j;}}} $avg = ($c > 0)? $sum / $c : 0; $sum = 0; $c = 0; print "$F[0]\t$F[1]\t$e\t$avg\n";' < igc_variant_pileup_regions.new.tab > igc_variant_pileup_regions.new.scores.bed
 
 for i in LRCA2 MHCA2; do echo $i; perl -lane 'if($F[0] eq "CHR"){next;} if($F[8] < 0.05){print $F[1];}' < plink.${i}.hwe >> new.region.hwe.keep; done
+for i in NKC2; do echo $i; perl -lane 'if($F[0] eq "CHR"){next;} if($F[8] < 0.05){print $F[1];}' < plink.${i}.hwe >> ${i}.region.hwe.keep; done
 
 for i in LRCA2 MHCA2; do echo $i; perl -e 'chomp(@ARGV); open($IN, "< $ARGV[0]"); %snps; while(<$IN>){chomp; $snps{$_} = 1;} close $IN; open($IN, " gunzip -c $ARGV[1] |"); while(<$IN>){chomp; if($_ =~ /^#/){next;}else{@s = split(/\t/); if(exists($snps{$s[2]})){$e = $s[1] + 1; print "$s[0]\t$s[1]\t$e\t$s[2]\n";}}} close $IN;' new.region.hwe.keep igc_125_animals.${i}.ids.vcf.gz > igc_125_animals.new.${i}.passfilter.bed; done
+for i in NKC2; do echo $i; perl -e 'chomp(@ARGV); open($IN, "< $ARGV[0]"); %snps; while(<$IN>){chomp; $snps{$_} = 1;} close $IN; open($IN, " gunzip -c $ARGV[1] |"); while(<$IN>){chomp; if($_ =~ /^#/){next;}else{@s = split(/\t/); if(exists($snps{$s[2]})){$e = $s[1] + 1; print "$s[0]\t$s[1]\t$e\t$s[2]\n";}}} close $IN;' NKC2.region.hwe.keep igc_125_animals.${i}.ids.vcf.gz > igc_125_animals.new.${i}.passfilter.bed; done
 
 # associating marker regions with mapq scores
 for i in LRCA2 MHCA2; do echo $i;  perl ~/sperl/sequence_data_scripts/assessSamtoolsMpileupMapQSNPMarkers.pl -v igc_125_animals.new.${i}.passfilter.bed -l new.region.hwe.keep -m igc_variant_pileup_regions.new.scores.bed -o igc_125_animals.new.calls.${i}.scores.bed; done
+for i in NKC2; do echo $i; perl ~/sperl/sequence_data_scripts/assessSamtoolsMpileupMapQSNPMarkers.pl -v igc_125_animals.new.${i}.passfilter.bed -l NKC2.region.hwe.keep -m igc_variant_pileup_regions.NKC.tab -o igc_125_animals.new.calls.${i}.scores.bed; done
+
+# This produced nothing, unfortunately. Will need to change the score threshold for NKC
+perl -lane 'if($F[4] > 80 && $F[5] > 80){print $_;}' < igc_125_animals.new.calls.NKC2.scores.bed > igc_125_animals.new.calls.NKC2.scores.gt80.bed
+
+# produced only 36! Might as well work with the whole dataset
+perl -lane 'if($F[4] > 18 && $F[5] > 18){print $_;}' < igc_125_animals.new.calls.NKC2.scores.bed > igc_125_animals.new.calls.NKC2.scores.gt18.bed
 
 cat igc_125_animals.new.calls.LRCA2.scores.gt80.bed igc_125_animals.new.calls.MHCA2.scores.gt80.bed | perl -lane '$s = $F[1] - 36; $e = $F[1] + 36; system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$s\-$F[1] >> igc_locs_new_mapping_test.fa"); system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$F[1]\-$e >> igc_locs_new_mapping_test.fa");'
 
+cat igc_125_animals.new.calls.NKC2.scores.bed |  perl -lane '$s = $F[1] - 36; $e = $F[1] + 36; system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$s\-$F[1] >> igc_locs_nkc_mapping_test.fa"); system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$F[1]\-$e >> igc_locs_nkc_mapping_test.fa");'
+
 module load bwa; bwa mem /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta igc_locs_new_mapping_test.fa > igc_locs_new_mapping_test.sam
+module load bwa; bwa mem /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta igc_locs_nkc_mapping_test.fa > igc_locs_nkc_mapping_test.sam
 perl grep_marker_locs.pl < igc_locs_new_mapping_test.sam | perl -lane 'if($F[2] > 20 || $F[3] > 20){print $_;}' > igc_locs_new_mapping.mapq.assoc.tab
+perl grep_marker_locs.pl < igc_locs_nkc_mapping_test.sam | perl -lane 'if($F[2] > 20 || $F[3] > 20){print $_;}' > igc_locs_nkc_mapping.mapq.assoc.tab
 
 for i in LRCA2 MHCA2; do echo $i;  perl generate_mapq_dataframe.pl igc_locs_new_mapping.mapq.assoc.tab igc_125_animals.${i}.ids.vcf.gz >> igc_locs_new_mapping.total.assoc.tab; done
+for i in NKC2; do echo $i;  perl generate_mapq_dataframe.pl igc_locs_nkc_mapping.mapq.assoc.tab igc_125_animals.${i}.ids.vcf.gz > igc_locs_nkc_mapping.total.assoc.tab; done
 
 perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 18 -i igc_locs_new_mapping.total.assoc.tab -s 62400000 -e 63450000 -d 500 -m 6 > LRCA2.new.snpselections.tab
 perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 23 -i igc_locs_new_mapping.total.assoc.tab -s 28250235 -e 28651950 -d 500 -m 6 > MHCA2.new.snpselections.tab
+perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 5 -i igc_locs_nkc_mapping.total.assoc.tab -s 99508055 -e 99800000 -d 500 -m 6 > NKCA2.new.snpselections.tab
