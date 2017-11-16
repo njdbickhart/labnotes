@@ -63,3 +63,8 @@ pdf(file="brangus_missing_HD_probes.pdf", useDingbats=FALSE)
 venn <- draw.triple.venn(area1 = 460, area2 = 4251, area3 = 3167, n12 = 389, n23 = 370, n13 = 358, n123 = 354, category = c("angusBrahmanF1_FALCONUnzip", "maternal", "paternal"), fill = c("red", "green", "blue"), cex = 2, cat.cex = 2, cat.col = c("red", "green", "blue"))
 dev.off()
 ```
+
+Checking the intersection of PAR snps
+
+```bash
+dos2unix par_HD_snps.list
