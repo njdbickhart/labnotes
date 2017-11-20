@@ -53,6 +53,28 @@ Set     Count
 3       2793
 
 # Interesting! So, the majority of the probes are unique to each
+perl -lane 'if($F[1] eq "*"){print "$F[0]";}' < ../cattle_asms/assembly_revision/ARS-UCD1.0.18.HDprobes.tab > ARS-UCD1.0.18.HDprobes.missing.list
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl angusBrahmanF1_FALCONUnzip_arrow.HDprobes.missing.list maternal.HDprobes.missing.list paternal.HDprobes.missing.list ARS-UCD1.0.18.HDprobes.missing.list
+File Number 1: angusBrahmanF1_FALCONUnzip_arrow.HDprobes.missing.list
+File Number 2: maternal.HDprobes.missing.list
+File Number 3: paternal.HDprobes.missing.list
+File Number 4: ARS-UCD1.0.18.HDprobes.missing.list
+Set     Count
+1       56
+1;2     9
+1;2;3   266
+1;2;3;4 88
+1;2;4   26
+1;3     1
+1;3;4   3
+1;4     11
+2       3421
+2;3     14
+2;3;4   2
+2;4     425
+3       2714
+3;4     79
+4       291
 ```
 
 Now to generate a venn for this.
@@ -62,8 +84,12 @@ library(VennDiagram)
 pdf(file="brangus_missing_HD_probes.pdf", useDingbats=FALSE)
 venn <- draw.triple.venn(area1 = 460, area2 = 4251, area3 = 3167, n12 = 389, n23 = 370, n13 = 358, n123 = 354, category = c("angusBrahmanF1_FALCONUnzip", "maternal", "paternal"), fill = c("red", "green", "blue"), cex = 2, cat.cex = 2, cat.col = c("red", "green", "blue"))
 dev.off()
-```
 
+# And for the quad comparison
+pdf(file="brangus_missing_HD_probes_dominettecomp.pdf", useDingbats=FALSE)
+venn <- draw.quad.venn(area1 = 460, area2 = 4251, area3 = 3167, area4 = 925, n12= 389, n13 = 358, n14 = 128, n23 = 370, n24 = 541, n34 = 172, n123 = 354, n124 = 114, n134 = 91, n234 = 90, n1234 = 88, category = c("F1_FALCONUnzip", "maternal", "paternal", "Dominettev18"), fill = c("red", "green", "blue", "orange"), cex = 2, cat.cex = 2, cat.col = c("red", "green", "blue", "orange"))
+dev.off()
+```
 Checking the intersection of PAR snps
 
 ```bash

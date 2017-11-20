@@ -387,6 +387,32 @@ for i in rumen_nanopore_corrected.fasta rumen_pacbio_corrected.fasta; do echo $i
 # The error corrected pacbio reads indexing is taking a long time for BWA!
 # Going to start the nanopore correction first
 perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b nanopore_reads -t illumina_reads.tab -f rumen_nanopore_corrected.fasta -m
+
+# It's taking far too long, going to try minimap2 instead
+# Indexing reference
+/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -d rumen_pacbio_corrected.mmi rumen_pacbio_corrected.fasta
+
+# And running the illumina alignments
+perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\./, $fsegs[-1]); $cmd = "/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -x sr rumen_pacbio_corrected.mmi $F[0] $F[1] > $nsegs[0].out.paf"; system(qq{sbatch --nodes=1 --ntasks-per-node=1 --mem=25000 --wrap="$cmd"});' < illumina_reads.tab
 ```
 
-#### 
+#### MetaProb testing
+
+The attractive features of MetaProb include the ability of the program to bin without requiring read depth. Unfortunately, mapping short reads to longer reads takes allot of time!
+
+> pwd: /home/dbickhart/share/metagenomics/read_binning
+
+```bash
+../../test_software/MetaProb/Release/MetaProb -si rumen_pacbio_corrected.fasta -numSp 5000 -feature 2 -m 45 -dirOutput pacbio_metaprob_binned
+
+Directory output: pacbio_metaprob_binned
+Files: rumen_pacbio_corrected.fasta
+N. Cluster: 5000
+Parameter q: 111111111111111111111111111111
+Parameter m: 45
+Parameter SeedSize: 9000
+Parameter lmerfreq: 4
+Parameter Kmeans iteration max: 100
+Norm: D2star_Group_Prob_Bernulli_Lmer_Euclidian
+Graph Type: Paired
+
