@@ -394,6 +394,10 @@ perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b nanopore_rea
 
 # And running the illumina alignments
 perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\./, $fsegs[-1]); $cmd = "/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -x sr rumen_pacbio_corrected.mmi $F[0] $F[1] > $nsegs[0].out.paf"; system(qq{sbatch --nodes=1 --ntasks-per-node=1 --mem=25000 --wrap="$cmd"});' < illumina_reads.tab
+
+# Finally, I'm going to count the alignments and generate the matrix of read depth
+sbatch -p assemble3 pafChrCounter.pl pacbio_corrected_run3_reads.count YMPrepCannula_run3_L2_R1.out.paf YMPrepCannula_run3_L3_R1.out.paf YMPrepCannula_run3_L4_R1.out.paf
+sbatch -p assemble3 pafChrCounter.pl pacbio_corrected_run1_reads.count YMPrepCannula_S1_L001_R1_001.out.paf YMPrepCannula_S1_L003_R1_001.out.paf YMPrepCannula_S1_L004_R1_001.out.paf
 ```
 
 #### MetaProb testing

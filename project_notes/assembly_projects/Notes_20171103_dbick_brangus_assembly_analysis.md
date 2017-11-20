@@ -94,3 +94,12 @@ Checking the intersection of PAR snps
 
 ```bash
 dos2unix par_HD_snps.list
+
+```
+
+
+And generation of a circos diagram with the following data lines:
+
+1. Small box Ideogram of HD chromosome locations
+2. Staggered histogram contig locations (+ = top, - = bottom)
+3. Links of conflict contigs (> 30% in two locations) with text of contig names
