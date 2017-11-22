@@ -95,6 +95,10 @@ Checking the intersection of PAR snps
 ```bash
 dos2unix par_HD_snps.list
 
+# The snps aren't present on my HD probe list, so I have to do this the hard way
+samtools faidx ARS-UCDv1.0.18.base.fasta X:1-5700000 > ARS-UCD1.0.18.par.region.fasta
+
+sh ../binaries/run_nucmer_plot_automation_script.sh maternal.arrow.fasta ARS-UCD1.0.18.par.region.fasta
 ```
 
 
@@ -103,3 +107,45 @@ And generation of a circos diagram with the following data lines:
 1. Small box Ideogram of HD chromosome locations
 2. Staggered histogram contig locations (+ = top, - = bottom)
 3. Links of conflict contigs (> 30% in two locations) with text of contig names
+
+```bash
+head -n 29 ../cattle_asms/assembly_revision/ARS-UCD1.0.18.base.fasta.fai | perl -lane 'print "chr - $F[0] $F[0] 0 $F[1] chr$F[0]";' > ARS-UCD1.0.18.circos.karyotype
+
+perl ~/sperl/assembly_scripts/ConvertSNPProbeAlignsToCircos.pl -s maternal.HDprobes.segs -l maternal.arrow.fasta.fai -c maternal.HDprobes.conflicts -k ARS-UCD1.0.18.circos.karyotype -o maternal.HDmap
+uniq maternal.HDmap.ctxt > tmp
+mv tmp maternal.HDmap.ctxt
+perl ../binaries/circos-0.69-6/bin/circos -conf maternal.HDmap.conf
+
+# Now to do this for the paternal haplotype
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a paternal.arrow.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o paternal.HDprobes
+
+perl ~/sperl/assembly_scripts/ConvertSNPProbeAlignsToCircos.pl -s paternal.HDprobes.segs -l paternal.arrow.fasta.fai -c paternal.HDprobes.conflicts -k ARS-UCD1.0.18.circos.karyotype -o paternal.HDmap
+uniq paternal.HDmap.ctxt > tmp
+mv tmp paternal.HDmap.ctxt
+
+# Had a weird bug where unmapped chromosomes were being placed as incomplete entries
+perl ../binaries/circos-0.69-6/bin/circos -conf paternal.HDmap.conf
+```
+
+#### Identifying consecutive blocks of missing HD markers
+
+```bash
+# Determining marker blocks
+perl -e '@blocks = (0); $int = 0; while(<>){chomp; @s = split(/\t/); if(!$int && $s[1] eq "*"){$int = 1; $blocks[-1] += 1;}elsif($int && $s[1] eq "*"){$blocks[-1] += 1;}elsif($int && $s[1] ne "*"){$int = 0; push(@blocks, 0);}} foreach $v (@blocks){print "$v\n";}' < paternal.HDprobes.tab | perl ~/sperl/bed_cnv_fig_table_pipeline/statStd.pl
+total   904
+Minimum 0
+Maximum 344
+Average 3.503319
+Median  1
+Standard Deviation      20.751869
+Mode(Highest Distributed Value) 1
+
+# That's actually a big block!
+perl -e '@blocks = (0); @chrs = (""); @pos = (""); $int = 0; while(<>){chomp; @s = split(/\t/); if(!$int && $s[1] eq "*"){$int = 1; $blocks[-1] += 1; $chrs[-1] .= $s[4]; $pos[-1] .= $s[5];}elsif($int && $s[1] eq "*"){$blocks[-1] += 1; $pos[-1] .= ";$s[5]";}elsif($int && $s[1] ne "*"){$int = 0; push(@blocks, 0); push(@chrs, ""); push(@pos, "");}} print "chr\tstart\tend\tsize\thdprobenum\n"; for($x = 0; $x < scalar(@blocks); $x++){if($blocks[$x] < 100){next;}@segs = split(";", $pos[$x]); $size = $segs[-1] - $segs[0]; print "$chrs[$x]\t$segs[0]\t$segs[-1]\t$size\t$blocks[$x]\n";}' < paternal.HDprobes.tab > paternal.HDprobes.missing.segs.tab
+
+# Total missing is about 4 megabases
+
+perl -e '@blocks = (0); @chrs = (""); @pos = (""); $int = 0; while(<>){chomp; @s = split(/\t/); if(!$int && $s[1] eq "*"){$int = 1; $blocks[-1] += 1; $chrs[-1] .= $s[4]; $pos[-1] .= $s[5];}elsif($int && $s[1] eq "*"){$blocks[-1] += 1; $pos[-1] .= ";$s[5]";}elsif($int && $s[1] ne "*"){$int = 0; push(@blocks, 0); push(@chrs, ""); push(@pos, "");}} print "chr\tstart\tend\tsize\thdprobenum\n"; for($x = 0; $x < scalar(@blocks); $x++){if($blocks[$x] < 100){next;}@segs = split(";", $pos[$x]); $size = $segs[-1] - $segs[0]; print "$chrs[$x]\t$segs[0]\t$segs[-1]\t$size\t$blocks[$x]\n";}' < maternal.HDprobes.tab > maternal.HDprobes.missing.segs.tab
+
+# again, about 4 megabases
+```
