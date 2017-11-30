@@ -148,4 +148,7 @@ perl -e '@blocks = (0); @chrs = (""); @pos = (""); $int = 0; while(<>){chomp; @s
 perl -e '@blocks = (0); @chrs = (""); @pos = (""); $int = 0; while(<>){chomp; @s = split(/\t/); if(!$int && $s[1] eq "*"){$int = 1; $blocks[-1] += 1; $chrs[-1] .= $s[4]; $pos[-1] .= $s[5];}elsif($int && $s[1] eq "*"){$blocks[-1] += 1; $pos[-1] .= ";$s[5]";}elsif($int && $s[1] ne "*"){$int = 0; push(@blocks, 0); push(@chrs, ""); push(@pos, "");}} print "chr\tstart\tend\tsize\thdprobenum\n"; for($x = 0; $x < scalar(@blocks); $x++){if($blocks[$x] < 100){next;}@segs = split(";", $pos[$x]); $size = $segs[-1] - $segs[0]; print "$chrs[$x]\t$segs[0]\t$segs[-1]\t$size\t$blocks[$x]\n";}' < maternal.HDprobes.tab > maternal.HDprobes.missing.segs.tab
 
 # again, about 4 megabases
+
+# Combined tab file:
+perl -e 'chomp(@ARGV); my %h; foreach my $af (@ARGV){open(IN, "< $af"); while(<IN>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1], $s[2]);} close IN;} foreach my $p (sort {$a cmp $b}keys(%h)){@vals = @{$h{$p}}; print "$p\t" . join("\t", @vals); print "\n";}' angusBrahmanF1_FALCONUnzip_arrow.HDprobes.tab paternal.HDprobes.tab maternal.HDprobes.tab > joined_list_HD_marker_coords.tab
 ```

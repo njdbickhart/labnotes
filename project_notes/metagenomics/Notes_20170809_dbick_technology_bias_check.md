@@ -398,6 +398,13 @@ perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\./, $fsegs[-1]); $cmd 
 # Finally, I'm going to count the alignments and generate the matrix of read depth
 sbatch -p assemble3 pafChrCounter.pl pacbio_corrected_run3_reads.count YMPrepCannula_run3_L2_R1.out.paf YMPrepCannula_run3_L3_R1.out.paf YMPrepCannula_run3_L4_R1.out.paf
 sbatch -p assemble3 pafChrCounter.pl pacbio_corrected_run1_reads.count YMPrepCannula_S1_L001_R1_001.out.paf YMPrepCannula_S1_L003_R1_001.out.paf YMPrepCannula_S1_L004_R1_001.out.paf
+
+# The PAF files do not have best alignments, so they are not completely worthwhile. 
+# Serge recommended that I generate BAMs instead
+module load samtools; perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\./, $fsegs[-1]); $cmd = "/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -ax sr rumen_pacbio_corrected.mmi $F[0] $F[1] | samtools sort -m 2G -o $nsegs[0].out.bam -T $nsegs[0].temp -"; system(qq{sbatch --nodes=1 --ntasks-per-node=2 --mem=27000 --wrap="$cmd"});' < illumina_reads.tab
+
+# Damn, it doesn't output sam headers, so samtools sort crashed!
+module load samtools; perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\./, $fsegs[-1]); $cmd = "/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -ax sr rumen_pacbio_corrected.mmi $F[0] $F[1] > $nsegs[0].out.sam"; system(qq{sbatch --nodes=1 --ntasks-per-node=2 --mem=27000 --wrap="$cmd"});' < illumina_reads.tab
 ```
 
 #### MetaProb testing

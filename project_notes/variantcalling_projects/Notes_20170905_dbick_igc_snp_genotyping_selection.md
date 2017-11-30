@@ -424,3 +424,30 @@ for i in NKC2; do echo $i;  perl generate_mapq_dataframe.pl igc_locs_nkc_mapping
 perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 18 -i igc_locs_new_mapping.total.assoc.tab -s 62400000 -e 63450000 -d 500 -m 6 > LRCA2.new.snpselections.tab
 perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 23 -i igc_locs_new_mapping.total.assoc.tab -s 28250235 -e 28651950 -d 500 -m 6 > MHCA2.new.snpselections.tab
 perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 5 -i igc_locs_nkc_mapping.total.assoc.tab -s 99508055 -e 99800000 -d 500 -m 6 > NKCA2.new.snpselections.tab
+```
+
+## Generating flanking sequence files
+
+I need to convert Doro's marker picks into a format for Geneseek to use.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/natdb_sequencing
+
+```bash
+# first, purge the original vcf of all chr18, 5 and 23 references so that I can include the extended regions
+gunzip -c igc_125_animals.calls.ids.vcf.gz | perl -lane 'if($F[0] =~ /^#/){print $_;}elsif($F[0] eq "5" || $F[0] eq "18" || $F[0] eq "23"){next;}else{print $_;}' > igc_125_animals.calls.ids.noautos.vcf
+gzip igc_125_animals.calls.ids.noautos.vcf
+
+# Now, merge the assoc.tab files together
+cat igc_locs_mapping_test.total.assoc.tab igc_locs_new_mapping.total.assoc.tab igc_locs_nkc_mapping.total.assoc.tab > igc_locs_mapping_combined.total.assoc.tab
+
+# Generating Doro's tab delimited list
+#NOTE: many of the haplotype regions are missing... also I'm not sure what the A11 haplotype is in the MHC region
+vim doro_marker_selections.tab
+dos2unix doro_marker_selections.tab
+
+# now to cross my fingers and hope that this works!
+module load samtools
+perl ~/sperl/sequence_data_scripts/createFlankingSequenceSNPList.pl -f /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/ARS-UCD1.0.14.clean.wIGCHaps.fasta -v igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.NKC2.ids.vcf.gz -p doro_marker_selections.tab -m igc_locs_mapping_combined.total.assoc.tab -o doro_marker_selections.round1.geneseek.tab
+
+# lots of bugs, but it did work. Need to debug though
+```
