@@ -405,6 +405,10 @@ module load samtools; perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\
 
 # Damn, it doesn't output sam headers, so samtools sort crashed!
 module load samtools; perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\./, $fsegs[-1]); $cmd = "/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -ax sr rumen_pacbio_corrected.mmi $F[0] $F[1] > $nsegs[0].out.sam"; system(qq{sbatch --nodes=1 --ntasks-per-node=2 --mem=27000 --wrap="$cmd"});' < illumina_reads.tab
+
+# The larger run3 file has taken over 5 days and has generated 2.5 billion mappings. I'm going to try to condense one of the files into a sorted bam to test out the compression
+# I don't think this will hurt the final results, as I may have mapped a large proportion of the reads already
+sbatch -p assemble1 --mem=28000 --ntasks-per-node=2 --nodes=1 --wrap="module load samtools; samtools view -bht rumen_pacbio_corrected.fasta.fai YMPrepCannula_run3_L2_R1.out.sam | samtools sort -T YMPrepCannula_run3_L2_R1.temp -o YMPrepCannula_run3_L2_R1.sorted.bam -m 15G -"
 ```
 
 #### MetaProb testing

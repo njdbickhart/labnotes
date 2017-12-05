@@ -430,6 +430,8 @@ perl ~/sperl/snp_utilities/gmsSNPSelectionStrategyGreedy.pl -c 5 -i igc_locs_nkc
 
 I need to convert Doro's marker picks into a format for Geneseek to use.
 
+#### Doro's marker selections
+
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/natdb_sequencing
 
 ```bash
@@ -450,4 +452,47 @@ module load samtools
 perl ~/sperl/sequence_data_scripts/createFlankingSequenceSNPList.pl -f /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/ARS-UCD1.0.14.clean.wIGCHaps.fasta -v igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.NKC2.ids.vcf.gz -p doro_marker_selections.tab -m igc_locs_mapping_combined.total.assoc.tab -o doro_marker_selections.round1.geneseek.tab
 
 # lots of bugs, but it did work. Need to debug though
+
+# Doro sent me a new list of marker variants to run through:
+vim doro_marker_selections_round2.tab
+perl ~/sperl/sequence_data_scripts/createFlankingSequenceSNPList.pl -f /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/ARS-UCD1.0.14.clean.wIGCHaps.fasta -v igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.NKC2.ids.vcf.gz -p doro_marker_selections_round2.tab -m igc_locs_mapping_combined.total.assoc.tab -o doro_marker_selections.round2.geneseek.tab
+
+# I'm not getting any upstream/downstream GMS for the variants because they're not represented in the total.assoc.tab file.
+# Trying to generate the data to associate with the markers
+perl -lane '$e = $F[3] + 1; print "$F[2]\t$F[3]\t$e\t$F[0]";' < doro_marker_selections.round2.geneseek.tab > doro_marker_selections.round2.geneseek.bed
+perl -lane 'print "$F[0]";' < doro_marker_selections.round2.geneseek.tab > doro_marker_selections.round2.geneseek.list
+perl ~/sperl/sequence_data_scripts/assessSamtoolsMpileupMapQSNPMarkers.pl -v doro_marker_selections.round2.geneseek.bed -v doro_marker_selections.round2.geneseek.bed -l doro_marker_selections.round2.geneseek.list -m igc_variant_pileup_regions.new.scores.bed -o doro_marker_selections.round2.geneseek.scores.bed
+
+# Damn, that was part of my initial filtering step, so it was unneeded
+cat doro_marker_selections.round2.geneseek.scores.bed | perl -lane '$s = $F[1] - 36; $e = $F[1] + 36; system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$s\-$F[1] >> doro_locs_new_mapping_test.fa"); system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$F[1]\-$e >> doro_locs_new_mapping_test.fa");'
+module load bwa; bwa mem /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta doro_locs_new_mapping_test.fa > doro_locs_new_mapping_test.sam
+perl grep_marker_locs.pl < doro_locs_new_mapping_test.sam > doro_locs_new_mapping_test.mapq.assoc.tab
+perl generate_mapq_dataframe.pl doro_locs_new_mapping_test.mapq.assoc.tab igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.NKC2.ids.vcf.gz > doro_locs_new_mapping_test.total.assoc.tab
+
+perl ~/sperl/sequence_data_scripts/createFlankingSequenceSNPList.pl -f /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/ARS-UCD1.0.14.clean.wIGCHaps.fasta -v igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.NKC2.ids.vcf.gz -p doro_marker_selections_round2.tab -m doro_locs_new_mapping_test.total.assoc.tab -o doro_marker_selections.round2.geneseek.tab
+```
+
+#### My marker selections
+
+Now I will format my marker selections using the same criteria to enter into the spreadsheet for geneseek.
+
+```bash
+# First, I need to generate a list of variant site and locations like Doro's list
+for i in MHCA2.new.snpselections.tab NKCA2.new.snpselections.tab MHC3_snp_selections.tab MHC2_snp_selections.tab LRCA2.new.snpselections.tab LRC4_snp_selections.tab LRC3_snp_selections.tab LRC2_snp_selections.tab LRC1_snp_selections.tab; do perl -lane 'print $F[2];' < $i; done > derek_snp_selection.ids.list
+
+for i in igc_125_animals.calls.ids.noautos.vcf.gz igc_125_animals.LRCA2.ids.vcf.gz igc_125_animals.MHCA2.ids.vcf.gz igc_125_animals.NKC2.ids.vcf.gz; do perl -e 'chomp @ARGV; %h; open(IN, "<$ARGV[0]"); while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "gunzip -c $ARGV[1] |"); while(<IN>){chomp; if($_ =~ /^#/){next;} @s = split(/\t/); if(exists($h{$s[2]})){print "$s[0]\t$s[1]\t$s[3]\t$s[4]\t$s[2]\n";}} close IN;' derek_snp_selection.ids.list $i; done > derek_snp_selection.round1.tab
+
+# Unfortunately, my previous decision NOT to remove INDELS off the bat rears its ugly head here
+# I'll remove them manually (removes 4 markers)
+vim derek_snp_selection.round1.tab
+
+perl ~/sperl/sequence_data_scripts/createFlankingSequenceSNPList.pl -f /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/ARS-UCD1.0.14.clean.wIGCHaps.fasta -v igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.NKC2.ids.vcf.gz -p derek_snp_selection.round1.tab -m igc_locs_mapping_combined.total.assoc.tab -o derek_marker_selections.round1.geneseek.tab
+
+wc -l derek_marker_selections.round1.geneseek.tab doro_marker_selections.round2.geneseek.tab
+   41 derek_marker_selections.round1.geneseek.tab
+  158 doro_marker_selections.round2.geneseek.tab
+  199 total
+
+# Some of Doro's selections have a high MAF and low mappability, but they're otherwise a good set
+# We'll see how the group reacts before we filter
 ```
