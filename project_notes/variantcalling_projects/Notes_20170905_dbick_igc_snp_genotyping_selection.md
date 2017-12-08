@@ -472,6 +472,24 @@ perl generate_mapq_dataframe.pl doro_locs_new_mapping_test.mapq.assoc.tab igc_12
 perl ~/sperl/sequence_data_scripts/createFlankingSequenceSNPList.pl -f /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/ARS-UCD1.0.14.clean.wIGCHaps.fasta -v igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.NKC2.ids.vcf.gz -p doro_marker_selections_round2.tab -m doro_locs_new_mapping_test.total.assoc.tab -o doro_marker_selections.round2.geneseek.tab
 ```
 
+Damn, I missed some markers from Doro's selections! Let me add them to the list and then generate the updated files.
+
+```bash
+# I found out why I missed those markers -- the VCF I used for the NKC region is from my old coordinates!
+gunzip -c igc_125_animals.calls.ids.vcf.gz | perl -lane 'if($_ =~ /^#/){print $_;}elsif($F[0] eq "5"){print $_;}' > igc_125_animals.calls.ids.vcf.NKCA2.ids.vcf
+# And the tail end calls from the other vcf...
+gunzip -c igc_125_animals.NKC2.ids.vcf.gz | perl -lane 'if($F[0] eq "5" && $F[1] > 99508015){print $_;}' >> igc_125_animals.calls.ids.vcf.NKCA2.ids.vcf
+
+vim doro_locs_new_mapping_test.fa
+cat doro_updated_list.round3.tab | perl -lane '$s = $F[1] - 36; $e = $F[1] + 36; system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$s\-$F[1] >> doro_locs_new_mapping_test.fa"); system("samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0]:$F[1]\-$e >> doro_locs_new_mapping_test.fa");'
+module load bwa; bwa mem /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta doro_locs_new_mapping_test.fa > doro_locs_new_mapping_test.sam
+perl grep_marker_locs.pl < doro_locs_new_mapping_test.sam > doro_locs_new_mapping_test.mapq.assoc.tab
+perl generate_mapq_dataframe.pl doro_locs_new_mapping_test.mapq.assoc.tab igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.calls.ids.vcf.NKCA2.ids.vcf.gz > doro_locs_new_mapping_test.total.assoc.tab
+
+cat doro_updated_list.round3.tab doro_marker_selections_round2.tab > doro_marker_selections_round3.tab
+perl ~/sperl/sequence_data_scripts/createFlankingSequenceSNPList.pl -f /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/ARS-UCD1.0.14.clean.wIGCHaps.fasta -v igc_125_animals.calls.ids.noautos.vcf.gz,igc_125_animals.LRCA2.ids.vcf.gz,igc_125_animals.MHCA2.ids.vcf.gz,igc_125_animals.calls.ids.vcf.NKCA2.ids.vcf.gz -p doro_marker_selections_round2.tab -m doro_locs_new_mapping_test.total.assoc.tab -o doro_marker_selections.round3.geneseek.tab
+```
+
 #### My marker selections
 
 Now I will format my marker selections using the same criteria to enter into the spreadsheet for geneseek.

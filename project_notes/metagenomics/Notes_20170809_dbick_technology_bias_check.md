@@ -409,6 +409,8 @@ module load samtools; perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\
 # The larger run3 file has taken over 5 days and has generated 2.5 billion mappings. I'm going to try to condense one of the files into a sorted bam to test out the compression
 # I don't think this will hurt the final results, as I may have mapped a large proportion of the reads already
 sbatch -p assemble1 --mem=28000 --ntasks-per-node=2 --nodes=1 --wrap="module load samtools; samtools view -bht rumen_pacbio_corrected.fasta.fai YMPrepCannula_run3_L2_R1.out.sam | samtools sort -T YMPrepCannula_run3_L2_R1.temp -o YMPrepCannula_run3_L2_R1.sorted.bam -m 15G -"
+sbatch -p assemble1 --mem=28000 --ntasks-per-node=2 --nodes=1 --wrap="module load samtools; samtools view -bht rumen_pacbio_corrected.fasta.fai YMPrepCannula_run3_L3_R1.out.sam | samtools sort -T YMPrepCannula_run3_L3_R1.temp -o YMPrepCannula_run3_L3_R1.sorted.bam -m 15G -"
+sbatch -p assemble1 --mem=28000 --ntasks-per-node=2 --nodes=1 --wrap="module load samtools; samtools view -bht rumen_pacbio_corrected.fasta.fai YMPrepCannula_run3_L4_R1.out.sam | samtools sort -T YMPrepCannula_run3_L4_R1.temp -o YMPrepCannula_run3_L4_R1.sorted.bam -m 15G -"
 ```
 
 #### MetaProb testing
