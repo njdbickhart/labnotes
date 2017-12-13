@@ -411,6 +411,11 @@ module load samtools; perl -lane '@fsegs = split(/\//, $F[0]); @nsegs = split(/\
 sbatch -p assemble1 --mem=28000 --ntasks-per-node=2 --nodes=1 --wrap="module load samtools; samtools view -bht rumen_pacbio_corrected.fasta.fai YMPrepCannula_run3_L2_R1.out.sam | samtools sort -T YMPrepCannula_run3_L2_R1.temp -o YMPrepCannula_run3_L2_R1.sorted.bam -m 15G -"
 sbatch -p assemble1 --mem=28000 --ntasks-per-node=2 --nodes=1 --wrap="module load samtools; samtools view -bht rumen_pacbio_corrected.fasta.fai YMPrepCannula_run3_L3_R1.out.sam | samtools sort -T YMPrepCannula_run3_L3_R1.temp -o YMPrepCannula_run3_L3_R1.sorted.bam -m 15G -"
 sbatch -p assemble1 --mem=28000 --ntasks-per-node=2 --nodes=1 --wrap="module load samtools; samtools view -bht rumen_pacbio_corrected.fasta.fai YMPrepCannula_run3_L4_R1.out.sam | samtools sort -T YMPrepCannula_run3_L4_R1.temp -o YMPrepCannula_run3_L4_R1.sorted.bam -m 15G -"
+
+for i in YMPrepCannula_run3_L2_R1.sorted.bam YMPrepCannula_run3_L3_R1.sorted.bam YMPrepCannula_run3_L4_R1.sorted.bam YMPrepCannula_S1_L003_R1_001.sorted.bam YMPrepCannula_S1_L004_R1_001.sorted.bam; do echo $i; sbatch --mem=6000 --ntasks-per-node=1 --nodes=1 --wrap="module load samtools; samtools index $i;"; done
+
+#TODO: Run this
+/mnt/nfs/nfs2/bickhart-users/binaries/metabat/jgi_summarize_bam_contig_depths --outputDepth YMPrepCannula_jgi_depth_file.txt YMPrepCannula_run3_L2_R1.sorted.bam YMPrepCannula_run3_L3_R1.sorted.bam YMPrepCannula_run3_L4_R1.sorted.bam YMPrepCannula_S1_L001_R1_001.sorted.bam YMPrepCannula_S1_L003_R1_001.sorted.bam YMPrepCannula_S1_L004_R1_001.sorted.bam
 ```
 
 #### MetaProb testing
