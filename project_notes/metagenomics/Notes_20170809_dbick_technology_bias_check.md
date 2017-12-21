@@ -414,8 +414,72 @@ sbatch -p assemble1 --mem=28000 --ntasks-per-node=2 --nodes=1 --wrap="module loa
 
 for i in YMPrepCannula_run3_L2_R1.sorted.bam YMPrepCannula_run3_L3_R1.sorted.bam YMPrepCannula_run3_L4_R1.sorted.bam YMPrepCannula_S1_L003_R1_001.sorted.bam YMPrepCannula_S1_L004_R1_001.sorted.bam; do echo $i; sbatch --mem=6000 --ntasks-per-node=1 --nodes=1 --wrap="module load samtools; samtools index $i;"; done
 
-#TODO: Run this
 /mnt/nfs/nfs2/bickhart-users/binaries/metabat/jgi_summarize_bam_contig_depths --outputDepth YMPrepCannula_jgi_depth_file.txt YMPrepCannula_run3_L2_R1.sorted.bam YMPrepCannula_run3_L3_R1.sorted.bam YMPrepCannula_run3_L4_R1.sorted.bam YMPrepCannula_S1_L001_R1_001.sorted.bam YMPrepCannula_S1_L003_R1_001.sorted.bam YMPrepCannula_S1_L004_R1_001.sorted.bam
+
+sbatch --nodes=1 -p assemble3 --ntasks-per-node=3 --mem=100000 --wrap="metabat2 -i rumen_pacbio_corrected.fasta.gz -a YMPrepCannula_jgi_depth_file.txt -o YMP/bin -v"
+MetaBAT 2 (v2.12.1) using minContig 2500, minCV 1.0, minCVSum 1.0, maxP 95%, minS 60, and maxEdges 200.
+[00:16:56] Finished reading 5931682 contigs and 6 coverages from YMPrepCannula_jgi_depth_file.txt
+[00:17:10] Number of target contigs: 427181 of large (>= 2500) and 9357 of small ones (>=1000 & <2500).
+[00:22:51] Finished TNF calculation.
+[00:45:55] Finished Preparing TNF Graph Building [pTNF = 97.06]
+[01:22:23] Finished Building TNF Graph (405472 vertices and 17317295 edges) [46.6Gb / 503.9Gb]                            
+[01:23:08] Building SCR Graph and Binning (40583 vertices and 37093 edges) [P = 9.50%; 46.5Gb / 503.9Gb]                  [01:23:13] Building SCR Graph and Binning (81166 vertices and 106764 edges) [P = 19.00%; 46.5Gb / 503.9Gb]                [01:23:17] Building SCR Graph and Binning (121747 vertices and 209892 edges) [P = 28.50%; 46.5Gb / 503.9Gb]               [01:23:24] Building SCR Graph and Binning (162329 vertices and 341147 edges) [P = 38.00%; 46.5Gb / 503.9Gb]               [01:23:47] Building SCR Graph and Binning (202911 vertices and 545071 edges) [P = 47.50%; 46.5Gb / 503.9Gb]               [01:24:39] Building SCR Graph and Binning (243494 vertices and 875160 edges) [P = 57.00%; 46.5Gb / 503.9Gb]               [01:25:20] Building SCR Graph and Binning (284076 vertices and 1230131 edges) [P = 66.50%; 46.6Gb / 503.9Gb]              [01:26:01] Building SCR Graph and Binning (324658 vertices and 1595284 edges) [P = 76.00%; 46.6Gb / 503.9Gb]              [01:26:38] Building SCR Graph and Binning (365240 vertices and 2156485 edges) [P = 85.50%; 46.6Gb / 503.9Gb]              [01:27:30] Building SCR Graph and Binning (376812 vertices and 2478338 edges) [P = 95.00%; 46.6Gb / 503.9Gb]              
+[01:27:37] 0.39% (8077936 bases) of large (>=2500) contigs were re-binned out of small bins (<200000).
+[01:28:29] 47.60% (2071784572 bases) of large (>=2500) and 0.81% (132587 bases) of small (<2500) contigs were binned.
+1563 bins (2071917159 bases in total) formed.
+
+export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/bin:$PATH
+module load hmmer/3.1b1
+checkm data setRoot /mnt/nfs/nfs2/bickhart-users/binaries/CheckM/databases
+
+checkm lineage_wf -f YMP/CheckM.txt -t 8 -x fa YMP YMP/SCG
+ Determining marker sets for each genome bin.
+    Finished processing 1563 of 1563 (100.00%) bins (current: bin.796).
+
+  Marker set written to: YMP/SCG/lineage.ms
+
+  { Current stage: 0:04:01.640 || Total: 1:05:23.517 }
+  Calculating AAI between multi-copy marker genes.
+
+  Reading HMM info from file.
+  Parsing HMM hits to marker genes:
+    Finished parsing hits for 1563 of 1563 (100.00%) bins.
+
+  QA information written to: YMP/CheckM.txt
+
+  { Current stage: 0:05:38.476 || Total: 2:36:20.053 }
+
+```
+
+Now to check the benchmarking in R.
+
+```R
+# First run
+source('http://portal.nersc.gov/dna/RD/Metagenome_RD/MetaBAT/Files/benchmark.R')
+printPerf(list(calcPerfBySCG("./CheckM.txt", removeStrain=F)), rec=c(seq(.1,.9,.1),.95), prec=c(seq(.6,.9,.1),.95,.99)) [[1]]
+         Recall
+Precision 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.95
+     0.6   10  10   5   0   0   0   0   0   0    0
+     0.7    6   6   2   0   0   0   0   0   0    0
+     0.8    5   5   1   0   0   0   0   0   0    0
+     0.9    0   0   0   0   0   0   0   0   0    0
+     0.95   0   0   0   0   0   0   0   0   0    0
+     0.99   0   0   0   0   0   0   0   0   0    0
+
+printPerf(list(calcPerfBySCG("./CheckM.txt", removeStrain=T)), rec=c(seq(.1,.9,.1),.95), prec=c(seq(.6,.9,.1),.95,.99))
+[[1]]
+         Recall
+Precision 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.95
+     0.6   18  18  13   5   1   0   0   0   0    0
+     0.7   17  17  12   4   1   0   0   0   0    0
+     0.8   12  12   7   1   0   0   0   0   0    0
+     0.9    6   6   2   0   0   0   0   0   0    0
+     0.95   3   3   1   0   0   0   0   0   0    0
+     0.99   0   0   0   0   0   0   0   0   0    0
+
+
+# Not very good! Our higher precision reads are all from contaminants
+
 ```
 
 #### MetaProb testing

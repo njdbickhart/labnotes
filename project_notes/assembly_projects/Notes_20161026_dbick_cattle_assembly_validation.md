@@ -2507,3 +2507,15 @@ cat ARS-UCD1.0.15.base.plus.v15v16missing.fasta missing_in_17.fa > ARS-UCD1.0.14
 
 sbatch --nodes=1 --ntasks-per-node=1 --mem=25000 --wrap="bwa index ARS-UCD1.0.14.base.plus.v15v16v17missing.fasta; java -jar CombineFasta.jar agp2fasta -f ARS-UCD1.0.14.base.plus.v15v16v17missing.fasta -a ARS-UCD1.0.18.base.agp -o ARS-UCD1.0.18.base.fasta; samtools faidx ARS-UCD1.0.18.base.fasta; bwa index ARS-UCD1.0.18.base.fasta; perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD1.0.18.base.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o ARS-UCD1.0.18.HDprobes"
 ```
+
+#### Checking Jellyfish kmers for marker ID
+
+> assembler2: /mnt/nfs/nfs1/derek.bickhart/ARS-UCD_kmer
+
+```bash
+module load jellyfish/2.2.3
+sbatch --partition=assemble1 --nodes=1 --mem=300000 --ntasks-per-node=30 --wrap='gunzip -c /mnt/nfs/nfs2/brosen/projects/ARS-UCD/new_Dominette_NextSeq_data/*/*.gz | jellyfish count -m 21 -s 3G --bf-size 100G -t 30 -C -o dominette_nextseq_21mer.jf'
+
+# Damn, that didn't work. Trying the generators approach
+ls /mnt/nfs/nfs2/brosen/projects/ARS-UCD/new_Dominette_NextSeq_data/*/*.gz | xargs -n 1 echo gunzip -c > generators
+sbatch --partition=assemble1 --nodes=1 --mem=300000 --ntasks-per-node=30 --wrap='jellyfish count -g generators -m 21 -s 3G --bf-size 100G -t 30 -C -o dominette_nextseq_21mer.jf'
