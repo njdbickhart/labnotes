@@ -302,3 +302,22 @@ cp /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.
 perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_pipeline/alignBamReadsSlurm.pl -b aligns -t /mnt/nfs/nfs2/bickhart-users/natdb_sequencing/wustl_formatted_bam_data.tab -f ARS-UCD1.0.14.clean.wIGCHaps.fasta -m
 #	Generated 2629 alignment scripts for 173 samples!
 ```
+
+## Round 2 alignment
+
+We just received the remainder of the bam files and I need to queue them up for alignment. I am going to align them in a separate folder and then queue up a separate merger later. 
+
+> Assembler2: /mnt/nfs/nfs1/derek.bickhart/CDDR-Project 
+
+```bash
+ls /mnt/nfs/SequenceData/wustl/2017-12/xfer.genome.wustl.edu/gxfer1/90727643070659/*.bam > wustl_round2_bam_file.list
+
+# the samplemap csv file was carriage return delimited
+perl -e 'while(<>){$_ =~ s/\r/\n/g; print $_;}' < /mnt/nfs/SequenceData/wustl/2017-12/xfer.genome.wustl.edu/gxfer1/90727643070659/Holstein.samplemap.csv > round2_sample_map.csv
+
+# Formatting the alignment input tab file
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); <IN>; %h; while(<IN>){chomp; @s = split(/,/); @bsegs = split(/-/, $s[6]); $s[6] = $bsegs[1]; $h{$s[1]}->{$s[2]}->{$s[3]} = $s[6] . "";} close IN; open(IN, "< $ARGV[1]"); while($y = <IN>){chomp $y; @s = split(/\//, $y); @j = split(/[_\.]/, $s[-1]); $t = $h{$j[1]}->{$j[2]}->{$j[3]}; print "$y\t$t\-lib2\t$t\n";} close IN;' round2_sample_map.csv wustl_round2_bam_file.list > wustl_round2_bam_remaining_files.tab
+
+# Running the pipeline
+perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b round2 -t wustl_round2_bam_remaining_files.tab -f ARS-UCD1.0.14.clean.wIGCHaps.fasta -m
+```
