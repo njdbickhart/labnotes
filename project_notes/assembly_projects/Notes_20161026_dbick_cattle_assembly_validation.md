@@ -2519,3 +2519,30 @@ sbatch --partition=assemble1 --nodes=1 --mem=300000 --ntasks-per-node=30 --wrap=
 # Damn, that didn't work. Trying the generators approach
 ls /mnt/nfs/nfs2/brosen/projects/ARS-UCD/new_Dominette_NextSeq_data/*/*.gz | xargs -n 1 echo gunzip -c > generators
 sbatch --partition=assemble1 --nodes=1 --mem=300000 --ntasks-per-node=30 --wrap='jellyfish count -g generators -m 21 -s 3G --bf-size 100G -t 30 -C -o dominette_nextseq_21mer.jf'
+
+jellyfish histo -o dominette_nextseq_21mer.histo dominette_nextseq_21mer.jf
+jellyfish dump -o dominette_nextseq_21mer.count -c dominette_nextseq_21mer.jf
+
+python check_probeseq_kmers.py 21 dominette_nextseq_21mer.jf /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa > kmer_check_stdout.tab
+```
+
+#### Generating version 19
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_119
+
+```bash
+# v18 base assembly creation
+perl -lane 'if($F[0] =~ /^\d{1,2}/ || $F[0] eq "X"){next;}else{print $_;}' < ../assembly_revision/ARS-UCD1.0.18.base.agp > unplaced_scaffolds.agp
+perl -lane 'print join("\t", @F);' < ARS-UCD1.0.19.temp.agp > placed_scaffolds.agp
+
+grep 'tig' placed_scaffolds.agp | perl -lane 'print $F[5];' | sort | uniq | xargs -I {} echo -n "{} "; echo
+samtools faidx /mnt/nfs/nfs2/dbickhart/dominette_asm/canu.mhap.all.fasta tig00000085 tig00000329 tig00000500 tig00000647 tig00000858 tig00000965 tig00001202 tig00001238 tig00001442 tig00001536 tig00001537 tig00001622 tig00001843 tig00002144 tig00002319 tig00002327 tig00002575 tig00002621 tig00002631 tig00002815 tig00009264 tig00009272 tig00009301 tig00009354 tig00009366 tig00009414 tig00009416 tig00009422 tig00009438 tig00009474 tig00009487 tig00009498 tig00009535 tig00009552 tig00009778 > missing_in_18.fa
+
+cat ARS-UCD1.0.18.base.fasta missing_in_18.fa > ARS-UCD1.0.18.plusmissing.fasta
+samtools faidx ARS-UCD1.0.18.plusmissing.fasta
+cat placed_scaffolds.agp unplaced_scaffolds.agp > ARS-UCD1.0.19.base.agp
+
+# Had an error with the agp format
+perl -e 'while(<>){chomp; @s = split(/\t/); if(scalar(@s) < 9){print "$_\n";}}' < ARS-UCD1.0.19.base.agp
+6       1       117468312       303     D       6       62227145        104378052 
+# Was missing an orientation flag, so I added a "+"
