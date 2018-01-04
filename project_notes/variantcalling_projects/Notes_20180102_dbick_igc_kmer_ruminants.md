@@ -116,4 +116,29 @@ jellyfish count -s 3G -m 21 -t 20 -o ARS1.goat.reference.jf ./ARS1.goat.referenc
 
 # generating kmer count plots for each dataset
 for i in *.jf; do name=`echo $i | cut -d'.' -f1`; echo $name; sbatch --nodes=1 --mem=45000 --ntasks-per-node=15 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/kat-2.3.4/src/kat comp -t 15 -o $name.kat $i ARS1.goat.reference.jf"; done
+
+# Test spectra-mx plot
+/mnt/nfs/nfs2/bickhart-users/binaries/KAT/kat-2.3.4/src/kat plot spectra-mx -i -p 'png' -o SRR5557728.kat-main.mx.spectra-mx.png SRR5557728.kat-main.mx
+
+# A little more useful, but not by much
 ```
+
+Unfortunately, the KAT analysis doesn't show too much useful information. I'll have to return to the drawing board here.
+
+
+### Jellyfish unique kmer sets
+
+My final idea is to grep out the unique kmers that map to the immune gene regions, map them back to the assembly and then estimate coverage differences to infer structural disparities. Let's try this from a reverse approach perspective: I will mask out the assembled IGC regions in ARS1 and then hash the reference and use that as a filter for the other jellyfish data.
+
+> Assembler2: 
+
+```bash
+# Preparing the reference for masking
+module load samtools; samtools faidx ARS1.goat.reference.fasta
+
+# Masking just the IG and LILR regions
+maskFastaFromBed -fi ARS1.goat.reference.fasta -bed igc_regions_to_gap.bed -fo ARS1.goat.reference.igcmasked.fasta
+module load jellyfish/2.2.3; jellyfish count -s 3G -m 21 -t 20 -o ARS1.goat.reference.igcmasked.jf ARS1.goat.reference.igcmasked.fasta
+
+# Creating the masked goat background
+sbatch --nodes=1 --mem=45000 --ntasks-per-node=5 --wrap="jellyfish dump ARS1.goat.reference.igcmasked.jf -c | awk '{print $1}' | sort --parallel=4 -S 50% > ARS1.goat.reference.igcmasked.background"

@@ -63,3 +63,19 @@ pbsmrtpipe show-workflow-options -o resequencing_workflow_template.xml
 # OK, running it again with the change in workflows
 pbsmrtpipe pipeline-id pbsmrtpipe.pipelines.sa3_ds_resequencing_fat --preset-xml resequencing_template.xml --preset-xml resequencing_workflow_template.xml -e eid_subread:/ext/smrtlink/userdata/jobs_root/000/000632/tasks/pbcoretools.tasks.gather_subreadset-1/file.subreadset.xml -e eid_ref_dataset:ARS_UCDv1_0_18_ref/referenceset.xml
 ```
+
+#### PBjelly reattempt
+
+I am going to reattempt PBjelly on the files using scripts that Serge provided. We noticed that the pacbio tools hate "." and "-" delimiters in file names (apart from the last extension) so I am preemptively changing those delimiters to avoid any problems down the road.
+
+> Hank: /Jake/home/derek.bickhart/ARS_UCDv1_0_19_polish
+
+```bash
+mv ARS-UCD1.0.19.base.fasta ARS_UCD1_0_19_base.fasta
+
+cp ../PBSuite_15.8.24/docs/TemplateProtocol.xml ./
+mv TemplateProtocol.xml Protocol.xml
+mkdir ARS_v19_jellied
+
+vim Protocol.xml
+```
