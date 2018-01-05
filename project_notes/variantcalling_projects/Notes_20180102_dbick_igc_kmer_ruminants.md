@@ -130,7 +130,7 @@ Unfortunately, the KAT analysis doesn't show too much useful information. I'll h
 
 My final idea is to grep out the unique kmers that map to the immune gene regions, map them back to the assembly and then estimate coverage differences to infer structural disparities. Let's try this from a reverse approach perspective: I will mask out the assembled IGC regions in ARS1 and then hash the reference and use that as a filter for the other jellyfish data.
 
-> Assembler2: 
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/goat_projects
 
 ```bash
 # Preparing the reference for masking
@@ -141,4 +141,17 @@ maskFastaFromBed -fi ARS1.goat.reference.fasta -bed igc_regions_to_gap.bed -fo A
 module load jellyfish/2.2.3; jellyfish count -s 3G -m 21 -t 20 -o ARS1.goat.reference.igcmasked.jf ARS1.goat.reference.igcmasked.fasta
 
 # Creating the masked goat background
-sbatch --nodes=1 --mem=45000 --ntasks-per-node=5 --wrap="jellyfish dump ARS1.goat.reference.igcmasked.jf -c | awk '{print $1}' | sort --parallel=4 -S 50% > ARS1.goat.reference.igcmasked.background"
+mkdir tempsort
+sbatch -p assemble1 --nodes=1 --mem=125000 --ntasks-per-node=5 --wrap="jellyfish dump ARS1.goat.reference.igcmasked.jf -c | awk '{print $1}' | sort -T /mnt/nfs/nfs2/bickhart-users/goat_projects/tempsort --parallel=4 -S 50% > ARS1.goat.reference.igcmasked.background"
+
+# Damn, the awk command didn't work apparently. I need to remove the numbers so that diff can work downstream
+# Also, I counted over 4 trillion possible kmers to be produced from a 21 mer! The file is going to be huge!
+
+# Trying the filtration with KAT
+```
+
+OK, so KAT can filter the reads out of fastqs and leave only the fastq entries. I'll try to filter out the assembly "background" and realign the reads to the areas that I filtered away.
+
+**TODO**: generate ref fasta from igc_regions_to_gap.bed; finish kat filtration script; run filter script; align post-filter reads to the igc_regions_to_gap fasta; count and normalize occurrences.
+
+
