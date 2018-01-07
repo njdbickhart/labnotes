@@ -154,4 +154,54 @@ OK, so KAT can filter the reads out of fastqs and leave only the fastq entries. 
 
 **TODO**: generate ref fasta from igc_regions_to_gap.bed; finish kat filtration script; run filter script; align post-filter reads to the igc_regions_to_gap fasta; count and normalize occurrences.
 
+```bash
+# Making a reference for alignment
+perl -lane 'open(IN, "samtools faidx ARS1.goat.reference.fasta $F[0]:$F[1]-$F[2] |"); while(<IN>){chomp; if($_ =~ />/){print ">$F[3]";}else{print $_;}} close IN;' < igc_regions_to_gap.bed > ARS1.goat.igcregions.fasta
 
+samtools faidx ARS1.goat.igcregions.fasta
+bwa index ARS1.goat.igcregions.fasta
+
+perl -lane '@s = split(/,/, $F[0]); if($s[0] =~ /^Run/){next;} print $s[0]' < goat_wgs_sra_runifo.csv | xargs -I {} sbatch download_sra_process_kat_filter.sh {}
+```
+
+And here is the script that I used to queue the jobs:
+
+#### download_sra_process_kat_filter.sh
+
+```bash
+#!/usr/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=6
+#SBATCH --mem=45000
+
+# A one-shot script designed to download an SRA archive, filter it against a background kmer set and leave only the reads
+# $1 = SRA accession
+kat_folder=/mnt/nfs/nfs2/bickhart-users/binaries/KAT/kat-2.3.4/src/
+base_dir=/mnt/nfs/nfs2/bickhart-users/goat_projects
+reference=${base_dir}/ARS1.goat.igcregions.fasta
+refjfdb=${base_dir}/ARS1.goat.reference.igcmasked.jf
+fastq=${1}.fastq
+kat_fastq=${1}.kat.filter.kmer.fastq
+bam=${1}.sorted.bam
+
+START=$(date +%s.%N)
+module load sratoolkit/2.8.1-3 bwa samtools
+
+# Download fastq
+fastq-dump --split-spot $1
+
+# Filter with KAT
+$kat_folder/kat filter seq -t 6 -i -o ${1}.kat.filter.kmer --seq=$fastq $refjfdb
+if [ -s $kat_fastq ]
+then
+        rm $fastq
+else
+        echo "did not find file $kat_fastq!"
+fi
+
+# align with bwa
+bwa mem $reference $kat_fastq | samtools sort -T ${1}.temp -o $bam -
+END=$(date +%s.%N)
+DIFF=$(echo "$END - $START" | bc)
+echo "Executed in $DIFF time from $START and $END"
+```

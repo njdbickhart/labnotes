@@ -321,3 +321,55 @@ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); <IN>; %h; while(<IN>){chomp; @s =
 # Running the pipeline
 perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b round2 -t wustl_round2_bam_remaining_files.tab -f ARS-UCD1.0.14.clean.wIGCHaps.fasta -m
 ```
+
+## Preparing for variant calling
+
+I still need to mark dups, realign indels and then merge the 35 improved samples to the list. I will do this with a custom script.
+
+#### indel_realign_markdups.sh
+
+```bash
+#!/usr/bin/sh
+#SBATCH --nodes=1
+#SBATCH --mem=25000
+#SBATCH --ntasks-per-node=5
+
+# This is a oneshot script designed to realign indels, mark dups and otherwise prepare BAMs for variant calling
+# $1 is the sorted merged bam to realign/modify
+# $2 is the reference fasta
+realign_targs=${1}.targets
+realigned_bam=${1}.realn.bam
+duplicates_metrics=${1}.dup.metrics
+dedup_bam=${1}.dedup.bam
+
+START=$(date +%s.%N)
+module load bwa samtools gatk/3.7 picard/2.9.2
+
+echo $GenomeAnalysisTK -T RealignerTargetCreator -R $2 -I $1 -o $realign_targs
+
+$GenomeAnalysisTK -T RealignerTargetCreator -R $2 -I $1 -o $realign_targs
+
+echo $GenomeAnalysisTK -T IndelRealigner -R $2 -I $1 -targetIntervals $realign_targs -o $realigned_bam
+
+$GenomeAnalysisTK -T IndelRealigner -R $2 -I $1 -targetIntervals $realign_targs -o $realigned_bam
+
+samtools index $realigned_bam
+
+echo java -jar $PICARD MarkDuplicates I=$realigned_bam O=$dedup_bam M=$duplicates_metrics
+
+java -jar $PICARD MarkDuplicates I=$realigned_bam O=$dedup_bam M=$duplicates_metrics
+samtools index $dedup_bam
+END=$(date +%s.%N)
+DIFF=$(echo "$END - $START" | bc)
+echo "Executed in $DIFF time from $START and $END"
+```
+
+And now to queue up all the tasks to get things going.
+
+> Assembler2: /mnt/nfs/nfs1/derek.bickhart/CDDR-Project
+
+```bash
+ls ./*/*/*.sorted.merged.bam > sorted.merged.bam.list
+
+cat sorted.merged.bam.list | xargs -I {} sbatch indel_realign_markdups.sh {} ARS-UCD1.0.14.clean.wIGCHaps.fasta
+```
