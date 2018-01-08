@@ -162,6 +162,9 @@ samtools faidx ARS1.goat.igcregions.fasta
 bwa index ARS1.goat.igcregions.fasta
 
 perl -lane '@s = split(/,/, $F[0]); if($s[0] =~ /^Run/){next;} print $s[0]' < goat_wgs_sra_runifo.csv | xargs -I {} sbatch download_sra_process_kat_filter.sh {}
+
+# Oops! The script incorrectly guessed the kat output! 
+perl -lane '@s = split(/,/, $F[0]); if($s[0] =~ /^Run/ || $s[0] =~ /SRR3144624/){next;} print $s[0]' < goat_wgs_sra_runifo.csv | xargs -I {} sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 --wrap="bwa mem ARS1.goat.igcregions.fasta {}.kat.filter.kmer.in.fastq | samtools sort -T {}.temp -o {}.sorted.bam -"
 ```
 
 And here is the script that I used to queue the jobs:
@@ -205,3 +208,18 @@ END=$(date +%s.%N)
 DIFF=$(echo "$END - $START" | bc)
 echo "Executed in $DIFF time from $START and $END"
 ```
+
+OK, I now need to prepare the following analysis:
+* MASH profiles of the filtered kmers
+* Read depth matrix of the samples for cn.mops
+
+Let's generate brute-force windows (flat, integer non-overlapping 500 bp windows) and then use them as our skeleton for the overlap.
+
+```bash
+# Mash profile generation for the filtered fastqs
+for i in *.in.fastq; do name=`echo $i | cut -d'.' -f1`; echo $name; sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 --wrap="cat $i | /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v1.1.1/mash sketch -b 1G -s 25000 -o ${name}.filt -"; done
+
+# Window generation
+perl -lane 'for($x = 1; $x + 500 <= $F[1]; $x += 500){$e = $x + 499; print "$F[0]\t$x\t$e";}' < ARS1.goat.igcregions.fasta.fai > ARS1.goat.igcregions.windows.bed
+
+# I'll now use bedtools coveragebed to read the bam and 
