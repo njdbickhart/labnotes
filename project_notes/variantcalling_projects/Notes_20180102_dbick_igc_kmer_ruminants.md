@@ -78,10 +78,8 @@ colnames(mash_data.format) <- entries
 
 groups <- read.delim("combined_mash_groups.tab", header=FALSE)
 colnames(groups) <- c("run", "sample", "group")
-groups$pch[groups$group == "COW"] = 17
-groups$pch[groups$group == "CASHMERE"] = 0
-groups$pch[groups$group == "SANEN"] = 16
-groups$pch[groups$group == "BOER"] = 3
+groups$pch = c(16)
+groups$pch[groups$group == "COW"] <- 17
 
 groups$col[groups$group == "COW"] <- "black"
 groups$col[groups$group == "CASHMERE"] <- "dodgerblue"
@@ -91,7 +89,7 @@ groups$col[groups$group == "BOER"] <- "chartreuse3"
 pcoa.result <- wcmdscale(mash_data.format, eig=TRUE, add="lingoes", k=75)
 
 pdf(file="goat_pcoa_plot.pdf", useDingbats=FALSE)
-plot(pcoa.result$points, type = "p", col=groups$col, pch = groups$pch, asp =1/1)
+plot(pcoa.result$points, xlab="PC1 (30.4%)", ylab="PC2 (2.5%)", type = "p", col=groups$col, pch = groups$pch, cex=1.4, asp = 1/1)
 ordihull(pcoa.result$points, groups = groups$group, label = FALSE, col = c("black", "darkorange2", "dodgerblue", "chartreuse3"))
 dev.off()
 ```
@@ -219,7 +217,87 @@ Let's generate brute-force windows (flat, integer non-overlapping 500 bp windows
 # Mash profile generation for the filtered fastqs
 for i in *.in.fastq; do name=`echo $i | cut -d'.' -f1`; echo $name; sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 --wrap="cat $i | /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v1.1.1/mash sketch -b 1G -s 25000 -o ${name}.filt -"; done
 
+## Generating the distance matrix
+ls *.filt.msh > combined_filt_mash_sketches.list
+/mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v1.1.1/mash paste -l combined_filt_mash_sketches combined_filt_mash_sketches.list
+
+# Generating distance files
+for i in `cat combined_filt_mash_sketches.list`; do echo $i; /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v1.1.1/mash dist -p 10 -t combined_filt_mash_sketches.msh $i > ${i}.dist; done
+
+# and the final matrix file
+perl -lane 'open(IN, "$F[0].dist"); $h = <IN>; $d = <IN>; chomp $d; @dsegs = split(/\t/, $d); @nm = split(/\./, $F[0]); $dsegs[0] = $nm[0]; print join("\t", @dsegs);' < combined_filt_mash_sketches.list > combined_filt_mash_distances.matrix
+
 # Window generation
 perl -lane 'for($x = 1; $x + 500 <= $F[1]; $x += 500){$e = $x + 499; print "$F[0]\t$x\t$e";}' < ARS1.goat.igcregions.fasta.fai > ARS1.goat.igcregions.windows.bed
 
-# I'll now use bedtools coveragebed to read the bam and 
+# I'll now use bedtools coveragebed to read the bam and generate the data matrix needed for cn.mops
+ls *.sorted.bam | xargs -I {} sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 -p assemble3 --wrap="bedtools coverage -a ARS1.goat.igcregions.windows.bed -b {} -hist -sorted > {}.coverage.bed"
+
+# That generated a list of regions that were zero depth and duplicated features in "A". I want simple counts
+ls *.sorted.bam | xargs -I {} sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 -p assemble3 --wrap="bedtools coverage -a ARS1.goat.igcregions.windows.bed -b {} -counts -sorted > {}.counts.bed"
+```
+
+Now to generate the "competing" mash PCoA plot.
+
+```R
+library(vegan)
+library(dplyr)
+
+mash_data <- read.delim("combined_filt_mash_distances.matrix", header=FALSE)
+entries <- mash_data[,1]
+mash_data.format <- select(mash_data, -V1)
+
+rownames(mash_data.format) <- entries
+colnames(mash_data.format) <- entries
+
+groups <- read.delim("combined_mash_groups.tab", header=FALSE)
+colnames(groups) <- c("run", "sample", "group")
+groups$pch = c(16)
+groups$pch[groups$group == "COW"] <- 17
+
+groups$col[groups$group == "COW"] <- "black"
+groups$col[groups$group == "CASHMERE"] <- "dodgerblue"
+groups$col[groups$group == "SANEN"] <- "darkorange2"
+groups$col[groups$group == "BOER"] <- "chartreuse3"
+
+pcoa.result <- wcmdscale(mash_data.format, eig=TRUE, add="lingoes", k=75)
+
+pdf(file="goat_filt_pcoa_plot.pdf", useDingbats=FALSE)
+plot(pcoa.result$points, xlab="PC1 (58.8%)", ylab="PC2 (5.6%)", type = "p", col=groups$col, pch = groups$pch, cex=1.4, asp = 1/1)
+ordihull(pcoa.result$points, groups = groups$group, label = FALSE, col = c("black", "dodgerblue", "chartreuse3", "darkorange2"))
+legend("bottomright", legend=c("Cow", "Cashmere", "Sanen", "Boer"), col=c("black", "dodgerblue", "darkorange2", "chartreuse3"), pch=c(17,16,16,16), cex=1.4)
+dev.off()
+```
+
+
+Generating the Cn.mops files.
+
+> pwd: ~/share/side_projects/ruminant_kmer
+
+```R
+library("cn.mops")
+library("GenomicRanges")
+bedfiles <- list.files(pattern="+.bed$")
+fileIds <- sapply(strsplit(bedfiles, ".", fixed = TRUE), "[[", 1)
+
+rdtables <- lapply(bedfiles, function(bed){var <- read.delim(file=bed, sep="\t", header=FALSE, col.names=c("chr", "start", "end", "value")); fname <- sapply(strsplit(bed, ".", fixed = TRUE), "[[", 1); return(c(var, fname))})
+
+coords <- data.frame(chr=rdtables[[1]]$chr, start=rdtables[[1]]$start, end=rdtables[[1]]$end)
+GRangeObj <- as(coords, "GRanges")
+
+rdVals <- data.frame(sapply(rdtables, "[[", 4))
+colnames(rdVals) <- fileIds
+for(i in colnames(rdVals)){mcols(GRangeObj)[i] <- rdVals[,i]}
+
+res <- cn.mops(GRangeObj)
+res <- calcIntegerCopyNumbers(res)
+
+# There were 67 CNVRs and 504 CNVs among the datasets
+# Let's print them out to see
+write.table(as.data.frame(iniCall(res)), file="goat_inicalls.tab", sep="\t")
+write.table(as.data.frame(cnvs(res)), file="goat_cnmops_cnvs.tab", sep="\t")
+write.table(as.data.frame(cnvr(res)), file="goat_cnmops_cnvrs.tab", sep="\t")
+
+# I saved the workspace for viewing the results later.
+
+```
