@@ -292,12 +292,87 @@ for(i in colnames(rdVals)){mcols(GRangeObj)[i] <- rdVals[,i]}
 res <- cn.mops(GRangeObj)
 res <- calcIntegerCopyNumbers(res)
 
-# There were 67 CNVRs and 504 CNVs among the datasets
+# There were 41 CNVRs and 502 CNVs among the datasets
 # Let's print them out to see
-write.table(as.data.frame(iniCall(res)), file="goat_inicalls.tab", sep="\t")
-write.table(as.data.frame(cnvs(res)), file="goat_cnmops_cnvs.tab", sep="\t")
-write.table(as.data.frame(cnvr(res)), file="goat_cnmops_cnvrs.tab", sep="\t")
+write.table(as.data.frame(iniCall(res)), file="goat_inicalls.tab", sep="\t", quote=FALSE)
+write.table(as.data.frame(cnvs(res)), file="goat_cnmops_cnvs.tab", sep="\t", quote=FALSE)
+write.table(as.data.frame(cnvr(res)), file="goat_cnmops_cnvrs.tab", sep="\t", quote=FALSE)
 
 # I saved the workspace for viewing the results later.
 
+```
+
+#### Generating additional sample-level comparisons using aligned sequence reads
+
+I'm not giving up on drawing selective comparisons just yet. I want to see how disparate the clustering can be within the two different groups using k-means clustering.
+
+> pwd: ~/share/side_projects/ruminant_kmer
+
+```bash
+# First I need to prepare the cn.mops output for further R modification
+perl -ne '$_ =~ s/\"//g; $_ =~ s/CN(\d+)/$1/g; print $_;' < goat_cnmops_cnvrs.tab > goat_cnmops_cnvrs.format.tab
+
+# Now to load it into R for kmeans clustering
+```
+
+Jumping right into an R session.
+
+```R
+cnvrs <- read.delim("goat_cnmops_cnvrs.format.tab")
+library(dplyr)
+
+cns <- select(cnvrs, -seqnames, -start, -end, -width, -strand)
+cns <- t(cns)
+
+# Calculating sum of variance
+wss <- (nrow(cns) -1 ) * sum(apply(cns, 2, var))
+for(i in 2:15) wss[i] <- sum(kmeans(cns, centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of squares")
+dev.copy2pdf(file="CN_scree_plot.pdf", useDingbats=FALSE)
+
+# The scree plot suggests that 6 clusters may be optimal
+
+fit <- kmeans(cns, 6)
+aggregate(cns, by=list(fit$cluster), FUN=mean)
+cns <- data.frame(cns, fit$cluster)
+
+matrix <- dist(cns, method = "euclidean")
+# Testing goodness of fit first
+fit2 <- kmeans(cns, 5)
+library(fpc)
+cluster.stats(matrix, fit$cluster, fit2$cluster)
+
+# The Dunn index was maximized and the Adjusted rand index was higher with 6 clusters than with 5, so we're good.
+library(dendextend)
+library(pvclust)
+library(colorspace)
+gdata <- read.delim("combined_mash_groups.tab", header=FALSE)
+gdata <- filter(gdata, V3 != "COW")
+
+fit <- as.dendrogram(hclust(matrix, method="ward.D"))
+
+breed <- gdata$V3
+cols <- rainbow_hcl(length(levels(breed)))
+
+col_group <- cols[breed]
+labels_colors(fit) <- col_group
+col_group <- col_group[order.dendrogram(fit)]
+plot(fit)
+rect.dendrogram(fit, k=6, border = "red")
+legend("topright", legend=unique(breed), col=c("blueviolet", "darkgoldenrod1", "pink"), pch=16, cex=1.4)
+# Warning! The color order is borked in this plot! Damn R sorting!
+
+# OK, we have a dendrogram with the features spread out by distance. Let's now try to get a PCA of the data as well
+library(vegan)
+my.rda <- rda(cns)
+biplot(my.rda, display = c("sites"), type=c("points"))
+ordihull(my.rda, group = breed, col = c(2,3,1))
+legend("topright", col=c(2,3,1), lty = 1, legend = unique(breed))
+
+# Pretty much showed the same results as the PCoA plot. Not too much divergence from breed
+
+# One final diagram: a heatmap
+library(RColorBrewer)
+library(gplots)
+heatmap.2(as.matrix(cns)[,c(-42)], Rowv = fit, Colv = NA, scale="none", col=brewer.pal(11,"Spectral"), RowSideColors=col_group, density.info="none", trace="none")
 ```

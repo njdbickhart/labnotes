@@ -79,3 +79,36 @@ mkdir ARS_v19_jellied
 
 vim Protocol.xml
 ```
+
+#### Serge's ArrowGrid
+
+I needed to take Tim's fofn file and generate hard escapes to make it work due to whitespace in the filename. Let's see if his pipeline works!
+
+> Hank: /Jake/home/derek.bickhart/ARS_UCDv1_0_20_polish
+
+```bash
+perl -ne 'chomp; $_ =~ s/ /\\ /g; print "$_\n";' < ../ARS_UCDv1_0_19_polish/dominette_bax_files.fofn > dominette_bax_files_hard_esc.fofn
+
+# To avoid issues with smrtlink screwing things up
+mv ARS-UCD1.0.20.fasta ARS_UCD1_0_20.fasta
+
+module load smrtlink/5.0.1 smrtanalysis/2.3.0
+qsub -V -q smrt.q -o ars_ucd_v21.out -e ars_ucd_v21.err ../ArrowGrid/arrow.sh dominette_bax_files_hard_esc.fofn ARS_UCDv1_0_21 ARS_UCD1_0_20.fasta
+
+```
+
+Damn, I got errors from variable assignment! I will try my favorite smrtlink analysis software in the meantime.
+
+```bash
+qsub -V ../ARS-UCDv1.0.18_polish/call_fasta_to_ref.sh ARS_UCD1_0_20.fasta ARS_UCD1_0_20.ref
+
+pbsmrtpipe show-template-details pbsmrtpipe.pipelines.sa3_ds_resequencing_fat -o resequencing_template.xml
+# Editted settings:
+# "genomic_consensus.task_options.algorithm" to "arrow"
+
+mkdir sge_smrtq
+cp /ext/smrtlink/install/smrtlink-release_5.0.1.9585/bundles/smrttools/install/smrttools-release_5.0.1.9578/private/pacbio/pythonpkgs/pbsmrtpipe/lib/python2.7/site-packages/pbsmrtpipe/cluster_templates/sge_pacbio_def66/start.tmpl ./sge_smrtq/
+cp /ext/smrtlink/install/smrtlink-release_5.0.1.9585/bundles/smrttools/install/smrttools-release_5.0.1.9578/private/pacbio/pythonpkgs/pbsmrtpipe/lib/python2.7/site-packages/pbsmrtpipe/cluster_templates/sge_pacbio_def66/stop.tmpl ./sge_smrtq/
+
+pbsmrtpipe show-workflow-options -o resequencing_workflow_template.xml
+pbsmrtpipe pipeline-id pbsmrtpipe.pipelines.sa3_ds_resequencing_fat --preset-xml resequencing_template.xml --preset-xml resequencing_workflow_template.xml -e eid_subread:/ext/smrtlink/userdata/jobs_root/000/000632/tasks/pbcoretools.tasks.gather_subreadset-1/file.subreadset.xml -e eid_ref_dataset:/Jake/home/derek.bickhart/ARS_UCDv1_0_20_polish/ARS_UCD1_0_20_ref/referenceset.xml
