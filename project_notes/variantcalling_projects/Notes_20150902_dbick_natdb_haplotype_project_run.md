@@ -372,4 +372,6 @@ And now to queue up all the tasks to get things going.
 ls ./*/*/*.sorted.merged.bam > sorted.merged.bam.list
 
 cat sorted.merged.bam.list | xargs -I {} sbatch indel_realign_markdups.sh {} ARS-UCD1.0.14.clean.wIGCHaps.fasta
+
+# The GATK strikes again! This time it complained about the fact that I named the indel regions as a ".targets" file instead of a ".intervals" file.
 ```
