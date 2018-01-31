@@ -502,3 +502,18 @@ Parameter Kmeans iteration max: 100
 Norm: D2star_Group_Prob_Bernulli_Lmer_Euclidian
 Graph Type: Paired
 
+```
+
+
+## Alignment percentage checks
+
+In this project, I am going to check the alignment percentage of reads to clusters in our assembly and Mick's assemblies. It will be a "cross-alignment" validation of read composition. I am going to queue up jobs on each cluster individually, and align the 
+
+> /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project
+
+```bash
+ls /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina/YMPrepCannula_run3_L* > raw_illumina_fastas.tab
+ls /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/micks_reads/* >> raw_illumina_fastas.tab
+
+# Testing the run to see how it progresses first
+sbatch process_individual_clusters_forRD.pl raw_illumina_fastas.tab best_genome_clusters/cluster.100.fasta testrun

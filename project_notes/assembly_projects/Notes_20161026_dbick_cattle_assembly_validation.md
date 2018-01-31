@@ -2546,3 +2546,111 @@ cat placed_scaffolds.agp unplaced_scaffolds.agp > ARS-UCD1.0.19.base.agp
 perl -e 'while(<>){chomp; @s = split(/\t/); if(scalar(@s) < 9){print "$_\n";}}' < ARS-UCD1.0.19.base.agp
 6       1       117468312       303     D       6       62227145        104378052 
 # Was missing an orientation flag, so I added a "+"
+```
+
+## Polishing the arrowed assembly: ARS-UCDv1.22
+
+I just need to run alignments of the Dominette data to polish the assembly now.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_v121
+
+```bash
+# Downloading the ASM
+wget https://gembox.cbcb.umd.edu/seqdata/bos_taurus/asm/ARS-UCDv1.0.21.fasta
+
+# Removing the stupid arrow tags
+perl -ne 'if($_ =~ /^>/){$_ =~ s/\|arrow//; print $_;}else{print $_;}' < ARS-UCDv1.0.21.fasta > ARS-UCDv1.0.21.reformat.fasta
+
+# Just checking to make sure that my one-liner didn't do any damage
+samtools faidx ARS-UCDv1.0.21.reformat.fasta
+# Looks good.
+
+# Gathering all of the reads that I will use for polishing
+ls /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_110/dominette_fastqs/*.fastq > sra_dominette_fastqs.list
+ls /mnt/nfs/nfs2/brosen/projects/ARS-UCD/new_Dominette_NextSeq_data/*/*.fastq | grep -v 9.16.16 > tim_nextseq_dominette_fastqs.list
+
+cat sra_dominette_fastqs.list tim_nextseq_dominette_fastqs.list > pilon_polishing_fastq_list.tab
+# Manually editting using Vim
+
+# OK, ready to go
+bwa index ARS-UCDv1.0.21.reformat.fasta; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t pilon_polishing_fastq_list.tab -f ARS-UCDv1.0.21.reformat.fasta -p assemble1 -m
+
+perl ~/sperl/assembly_scripts/slurmPilonFasta.pl -f aligns/dominette/dominette.sorted.merged.bam -g ARS-UCDv1.0.21.reformat.fasta -o pilon -p assemble3
+
+# Oops! The minimum memory state was too low! I need to change some things
+# Changing it to 9000 megs
+for i in scripts/*ScbfJmS*.sh; do echo $i; perl -ne '$_ =~ s/--mem=1000/--mem=9000/; $_ =~ s/-Xmx1000M/-Xmx9000M/; print $_;' < $i > temp; mv temp $i; done
+
+# Now, concatenating the pilon fastas into an ordered list
+cd pilon
+# It's super convoluted, but I resorted by chr length and then sorted the top 30 chromosomes (autosomes and X) numerically
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); @chrs; while(<IN>){chomp; @s = split(/\t/); push(@chrs, [$s[0],$s[1]]);} close IN; @chrs = sort {$b->[1] <=> $a->[1]} @chrs; my @temp; for($x = 0; $x < 30; $x++){push(@temp, $chrs[$x]);} @temp = sort {$x = $a->[0]; $y = $b->[0]; if($x eq "X"){$x = 500;} if($y eq "X"){$y = 500;} $x <=> $y} @temp; for($x = 0; $x < 30; $x++){$chrs[$x] = $temp[$x];} open(OUT, "> ../ARS-UCD_v21_pilon_corrected.temp.fa"); %printed; foreach my $c (@chrs){$j = $c->[0]; my $f = "$j.pilon.fasta"; open(IN, "< $f") || die "Could not open file: $f!\n"; my $eline = <IN>; $eline =~ s/_pilon//; print {OUT} $eline; while(<IN>){print {OUT} $_;} close IN;}' ../ARS-UCDv1.0.21.reformat.fasta.fai
+cd ../
+
+# Now to check Scaffold orientation
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=1 --wrap="bwa index ARS-UCD_v21_pilon_corrected.temp.fa"
+perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCD_v21_pilon_corrected.temp.fa -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/rcmap_manifest_correct.sorted.fa -o ARS-UCD_v21_pilon_corrected.recmap
+# Autosomes that are reversed: 1, 8, 12, 15, 16, 17, 18, 20, 22, 25, 29
+
+# I will have to check ChrX orientation separately
+samtools faidx ARS-UCD_v21_pilon_corrected.temp.fa X > v21_corrected_X.fa
+samtools faidx ../ars_ucd_119/ARS-UCD1.0.19.base.fasta X > v19_uncorrected_X.fa
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/run_nucmer_plot_automation_script.sh v19_uncorrected_X.fa v21_corrected_X.fa
+
+# The mcoords align up. Looks like the X chromosome is in the right orientation
+perl ~/sperl/assembly_scripts/faiToAGP.pl ARS-UCD_v21_pilon_corrected.temp.fa.fai ARS-UCD_v22_reorient_fasta.agp
+# I edited the orientation based on the prior analysis
+java -jar ../ars_ucd_119/CombineFasta.jar agp2fasta -f ARS-UCD_v21_pilon_corrected.temp.fa -a ARS-UCD_v22_reorient_fasta.agp -o ARS-UCDv1.0.22.fasta
+samtools faidx ARS-UCDv1.0.22.fasta
+
+# Quick test to confirm scaffold lengths match up
+perl -lane 'print "$F[0]\t$F[1]";' < ARS-UCDv1.0.21.reformat.fasta.fai | sort -k1 > ARS-UCDv1.0.21.reformat.fasta.fai.sorted
+perl -lane 'print "$F[0]\t$F[1]";' < ARS-UCDv1.0.22.fasta.fai | sort -k1 > ARS-UCDv1.0.22.fasta.fai.sorted
+perl -lane 'print "$F[0]\t$F[1]";' < ARS-UCD_v21_pilon_corrected.temp.fa.fai | sort -k1 > ARS-UCD_v21_pilon_corrected.temp.fa.fai.sorted
+
+diff ARS-UCDv1.0.21.reformat.fasta.fai.sorted ARS-UCDv1.0.22.fasta.fai.sorted # just about everything, so Pilon correction made alterations
+diff ARS-UCD_v21_pilon_corrected.temp.fa.fai.sorted ARS-UCDv1.0.22.fasta.fai.sorted # nothing, as expected
+
+# Checking gap content after the polishing
+java -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ARS-UCD_v21_pilon_corrected.temp.fa -o ARS-UCD_v21_pilon_corrected.temp.gaps.bed -s ARS-UCD_v21_pilon_corrected.temp.gaps.stats
+
+java -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ARS-UCDv1.0.22.fasta -o ARS-UCDv1.0.22.gaps.bed -s ARS-UCDv1.0.22.gaps.stats
+```
+
+## Gap resizing: ARS-UCDv1.23
+
+Now I am going to try to isolate the gaps that are > 100 bp and standardize them to 250 bp each. I need to use my AGP program to do this, and it will be a bit of a pain to reconcile coordinates, but I will try!
+
+Let's first isolate the gaps that need to be resized, then subtract them from a bed file of chromosome coordinates and proceed from there.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_121
+
+```bash
+perl -lane 'if($F[2] - $F[1] > 100){print $_;}' < ARS-UCDv1.0.22.gaps.bed | wc -l
+823
+
+# Hmm... that's alot more than I expected! 
+# I found out why: my CombineFasta.jar program accidentally masked lowercase bases.
+# Redoing...
+java -jar CombineFasta.jar agp2fasta -f ARS-UCD_v21_pilon_corrected.temp.fa -a ARS-UCD_v22_reorient_fasta.agp -o ARS-UCDv1.0.22.fasta
+java -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ARS-UCDv1.0.22.fasta -o ARS-UCDv1.0.22.gaps.bed -s ARS-UCDv1.0.22.gaps.stats
+
+perl -lane 'if($F[2] - $F[1] > 100){print $_;}' < ARS-UCDv1.0.22.gaps.bed | wc -l
+42
+
+# Pssh, only 42? That's not too hard to reconcile
+perl -lane 'if($F[2] - $F[1] > 100){print $_;}' < ARS-UCDv1.0.22.gaps.bed > ARS-UCDv1.0.22.gaps.gt100.bed
+cat ARS-UCDv1.0.22.fasta.fai | sort -k2n | tail -n 30 | perl -lane 'print "$F[0]\t1\t$F[1]";' | bedtools sort -i stdin > ARS-UCDv1.0.22.fasta.chrs.bed
+
+bedtools subtract -a ARS-UCDv1.0.22.fasta.chrs.bed -b ARS-UCDv1.0.22.gaps.gt100.bed | perl bedtools_to_agp.pl  > ars_ucd_v23_major_chrs.agp
+
+# ChrX had a noticeably smaller profile
+perl -lane 'if(length($F[0]) > 2){print $_;}' < ARS-UCD_v22_reorient_fasta.agp > ars_ucd_v23_unplaced_chrs.agp
+
+# Now to combine them all and generate the final assembly fasta
+cat ars_ucd_v23_major_chrs.agp ars_ucd_v23_unplaced_chrs.agp > ARS-UCD_v23_gapresize.agp
+# I think I'm ready to generate v23
+java -jar CombineFasta.jar agp2fasta -f ARS-UCDv1.0.22.fasta -a ARS-UCD_v23_gapresize.agp -o ARS-UCDv1.0.23.fasta
+samtools faidx ARS-UCDv1.0.22.fasta
+
+java -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ARS-UCDv1.0.23.fasta -o ARS-UCDv1.0.23.gaps.bed -s ARS-UCDv1.0.23.gaps.stats
