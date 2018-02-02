@@ -12,15 +12,25 @@
 	* [v1.0.5](#five)
 	* [v1.0.6](#six)
 	* [v1.0.7](#seven)
+	* [v1.0.8](#eight)
+	* [v1.0.9](#nine)
+	* [v1.0.13](#thirteen)
 * [Polishing the assembly](#polish)
 * [SNP remapping and stats](#snps)
 * [Large scale assembly error correction](#error_correction)
 	* [Recmap revision](#recmap_rev)
 	* [Nucmer coord strategy](#nuccoord)
+* [The first sign of problems](#problems)
 * [One last gasp: an automated way of correcting misassemblies](#lastgasp)
 	* [v1.0.15](#fifteen)
 	* [v1.0.16](#sixteen)
+	* [v1.0.17](#seventeen)
+	* [v1.0.18](#eighteen)
 	* [Unmapped marker tests](#unmapped)
+	* [v1.0.19](#nineteen)
+	* [v1.0.22](#twentytwo)
+	* [v1.0.23](#twentythree)
+	* [Final parity checks](#finalparity)
 
 <a name="stats"></a>
 ## Sequence alignment and summary statistics
@@ -1535,6 +1545,7 @@ sbatch /mnt/nfs/nfs2/dbickhart/dominette_asm/serge_script_oneshot.sh align/domin
 perl ../../bickhart-users/binaries/GoatAssemblyScripts/assembly_frc_benchmarking/summarizeAnalysisSlurm.pl -b run1only/canu/dominette/dominette.sorted.merged,run1only/ctx/dominette/dominette.sorted.merged,run1only/polished/dominette/dominette.sorted.merged,run1only/polished.final/dominette/dominette.sorted.merged,run1only/topolish.no1b/dominette/dominette.sorted.merged,run1only/umd3/dominette/dominette.sorted.merged,/mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_112/align/dominette/dominette.sorted.merged -n canu,ctx,polished,polished.final,topolish.no1b,umd3,ver12 -o cattle_asms_summary_stats_v12.md
 ```
 
+<a name="thirteen"></a>
 #### v1.0.13
 
 This is likely to be the final version. The changes list is very small and constitutes only one removal, one inversion and one new contig inclusion. Since few bases are being altered, we will likely not polish this version of the assembly.
@@ -1714,7 +1725,7 @@ perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/sequence_data_scripts/
 |QV               |    41|    41|    40|    40|    41|    41|    40|    40|
 |STRECH_PE        | 27257| 25495| 26656| 25697| 27470| 28936| 18861| 18897|
 
-
+<a name="problems"></a>
 ## Problems with assembly 
 
 Bob found some regions of UMD3 that are apparently not present in the ARS-UCD assembly. Checking them now.
@@ -2498,6 +2509,7 @@ Testing coverage around breakpoints of one region of the assembly to ensure prop
 perl -ane '@bsegs = split(/\//, $F[0]); @nsegs = split(/\./, $bsegs[-1]); open(IN, "samtools view $F[0] 7:67845000-67848000 |"); my %c; while(<IN>){chomp; @s = split(/\t/); if($s[4] == 0){next;} $bin = int((($s[3] - 67845000) / 200) + 0.5); if($bin < 0){$bin = 0;} $c{$bin} += 1;} close IN; print "$nsegs[0]"; for($x = 0; $x < 16; $x++){if(exists($c{$x})){print "\t$c{$x}";}else{print "\t0";}} print "\n";' < igc_variant_list_bams.list
 ```
 
+<a name="eighteen"></a>
 #### Generating version 18
 
 ```bash
@@ -2526,6 +2538,7 @@ jellyfish dump -o dominette_nextseq_21mer.count -c dominette_nextseq_21mer.jf
 python check_probeseq_kmers.py 21 dominette_nextseq_21mer.jf /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa > kmer_check_stdout.tab
 ```
 
+<a name="nineteen"></a>
 #### Generating version 19
 
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_119
@@ -2547,7 +2560,7 @@ perl -e 'while(<>){chomp; @s = split(/\t/); if(scalar(@s) < 9){print "$_\n";}}' 
 6       1       117468312       303     D       6       62227145        104378052 
 # Was missing an orientation flag, so I added a "+"
 ```
-
+<a name="twentytwo"></a>
 ## Polishing the arrowed assembly: ARS-UCDv1.22
 
 I just need to run alignments of the Dominette data to polish the assembly now.
@@ -2617,6 +2630,7 @@ java -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBed
 java -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ARS-UCDv1.0.22.fasta -o ARS-UCDv1.0.22.gaps.bed -s ARS-UCDv1.0.22.gaps.stats
 ```
 
+<a name="twentythree"></a>
 ## Gap resizing: ARS-UCDv1.23
 
 Now I am going to try to isolate the gaps that are > 100 bp and standardize them to 250 bp each. I need to use my AGP program to do this, and it will be a bit of a pain to reconcile coordinates, but I will try!
@@ -2654,3 +2668,48 @@ java -jar CombineFasta.jar agp2fasta -f ARS-UCDv1.0.22.fasta -a ARS-UCD_v23_gapr
 samtools faidx ARS-UCDv1.0.22.fasta
 
 java -jar /mnt/nfs/nfs2/bickhart-users/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ARS-UCDv1.0.23.fasta -o ARS-UCDv1.0.23.gaps.bed -s ARS-UCDv1.0.23.gaps.stats
+```
+
+<a name="finalparity"></a>
+#### Final parity checks
+
+Going to test out the HD probes to see if everything makes sense
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_123
+
+```bash
+perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a ARS-UCDv1.0.23.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o ARS-UCDv1.0.23.hdprobes
+
+# only 853 unmapped probes
+perl -lane 'if($F[1] eq "*"){print $F[0];}' < ARS-UCDv1.0.23.hdprobes.tab > ARS-UCDv1.0.23.hdprobes.unmapped.list
+
+perl -lane 'if($F[1] eq "*"){print $F[4];}' < ARS-UCDv1.0.23.hdprobes.tab | perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 -m
+```
+#### Unmapped HD probes per chromosome
+
+|Entry | Count|
+|:-----|-----:|
+|10    |    50|
+|11    |    16|
+|12    |    24|
+|13    |    21|
+|14    |    13|
+|15    |    24|
+|16    |    11|
+|17    |   303|
+|18    |    31|
+|19    |    22|
+|20    |    14|
+|21    |    19|
+|22    |    11|
+|23    |    15|
+|24    |     3|
+|25    |     6|
+|26    |    10|
+|27    |     9|
+|28    |     5|
+|29    |    20|
+
+That's not too bad! chr17 is a bit off, but that may be due to smaller segments of unmapped probes.
+
+```bash

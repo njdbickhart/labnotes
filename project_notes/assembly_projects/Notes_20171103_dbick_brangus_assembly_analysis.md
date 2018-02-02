@@ -152,3 +152,10 @@ perl -e '@blocks = (0); @chrs = (""); @pos = (""); $int = 0; while(<>){chomp; @s
 # Combined tab file:
 perl -e 'chomp(@ARGV); my %h; foreach my $af (@ARGV){open(IN, "< $af"); while(<IN>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1], $s[2]);} close IN;} foreach my $p (sort {$a cmp $b}keys(%h)){@vals = @{$h{$p}}; print "$p\t" . join("\t", @vals); print "\n";}' angusBrahmanF1_FALCONUnzip_arrow.HDprobes.tab paternal.HDprobes.tab maternal.HDprobes.tab > joined_list_HD_marker_coords.tab
 ```
+
+#### aligning the Brahman x Angus assembly to v23
+
+```bash
+for i in *.fasta; do samtools faidx $i; done
+
+# I am going to use a script that automates the comparison of similar chromosomes

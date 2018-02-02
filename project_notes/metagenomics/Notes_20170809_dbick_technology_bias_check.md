@@ -517,3 +517,11 @@ ls /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/micks_reads/
 
 # Testing the run to see how it progresses first
 sbatch process_individual_clusters_forRD.pl raw_illumina_fastas.tab best_genome_clusters/cluster.100.fasta testrun
+# took 7 hours
+
+# Now testing with minimap2 to see if we can speed up alignment
+sbatch process_individual_clusters_forRD.pl raw_illumina_fastas.tab best_genome_clusters/cluster.100.fasta testrunM
+
+# Looks good. Running on all of the USDA samples
+ls best_genome_clusters/*.fasta | xargs -I {} sbatch process_individual_clusters_forRD.pl raw_illumina_fastas.tab {} {}
+
