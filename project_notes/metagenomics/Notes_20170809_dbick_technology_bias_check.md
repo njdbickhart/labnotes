@@ -525,3 +525,6 @@ sbatch process_individual_clusters_forRD.pl raw_illumina_fastas.tab best_genome_
 # Looks good. Running on all of the USDA samples
 ls best_genome_clusters/*.fasta | xargs -I {} sbatch process_individual_clusters_forRD.pl raw_illumina_fastas.tab {} {}
 
+# And mick's clusters
+ls micks_clusters/*.fasta | xargs -I {} sbatch -p assemble1 process_individual_clusters_forRD.pl raw_illumina_fastas.tab {} {}
+
