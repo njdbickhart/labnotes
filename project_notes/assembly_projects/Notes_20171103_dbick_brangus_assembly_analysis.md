@@ -159,3 +159,14 @@ perl -e 'chomp(@ARGV); my %h; foreach my $af (@ARGV){open(IN, "< $af"); while(<I
 for i in *.fasta; do samtools faidx $i; done
 
 # I am going to use a script that automates the comparison of similar chromosomes
+
+```
+
+#### HD probe realignment to new haplotig assemblies
+
+I am redoing the HD probe alignment to generate a stats file that allows the assignment of scaffolds to chromosome units.
+
+```bash
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 --partition=assemble3 --wrap="perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a bostaurus_angus.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o bostaurus_angus.HDProbes"
+
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 --partition=assemble3 --wrap="perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a bostaurus_brahma.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o bostaurus_brahma.HDProbes"

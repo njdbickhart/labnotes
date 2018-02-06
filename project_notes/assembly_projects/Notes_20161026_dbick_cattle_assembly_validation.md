@@ -2710,6 +2710,18 @@ perl -lane 'if($F[1] eq "*"){print $F[4];}' < ARS-UCDv1.0.23.hdprobes.tab | perl
 |28    |     5|
 |29    |    20|
 
-That's not too bad! chr17 is a bit off, but that may be due to smaller segments of unmapped probes.
+That's not too bad! chr17 is a bit off, but that may be due to smaller segments of unmapped probes. In subsequent manual checks, most of the regions identified in chr17 were in gene deserts or were regions of increasing heterozygosity in Dominette.
+
+<a name="dataanalysis"></a>
+## Initial data analysis
+
+I am going to start to generate some initial data for the forthcoming publication. First steps: Repeatmasking and classification. Then I will dig out my email from Jared Decker and see if his strategy for locating high depth gap regions using an association study works. 
+
+#### Repeatmasking
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_123
 
 ```bash
+# This should be relatively easy to set up
+mkdir rmask
+sbatch --nodes=1 --ntasks-per-node=30 --mem=25000 --partition=assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/RepeatMasker/RepeatMasker -pa 30 -species cow -no_is -dir rmask ARS-UCDv1.0.23.fasta"
