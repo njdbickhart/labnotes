@@ -159,3 +159,11 @@ perl -e 'chomp(@ARGV); my %h; foreach my $af (@ARGV){open(IN, "< $af"); while(<I
 for i in *.fasta; do samtools faidx $i; done
 
 # I am going to use a script that automates the comparison of similar chromosomes
+# First, I made modifications to my previous segmentation script to use the mashmap alignments that Serge generated
+# Removing the alignments to the unplaced contigs
+grep -v 'Scb' f1_dam_3ddna.out > f1_dam_3ddna.out.filt
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -g f1_dam_3ddna.out.filt -o f1_dam_3ddna.filt
+
+# Going to try to automate the process
+for i in *.out; do grep -v 'Scb' $i > $i.filt; perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -g $i.filt -o $i.filt; done
+```
