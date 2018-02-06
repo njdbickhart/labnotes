@@ -159,6 +159,7 @@ perl -e 'chomp(@ARGV); my %h; foreach my $af (@ARGV){open(IN, "< $af"); while(<I
 for i in *.fasta; do samtools faidx $i; done
 
 # I am going to use a script that automates the comparison of similar chromosomes
+<<<<<<< HEAD
 
 ```
 
@@ -170,3 +171,13 @@ I am redoing the HD probe alignment to generate a stats file that allows the ass
 sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 --partition=assemble3 --wrap="perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a bostaurus_angus.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o bostaurus_angus.HDProbes"
 
 sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 --partition=assemble3 --wrap="perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a bostaurus_brahma.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o bostaurus_brahma.HDProbes"
+=======
+# First, I made modifications to my previous segmentation script to use the mashmap alignments that Serge generated
+# Removing the alignments to the unplaced contigs
+grep -v 'Scb' f1_dam_3ddna.out > f1_dam_3ddna.out.filt
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -g f1_dam_3ddna.out.filt -o f1_dam_3ddna.filt
+
+# Going to try to automate the process
+for i in *.out; do grep -v 'Scb' $i > $i.filt; perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -g $i.filt -o $i.filt; done
+```
+>>>>>>> origin/master

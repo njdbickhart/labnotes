@@ -41,4 +41,12 @@ cp scaffold_rmask/SScrofa.1703USDA.meta.all.qpjp_scf13_edited_at_LARGE1_to_incor
 echo -e "SScrofa.1703USDA.meta.all.qpjp_scf13_edited_at_LARGE1_to_incorporate_scf33.fasta.masked\tCM009090.1" > correction.list
 
 perl reorder_fasta.pl USDA_MARC_Sscrofa_repmasked_chr5_replaced.fasta GCA_002844635.1_USMARCv1.0_nmasked.fna correction.list
+
+# UPDATE: they need a softmasked reference. I think that this can work with the existing scaffold and sequence
+# Getting the masking locations from the fasta
+perl -lane 'if($c < 3){$c++; next;}else{print "$F[4]\t$F[5]\t$F[6]";}' < scaffold_rmask/SScrofa.1703USDA.meta.all.qpjp_scf13_edited_at_LARGE1_to_incorporate_scf33.fasta.out | bedtools merge -i stdin > SScrofa.1703USDA.meta.all.qpjp_scf13.repeats.bed
+bedtools maskfasta -fi SScrofa.1703USDA.meta.all.qpjp_scf13_edited_at_LARGE1_to_incorporate_scf33.fasta -bed SScrofa.1703USDA.meta.all.qpjp_scf13.repeats.bed -fo SScrofa.1703USDA.meta.all.qpjp_scf13_edited_at_LARGE1_to_incorporate_scf33.fasta.softmasked -soft
+
+# I edited the corrections list and other entries to allow the script to work
+perl reorder_fasta.pl USDA_MARC_Sscrofa_repmasked_chr5_replaced.soft_masked.fasta GCA_002844635.1_USMARCv1.0_nmasked.fna correction.list
 ```
