@@ -159,19 +159,33 @@ perl -e 'chomp(@ARGV); my %h; foreach my $af (@ARGV){open(IN, "< $af"); while(<I
 for i in *.fasta; do samtools faidx $i; done
 
 # I am going to use a script that automates the comparison of similar chromosomes
-<<<<<<< HEAD
+
 
 ```
 
-#### HD probe realignment to new haplotig assemblies
 
-I am redoing the HD probe alignment to generate a stats file that allows the assignment of scaffolds to chromosome units.
+## Hi-C scaffolding check, assignment and validation
+
+I am going to take the scaffold assignments from the Hi-C data, order them and score them based on expected chromosome coverage, errors and (eventually) use a greedy algorithm to assign them into the best haplotype scaffolds.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/angus_x_brahman/hic_testing
 
 ```bash
+# Downloading the necessary files
+wget https://gembox.cbcb.umd.edu/triobinning/scaffolding/f1_dam_3ddna.out
+wget https://gembox.cbcb.umd.edu/triobinning/scaffolding/f1_dam_phase.out
+wget https://gembox.cbcb.umd.edu/triobinning/scaffolding/f1_dam_phasevssalsa.out
+wget https://gembox.cbcb.umd.edu/triobinning/scaffolding/f1_dam_salsa.out
+wget https://gembox.cbcb.umd.edu/triobinning/scaffolding/f1_sire_3ddna.out
+wget https://gembox.cbcb.umd.edu/triobinning/scaffolding/f1_sire_phase.out
+wget https://gembox.cbcb.umd.edu/triobinning/scaffolding/f1_sire_phasevssalsa.out
+wget https://gembox.cbcb.umd.edu/triobinning/scaffolding/f1_sire_salsa.out
+I am redoing the HD probe alignment to generate a stats file that allows the assignment of scaffolds to chromosome units.
+
 sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 --partition=assemble3 --wrap="perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a bostaurus_angus.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o bostaurus_angus.HDProbes"
 
 sbatch --nodes=1 --mem=15000 --ntasks-per-node=1 --partition=assemble3 --wrap="perl /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/alignAndOrderSnpProbes.pl -a bostaurus_brahma.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o bostaurus_brahma.HDProbes"
-=======
+
 # First, I made modifications to my previous segmentation script to use the mashmap alignments that Serge generated
 # Removing the alignments to the unplaced contigs
 grep -v 'Scb' f1_dam_3ddna.out > f1_dam_3ddna.out.filt
@@ -179,5 +193,7 @@ perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -g f1_dam_3ddna.out.filt
 
 # Going to try to automate the process
 for i in *.out; do grep -v 'Scb' $i > $i.filt; perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -g $i.filt -o $i.filt; done
+
+
 ```
->>>>>>> origin/master
+
