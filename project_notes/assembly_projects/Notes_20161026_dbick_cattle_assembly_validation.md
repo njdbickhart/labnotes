@@ -2725,3 +2725,30 @@ I am going to start to generate some initial data for the forthcoming publicatio
 # This should be relatively easy to set up
 mkdir rmask
 sbatch --nodes=1 --ntasks-per-node=30 --mem=25000 --partition=assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/RepeatMasker/RepeatMasker -pa 30 -species cow -no_is -dir rmask ARS-UCDv1.0.23.fasta"
+```
+
+
+#### Bob's SNP lists
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_123
+
+```bash
+# I am downloading and running Bob's snp lists through my alignment scripts
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1lhx2KptUlH-39Uik58i1iUpd_Zyyr6A9 9913_CHIP_probeA.csv.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1cog9igLuBuDxMETb8p6Hybc4jDktYNsG 9913_CHIP_probeB.csv.gz
+
+# I need to trick my program into thinking that these are part of a chromosome
+perl -ne 'chomp; @F = split(/,/); print ">$F[0]\.U\.$F[0]\n$F[1]\n";' < 9913_CHIP_probeA.csv > 9913_CHIP_probeA.probeseq.format.fa
+
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a ARS-UCDv1.0.23.fasta -p 9913_CHIP_probeA.probeseq.format.fa -o ARS-UCDv1.0.23.probeSeqA
+
+# It worked. Now to rerun on probe sequence b and the full sequence
+perl -ne 'chomp; @F = split(/,/); print ">$F[0]\.U\.$F[0]\n$F[1]\n";' < 9913_CHIP_probeB.csv > 9913_CHIP_probeB.probeseq.format.fa
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a ARS-UCDv1.0.23.fasta -p 9913_CHIP_probeB.probeseq.format.fa -o ARS-UCDv1.0.23.probeSeqB
+
+# Finally, the full sequence
+perl -ne 'chomp; @F = split(/,/); $F[2] =~ s/\[(.+)\/.+\]/$1/; print ">$F[0]\.U\.$F[0]\n$F[2]\n";' < 9913_CHIP_probeA.csv > 9913_CHIP_probeA.fullseq.format.fa
+
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a ARS-UCDv1.0.23.fasta -p 9913_CHIP_probeA.fullseq.format.fa -o ARS-UCDv1.0.23.fullseqA
+
+# Now to generate the comparisons
