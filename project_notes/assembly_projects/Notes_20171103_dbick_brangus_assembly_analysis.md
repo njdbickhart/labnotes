@@ -197,3 +197,22 @@ for i in *.out; do grep -v 'Scb' $i > $i.filt; perl ~/sperl/assembly_scripts/ali
 
 ```
 
+## Repeatmasker analysis and putative active retroviral element
+
+Serge found a poly-A region in the assembly that NCBI was trying to tell us was a Solid adaptor sequence. Here is the region in the Angus (sire) assembly:
+
+> tig00020254    84863977    15197319..15197349    adaptor:NGB00970.1
+
+
+I need to repeatmask and pull relevant repetitive data from the region directly flanking that candidate. The Poly-A tail should be on the 3' end of a relatively "intact" ERV for this to be convincing.
+
+> /mnt/nfs/nfs2/bickhart-users/cattle_asms/angus_x_brahman
+
+```bash
+# Generating repeatmasker files
+# First, let's get rid of the annoying arrow tags
+perl -ne '$_ =~ s/\|arrow\|arrow//; print $_;' < bostaurus_angus.fasta > bostaurus_angus.reformat.fasta
+
+mkdir angus_rm
+sbatch --nodes=1 --ntasks-per-node=60 --mem=100000 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/RepeatMasker/RepeatMasker -pa 60 -species cow -no_is -dir angus_rm bostaurus_angus.reformat.fasta"
+

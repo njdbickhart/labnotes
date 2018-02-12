@@ -528,3 +528,121 @@ ls best_genome_clusters/*.fasta | xargs -I {} sbatch process_individual_clusters
 # And mick's clusters
 ls micks_clusters/*.fasta | xargs -I {} sbatch -p assemble1 process_individual_clusters_forRD.pl raw_illumina_fastas.tab {} {}
 
+# It looks like the analysis completed successfully. I need to grab some more stats from the files to improve my comparisons
+# Let's get the overal GC content and fasta lengths first
+module load samtools
+
+for i in best_genome_clusters/*.final.bam; do name=`echo $i | cut -d'.' -f1,2`; echo $name; samtools faidx $name.fasta; python3 error_corrected_reads/calcGCcontentFasta.py -f $name.fasta -o $name.gc -t 10; done
+for i in micks_clusters/*.final.bam; do name=`echo $i | cut -d'.' -f1,2`; echo $name; samtools faidx $name.fasta; python3 error_corrected_reads/calcGCcontentFasta.py -f $name.fasta -o $name.gc -t 10; done
+
+perl -e 'my $fold = "best_genome_clusters"; <>; %f; while(<>){chomp; @s = split(/\t/); $f{$s[0]} = 1;} print "Cluster\tContig\tGC\tLen\n"; foreach my $t (sort{$a cmp $b} keys(%f)){my %l; my %g; open(IN, "< $fold/$t.fai"); while(<IN>){chomp; @s = split(/\t/); $l{$s[0]} = $s[1];} close IN; $h = $t; $h =~ s/\.fasta//; open(IN, "< $fold/$h.gc"); while(<IN>){chomp; @s = split(/\t/); $g{$s[0]} = $s[1];} close IN; foreach my $k (sort{$a cmp $b} keys(%l)){print "$t\t$k\t$g{$k}\t$l{$k}\n";}}' < usda_clusters_rg_counts.tab > usda_clusters_gclen.tab
+perl -e 'my $fold = "micks_clusters"; <>; %f; while(<>){chomp; @s = split(/\t/); $f{$s[0]} = 1;} print "Cluster\tContig\tGC\tLen\n"; foreach my $t (sort{$a cmp $b} keys(%f)){my %l; my %g; open(IN, "< $fold/$t.fai"); while(<IN>){chomp; @s = split(/\t/); $l{$s[0]} = $s[1];} close IN; $h = $t; $h =~ s/\.fasta//; open(IN, "< $fold/$h.gc"); while(<IN>){chomp; @s = split(/\t/); $g{$s[0]} = $s[1];} close IN; foreach my $k (sort{$a cmp $b} keys(%l)){print "$t\t$k\t$g{$k}\t$l{$k}\n";}}' < micks_clusters_rg_counts.tab > micks_clusters_gclen.tab
+
+# I also have a hunch that cross-mapping validation may be a good sign of repetitive or contaminant quality
+# I updated the script to count map quality and zeromapQ reads
+sbatch -p assemble3 calculate_cluster_read_depth.pl -f best_genome_clusters -o usda_clusters_rg_counts.ext.tab
+sbatch -p assemble3 calculate_cluster_read_depth.pl -f micks_clusters -o micks_clusters_rg_counts.ext.tab
+```
+
+I am plotting these on my local VM to allow me to interrogate the plots in real time.
+
+```R
+library(dplyr)
+library(ggplot2)
+
+mickdata <- read.delim("micks_clusters_rg_counts.tab")
+# Mutating data for text plotting
+mickdata <- mutate(mickdata, outlier=ifelse(Count > 1000000, Cluster, as.numeric(NA)))
+# Damn R classes!
+mickdata <- mutate(mickdata, Label=ifelse(outlier, as.character(Cluster), ""))
+
+ggplot(mickdata, aes(x=ReadGroup, y=Count)) + geom_boxplot() + scale_y_log10() + labs(y="Read Count (log10)") + ggtitle("Alignments to Mick's Clusters") + geom_text(aes(label=Label), na.rm=TRUE, hjust= -0.3)
+dev.copy2pdf(file="mick_contig_aligns.boxplot.pdf", useDingbats=FALSE)
+
+
+# Let's try the same with my dataset
+usdadata <- read.delim("usda_clusters_rg_counts.tab")
+usdadata <- mutate(usdadata, Label=ifelse((ReadGroup == "MICK" & Count > 1000000) | (ReadGroup == "USDA" & Count > 5000000), Cluster, as.numeric(NA)))
+usdadata <- mutate(usdadata, Label=ifelse(Label, as.character(Cluster), ""))
+
+ggplot(usdadata, aes(x=ReadGroup, y=Count)) + geom_boxplot() + scale_y_log10() + labs(y="Read Count (log10)") + ggtitle("Alignments to USDA Clusters") + geom_text(aes(label=Label), na.rm=TRUE, hjust= -0.3)
+dev.copy2pdf(file="usda_contig_aligns.boxplot.pdf", useDingbats=FALSE)
+
+# Now I'm going to estimate how the read counts vary by GC percentage and contig length
+usdagc <- read.delim("usda_clusters_gclen.tab")
+library(tidyr)
+
+# Condensing the data and associating with GC and len
+usdadata <- usdadata %>% spread(ReadGroup, Count) %>% mutate(Diff = USDA - MICK)
+usdadata.join <- inner_join(usdadata, usdagc, by=c("Cluster", "Contig"))
+
+# Damn joining program didn't associate all values!
+usdadata.filter <- usdadata.join %>% filter(!is.na(Diff))
+cor(usdadata.filter[,c(6,7,8)])
+# So, a correlation between contig length and the proportion of USDA reads mapping, but Mick's reads are not mapping
+           Diff          GC         Len
+Diff  1.0000000 -0.01417650  0.33446263
+GC   -0.0141765  1.00000000 -0.04456602
+Len   0.3344626 -0.04456602  1.00000000
+
+library("PerformanceAnalytics")
+chart.Correlation(usdadata.filter[,c(6,7,8)], histogram=TRUE, pch=19)
+dev.copy2pdf(file="usda_correlation_plots_alignsvscontigs.pdf", useDingbats=FALSE)
+
+# The longer contigs with high difference values may be contaminants. Let's plot them separately
+# This plot showed similar results to the correlation plots, so I used it to orient my tag printing
+ggplot(usdadata.filter, aes(x = Diff, y = Len, col = GC)) + geom_jitter() + geom_smooth(lwd = 2, se = FALSE, method="loess") + theme_bw()
+
+usdadata.filter <- mutate(usdadata.filter, Label = ifelse(Diff > 1500000 | Diff < -500000, Cluster, as.numeric(NA)))
+usdadata.filter <- mutate(usdadata.filter, Label=ifelse(Label, as.character(Cluster), ""))
+
+ggplot(usdadata.filter, aes(y = Diff, x = Len, col = GC)) + geom_jitter() + geom_smooth(lwd = 2, se = FALSE, method="loess", col = "red") + geom_text(aes(label=Label), na.rm=TRUE, hjust=-0.3) + theme_bw() + labs(x="Contig Length (bp)", y = "Read Count Difference (USDA - MICK)") + ggtitle("USDA Contig length vs ReadCount Difference")
+dev.copy2pdf(file="usda_len_vs_diff_scatter.pdf", useDingbats=FALSE)
+
+# The right-most value was very interesting, so I wanted to take a look at that cluster to see if it was a contaminant
+usdadata.filter[usdadata.filter$Cluster == "cluster.621.fasta",]
+                Cluster      Contig             Label    MICK    USDA    Diff
+27860 cluster.621.fasta tig00122470              <NA>     780   19254   18474
+27861 cluster.621.fasta tig00125079              <NA>     449   15582   15133
+27862 cluster.621.fasta tig00178536              <NA>    1610   13046   11436
+27863 cluster.621.fasta tig00497612 cluster.621.fasta 2241956 6051057 3809101
+27864 cluster.621.fasta tig00497842              <NA>   22123   67783   45660
+             GC    Len
+27860 0.5412320   4026
+27861 0.5303644   3211
+27862 0.5101818   2750
+27863 0.5707110 438390
+27864 0.5222579  44838
+
+# Looks like it may be legit! Or a contaminant that's shared between datasets.
+
+# Now to look at Mick's data
+mickgc <- read.delim("micks_clusters_gclen.tab")
+mickdata.temp <- mickdata %>% spread(ReadGroup, Count) %>% mutate(Diff = MICK - USDA)
+mickdata.join <- inner_join(mickdata.temp, mickgc, by=c("Cluster", "Contig"))
+
+mickdata.filter <- mickdata.join %>% filter(!is.na(Diff))
+cor(mickdata.filter[,c(7,8,9)])
+          Diff         GC        Len
+Diff 1.0000000 0.10804427 0.27144416
+GC   0.1080443 1.00000000 0.05880973
+Len  0.2714442 0.05880973 1.00000000
+
+# Similar to the USDA contigs, but Mick has a slight change with the GC bias
+chart.Correlation(mickdata.filter[,c(7,8,9)], histogram=TRUE, pch=19)
+dev.copy2pdf(file="mick_correlation_plots_alignsvscontigs.pdf", useDingbats=FALSE)
+
+# The difference values in Mick's data are more evenly distributed. I'll plot a comparison histogram of them against our dataset last
+mickdata.filter <- mutate(mickdata.filter, Label = ifelse(Diff > 300000 | Diff < -300000, Cluster, as.numeric(NA)))
+mickdata.filter <- mutate(mickdata.filter, Label = ifelse(Label, as.character(Cluster), ""))
+
+# Given the wider range of "Difference values" in our datasets, it's becoming far clearer that the USDA sample has far more diversity
+# Mick's sample is relatively even, by comparison!
+ggplot(mickdata.filter, aes(y= Diff, x = Len, col = GC)) + geom_jitter() + geom_smooth(lwd = 2, se = FALSE, method="loess", col = "red") + geom_text(aes(label=Label), na.rm=TRUE, hjust=-0.3) + theme_bw() + labs(x="Contig Length (bp)", y = "Read Count Difference (MICK - USDA)") + ggtitle("MICK Contig length vs ReadCount Difference")
+dev.copy2pdf(file="mick_len_vs_diff_scatter.pdf", useDingbats=FALSE)
+
+# Now to try to plot a histogram of the difference values from the two respective datasets
+join.diff <- mickdata.filter %>% select(Diff) %>% mutate(Data = c("MICK"))
+join.diff <- bind_rows(join.diff, usdadata.filter %>% select(Diff) %>% mutate(Data = c("USDA")))
+
+ggplot(join.diff, aes(x = Diff, fill = Data)) + geom_density(alpha = 0.30) + theme_bw() + xlim(c(-50000, 50000)) + labs(x = "Differences in Read Depth per Contig", y = "Density") + ggtitle("Read Count Differences in Mick's Clusters vs USDA's Clusters")
