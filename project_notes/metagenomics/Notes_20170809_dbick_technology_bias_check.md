@@ -646,6 +646,7 @@ join.diff <- mickdata.filter %>% select(Diff) %>% mutate(Data = c("MICK"))
 join.diff <- bind_rows(join.diff, usdadata.filter %>% select(Diff) %>% mutate(Data = c("USDA")))
 
 ggplot(join.diff, aes(x = Diff, fill = Data)) + geom_density(alpha = 0.30) + theme_bw() + xlim(c(-50000, 50000)) + labs(x = "Differences in Read Depth per Contig", y = "Density") + ggtitle("Read Count Differences in Mick's Clusters vs USDA's Clusters")
+
 ```
 
 Now to combine all of the data so that I can regenerate the plots with additional mapping quality data.
@@ -693,5 +694,141 @@ ZeroProp 0.038565663 -0.13634277 -0.013738608  0.02369836  1.00000000
 # So our read alignment qualities decrease on Mick's larger contigs
 chart.Correlation(mickfull.metrics.mick[,c(3,4,6,7,8)], histogram=TRUE, pch=19, title="MICK alignment to MICK clusters")
 dev.copy2pdf(file="mick_extend_mick_correlation.pdf", useDingbats=FALSE)
+
+chart.Correlation(mickfull.metrics.usda[,c(3,4,6,7,8)], histogram=TRUE, pch=19)
+dev.copy2pdf(file="mick_extend_usda_correlation.pdf", useDingbats=FALSE)
+
+png("mick_extend_mick_correlation.png", width=1200, height=800)
+chart.Correlation(mickfull.metrics.mick[,c(3,4,6,7,8)], histogram=TRUE, pch=19)
+There were 50 or more warnings (use warnings() to see the first 50)
+dev.off()
+
+png("mick_extend_usda_correlation.png", width=1200, height=800)
+chart.Correlation(mickfull.metrics.usda[,c(3,4,6,7,8)], histogram=TRUE, pch=19)
+There were 50 or more warnings (use warnings() to see the first 50)
+dev.off()
+
+# Now to do the same for the USDA clusters
+usdafull <- read.delim("usda_clusters_rg_counts.ext.full.tab")
+usdafull <- mutate(usdafull, ZeroProp = ifelse(Count > 0, 1 - (NonZeroQ / Count), 0))
+
+summary(usdafull) # Interesting... the ZeroProp read average is far higher than in Mick's data
+usdafull.metrics <- select(usdafull, -NonZeroQ)
+
+usdafull.metrics.mick <- filter(usdafull.metrics, ReadGroup == "MICK") %>% select(-ReadGroup)
+usdafull.metrics.usda <- filter(usdafull.metrics, ReadGroup == "USDA") %>% select(-ReadGroup)
+
+cor(usdafull.metrics.mick[,c(3,4,5,6,7)])
+              Count     AvgQual           GC         Len     ZeroProp
+Count    1.00000000  0.20159698  0.053087937  0.24155250  0.046192754
+AvgQual  0.20159698  1.00000000 -0.097552829  0.01416813 -0.183985431
+GC       0.05308794 -0.09755283  1.000000000 -0.05433986 -0.008441778
+Len      0.24155250  0.01416813 -0.054339858  1.00000000  0.054342640
+ZeroProp 0.04619275 -0.18398543 -0.008441778  0.05434264  1.000000000
+
+cor(usdafull.metrics.usda[,c(3,4,5,6,7)])
+              Count     AvgQual           GC         Len     ZeroProp
+Count     1.0000000 -0.04782600  0.010521697  0.23900193  0.124856845
+AvgQual  -0.0478260  1.00000000 -0.258912729  0.05120062 -0.401512812
+GC        0.0105217 -0.25891273  1.000000000 -0.03894586 -0.003804244
+Len       0.2390019  0.05120062 -0.038945857  1.00000000  0.060269000
+ZeroProp  0.1248568 -0.40151281 -0.003804244  0.06026900  1.000000000
+
+# It looks like some of our contigs have issues with repetition and the higher GC stuff tends to have more issues
+png("usda_extend_mick_correlation.png", width=1200, height=800)
+chart.Correlation(usdafull.metrics.mick[,c(3,4,5,6,7)], histogram=TRUE, pch=19)
+dev.off()
+
+png("usda_extend_usda_correlation.png", width=1200, height=800)
+chart.Correlation(usdafull.metrics.usda[,c(3,4,5,6,7)], histogram=TRUE, pch=19)
+dev.off()
+
+# Interesting, I found that several of our clusters have no reads mapping from Micks' dataset, but there are no clusters in our dataset that have no reads from our dataset
+nrow(setdiff(usdafull.metrics.usda[,c(1,2)], usdafull.metrics.mick[,c(1,2)]))
+[1] 6033
+usdamickzeroclusters <- setdiff(usdafull.metrics.usda[,c(1,2)], usdafull.metrics.mick[,c(1,2)]) %>% select(Cluster) %>% distinct()
+
+# It turns out that there are contigs in each cluster that aren't represented in Mick's data though
+usdamickzeroclusters <- setdiff(usdafull.metrics.usda[,c(1,2)], usdafull.metrics.mick[,c(1,2)])
+summary(filter(usdafull.metrics.usda, Cluster %in% usdamickzeroclusters$Cluster & Contig %in% usdamickzeroclusters$Contig)[,c(3,4,5,6,7)])
+     Count          AvgQual             GC              Len        
+ Min.   :    6   Min.   : 3.618   Min.   :0.1551   Min.   :  2000  
+ 1st Qu.:  556   1st Qu.:45.404   1st Qu.:0.3995   1st Qu.:  5509  
+ Median : 1138   Median :51.656   Median :0.4593   Median :  8270  
+ Mean   : 2124   Mean   :49.391   Mean   :0.4603   Mean   : 10149  
+ 3rd Qu.: 2320   3rd Qu.:55.652   3rd Qu.:0.5191   3rd Qu.: 12343  
+ Max.   :93871   Max.   :59.689   Max.   :0.7456   Max.   :116968  
+    ZeroProp      
+ Min.   :0.00000  
+ 1st Qu.:0.00000  
+ Median :0.00000  
+ Mean   :0.01478  
+ 3rd Qu.:0.00000  
+ Max.   :0.87259
+a
+# It looks like most of the stuff is slightly lower length than what we had, but a correlation plot shows it is the best "behaved" of our data with very little repetitive content
+png("usda_extend_notinmick_correlation.png", width=1200, height=800)
+chart.Correlation(filter(usdafull.metrics.usda, Cluster %in% usdamickzeroclusters$Cluster & Contig %in% usdamickzeroclusters$Contig)[,c(3,4,5,6,7)], histogram=TRUE, pch=19)
+dev.off()
+
+# Let's plot the length and quality distributions to compare
+usdafull.metrics.subset <- filter(usdafull.metrics.usda, Cluster %in% usdamickzeroclusters$Cluster & Contig %in% usdamickzeroclusters$Contig)
+usdafull.subcomp <- bind_rows(usdafull.subcomp, select(usdafull.metrics.usda, Count, AvgQual, GC, Len, ZeroProp) %>% mutate(Data = c("Full")))
+library(gridExtra)
+
+p.density <- ggplot(usdafull.subcomp, aes(x = Count, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig Read Depth") + xlim(c(0, 50000))
+p.qual <- ggplot(usdafull.subcomp, aes(x = AvgQual, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Average Map Qual Score")
+p.gc <- ggplot(usdafull.subcomp, aes(x = GC, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig GC Percentage")
+p.len <- ggplot(usdafull.subcomp, aes(x = log10(Len), fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig Length Log10(bp)")
+p.zero <- ggplot(usdafull.subcomp, aes(x = ZeroProp, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Proportion of Zero MapQ Reads per Contig") + xlim(c(0.0, 0.10))
+
+png("usda_contigs_distributions_not_inmicks.png", height = 1200, width = 800)
+grid.arrange(p.density, p.qual, p.gc, p.len, p.zero, ncol=2, nrow=3)
+dev.off()
+
+# Now let's find the contigs that did the USDA dataset did not map to in Mick's clusters
+mickusdazeroclusters <- setdiff(mickfull.metrics.mick[,c(1,2)], mickfull.metrics.usda[,c(1,2)])
+nrow(mickusdazeroclusters)
+[1] 4513
+
+mickfull.metrics.subset <- filter(mickfull.metrics.mick, Cluster %in% mickusdazeroclusters$Cluster & Contig %in% mickusdazeroclusters$Contig)
+mickfull.subcomp <- select(mickfull.metrics.subset, Count, AvgQual, GC, Len, ZeroProp) %>% mutate(Data = c("Subset"))
+mickfull.subcomp <- bind_rows(mickfull.subcomp, select(mickfull.metrics.mick, Count, AvgQual, GC, Len, ZeroProp) %>% mutate(Data = c("Full")))
+
+p.density <- ggplot(mickfull.subcomp, aes(x = Count, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig Read Depth") + xlim(c(0,50000))
+p.qual <- ggplot(mickfull.subcomp, aes(x = AvgQual, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Average Map Qual Score")
+p.gc <- ggplot(mickfull.subcomp, aes(x = GC, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig GC Percentage")
+p.len <- ggplot(mickfull.subcomp, aes(x = log10(Len), fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig Length Log10(bp)")
+p.zero <- ggplot(mickfull.subcomp, aes(x = ZeroProp, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Proportion of Zero MapQ Reads per Contig") + xlim(c(0.0, 0.10))
+
+png("mick_contigs_distributions_not_inusda.png", height = 1200, width = 800)
+grid.arrange(p.density, p.qual, p.gc, p.len, p.zero, ncol=2, nrow=3)
+dev.off()
 ```
 
+Some notes before I start digging into specific contigs/clusters for analysis:
+* Our reads have a GC problem (NextSeq specific?)
+* There appears to be far more repetitive content within our clusters (higher proportion of zero-mapped reads)
+* Some of our longer contigs have higher proportions of zeromapped reads than Mick's, suggesting repetitive content in our base reads
+
+Here are some of the "winners" of the top percentiles of each dataset for the USDA clusters
+
+```R
+# USDA clusters and USDA reads
+write.table(usdafull.metrics.usda[usdafull.metrics.usda$Count > 5000000,], "usdacontigs.usdareads.highcount.tab", sep="\t", row.names=FALSE, quote=FALSE)
+write.table(usdafull.metrics.usda[usdafull.metrics.usda$ZeroProp > 0.9,], "usdacontigs.usdareads.lowqual.tab", sep="\t", row.names=FALSE, quote=FALSE)
+
+# Now to grep out the contigs that don't map with Mick's reads
+write.table(filter(usdafull.metrics.usda, Cluster %in% usdamickzeroclusters$Cluster & Contig %in% usdamickzeroclusters$Contig) %>% select(Contig) %>% distinct(), "usdacontigs.usdareads.nomickreads.contigs.list", row.names=FALSE, col.names=FALSE, quote=FALSE)
+
+```
+
+I am just going to grep out the cluster tax IDs from the Phase genomics data quickly and then send the data to the group for digestion.
+
+> pwd: /home/dbickhart/share/metagenomics/pilot_project/cluster_mapping
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); <IN>; %c; while(<IN>){chomp; @s = split(/\t/); $s[0] =~ s/\.fasta//; push(@{$c{$s[1]}}, $s[0]);} close IN; %l; open(IN, "< $ARGV[1]"); while(<IN>){chomp; foreach my $j (@{$c{$_}}){$l{$j} += 1;} } close IN; open(IN, "< $ARGV[2]"); <IN>; while(<IN>){chomp; @s = split(/\t/); if(exists($l{$s[0]})){print "$s[0]\t$l{$s[0]}\t$s[3]\t$s[5]\t$s[6]\n";}}; close IN;' usda_clusters_rg_counts.ext.full.tab usdacontigs.usdareads.nomickreads.contigs.list best_genomes_report.tsv > usdacontigs.usdareads.nomickreads.contigs.clusterphylolist.tab
+
+# There were 323 clusters out of 643 that had contigs with no mappings, so this was not an amazing filter
+```

@@ -413,3 +413,6 @@ perl -lane 'if($F[5] == 0){next;} if($F[2]/$F[1] < 0.97){print $_;}' < summary_s
 # Now to queue up the samtools mpileup scripts
 perl -ne '$_ =~ s/^\./\/mnt\/nfs\/nfs1\/derek.bickhart\/CDDR-Project/; print $_;' < dedup.filtered.final.bam.list > dedup.filtered.final.bam.fullpath.list
 perl ~/sperl/sequence_data_pipeline/samtoolsMpileupBamsSlurm.pl -b vcfs -t dedup.filtered.final.bam.fullpath.list -f ARS-UCD1.0.14.clean.wIGCHaps.fasta
+
+
+
