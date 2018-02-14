@@ -216,3 +216,27 @@ perl -ne '$_ =~ s/\|arrow\|arrow//; print $_;' < bostaurus_angus.fasta > bostaur
 mkdir angus_rm
 sbatch --nodes=1 --ntasks-per-node=60 --mem=100000 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/RepeatMasker/RepeatMasker -pa 60 -species cow -no_is -dir angus_rm bostaurus_angus.reformat.fasta"
 
+# I am using bedops to preserve as much information as possible from the masking
+/mnt/nfs/nfs2/bickhart-users/binaries/bin/rmsk2bed < angus_rm/bostaurus_angus.reformat.fasta.out > angus_rm/bostaurus_angus.reformat.fasta.rm.bed
+
+# Bedops has an "optional" 16th column that gives bedtools a fit
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]";' < angus_rm/bostaurus_angus.reformat.fasta.rm.bed > angus_rm/bostaurus_angus.reformat.fasta.rm.simp.bed
+echo -e "tig00020254\t15197319\t15197349" | bedtools intersect -a stdin -b angus_rm/bostaurus_angus.reformat.fasta.rm.simp.bed -wa -wb
+tig00020254     15197319        15197349        tig00020254     15197050        15197340        L1_BT
+
+# It's a line1 nearby, let's expand the search a bit to see if there are complete elements nearby
+echo -e "tig00020254\t15190319\t15207349" | bedtools intersect -a stdin -b angus_rm/bostaurus_angus.reformat.fasta.rm.simp.bed -wa -wb
+tig00020254     15190319        15207349        tig00020254     15193973        15194183        L1-2_BT
+tig00020254     15190319        15207349        tig00020254     15194206        15194346        MIRb
+tig00020254     15190319        15207349        tig00020254     15194577        15194795        Charlie10a
+tig00020254     15190319        15207349        tig00020254     15195078        15195267        Bov-tA3
+tig00020254     15190319        15207349        tig00020254     15195280        15195394        L1MC3
+tig00020254     15190319        15207349        tig00020254     15195464        15195704        MIR
+tig00020254     15190319        15207349        tig00020254     15197050        15197340        L1_BT  <- direct intersection
+tig00020254     15190319        15207349        tig00020254     15197937        15198085        L1MA9
+tig00020254     15190319        15207349        tig00020254     15198091        15198214        Bov-tA2
+tig00020254     15190319        15207349        tig00020254     15198319        15198568        CHR-2B
+tig00020254     15190319        15207349        tig00020254     15198770        15198887        L2a
+```
+
+Bed ops column headers can be found at [this webpage](http://bedops.readthedocs.io/en/latest/content/reference/file-management/conversion/rmsk2bed.html). I think that the identification of poly-As or poly-As with some hamming distance cutoff may be a good criterion to identify recent transposition events in the genome. 

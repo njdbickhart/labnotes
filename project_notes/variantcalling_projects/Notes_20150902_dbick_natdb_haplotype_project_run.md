@@ -375,3 +375,41 @@ cat sorted.merged.bam.list | xargs -I {} sbatch indel_realign_markdups.sh {} ARS
 
 # The GATK strikes again! This time it complained about the fact that I named the indel regions as a ".targets" file instead of a ".intervals" file.
 ```
+
+## Variant calling
+
+I need to select suitable BAM files for the analysis. It looks like there are some bams with very low coverage that may impact the variant calling. I would want to remove them to avoid biasing our variant calls.
+
+> Assembler2: 
+
+```bash
+ls ./*/*/*.dedup.bam > dedup.final.bam.list
+module load samtools; perl ~/sperl/sequence_data_scripts/getBamStats.pl -n dedup.final.bam.list -o summary_stats_dedup_bams.2018.02.13.tab
+
+# Let's see how many bams are under 5X coverage
+perl -lane 'if($F[4] < 6){print $_;}' < summary_stats_dedup_bams.2018.02.13.tab
+BamName TotalReads      MappedReads     UnmappedReads   RawXCov MapXCov AvgRawChrcov    AvgMapChrcov
+./aligns/001HO11393/001HO11393.sorted.merged.bam.dedup.bam      164363326       162629074       1734252 2.70031330886414        2.67182140698742 19.4390582126377 19.3689079864248
+./aligns/007HO11737/007HO11737.sorted.merged.bam.dedup.bam      172415432       169853345       2562087 3.58796098994332        3.53464402114182 29.5061149049186 29.3991967532581
+./aligns/200HO00405/200HO00405.sorted.merged.bam.dedup.bam      172835797       170806510       2029287 2.46090600427256        2.43201219494965 22.6916124034632 22.6223531838276
+./round2/023HO06635/023HO06635.sorted.merged.bam.dedup.bam      64439402        62251035        2188367 3.55242707180079        3.43178637786891 23.115716386796  23.052625147377
+
+# Not too many. Now let's check high deviation from the mapping percentages
+perl -lane 'if($F[5] == 0){next;} if($F[2]/$F[1] < 0.97){print $_;}' < summary_stats_dedup_bams.2018.02.13.tab
+./aligns/007HO10676-0676_qia_test/007HO10676-0676_qia_test.sorted.merged.bam.dedup.bam  449513407       433637102       15876305        24.7808568453848  23.905625016229 132.590328508592        132.130627379593
+./round2/014HO07519/014HO07519.sorted.merged.bam.dedup.bam      492766949       472660610       20106339        27.165345974444 26.0569200617019 200.678179098475 199.926318938763
+./round2/023HO06635/023HO06635.sorted.merged.bam.dedup.bam      64439402        62251035        2188367 3.55242707180079        3.43178637786891 23.115716386796  23.052625147377	
+
+# The round2 version of the 014HO07519 bam has a 95% mapping rate! That's pretty suspicious, considering the round1 bam has a 98% mapping rate
+
+# So I will drop all bams under 5X coverage and the < 97% mapping rate bams (except the qia_test bam, as I do not have a replicate of that sample!
+./aligns/001HO11393/001HO11393.sorted.merged.bam.dedup.bam
+./aligns/007HO11737/007HO11737.sorted.merged.bam.dedup.bam
+./aligns/200HO00405/200HO00405.sorted.merged.bam.dedup.bam
+./round2/023HO06635/023HO06635.sorted.merged.bam.dedup.bam
+./round2/014HO07519/014HO07519.sorted.merged.bam.dedup.bam
+
+# The filtered list of bams is dedup.filtered.final.bam.list
+# Now to queue up the samtools mpileup scripts
+perl -ne '$_ =~ s/^\./\/mnt\/nfs\/nfs1\/derek.bickhart\/CDDR-Project/; print $_;' < dedup.filtered.final.bam.list > dedup.filtered.final.bam.fullpath.list
+perl ~/sperl/sequence_data_pipeline/samtoolsMpileupBamsSlurm.pl -b vcfs -t dedup.filtered.final.bam.fullpath.list -f ARS-UCD1.0.14.clean.wIGCHaps.fasta

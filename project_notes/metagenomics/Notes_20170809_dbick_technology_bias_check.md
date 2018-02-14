@@ -646,3 +646,52 @@ join.diff <- mickdata.filter %>% select(Diff) %>% mutate(Data = c("MICK"))
 join.diff <- bind_rows(join.diff, usdadata.filter %>% select(Diff) %>% mutate(Data = c("USDA")))
 
 ggplot(join.diff, aes(x = Diff, fill = Data)) + geom_density(alpha = 0.30) + theme_bw() + xlim(c(-50000, 50000)) + labs(x = "Differences in Read Depth per Contig", y = "Density") + ggtitle("Read Count Differences in Mick's Clusters vs USDA's Clusters")
+```
+
+Now to combine all of the data so that I can regenerate the plots with additional mapping quality data.
+
+```bash
+perl -e 'my $fold = "best_genome_clusters"; <>; %f; while(<>){chomp; @s = split(/\t/); $f{$s[0]}->{$s[1]}->{$s[2]} = [$s[3], $s[4], $s[5]];} print "Cluster\tContig\tReadGroup\tCount\tAvgQual\tNonZeroQ\tGC\tLen\n"; foreach my $t (sort{$a cmp $b} keys(%f)){my %l; my %g; open(IN, "< $fold/$t.fai"); while(<IN>){chomp; @s = split(/\t/); $l{$s[0]} = $s[1];} close IN; $h = $t; $h =~ s/\.fasta//; open(IN, "< $fold/$h.gc"); while(<IN>){chomp; @s = split(/\t/); $g{$s[0]} = $s[1];} close IN; foreach my $k (sort{$a cmp $b} keys(%l)){foreach my $rg (keys(%{$f{$t}->{$k}})){my $orig = join("\t", @{$f{$t}->{$k}->{$rg}}); print "$t\t$k\t$rg\t$orig\t$g{$k}\t$l{$k}\n";}}}' < usda_clusters_rg_counts.ext.tab > usda_clusters_rg_counts.ext.full.tab
+
+perl -e 'my $fold = "micks_clusters"; <>; %f; while(<>){chomp; @s = split(/\t/); $f{$s[0]}->{$s[1]}->{$s[2]} = [$s[3], $s[4], $s[5]];} print "Cluster\tContig\tReadGroup\tCount\tAvgQual\tNonZeroQ\tGC\tLen\n"; foreach my $t (sort{$a cmp $b} keys(%f)){my %l; my %g; open(IN, "< $fold/$t.fai"); while(<IN>){chomp; @s = split(/\t/); $l{$s[0]} = $s[1];} close IN; $h = $t; $h =~ s/\.fasta//; open(IN, "< $fold/$h.gc"); while(<IN>){chomp; @s = split(/\t/); $g{$s[0]} = $s[1];} close IN; foreach my $k (sort{$a cmp $b} keys(%l)){foreach my $rg (keys(%{$f{$t}->{$k}})){my $orig = join("\t", @{$f{$t}->{$k}->{$rg}}); print "$t\t$k\t$rg\t$orig\t$g{$k}\t$l{$k}\n";}}}' < micks_clusters_rg_counts.ext.tab > micks_clusters_rg_counts.ext.full.tab
+```
+
+
+Finally, to complete my analysis with the addition of mapping data.
+
+```R
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(PerformanceAnalytics)
+
+mickfull <- read.delim("micks_clusters_rg_counts.ext.full.tab")
+# Let's get a more meaningful proportion of non-zero quality reads
+mickfull <- mutate(mickfull, ZeroProp = ifelse(Count > 0, 1 - (NonZeroQ / Count), 0))
+
+# Drawing out only the metrics I will plot
+mickfull.metrics <- select(mickfull, -NonZeroQ)
+mickfull.metrics.mick <- filter(mickfull, ReadGroup == "MICK") %>% select(-ReadGroup)
+mickfull.metrics.usda <- filter(mickfull, ReadGroup == "USDA") %>% select(-ReadGroup)
+
+cor(mickfull.metrics.mick[,c(3,4,6,7,8)])
+               Count     AvgQual          GC         Len     ZeroProp
+Count     1.00000000 -0.01697127  0.15250212 0.430468302  0.021225964
+AvgQual  -0.01697127  1.00000000 -0.18075584 0.057938474 -0.227404773
+GC        0.15250212 -0.18075584  1.00000000 0.060272939 -0.010140248
+Len       0.43046830  0.05793847  0.06027294 1.000000000  0.003730061
+ZeroProp  0.02122596 -0.22740477 -0.01014025 0.003730061  1.000000000
+
+cor(mickfull.metrics.usda[,c(3,4,6,7,8)])
+               Count     AvgQual           GC         Len    ZeroProp
+Count    1.000000000  0.02204298  0.009192094  0.02702579  0.03856566
+AvgQual  0.022042977  1.00000000 -0.147042915 -0.14880451 -0.13634277
+GC       0.009192094 -0.14704292  1.000000000  0.05881794 -0.01373861
+Len      0.027025790 -0.14880451  0.058817943  1.00000000  0.02369836
+ZeroProp 0.038565663 -0.13634277 -0.013738608  0.02369836  1.00000000
+
+# So our read alignment qualities decrease on Mick's larger contigs
+chart.Correlation(mickfull.metrics.mick[,c(3,4,6,7,8)], histogram=TRUE, pch=19, title="MICK alignment to MICK clusters")
+dev.copy2pdf(file="mick_extend_mick_correlation.pdf", useDingbats=FALSE)
+```
+
