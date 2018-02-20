@@ -4,6 +4,12 @@
 
 These are my notes and commands for testing the bias of different sequencing platforms in the collection and determining if there are major limitations to each.
 
+## Table of Contents
+* Mash Profile comparisons
+* Mash Sketch Generation of OutGroups
+* [Illumina downsampling test](#downsampling)
+* [Mash NMDS for Dataset Comparison](#mash_nmdsv1)
+
 ## Mash profile comparisons
 
 I am going to test for kmer cardinality differences in the methods using MASH. My concern is that certain kmers may be underrepresented in the different methods and this is the best method for finding out!
@@ -132,12 +138,12 @@ colnames(mash_data.format) <- entry_names
 ord <- metaMDS(as.dist(mash_data.format), trymax=100)
 # Only took 20 iterations
 
-# Base Vegan plotting polymorhpic functions did not work on the data. Had to hack out the NMDS coords
+# Base Vegan plotting polymorphic functions did not work on the data. Had to hack out the NMDS coords
 plot(scores(ord), col=c("red", "blue", "blue", "green", "red", "purple", "purple", "purple", "purple"), pch= c(15, 15, 16, 15, 16, 16, 17, 15, 15))
 legend("bottomleft", c("UKNano", "USIllum", "Hess", "Manure", "USNano", "PBCCS", "PBRSII", "PBCheryl", "PBTim"), col=c("red", "blue", "blue", "green", "red", "purple", "purple", "purple", "purple"), pch= c(15, 15, 16, 15, 16, 16, 17, 15, 15))
 dev.copy2pdf(file="combined_profile_nmds_vegan.pdf", useDingbats=FALSE)
 ```
-
+<a name="downsampling"></a>
 ## Illumina downsampling test
 
 I want to see how reproducible the mash profile is for different proportions of the Illumina data. Hopefully, I can get a good reproducibility curve from a progressive downsampling that shows a cutoff for identity.
@@ -831,4 +837,94 @@ I am just going to grep out the cluster tax IDs from the Phase genomics data qui
 perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); <IN>; %c; while(<IN>){chomp; @s = split(/\t/); $s[0] =~ s/\.fasta//; push(@{$c{$s[1]}}, $s[0]);} close IN; %l; open(IN, "< $ARGV[1]"); while(<IN>){chomp; foreach my $j (@{$c{$_}}){$l{$j} += 1;} } close IN; open(IN, "< $ARGV[2]"); <IN>; while(<IN>){chomp; @s = split(/\t/); if(exists($l{$s[0]})){print "$s[0]\t$l{$s[0]}\t$s[3]\t$s[5]\t$s[6]\n";}}; close IN;' usda_clusters_rg_counts.ext.full.tab usdacontigs.usdareads.nomickreads.contigs.list best_genomes_report.tsv > usdacontigs.usdareads.nomickreads.contigs.clusterphylolist.tab
 
 # There were 323 clusters out of 643 that had contigs with no mappings, so this was not an amazing filter
+```
+
+<a name="mash_nmdsv1"></a>
+## Mash NMDS for dataset comparison
+
+I am going to start with the existing datasets that I had for my previous agnostic SRA dataset mash sketch comparison and expand them with Micks' illumina data, our illumina data and our pacbio reads.
+
+Unfortunately, the dataset fasta files are in various states of gzip compression, so I need to progress carefully here.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects
+
+```bash
+for i in `ls *.gz | cut -d'_' -f1 | sort | uniq`; do echo $i; sbatch --nodes=1 -p assemble3 --ntasks-per-node=2 --mem=5000 --wrap="zcat $i*.fastq.gz | /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash sketch -p 2 -o $i.21k.1Ms -k 21 -s 1000000 -r -m 2 -"; done
+
+for i in `ls *.fastq | cut -d'_' -f1 | sort | uniq`; do echo $i; sbatch --nodes=1 -p assemble3 --ntasks-per-node=2 --mem=5000 --wrap="cat $i*.fastq | /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash sketch -p 2 -o $i.21k.1Ms -k 21 -s 1000000 -r -m 2 -"; done
+
+# Mick's reads
+sbatch --nodes=1 -p assemble2 --ntasks-per-node=10 --mem=5000 --wrap="zcat ../pilot_project/micks_reads/*.fastq.gz | /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash sketch -p 10 -o Mick.21k.1Ms -k 21 -s 1000000 -r -m 2 -"
+
+# USDA's reads
+sbatch --nodes=1 -p assemble2 --ntasks-per-node=10 --mem=5000 --wrap="zcat ../pilot_project/illumina/YMPrepCannula_run3*.fastq.gz | /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash sketch -p 10 -o USDA.21k.1Ms -k 21 -s 1000000 -r -m 2 -"
+
+# Moving data to a new location to keep it organized
+mkdir pilot_project/first_msh_sketch
+mv datasources/*.msh pilot_project/first_msh_sketch/
+```
+
+Now to go to the other folder and to start the comparison.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/first_msh_sketch
+
+```bash
+ls *.msh > combined_summary_sketches.list
+
+# Pasting the sketches together and generating a distance matrix
+/mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash paste -l combined_sra_sketches combined_summary_sketches.list
+
+for i in `cat combined_summary_sketches.list`; do echo $i; /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash dist -p 3 -t combined_sra_sketches.msh $i > $i.combined.dist; done
+
+perl -lane 'open(IN, "< $F[0].combined.dist"); $h = <IN>; $d = <IN>; chomp $d; @dsegs = split(/\t/, $d); $dsegs[0] = $F[0]; print join("\t", @dsegs);' < combined_summary_sketches.list > first_sketches_combineddist.matrix
+
+perl -ne '$_ =~ s/\.21k\.1Ms\.msh//g; print $_;' < first_sketches_combineddist.matrix > first_sketches_combineddist.reformat.matrix
+```
+
+Now to make the plot locally so that I can tweak it.
+
+> pwd: /home/dbickhart/share/metagenomics/pilot_project/sra_mash_sketches
+
+```R
+library(vegan)
+library(dplyr)
+library(tidyr)
+
+# Generating the formatted data matrix
+data <- read.delim("first_sketches_combineddist.reformat.matrix", header=FALSE)
+entries <- data[,1]
+data.format <- select(data, -V1)
+row.names(data.format) <- entries
+colnames(data.format) <- entries
+
+# Now grabbing sample information and listings
+samples <- read.delim("sra_file_accession_list.csv", sep=",")
+samples.filtered <- filter(samples, Run %in% entries)
+samples.condensed <- select(samples.filtered, Run, Tissue, Sampling.Method, Breed)
+samples.final <- rbind(samples.condensed, data.frame(Run = c("USDA", "Mick"), Tissue = c("Rumen", "Rumen"), Sampling.Method = c("Fiber", "Stomach Tube"), Breed = c("Dairy", "Dairy")))
+
+# Setting sample colors
+samples.final$col <- c("#1b9e77")
+samples.final[samples.final$Tissue == "Rumen", 5] <- c("#d95f02")
+samples.final[samples.final$Tissue == "Mammary", 5] <- c("#7570b3")
+samples.final[samples.final$Tissue == "Manure", 5] <- c("#e7298a")
+samples.final[samples.final$Tissue == "Oral", 5] <- c("#66a61e")
+row.names(samples.final) <- samples.final[,1]
+samples.final.o <- samples.final[match(rownames(data.format), samples.final$Run),]
+samples.final.o[samples.final.o$Tissue == "Nasal", 5] <- c("#000000")
+
+samples.final.o$pch <- c(1)
+samples.final.o[samples.final.o$Run == "Mick",6] <- 17
+samples.final.o[samples.final.o$Run == "USDA",6] <- 18
+
+
+# Now for the plotting
+ord <- metaMDS(as.dist(data.format), trymax=100)
+# ...
+# Run 67 stress 0.1439099 
+# ... Procrustes: rmse 6.207925e-05  max resid 0.0003494643
+
+plot(scores(ord), col=samples.final.o$col, pch=samples.final.o$pch)
+legend("bottomleft", legend=c("Foot", "Nasal", "Rumen", "Mammary", "Manure", "Oral", "Mick", "USDA"), col=c("#1b9e77", "#000000", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#d95f02", "#d95f02"), pch=c(1,1,1,1,1,1,17,18), pt.cex=2.5)
+dev.copy2pdf(file="vegan_nmds_mick_and_usda.pdf", useDingbats=FALSE)
 ```
