@@ -928,3 +928,13 @@ plot(scores(ord), col=samples.final.o$col, pch=samples.final.o$pch)
 legend("bottomleft", legend=c("Foot", "Nasal", "Rumen", "Mammary", "Manure", "Oral", "Mick", "USDA"), col=c("#1b9e77", "#000000", "#d95f02", "#7570b3", "#e7298a", "#66a61e", "#d95f02", "#d95f02"), pch=c(1,1,1,1,1,1,17,18), pt.cex=2.5)
 dev.copy2pdf(file="vegan_nmds_mick_and_usda.pdf", useDingbats=FALSE)
 ```
+
+## Generating read depth matricies for downstream data plots
+
+I need to generate a data file format that can be used in binning and/or dataset partitioning. I have my  own format (with additional GC and other information), but I know that I am still missing nucleotide composition data that might be useful down the road.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project
+
+```bash
+for i in `seq 411 588; seq 41 57`; do name="best_genome_clusters/cluster."${i}".fasta"; echo $name; sbatch -p assemble3 process_individual_clusters_forRD.pl raw_illumina_fastas.tab $name $name; done
+
