@@ -936,5 +936,9 @@ I need to generate a data file format that can be used in binning and/or dataset
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project
 
 ```bash
+# This will take care of the rest of the fastas that did not finish before
 for i in `seq 411 588; seq 41 57`; do name="best_genome_clusters/cluster."${i}".fasta"; echo $name; sbatch -p assemble3 process_individual_clusters_forRD.pl raw_illumina_fastas.tab $name $name; done
 
+# Now to start processing the clusters from the remade USDA Illumina assemblies
+for i in `seq 1 1181`; do name="illumina_usda_clusters/cluster."${i}".fasta"; echo $name; sbatch -p assemble1 process_individual_clusters_forRD.pl raw_illumina_fastas.tab $name $name; done
+for i in `seq 1182 2362`; do name="illumina_usda_clusters/cluster."${i}".fasta"; echo $name; sbatch -p assemble3 process_individual_clusters_forRD.pl raw_illumina_fastas.tab $name $name; done
