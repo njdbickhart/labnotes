@@ -240,3 +240,40 @@ tig00020254     15190319        15207349        tig00020254     15198770        
 ```
 
 Bed ops column headers can be found at [this webpage](http://bedops.readthedocs.io/en/latest/content/reference/file-management/conversion/rmsk2bed.html). I think that the identification of poly-As or poly-As with some hamming distance cutoff may be a good criterion to identify recent transposition events in the genome. 
+
+## Creating full assemblies based on scaffold winners
+
+This will get a bit more complex, however, I need to generate separate full references for each haplotype-resolved assembly. Most of the "winner" chromosomes are easy as they are single scaffolds.
+
+Let's start with those and then work on the remaining chromosomes by hand.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/angus_x_brahman/hic_testing
+
+```bash
+# How to get single scaffold winners
+perl -e '%row = ("salsa" => 3, "phase" => 8, "3ddna2" => 13, "3ddna" => 18); <>; while(<>){chomp; @s = split(/\t/); if($s[$row{$s[1]}] == 1){$scaff = $s[$row{$s[1]} - 1]; print "$s[0]\t$s[1]\t$scaff\n";}}' < dam_scaffs_consensus.retry2.tab
+perl -e '%row = ("salsa" => 3, "phase" => 8, "3ddna2" => 13, "3ddna" => 18); <>; while(<>){chomp; @s = split(/\t/); if($s[$row{$s[1]}] == 1){$scaff = $s[$row{$s[1]} - 1]; print "$s[0]\t$s[1]\t$scaff\n";}}' < sire_scaffs_consensus.retry2.tab
+
+# Let's work on the above formula to try to get the segments going that we need for an agp format
+# Well, I don't have all of the information to generate a true AGP, so lets go with a transitional format first
+# The last columns contain the technology name of the scaffolds
+perl -e '%row = ("salsa" => 3, "phase" => 8, "3ddna2" => 13, "3ddna" => 18); <>; while(<>){chomp; @s = split(/\t/); $scaff = $s[$row{$s[1]} - 1]; @ss = split(/;/, $scaff); $p = 0; for(my $x = 0; $x < scalar(@ss); $x++){$j = $ss[$x]; $p++; $sname = $j =~ s/,.+$//; print "$s[0]\t0\t0\t$p\tA\t$j\t0\t0\t?\t$s[1]\n"; unless($x + 1 >= scalar(@ss)){$p++; print "$s[0]\t0\t0\t$p\tU\t100\tscaffold\tyes\tmap\n";}}}' < dam_scaffs_consensus.retry2.tab > dam_scaffs_consensus.retry2.pagp
+
+perl -e '%row = ("salsa" => 3, "phase" => 8, "3ddna2" => 13, "3ddna" => 18); <>; while(<>){chomp; @s = split(/\t/); $scaff = $s[$row{$s[1]} - 1]; @ss = split(/;/, $scaff); $p = 0; for(my $x = 0; $x < scalar(@ss); $x++){$j = $ss[$x]; $p++; $sname = $j =~ s/,.+$//; print "$s[0]\t0\t0\t$p\tA\t$j\t0\t0\t?\t$s[1]\n"; unless($x + 1 >= scalar(@ss)){$p++; print "$s[0]\t0\t0\t$p\tU\t100\tscaffold\tyes\tmap\n";}}}' < sire_scaffs_consensus.retry2.tab > sire_scaffs_consensus.retry2.pagp
+
+# Now to download the individual fastas and then create a script to process them.
+# I plan to fasta index them, then grep out the individual components for subsequent entry into SIFF
+# First, I need to determine actual alignments and breakpoints of scaffolds in the winners categories of my tables and use that info to update the agp files.
+module load samtools; for i in *.fasta; do echo $i; samtools faidx $i; done
+
+# Testing assumption that scaffolds are present only once in the pseudoagp files I created
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f dam_scaffs_consensus.retry2.pagp -c 5
+
+# Notes: the salsa dam scaffold (scaffold_608) has a portion of the telomere of chr1 at 119355000 - 119500365, and should be broken on chr2 at 1-119354684 and 119517501
+# Notes: the 3ddna_v2 sire scaffold (HiC_scaffold_18) has a portion of the near end of chr15 in the beginning of the scaffold. 
+
+perl prepare_master_fasta.pl sire_scaffs_consensus.retry2.pagp sire_scaffold_fastas.tab sire_scaffold_remake
+
+# the script worked, but it needs allot of manual edits to make the final fasta. At least I have the components ready!
+
+```

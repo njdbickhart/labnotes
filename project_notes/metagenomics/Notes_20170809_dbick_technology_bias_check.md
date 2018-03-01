@@ -942,3 +942,13 @@ for i in `seq 411 588; seq 41 57`; do name="best_genome_clusters/cluster."${i}".
 # Now to start processing the clusters from the remade USDA Illumina assemblies
 for i in `seq 1 1181`; do name="illumina_usda_clusters/cluster."${i}".fasta"; echo $name; sbatch -p assemble1 process_individual_clusters_forRD.pl raw_illumina_fastas.tab $name $name; done
 for i in `seq 1182 2362`; do name="illumina_usda_clusters/cluster."${i}".fasta"; echo $name; sbatch -p assemble3 process_individual_clusters_forRD.pl raw_illumina_fastas.tab $name $name; done
+
+# Finishing up the pacbio USDA clusters with illumina data
+module load samtools; for i in `seq 411 588; seq 41 57`; do name="best_genome_clusters/cluster."${i}; echo $name; samtools faidx $name.fasta; python3 /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/sequenceData/calcGCcontentFasta.py -f $name.fasta -o $name.gc -t 25; done
+
+
+sbatch -p assemble2 calculate_cluster_read_depth.pl -f best_genome_clusters -o new_usda_pacbio_clusters.rd.ext.tab
+sbatch -p assemble2 calculate_cluster_read_depth.pl -f micks_clusters -o new_mick_ilm_clusters.rd.ext.tab
+
+# Condensing all of the information together
+perl condense_cluster_information.pl micks_clusters new_mick_ilm_clusters.rd.ext.tab new_mick_ilm_clusters.rd.ext.full.tab

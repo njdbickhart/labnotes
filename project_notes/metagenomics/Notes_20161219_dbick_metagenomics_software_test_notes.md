@@ -374,4 +374,36 @@ mkdir sickle
 for i in `cat accession_list.txt`; do echo $i; sbatch --nodes=1 --ntasks-per-node=2 --mem=5000 -o sickle/${i}_slurm.out --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/sickle/sickle pe -f ${i}_1.fastq -r ${i}_2.fastq -o sickle/${i}_sickle.1.fastq.gz -p sickle/${i}_sickle.2.fastq.gz -s sickle/${i}_singles.fastq.gz -t sanger -q 15 -l 36 -g"; done
 ```
 
+## Testing Tim's asthma study data using Kraken
 
+These are my notes on quickly checking the bacterial contamination of Tim's asthma dataset. 
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/asthma_study
+
+```bash
+# Generating classifier output using a pre-compiled kraken-db
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken --db /mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/minikraken_20171019_8GB --threads 50 --fastq-input --gzip-compressed --quick --output LIB30175_S3_L001_R1_001.kraken.out --paired LIB30175_S3_L001_R1_001.fastq.gz LIB30175_S3_L001_R2_001.fastq.gz
+515586 sequences (259.34 Mbp) processed in 11.238s (2752.8 Kseq/m, 1384.67 Mbp/m).
+  154813 sequences classified (30.03%)
+  360773 sequences unclassified (69.97%)
+
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken --db /mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/minikraken_20171019_8GB --threads 50 --fastq-input --gzip-compressed --quick --output LIB30176_S4_L001_R1_001.kraken.out --paired LIB30176_S4_L001_R1_001.fastq.gz LIB30176_S4_L001_R2_001.fastq.gz
+499069 sequences (251.03 Mbp) processed in 11.065s (2706.1 Kseq/m, 1361.17 Mbp/m).
+  147237 sequences classified (29.50%)
+  351832 sequences unclassified (70.50%)
+
+# Turning taxonomic IDs into useful labels
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-translate --db /mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/minikraken_20171019_8GB LIB30175_S3_L001_R1_001.kraken.out LIB30175_S3_L001_R1_001.kraken.labels
+
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-translate --db /mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/minikraken_20171019_8GB LIB30176_S4_L001_R1_001.kraken.out > LIB30176_S4_L001_R1_001.kraken.labels
+
+# Now to try my hand at making a Krona chart for Tim and Tara
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -d '\t' -f LIB30175_S3_L001_R1_001.kraken.labels -c 1 | perl -e '<>; while(<>){chomp; @s = split(/\t/); @b = split(/\;/, $s[0]); print "$s[1]\t" . join("\t", @b); print "\n";}' > LIB30175_S3_L001_R1_001.kraken.ktinput
+
+# I had to edit in the number of unclassified sequences, but this worked like a charm!
+/mnt/nfs/nfs2/bickhart-users/binaries/KronaTools-2.7/bin/bin/ktImportText -o LIB30175_S3_L001_R1_001.krona.html -n 'root' LIB30175_S3_L001_R1_001.kraken.ktinput
+
+# Now for the other one
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -d '\t' -f LIB30176_S4_L001_R1_001.kraken.labels -c 1 | perl -e '<>; while(<>){chomp; @s = split(/\t/); @b = split(/\;/, $s[0]); print "$s[1]\t" . join("\t", @b); print "\n";}' > LIB30176_S4_L001_R1_001.kraken.ktinput
+
+/mnt/nfs/nfs2/bickhart-users/binaries/KronaTools-2.7/bin/bin/ktImportText -o LIB30176_S4_L001_R1_001.krona.html -n 'root' LIB30176_S4_L001_R1_001.kraken.ktinput
