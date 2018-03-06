@@ -275,5 +275,54 @@ perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f dam_scaffs_co
 perl prepare_master_fasta.pl sire_scaffs_consensus.retry2.pagp sire_scaffold_fastas.tab sire_scaffold_remake
 
 # the script worked, but it needs allot of manual edits to make the final fasta. At least I have the components ready!
+# Note, I noticed for the Sire that Phase  had the shorted condensed segments, around the same regions as the PAR in the X. Since this is the sire haplotype, the only remaining content would be the Y or PAR. I relabelled and used Phase instead of 3dDNA here in the agp
 
+# Now to do the same with the dam agp file
+perl prepare_master_fasta.pl dam_scaffs_consensus.retry2.pagp dam_scaffold_fastas.tab dam_scaffold_remake
+```
+
+#### Changes list for sire
+	* PAR changes listed above
+	* Removed 3ddna2 scaffold 3 from chr1 (small alignment
+	* Note: chr2 scaffold phase is circularized
+	* Note: chr3 salsa scaffold 475 needs to be in the middle of scaffold 824
+	* Note: chr7 phase scaffold is all sorts of messed up
+	* Note: same phase issue with chr10
+	* note: Phase chr14 has same issues
+	* note: same with phase chr18
+	* Removed Salsa chr21 scaffold_1306 (small alignment)
+	
+
+#### Changes list for dam
+	* Removed salsa scaffolds 556 and 608 from chr1 (small alignment)
+	* Note: a portion of salsa scaffold_608 contains the chr1 telomere -- it was not modified or removed in chr2
+	* Note: phase chr5 scaffold has lots of orientation errors
+	* Note: salsa chr10 scaffold is circularized
+	* Note: salsa chr12 scaffold_671 is circularized
+	* Note: phase chr22 is circularized
+	* Note: phase chr23 scaffold_513 is in the middle of scaffold_921 and at the beginning of the chr
+	* Note: 3ddna chr28 asm_hic_scaffold_21 is circularized
+
+```bash
+# Adding final components to the fastas, fixing the agps and generating the renamed, concatenated fasta
+# For Sire
+perl -ne '$_ =~ s/\?/+/g; print $_;' < sire_scaffold_remake.agp > temp.agp
+mv temp.agp sire_scaffold_remake.agp
+
+# adding the PAR/Y scaffolds
+samtools faidx f1_sire_phase.fasta PGA_scaffold28__120_contigs__length_19643512 PGA_scaffold27__152_contigs__length_25761177 > sire_scaffold_remake.adds.fasta
+cat sire_scaffold_remake.fasta sire_scaffold_remake.adds.fasta > sire_scaffold_remake.full.fasta
+samtools faidx /mnt/nfs/nfs2/bickhart-users/cattle_asms/angus_x_brahman/hic_testing/sire_scaffold_remake.full.fasta
+
+# OK, here goes nothing!
+java -Xmx100g -jar CombineFasta.jar agp2fasta -f sire_scaffold_remake.full.fasta -a sire_scaffold_remake.agp -o sire_best_scaffold_reference.fa
+# It worked!
+
+# For Dam
+perl -ne '$_ =~ s/\?/+/g; print $_;' < dam_scaffold_remake.agp > temp.agp
+mv temp.agp dam_scaffold_remake.agp
+samtools faidx dam_scaffold_remake.fasta
+
+# OK, this is the dam fasta generation
+java -Xmx100g -jar CombineFasta.jar agp2fasta -f dam_scaffold_remake.fasta -a dam_scaffold_remake.agp -o dam_best_scaffold_reference.fa
 ```
