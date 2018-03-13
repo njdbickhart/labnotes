@@ -437,3 +437,51 @@ Hapmap28499-BTA-142459  4       96007967        +       4       96861591
 samtools faidx ../ARS-UCD1.0.14.clean.wIGCHaps.fasta 4:95971185-96013926 > ars_ucd_probregion_4.fa
 samtools faidx /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa chr4 > umd3_chr4.fa
 sh ../../../binaries/run_nucmer_plot_automation_script.sh umd3_chr4.fa ars_ucd_probregion_4.fa
+
+````
+
+
+## Non-repeatmasked chain of assembly file
+
+I  need to check to see if I can get this working on my non-repeatmasked fastas for full liftover of v14 to umd3.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc
+
+```bash
+mkdir chrchunks
+perl -lane 'system("samtools faidx ARS-UCD1.0.14.clean.wIGCHaps.fasta $F[0] > chrchunks/$F[0].fa");' < ARS-UCD1.0.14.clean.wIGCHaps.fasta.fai
+
+# Converting to 2bit assemblies
+for i in chrchunks/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; /mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/faToTwoBit $i chrchunks/${name}.2bit; done
+
+module load blat
+for i in chrchunks/*.fa; do sbatch -p assemble3 faSplit_blat_align.sh umd3_kary_unmask_ngap.2bit $i; done
+
+# testing minimap2 to see if it is faster than blat
+ln -s /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa umd3_kary_unmask_ngap.fa
+sbatch faSplit_minimap2_align.sh umd3_kary_unmask_ngap.fa chrchunks/10.fa
+
+# I tried using the "genome to genome alignment" metric for 95% similarity, but the output of minimap2 was too disjointed
+# testing this as if the read is just a very long pacbio read
+sbatch --nodes=1 --mem=18000 --ntasks-per-node=4 --exclude=vm-agil-[233,235] --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -ax map-pb umd3_kary_unmask_ngap.fa.mmi /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/chrchunks/test_sub_chunks/10_100000.fa > OLD.10_100000.fa.sam; python /mnt/nfs/nfs2/bickhart-users/binaries/fusioncatcher/bin/sam2psl.py -i OLD.10_100000.fa.sam -o OLD.10_100000.fa.psl"
+
+# That was even worse. Returning to the 95% asm comparison run and trying the rest of the pipeline
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/faToTwoBit ARS-UCD1.0.14.clean.wIGCHaps.fasta ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit
+sbatch -p assemble2 psl_merge.sh umd3_kary_unmask_ngap.2bit ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit
+```
+
+
+#### Chaining v25 to UMD3
+
+> Lewis: /home/bickhartd/bickhartd/ars
+
+```bash
+# Because I don't want to piss off the Lewis cluster admins, I'm going to write scripts for most of this processing
+sbatch splitChrs.pl ARS-UCDv1.0.25.fasta chrchunks
+
+sbatch --nodes=1 --mem=8000 --ntasks-per-node=1 --wrap="../kentUtils/bin/linux.x86_64/faToTwoBit umd3_kary_unmask_ngap.fa umd3_kary_unmask_ngap.2bit"
+
+# Making the ooc file
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=1 --wrap="blat ../umd3/umd3_kary_unmask_ngap.2bit /dev/null /dev/null -makeOoc=11.ooc -repMatch=1024"
+
+for i in chrchunks/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch --account=biocommunity -p BioCompute ../bin/faSplit_blat_align.sh ../umd3/umd3_kary_unmask_ngap.2bit $i; done

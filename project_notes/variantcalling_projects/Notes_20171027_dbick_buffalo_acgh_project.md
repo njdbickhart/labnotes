@@ -99,3 +99,31 @@ bedtools intersect -a ITWB_acgh_combined_regions.bed -b buffalo_combined_cnvrs.b
         Smallest Length:        1459
         Largest Length:         142490159
 ```
+
+## "dACGH" results
+
+I know that George wants to mirror our 2012 GR manuscript, but many of the methods that we used were highly subjective and required extensive reference vetting. I will use the statistical models to try to replicate the same methods we used, but with some added veracity in prediction.
+
+Unfortunately, I also need to realign all of the damn reads to work with the files!
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/buffalo_acgh
+
+```bash
+# Generating a spreadsheet for my alignment script
+for i in /mnt/cifs/bickhart-qnap/buffalo_sequence/Sample_*; do name=`basename $i | cut -d'_' -f2`; echo $name; perl -e 'chomp @ARGV; @f = `ls $ARGV[0]`; %h; foreach $b (grep(/.+gz$/, @f)){chomp $b; @bsegs = split(/[\._]/, $b); $h{$bsegs[2]}->{$bsegs[4]}->{$bsegs[3]} = $b;} foreach my $l (keys(%h)){foreach my $n (keys(%{$h{$l}})){print "$ARGV[0]\/$h{$l}->{$n}->{R1}\t$ARGV[0]\/$h{$l}->{$n}->{R2}\t$ARGV[1]\t$ARGV[1]\n";}}' $i $name > $name.seqreads.tab; done
+
+# Running the buffalo reads
+for i in *.seqreads.tab; do name=`echo $i | cut -d'.' -f1`; echo $name; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b $name -t $i -f umd3_kary_unmask_ngap.fa -m -p assemble1; done
+
+ln -s /mnt/nfs/nfs2/dbickhart/dominette_asm/umd3/dominette.merged.umd3.bam
+samtools index dominette.merged.umd3.bam
+
+# I need to replicate the aCGH findings that George had in the past. Let's use similar settings.
+# In the 2010 GR manuscript, he used 0.5 log2 ratio and 3 consecutive windows (0.5_3) as well as 0.3_5 and 0.3_3. 
+# I will start with 0.5_3 here and a window size of 1kb (from our 2012 GR manuscript)
+module load samtools; sbatch -p assemble1 ../binaries/cnv-seq/cnv-seq.pl --test ITWB1/ITWB1/ITWB1.sorted.merged.bam --ref dominette.merged.umd3.bam --window-size 1000 --genome-size 2800000000 --annotate
+
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7 ITWB9 PC1; do echo $i; sbatch -p assemble1 ../binaries/cnv-seq/cnv-seq.pl --test $i/$i/$i.sorted.merged.bam --ref dominette.merged.umd3.bam --window-size 1000 --genome-size 2800000000 --annotate; done
+
+# Dammit all!! The reference genome for that umd3 copy was the NCBI version!
+perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b dominette -t dominette_sequence_files.tab -f umd3_kary_unmask_ngap.fa -p assemble1 -m

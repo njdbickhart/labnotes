@@ -952,3 +952,35 @@ sbatch -p assemble2 calculate_cluster_read_depth.pl -f micks_clusters -o new_mic
 
 # Condensing all of the information together
 perl condense_cluster_information.pl micks_clusters new_mick_ilm_clusters.rd.ext.tab new_mick_ilm_clusters.rd.ext.full.tab
+```
+
+##### Correcting runtime errors
+
+Some of the alignment jobs failed to complete. I'm going to ID the ones that still need to be run and requeue them.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project
+
+```bash
+for i in illumina_usda_clusters/*.final.bam; do name=`basename $i | cut -d'.' -f1,2`; echo $name; done > usda_ilmn_clusters.done.list
+for i in illumina_usda_clusters/*.fasta; do name=`basename $i | cut -d'.' -f1,2`; echo $name; done > usda_ilmn_clusters.total.list
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl usda_ilmn_clusters.done.list usda_ilmn_clusters.total.list
+File Number 1: usda_ilmn_clusters.done.list
+File Number 2: usda_ilmn_clusters.total.list
+Set     Count
+1       21
+1;2     2281
+2       81
+
+# I'm actually surprised to see several bam files that are unique to the "done" list!
+# Ah, I know why: it's because those cluster numbers actually aren't included in the folder!
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o usda_ilmn_clusters.done.list usda_ilmn_clusters.total.list
+
+for i in `cat group_1.txt`; do echo $i; rm illumina_usda_clusters/${i}.fasta.final.bam; done
+# Removing temporary bam files
+for i in `cat group_2.txt`; do echo $i; rm illumina_usda_clusters/${i}.fasta.*.bam; done
+
+for i in `cat group_2.txt`; do name="illumina_usda_clusters/"${i}".fasta"; echo $name; sbatch -p assemble2 process_individual_clusters_forRD.pl raw_illumina_fastas.tab $name $name; done
+for i in illumina_usda_clusters/*.fasta; do name=`basename $i | cut -d'.' -f1,2`; echo $name; python3 /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/sequenceData/calcGCcontentFasta.py -f illumina_usda_clusters/${name}.fasta -o illumina_usda_clusters/${name}.gc -t 10; done
+
+sbatch -p assemble2 calculate_cluster_read_depth.pl -f illumina_usda_clusters -o new_usda_ilm_clusters.rd.ext.tab
+```
