@@ -2752,3 +2752,24 @@ perl -ne 'chomp; @F = split(/,/); $F[2] =~ s/\[(.+)\/.+\]/$1/; print ">$F[0]\.U\
 perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a ARS-UCDv1.0.23.fasta -p 9913_CHIP_probeA.fullseq.format.fa -o ARS-UCDv1.0.23.fullseqA
 
 # Now to generate the comparisons
+```
+
+
+## QV stats
+
+Now to generate alignments for Serge's QV pipeline. I used the following datasets in the Pilon correction:
+
+* /mnt/nfs/nfs2/brosen/projects/ARS-UCD/new_Dominette_NextSeq_data/	5.27 and 9.14
+* SRR2226514
+* SRR2226524
+
+That leaves the 9.16 new_Dominette_NextSeq data as our validation dataset for comparison. First, let's start the alignment on the v25 assembly.
+
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_125
+
+```bash
+module load bwa; sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 -p assemble1 --wrap="bwa index ARS-UCDv1.0.25.fasta";
+
+ls /mnt/nfs/nfs2/brosen/projects/ARS-UCD/new_Dominette_NextSeq_data/9.16.16/*.fastq > validation_fastqs.tab
+sleep 2h; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b validate -t validation_fastqs.tab -f ARS-UCDv1.0.25.fasta -m
+```

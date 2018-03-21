@@ -326,3 +326,167 @@ samtools faidx dam_scaffold_remake.fasta
 # OK, this is the dam fasta generation
 java -Xmx100g -jar CombineFasta.jar agp2fasta -f dam_scaffold_remake.fasta -a dam_scaffold_remake.agp -o dam_best_scaffold_reference.fa
 ```
+
+#### Tracking contig alignments and finding missing sequence
+
+I am going to align the original sire and dam scaffolds to the "best scaffold" fasta and track their locations. I will use minimap to try to keep track of everything.
+
+| Haplotype assembly| contig length | scaffold length | difference|
+|:---| ---:|---:|---:|
+|Sire | 2573806573 | 2541684135 | 32,122,438 |
+|Dam | 2678769087 | 2678438895 | 330,192 |
+
+
+```bash
+for i in f1_dam_3ddna.fasta f1_dam_3ddna_v2.fasta f1_dam_phase.fasta f1_dam_salsa.fasta; do echo $i; sbatch --nodes=1 --ntasks-per-node=1 --mem=25000 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -x asm5 ../bostaurus_brahma.fasta $i > $i.brahma.paf"; done
+
+for i in f1_sire_3ddna.fasta f1_sire_3ddna_v2.fasta f1_sire_phase.fasta f1_sire_salsa.fasta; do echo $i; sbatch --nodes=1 --ntasks-per-node=1 --mem=25000 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -x asm5 ../bostaurus_angus.fasta $i > $i.angus.paf"; done
+
+# Now I need to develop a script that converts the scaffolds into bed coordinates for comparisons
+# First, let's get rid of the annoying, annoying pipes in the damn contig names!
+for i in *.paf; do perl -ne '$_=~ s/\|arrow\|arrow//; print $_;' < $i > temp; mv temp $i; done
+
+# Due to alignment ambiguity, I want to "squash" the first few bases and last few bases in the paf alignments to make sure that we're not missing thousands of bases from the starts and ends of the contigs in my comparison
+for i in *.paf; do perl -lane 'if($F[7] < 1000){$F[7] = 1;} if(abs($F[8] - $F[6]) < 1000){ $F[8] = $F[6];} print join("\t", @F);' < $i > $i.tpaf; done
+
+# Now to create a translation script
+ls f1_dam*.tpaf > dam_scaffolding_tech_pafs.tab
+perl convert_agp_to_bed.pl dam_scaffolding_tech_pafs.tab dam_scaffold_remake.agp dam_scaffold_remake.contigmap.bed
+perl -lane '$F[0] =~ s/\|arrow\|arrow//; print "$F[0]\t1\t$F[1]";' < ../bostaurus_brahma.fasta.fai > dam_assembly_contig_lengths.bed
+
+# OK, so now it's just a bedtools exercise
+bedtools subtract -a dam_assembly_contig_lengths.bed -b dam_scaffold_remake.contigmap.bed | perl -lane '$l = $F[2] - $F[1]; print "$_\t$l";' > dam_assembly_contig_len_missing.bed
+cat dam_assembly_contig_len_missing.bed | perl ~/sperl/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       1764
+        Total Length:           67078728	<- OK, this is double the amount predicted to be in the other animal!
+        Length Average:         38026.4897959184
+        Length Median:          26274.5
+        Length Stdev:           161369.420124495
+        Smallest Length:        73
+        Largest Length:         5525021
+
+bedtools merge -i dam_scaffold_remake.contigmap.bed -c 4 -o distinct > dam_scaffold_remake.contigmap.merged.bed
+
+bedtools merge -i dam_scaffold_remake.contigmap.bed -c 4 -o distinct | grep ',' | perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 3
+Entry   Count
+3ddna,3ddna2    17
+3ddna,3ddna2,salsa      3
+3ddna,phase     2
+3ddna,salsa     22
+3ddna2,phase    4
+3ddna2,salsa    5
+
+bedtools merge -i dam_scaffold_remake.contigmap.bed -c 4 -o distinct | grep ',' | perl -lane 'system("grep $F[0] dam_scaffold_remake.contigmap.bed");' > dam_scaffold_remake.duptable.bed
+
+perl -e '%c; while(<>){chomp; @s = split(/\t/); $c{$s[0]}->{$s[3]}->{$s[5]} += $s[2] - $s[1];} print "Contig\tTech\tChr\tLength\n"; foreach my $t (keys(%c)){foreach my $s (keys(%{$c{$t}})){foreach my $c (keys(%{$c{$t}->{$s}})){print "$t\t$s\t$c\t" . $c{$t}->{$s}->{$c} . "\n";}}}' < dam_scaffold_remake.duptable.bed > dam_scaffold_remake.duptable.tab
+
+perl -e '<>; $sum = 0; while($f =<>){$s = <>; chomp $f, $s; @j = split(/\t/, $f); @h = split(/\t/, $s); $min = ($j[-1] < $h[-1])? $j[-1] : $h[-1]; $sum += $min;} print "$sum\n";' < dam_scaffold_remake.duptable.tab
+82,231,839
+
+# The main issue was 3ddna. Let's see how the scaffolds perform in terms of duplication when one of the 3ddna scaffolds is removed.
+
+```
+
+#### Checking duplication after selective scaffold reduction
+
+I am going to remove a scaffolding technology to see how much duplication that removes.
+
+```bash
+# The pipeline for the dam
+cp dam_scaffs.list dam_scaffs.no3d.list
+perl compare_algns_per_chrassignment.pl -l dam_scaffs.no3d.list -f ../../ars_ucd_123/ARS-UCDv1.0.23.fasta.fai -t 50000 -o dam_scaffs_consensus.no3ddna.tab
+
+perl -e '%row = ("salsa" => 3, "phase" => 13, "3ddna2" => 8); <>; while(<>){chomp; @s = split(/\t/); $scaff = $s[$row{$s[1]} - 1]; @ss = split(/;/, $scaff); $p = 0; for(my $x = 0; $x < scalar(@ss); $x++){$j = $ss[$x]; $p++; $sname = $j =~ s/,.+$//; print "$s[0]\t0\t0\t$p\tA\t$j\t0\t0\t?\t$s[1]\n"; unless($x + 1 >= scalar(@ss)){$p++; print "$s[0]\t0\t0\t$p\tU\t100\tscaffold\tyes\tmap\n";}}}' < dam_scaffs_consensus.no3ddna.tab > dam_scaffs_consensus.no3ddna.pagp
+
+perl prepare_master_fasta.pl dam_scaffs_consensus.no3ddna.pagp dam_scaffold_fastas.tab dam_scaffold_no3ddna
+# I still need to check scaffold orientation from the alignments, but that can be changed later on. Let's check the duplication/deletion counts
+# I needed to delete scaffold_608 from the end of chr1 from the salsa scaffolder. Also 556. Basically, it looks like I will be following the same changes list as above!
+
+perl convert_agp_to_bed.pl dam_scaffolding_tech_pafs.tab dam_scaffold_no3ddna.agp dam_scaffold_no3ddna.contigmap.bed
+
+bedtools subtract -a dam_assembly_contig_lengths.bed -b dam_scaffold_no3ddna.contigmap.bed | perl ~/sperl/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       1409
+        Total Length:           54437778
+        Length Average:         38635.75443577
+        Length Median:          27992
+        Length Stdev:           125096.609047426
+        Smallest Length:        73
+        Largest Length:         3582770
+
+# That's a little better. Let's see where the duplicates exist again
+bedtools merge -i dam_scaffold_no3ddna.contigmap.bed -c 4 -o distinct | grep ',' | perl -lane 'system("grep $F[0] dam_scaffold_no3ddna.contigmap.bed");' > dam_scaffold_no3ddna.duptable.bed
+perl -e '%c; while(<>){chomp; @s = split(/\t/); $c{$s[0]}->{$s[3]}->{$s[5]} += $s[2] - $s[1];} print "Contig\tTech\tChr\tLength\n"; foreach my $t (keys(%c)){foreach my $s (keys(%{$c{$t}})){foreach my $c (keys(%{$c{$t}->{$s}})){print "$t\t$s\t$c\t" . $c{$t}->{$s}->{$c} . "\n";}}}' < dam_scaffold_no3ddna.duptable.bed > dam_scaffold_no3ddna.duptable.tab
+
+# Obviously, some of these are really small alignments that only need to be counted once
+perl -e '<>; $sum = 0; while($f =<>){$s = <>; chomp $f, $s; @j = split(/\t/, $f); @h = split(/\t/, $s); $min = ($j[-1] < $h[-1])? $j[-1] : $h[-1]; $sum += $min;} print "$sum\n";' < dam_scaffold_no3ddna.duptable.tab
+9,903,170
+
+# Checking the number of contigs missing:
+bedtools intersect -a dam_assembly_contig_lengths.bed -b dam_scaffold_no3ddna.contigmap.bed -v | wc -l
+966
+bedtools intersect -a dam_assembly_contig_lengths.bed -b dam_scaffold_no3ddna.contigmap.bed -v | perl ~/sperl/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       966
+        Total Length:           43,025,319
+        Length Average:         44539.6677018634
+        Length Median:          33831.5
+        Length Stdev:           96728.8496640135
+        Smallest Length:        1039
+        Largest Length:         2591174
+
+# Yup, it's the smaller ones!
+bedtools intersect -a dam_assembly_contig_lengths.bed -b dam_scaffold_no3ddna.contigmap.bed -v | perl -lane 'print "$F[2]";' > dam_no3ddna_totallymissing_contiglens.list
+perl -lane 'print "$F[1]";' < ../bostaurus_brahma.fasta.fai > dam_total_contiglens.list
+
+############################
+#### Quick mashmap test ####
+############################
+# I just wanted to see how mashmap stacks up against my minimap2 alignments
+# I think that minimap2 may have aligned incredibly short fragments of the contigs over repetitive regions
+# Mashmap has a "one-to-one" mapping that would eliminate these spurious alignments
+for i in f1_dam_3ddna_v2.fasta f1_dam_phase.fasta f1_dam_salsa.fasta; do echo $i; echo ../bostaurus_brahma.fasta; sbatch --nodes=1 --ntasks-per-node=5 --mem=25000 -p assemble1 --wrap="../../../binaries/mashmap-Linux64-v2.0/mashmap -r ../bostaurus_brahma.fasta -q $i -t 5 -f one-to-one -o $i.mashmap"; done
+
+for i in *.mashmap; do echo $i; perl -ne '$_ =~ s/\|arrow\|arrow//; print $_;' < $i > temp; mv temp $i; done
+ls *.mashmap > dam_scaffolding_tech_mashmap.tab
+perl convert_agp_to_bed.pl dam_scaffolding_tech_mashmap.tab dam_scaffold_no3ddna.agp dam_scaffold_no3d_mash.contigmap.bed
+
+bedtools subtract -a dam_assembly_contig_lengths.bed -b dam_scaffold_no3d_mash.contigmap.bed| perl ~/sperl/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       1942
+        Total Length:           55459811	<- about 1 mbp larger than lasttime
+        Length Average:         28558.0901132853
+        Length Median:          19922.5
+        Length Stdev:           108011.018957934
+        Smallest Length:        1
+        Largest Length:         3582717
+
+bedtools merge -i dam_scaffold_no3d_mash.contigmap.bed -c 4 -o distinct | grep ',' | perl -lane 'system("grep $F[0] dam_scaffold_no3ddna.contigmap.bed");' > dam_scaffold_no3d_mash.duptable.bed
+perl -e '%c; while(<>){chomp; @s = split(/\t/); $c{$s[0]}->{$s[3]}->{$s[5]} += $s[2] - $s[1];} print "Contig\tTech\tChr\tLength\n"; foreach my $t (keys(%c)){foreach my $s (keys(%{$c{$t}})){foreach my $c (keys(%{$c{$t}->{$s}})){print "$t\t$s\t$c\t" . $c{$t}->{$s}->{$c} . "\n";}}}' < dam_scaffold_no3d_mash.duptable.bed > dam_scaffold_no3d_mash.duptable.tab
+
+```
+
+In summary, the winner scaffold strategy runs into problems when I use an error-correcting scaffolder with another non-error corrector. The number of putative errors is similar to what we found in Goat (30 - 100 ish), but defies easy correction. I'm going to try a quick comparison with just phase and salsa (no 3ddna at all). 
+
+```bash
+cp dam_scaffs.no3d.list dam_scaffs.sans3d.list
+perl compare_algns_per_chrassignment.pl -l dam_scaffs.sans3d.list -f ../../ars_ucd_123/ARS-UCDv1.0.23.fasta.fai -t 50000 -o dam_scaffs_consensus.sans3ddna.tab
+
+perl -e '%row = ("salsa" => 3, "phase" => 8); <>; while(<>){chomp; @s = split(/\t/); $scaff = $s[$row{$s[1]} - 1]; @ss = split(/;/, $scaff); $p = 0; for(my $x = 0; $x < scalar(@ss); $x++){$j = $ss[$x]; $p++; $sname = $j =~ s/,.+$//; print "$s[0]\t0\t0\t$p\tA\t$j\t0\t0\t?\t$s[1]\n"; unless($x + 1 >= scalar(@ss)){$p++; print "$s[0]\t0\t0\t$p\tU\t100\tscaffold\tyes\tmap\n";}}}' < dam_scaffs_consensus.sans3ddna.tab > dam_scaffs_consensus.sans3ddna.pagp
+
+perl prepare_master_fasta.pl dam_scaffs_consensus.sans3ddna.pagp dam_scaffold_fastas.tab dam_scaffold_sans3ddna
+
+# I made the chr1 edits listed above, but it looks like chr7 and 15 have problems too
+# Chr7 removed salsa scaffold_815 from chr7  (short alignment)
+# chr15 the first 50 megs of salsa scaffold_539 map to chr13  <- corrected in the agp
+# chr15 the last 230 kb of salsa scaffold_513 maps to chr23		<- removed in the agp
+
+perl convert_agp_to_bed.pl dam_scaffolding_tech_mashmap.tab dam_scaffold_sans3ddna.agp dam_scaffold_sans3ddna.contigmap.bed
+
+bedtools subtract -a dam_assembly_contig_lengths.bed -b dam_scaffold_sans3ddna.contigmap.bed | perl ~/sperl/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       1748
+        Total Length:           47861769		<- the best one yet!
+        Length Average:         27380.8747139588
+        Length Median:          17700
+        Length Stdev:           80070.0348587128
+        Smallest Length:        1
+        Largest Length:         2591174
+
+bedtools merge -i dam_scaffold_sans3ddna.contigmap.bed -c 4 -o distinct | grep ',' | perl -lane 'system("grep $F[0] dam_scaffold_no3ddna.contigmap.bed");' > dam_scaffold_sans3d_mash.duptable.bed

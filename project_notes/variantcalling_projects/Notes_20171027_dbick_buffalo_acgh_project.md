@@ -127,3 +127,28 @@ for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB3 ITWB4 ITWB5 ITWB6
 
 # Dammit all!! The reference genome for that umd3 copy was the NCBI version!
 perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b dominette -t dominette_sequence_files.tab -f umd3_kary_unmask_ngap.fa -p assemble1 -m
+
+# Now trying it on the dominette-umd3 comparison
+module load samtools; sbatch -p assemble1 ../binaries/cnv-seq/cnv-seq.pl --test ITWB1/ITWB1/ITWB1.sorted.merged.bam --ref dominette/dominette/dominette.sorted.merged.bam --window-size 1000 --genome-size 2800000000 --annotate
+
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7 ITWB9 PC1; do echo $i; sbatch -p assemble1 ../binaries/cnv-seq/cnv-seq.pl --test $i/$i/$i.sorted.merged.bam --ref dominette/dominette/dominette.sorted.merged.bam --window-size 1000 --genome-size 2800000000 --annotate; done
+
+# OK, now I need to load the package in R to call CNVs individually
+```
+
+```R
+library(cnv)
+files <- list.files(pattern = "*.count")
+data <- cnv.cal("ITWB1.sorted.merged.window-1000.minw-4.count", log2.threshold=0.5, minimum.window=3, annotate=TRUE)
+
+# It worked, but the annotation takes too long to segment CNV calls
+for(f in files){data <- cnv.cal(f, log2.threshold=0.5, minimum.window=3, annotate=FALSE); write.table(data, file=paste0(f, ".tab"), sep="\t", quote=FALSE);}
+```
+
+Hold the phone -- George said that PC1 was the reference set for the aCGH comparison! Let me recalculate the ratios based on the PC1 reads.
+
+```bash
+module load samtools
+for i in ITWB1 ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7 ITWB9; do echo $i; sbatch -p assemble1 ../binaries/cnv-seq/cnv-seq.pl --test $i/$i/$i.sorted.merged.bam --ref PC1/PC1/PC1.sorted.merged.bam --window-size 1000 --genome-size 2800000000; done
+
+```

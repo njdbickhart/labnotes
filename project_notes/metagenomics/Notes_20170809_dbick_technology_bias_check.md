@@ -983,4 +983,101 @@ for i in `cat group_2.txt`; do name="illumina_usda_clusters/"${i}".fasta"; echo 
 for i in illumina_usda_clusters/*.fasta; do name=`basename $i | cut -d'.' -f1,2`; echo $name; python3 /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/sequenceData/calcGCcontentFasta.py -f illumina_usda_clusters/${name}.fasta -o illumina_usda_clusters/${name}.gc -t 10; done
 
 sbatch -p assemble2 calculate_cluster_read_depth.pl -f illumina_usda_clusters -o new_usda_ilm_clusters.rd.ext.tab
+for i in illumina_usda_clusters/*.fasta; do echo $i; sbatch -p assemble1 --nodes=1 --ntasks-per-node=1 --mem=2000 --wrap="module load samtools; samtools faidx $i;"; done
+
+perl condense_cluster_information.pl illumina_usda_clusters new_usda_ilm_clusters.rd.ext.tab new_usda_ilm_clusters.rd.ext.full.tab
+```
+
+#### Running R statistics on the Illumina data
+
+```R
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+data <- read.delim("new_usda_ilm_clusters.rd.ext.full.tab")
+data <- mutate(data, ZeroProp = ifelse(Count > 0, 1 - (NonZeroQ / Count), 0))
+
+data.metrics <- select(data, -NonZeroQ)
+data.metrics.mick <-filter(data, ReadGroup == "MICK") %>% select(-ReadGroup)
+data.metrics.usda <-filter(data, ReadGroup == "USDA") %>% select(-ReadGroup)
+
+# We have ALLOT more clusters that have no reads from MICKs dataset
+nrow(setdiff(data.metrics.usda[,c(1,2)], data.metrics.mick[,c(1,2)]))
+[1] 129888
+
+usdamickzeroclusters <- setdiff(data.metrics.usda[,c(1,2)], data.metrics.mick[,c(1,2)])
+usdadatasubset <- filter(data.metrics.usda, Cluster %in% usdamickzeroclusters$Cluster & Contig %in% usdamickzeroclusters$Contig)
+
+data.subcomp <- select(usdadatasubset, Count, AvgQual, GC, Len, ZeroProp) %>% mutate(Data = c("Unique"))
+data.subcomp <- bind_rows(data.subcomp, select(data.metrics.usda, Count, AvgQual, GC, Len, ZeroProp) %>% mutate(Data = c("Full")))
+
+p.density <- ggplot(data.subcomp, aes(x = Count, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig Read Depth") + xlim(c(0, 10000))
+p.qual <- ggplot(data.subcomp, aes(x = AvgQual, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Average Map Qual Score")
+p.gc <- ggplot(data.subcomp, aes(x = GC, fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig GC Percentage")
+p.len <- ggplot(data.subcomp, aes(x = log10(Len), fill=Data)) + geom_density(alpha=0.30) + theme_bw() + labs(x = "Contig Length Log10(bp)")
+
+png("usda_contigs_not_found_in_mick.png", height=1200, width = 800)
+library(gridExtra)
+grid.arrange(p.density, p.qual, p.gc, p.len, ncol=2, nrow=2)
+dev.off()
+
+# The PNG image looked ugly, so I rewrote it as a pdf
+pdf("usda_contigs_not_found_in_mick.pdf", useDingbats=FALSE)
+grid.arrange(p.density, p.qual, p.gc, p.len, ncol=2, nrow=2)
+dev.off()
+```
+
+## Running Pilon on PacBio clusters
+
+
+```bash
+mkdir pacbio_usda_pilon
+
+# Testing it out on one sample
+sbatch -p assemble1 pilon_process_reads.pl cluster.100 pacbio_usda_clusters/cluster.100.fasta pacbio_usda_clusters/cluster.100.fasta.final.bam pacbio_usda_pilon
+
+# I think that it worked fairly well. Now to queue the rest up
+for i in pacbio_usda_clusters/*.fasta; do name=`basename $i | cut -d'.' -f1,2`; echo $name; sbatch -p assemble1 pilon_process_reads.pl $name $i $i.final.bam pacbio_usda_pilon ; done
+
+mkdir pacbio_usda_corrected
+cp pacbio_usda_pilon/*.fasta pacbio_usda_corrected/
+tar -czvf pacbio_usda_corrected.tar.gz pacbio_usda_corrected
+
+# Let's estimate how many indels were corrected
+module load samtools; for i in pacbio_usda_pilon/*.fasta; do echo $i; samtools faidx $i; done
+
+# So, Pilon considers indels that are PASS filter that but considers deletions with a Del filter event
+perl calculate_pilon_stats.pl pacbio_usda_pilon_correction_stats.tab
+
+# Now to condense all of the pacbio clusters and to run a long-term alignment of illumina data to them
+mkdir pacbio_pilon_accumulated
+
+cat pacbio_usda_pilon/cluster.*.fasta | perl -ne '$_ =~ s/_pilon//; print $_;' > pacbio_pilon_accumulated/total_contigs.fasta
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="bwa index pacbio_pilon_accumulated/total_contigs.fasta"
+```
+
+## Generating blobtools plots and some summary statistics
+
+I am going to run the blobtools pipeline to generate some stats on the pacbio dataset and the Illumina dataset before sending it all to Mick and company.
+
+####Note that the Diamond database is located here: 
+* **/mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond**
+
+
+```bash
+# Generating a combined alignment to the pilon-corrected reads
+mkdir pacbio_pilon_accumulated
+cat pacbio_usda_pilon/cluster.*.fasta | perl -ne '$_ =~ s/_pilon//; print $_;' > pacbio_pilon_accumulated/total_contigs.fasta
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 --wrap="bwa index pacbio_pilon_accumulated/total_contigs.fasta"
+
+perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t usda_illumina_fastas.tab -f total_contigs.fasta -m
+
+perl ~/sperl/sequence_data_scripts/getBamStats.pl -b pacbio_pilon_accumulated/aligns/USDA/USDA.sorted.merged.bam
+Determining raw x coverage from 1 bams...
+BamName TotalReads      MappedReads     UnmappedReads   RawXCov MapXCov AvgRawChrcov    AvgMapChrcov
+USDA.sorted.merged.bam     860211818       373701639       486510179       152.532528997474        66.2646744608792  68.8191602730411        61.5598801926716 <- 43.44% mapping rate for illumina reads. 
+
+cd pacbio_pilon_accumulated
+sbatch -p assemble2 --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/bin/diamond blastx --query total_contigs.fasta --db /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteosomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25"
 ```
