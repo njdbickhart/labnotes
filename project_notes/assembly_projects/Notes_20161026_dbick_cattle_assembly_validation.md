@@ -2771,5 +2771,5 @@ That leaves the 9.16 new_Dominette_NextSeq data as our validation dataset for co
 module load bwa; sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 -p assemble1 --wrap="bwa index ARS-UCDv1.0.25.fasta";
 
 ls /mnt/nfs/nfs2/brosen/projects/ARS-UCD/new_Dominette_NextSeq_data/9.16.16/*.fastq > validation_fastqs.tab
-sleep 2h; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b validate -t validation_fastqs.tab -f ARS-UCDv1.0.25.fasta -m
+sleep 2h; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b validate -t validation_fastqs.tab -f ARS-UCDv1.0.25.fasta -m -p assemble1
 ```

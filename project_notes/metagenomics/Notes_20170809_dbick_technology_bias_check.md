@@ -1080,4 +1080,89 @@ USDA.sorted.merged.bam     860211818       373701639       486510179       152.5
 
 cd pacbio_pilon_accumulated
 sbatch -p assemble2 --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/bin/diamond blastx --query total_contigs.fasta --db /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteosomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25"
+
+# AH, the program prints everything to STDOUT for some reason. Good thing I kept the slurm log!
+mv slurm-785603.out pacbio_accum_diamond_uniprot.tsv
+
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools taxify -f pacbio_accum_diamond_uniprot.tsv -m /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteomes.taxids -s 0 -t 2 -o pacbio_accum_diamond_uniprot
+
+# Now to generate the plots
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools create -i total_contigs.fasta -b aligns/USDA/USDA.sorted.merged.bam -t pacbio_accum_diamond_uniprot.pacbio_accum_diamond_uniprot.tsv.taxified.out -o usda_pacbio_pilon_blobplot
+[+] Parsing FASTA - total_contigs.fasta
+[ERROR:5]       : Sequence header tig00126445 is not unique.
+
+# Doh! Looks like I need to repartition the fasta to make sure there are no duplicates
+# The entries are duplicates of the same contigs, so let's try this using samtools
+perl -lane 'system("samtools faidx total_contigs.fasta $F[0] >> total_unique_contigs.fasta");' < total_contigs.fasta.fai
+
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools create -i total_unique_contigs.fasta -b aligns/USDA/USDA.sorted.merged.bam -t pacbio_accum_diamond_uniprot.pacbio_accum_diamond_uniprot.tsv.taxified.out -o usda_pacbio_pilon_blobplot
+[+] Parsing FASTA - total_unique_contigs.fasta
+[+] names.dmp/nodes.dmp not specified. Retrieving nodesDB from /mnt/nfs/nfs2/bickhart-users/binaries/blobtools/data/nodesDB.txt
+[%]     100%
+[+] Parsing tax0 - /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_pilon_accumulated/pacbio_accum_diamond_uniprot.pacbio_accum_diamond_uniprot.tsv.taxified.out
+[+] Computing taxonomy using taxrule(s) bestsum
+[%]     100%
+[+] Parsing bam0 - /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_pilon_accumulated/aligns/USDA/USDA.sorted.merged.bam
+[+]     Checking with 'samtools flagstat'
+[+]     Mapping reads = 373,701,639, total reads = 860,211,818 (mapping rate = 43.4%)
+[%]     98%
+[-] Based on samtools flagstat: expected 373701639 reads, 367974149 reads were parsed
+[+]     Writing usda_pacbio_pilon_blobplot.USDA.sorted.merged.bam.cov
+[+] Generating BlobDB and writing to file usda_pacbio_pilon_blobplot.blobDB.json
+[+]     Writing usda_pacbio_pilon_blobplot.USDA.sorted.merged.bam.cov
+[+] Generating BlobDB and writing to file usda_pacbio_pilon_blobplot.blobDB.json
+
+# Generating a phylum-level (I think!) plot
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i usda_pacbio_pilon_blobplot.blobDB.json --notitle -o usda_pacbio_phylum
+
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i usda_pacbio_pilon_blobplot.blobDB.json --notitle -r genus --sort_first "no-hit,other,undef" -p 14 -o usda_pacbio_genus
+
+# Just for kicks, but it'll be a huge mess:
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i usda_pacbio_pilon_blobplot.blobDB.json --notitle -r species --sort_first "no-hit,other,undef" -p 14 -o usda_pacbio_species
+
+# I saw in the tardigrade reference paper that there was a way to remove contaminants this way:
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i usda_pacbio_pilon_blobplot.blobDB.json --notitle -r superkingdom -o usda_pacbio_supkingdom
+```
+
+So, some notes on the blobplots:
+* The superkingdom plot appears to have highlighted some potential protist contigs in the upper left hand corner! (low GC, high coverage)
+* We also have 1.23 megabases of putative viral origin contigs!
+* Other Eukaryotes appear to make up a smaller proportion (but larger contig sizes) of the dataset.
+
+Now to generate some tables to try to grep out other stats.
+
+```bash
+# Species level view to see contamination
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools view -i usda_pacbio_pilon_blobplot.blobDB.json -r species -b -o usda_pacbio_species
+
+# This gave me a good rundown of genus names from that list in the meantime
+perl -lane 'if($F[0] =~ /^#/){next;}else{print $F[5];}' < usda_pacbio_species.usda_pacbio_pilon_blobplot.blobDB.table.txt | perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -c 0 -f stdin
+
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools view -i usda_pacbio_pilon_blobplot.blobDB.json -r superkingdom -b -o usda_pacbio_supkingdom
+
+grep 'tig00498169' usda_pacbio_species.usda_pacbio_pilon_blobplot.blobDB.table.txt               tig00498169     105788  0.4073  0       436.551 Pseudomonas virus phiKZ 443.0   0       tax0=Pseudomonas virus phiKZ:443.0; # A really cool large virus! Typically 200kb genome size
+```
+
+
+#### Blobplots on Illumina contigs
+
+Let's see how the Illumina assemblies stand up compared to the PacBio reads.
+
+```bash
+mkdir illumina_usda_accumulated
+sbatch --mem=15000 --nodes=1 --ntasks-per-node=1 -p assemble1 --wrap="cat illumina_usda_clusters/*.fasta > illumina_usda_accumulated/prefilter_usda_illumina_contigs.fa; samtools faidx illumina_usda_accumulated/prefilter_usda_illumina_contigs.fa; perl unique_fasta.pl illumina_usda_accumulated/prefilter_usda_illumina_contigs.fa.fai illumina_usda_accumulated/prefilter_usda_illumina_contigs.fa illumina_usda_accumulated/unique_usda_illumina_contigs.fa; samtools faidx illumina_usda_accumulated/unique_usda_illumina_contigs.fa; module load bwa; bwa index illumina_usda_accumulated/unique_usda_illumina_contigs.fa;"
+
+```
+
+#### Redoing pilon correction and Illumina assembly blobs
+
+The Pacbio pilon correction was faulty because not all contigs were present in the cluster dataset. I'm going to fix that now.
+
+```bash
+# Downloading Illumina contigs
+python ../../binaries/download_from_gdrive.py 1BEVP_ft3Tk24faPprYtnfW19EPgaHVP1 ./illumina_usda_accumulated/mick_megahit_final_full.fasta
+
+sbatch --nodes=1 --mem=20000 -p assemble1 --ntasks-per-node=1 --wrap="bwa index mick_megahit_final_full.fasta"
+
+sleep 4h; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t ../usda_illumina_fastas.tab -f mick_megahit_final_full.fasta -m -p assemble1
 ```

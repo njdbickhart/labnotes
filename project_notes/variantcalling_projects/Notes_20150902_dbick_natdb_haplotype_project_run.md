@@ -417,5 +417,9 @@ perl ~/sperl/sequence_data_pipeline/samtoolsMpileupBamsSlurm.pl -b vcfs -t dedup
 # Damn, all of my "call" scripts were replaced by mpileup commands!
 squeue -u dbickhart | grep call | perl -lane 'print $F[0];' | xargs -I {} scancel {}
 
+# Rerunning the call commands
+sbatch --nodes=1 --mem=30000 -p assemble1 --ntasks-per-node=1 process_bcfs.sh
+```
+
 
 
