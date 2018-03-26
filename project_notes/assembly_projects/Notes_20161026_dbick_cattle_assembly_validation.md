@@ -2772,4 +2772,7 @@ module load bwa; sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 -p assemble1 -
 
 ls /mnt/nfs/nfs2/brosen/projects/ARS-UCD/new_Dominette_NextSeq_data/9.16.16/*.fastq > validation_fastqs.tab
 sleep 2h; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b validate -t validation_fastqs.tab -f ARS-UCDv1.0.25.fasta -m -p assemble1
+
+module load freebayes/1.1.0-1-gf15e66e
+sbatch --nodes=1 --ntasks-per-node=2 --mem=35000 -p assemble2 --wrap="freebayes -C 2 -0 -O -q 20 -z 0.10 -E 0 -X -u -p 2 -F 0.75 -f ARS-UCDv1.0.25.fasta -v ARS-UCDv1.0.25.freebayes.vcf validate/dominette/dominette.sorted.merged.bam"
 ```

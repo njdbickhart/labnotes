@@ -1166,3 +1166,12 @@ sbatch --nodes=1 --mem=20000 -p assemble1 --ntasks-per-node=1 --wrap="bwa index 
 
 sleep 4h; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t ../usda_illumina_fastas.tab -f mick_megahit_final_full.fasta -m -p assemble1
 ```
+
+And the redo of pilon correction.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_retry_pilon
+
+```bash
+bwa index rumen_pacbio_multiround.asm.fasta
+
+perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t ../usda_illumina_fastas.tab -f rumen_pacbio_multiround.asm.fasta -m -p assemble1
