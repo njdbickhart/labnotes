@@ -490,3 +490,34 @@ bedtools subtract -a dam_assembly_contig_lengths.bed -b dam_scaffold_sans3ddna.c
         Largest Length:         2591174
 
 bedtools merge -i dam_scaffold_sans3ddna.contigmap.bed -c 4 -o distinct | grep ',' | perl -lane 'system("grep $F[0] dam_scaffold_no3ddna.contigmap.bed");' > dam_scaffold_sans3d_mash.duptable.bed
+```
+
+## Generating salsa scaffolds and assessing scaffold contiguity
+
+I am going to hijack my pipeline to create chromosome scaffolds from the Salsa scaffold list with minimal modifications.
+
+```bash
+# Starting with the dam
+cp dam_scaffs.sans3d.list dam_scaffs.salsa.list
+
+perl compare_algns_per_chrassignment.pl -l dam_scaffs.salsa.list -f ../../ars_ucd_123/ARS-UCDv1.0.23.fasta.fai -t 50000 -o dam_scaffs_consensus.salsa.tab
+# 11 chromosomes were a single salsa scaffold
+
+perl -e '%row = ("salsa" => 3, "phase" => 8); <>; while(<>){chomp; @s = split(/\t/); $scaff = $s[$row{$s[1]} - 1]; @ss = split(/;/, $scaff); $p = 0; for(my $x = 0; $x < scalar(@ss); $x++){$j = $ss[$x]; $p++; $sname = $j =~ s/,.+$//; print "$s[0]\t0\t0\t$p\tA\t$j\t0\t0\t?\t$s[1]\n"; unless($x + 1 >= scalar(@ss)){$p++; print "$s[0]\t0\t0\t$p\tU\t100\tscaffold\tyes\tmap\n";}}}' < dam_scaffs_consensus.salsa.tab > dam_scaffs_consensus.salsa.pagp
+
+perl prepare_master_fasta.pl dam_scaffs_consensus.salsa.pagp dam_scaffold_fastas.tab dam_scaffold_salsa
+
+perl -ne '$_ =~ s/\?/+/g; print $_;' < dam_scaffold_salsa.agp > temp.agp
+mv temp.agp dam_scaffold_salsa.agp
+
+samtools faidx dam_scaffold_salsa.fasta
+java -Xmx100g -jar CombineFasta.jar agp2fasta -f dam_scaffold_salsa.fasta -a dam_scaffold_salsa.agp -o dam_scaffold_salsa_only.ref.fasta
+```
+
+#### Changes list for dam
+* Remove salsa scaffolds 556 and 608 from chr1 (small alignment)
+* Remove salsa scaffold 815 from chr7 (small alignment)
+* Only kept the first 50 mbp of scaffold_539 for chr13 (scaffold_539 shares sequence on chr15)
+* Adjusted scaffold_539 for chr15 50484937-126484936
+* Salsa scaffold_65 appears to be circular on chr10
+* Salsa scaffold_1283 appears to be circular on chr27

@@ -485,3 +485,56 @@ sbatch --nodes=1 --mem=8000 --ntasks-per-node=1 --wrap="../kentUtils/bin/linux.x
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=1 --wrap="blat ../umd3/umd3_kary_unmask_ngap.2bit /dev/null /dev/null -makeOoc=11.ooc -repMatch=1024"
 
 for i in chrchunks/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch --account=biocommunity -p BioCompute ../bin/faSplit_blat_align.sh ../umd3/umd3_kary_unmask_ngap.2bit $i; done
+
+```
+
+## Mapping Bob's markers to v25 from NCBI
+
+Using Bob's script to download and standardize the assembly.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi
+
+##### download_process_reference.sh
+
+```bash
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --mem=25000
+#SBATCH --ntasks-per-node=8
+
+module load bwa
+module load samtools
+wget 'ftp://ftp.ncbi.nlm.nih.gov/sra/wgs_aux/NK/LS/NKLS02/*'
+unpigz *nt.gz
+
+wget 'ftp://ftp.ncbi.nlm.nih.gov/genomes/Bos_taurus/Assembled_chromosomes/seq/bt_alt_Btau_5.0.1_chrY.fa.gz'
+unpigz bt_alt_Btau_5.0.1_chrY.fa.gz
+
+cat *.fsa_nt >ARS-UCD1.2.ORIG.fa
+# replace the genbank chr name with just the accession
+sed s/'gi|355477162|ref|'// <bt_alt_Btau_5.0.1_chrY.fa >bt_alt_Btau_5.0.1_chrY.fa2
+sed s/'|'// <bt_alt_Btau_5.0.1_chrY.fa2 >bt_alt_Btau_5.0.1_chrY.fa3
+
+cat ARS-UCD1.2.ORIG.fa bt_alt_Btau_5.0.1_chrY.fa3 >ARS-UCD1.2.PlusY.fa
+
+grep '>' ARS-UCD1.2.PlusY.fa >ARS-UCD1.2.PlusY.fa.NAMES
+
+samtools faidx ARS-UCD1.2.PlusY.fa
+bwa index ARS-UCD1.2.PlusY.fa
+```
+
+Downloading markers and queuing analysis.
+
+```bash
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1hSAhFwiYO_5B_lERIeKsd90izyXKoNC1 9913_CHIP_DEREK_A.csv.1.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1MfhBiHMJghRInOd6LE6spCK8t71AVaC7 9913_CHIP_DEREK_A.csv.2.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 15FMXbwtYZOrildZtf_r0claGJJiRUN38 9913_CHIP_DEREK_A.csv.3.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1Ys0p2L14puX5FwIjNgvmdNcAQTV3YCDB 9913_CHIP_DEREK_B.csv.1.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1h3A4v9pyU-oAAOwIys1416-1NQCYaJdU 9913_CHIP_DEREK_B.csv.2.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1_VYlo9WZwUcHadRFGNHQqLLe2CLh98DE 9913_CHIP_DEREK_B.csv.3.fasta.gz
+
+for i in 9913_CHIP_DEREK_*.gz; do echo $i; gunzip $i; done
+
+for i in 9913_CHIP_DEREK_*.fasta; do echo $i; sbatch --mem=20000 -p assemble1 --ntasks-per-node=1 --nodes=1 --wrap="perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a ARS-UCD1.2.PlusY.fa -p $i -o $i; bwa mem ARS-UCD1.2.PlusY.fa $i > $i.sam"; done
+
+```
