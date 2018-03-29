@@ -2775,4 +2775,20 @@ sleep 2h; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b va
 
 module load freebayes/1.1.0-1-gf15e66e
 sbatch --nodes=1 --ntasks-per-node=2 --mem=35000 -p assemble2 --wrap="freebayes -C 2 -0 -O -q 20 -z 0.10 -E 0 -X -u -p 2 -F 0.75 -f ARS-UCDv1.0.25.fasta -v ARS-UCDv1.0.25.freebayes.vcf validate/dominette/dominette.sorted.merged.bam"
+
+# Now to grock out the QV values from the vcf
+perl -e '$c = 0; while(<>){chomp; @F = split(/\t/); if($F[0] =~ /^#/){next;} ($ab) = $F[7] =~ /AB=(.{1,10})\;ABP/; if($ab < 0.65){next;}else{ $la = length($F[3]); $lb = length($F[4]); if($la == $lb){$c++;}elsif($la < $lb){$c += $lb - $la;}else{$c += $la - $lb;}}} print "$c\n";' < ARS-UCDv1.0.25.freebayes.vcf
+25692
+
+# Serge's conservative method
+NUM_SNP=`cat ARS-UCDv1.0.25.freebayes.vcf |grep -v "#" | awk -F "\t" '{if (!match($NF, "0/1")) print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$8}' | tr ';' ' ' | sed s/AB=//g | awk -v WEIGHT=0 '{if ($6 >= WEIGHT) print $0}' | awk -v SUM=0 '{if (length($4) == length($5)) { SUM+=length($4); } else if (length($4) < length($5)) { SUM+=length($5)-length($4); } else { SUM+=length($4)-length($5)}} END { print SUM}'`
+echo $NUM_SNP
+36615
+
+perl -e '$ns = 36615; $nb = 2715851583; print (-10 * log($ns/$nb)/log(10)); print "\n";'
+48.7024699427649
+
+# Oops! Forgot the read depth >= 3 bases!
+samtools depth validate/dominette/dominette.sorted.merged.bam | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if(scalar(@s) >= 3){$c++;}} print "$c\n";'
+2695875889
 ```

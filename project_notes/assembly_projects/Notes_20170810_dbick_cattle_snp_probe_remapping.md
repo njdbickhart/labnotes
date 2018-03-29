@@ -526,12 +526,12 @@ bwa index ARS-UCD1.2.PlusY.fa
 Downloading markers and queuing analysis.
 
 ```bash
-python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1aWK8EjVSaM_Q9hUgqOy1s6OeT8JhG1p1 9913_CHIP_DEREK_A.csv.1.fasta.gz
-python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1FCQRm2N7QT0NNI4JXd1r3wXpD-KyKcky 9913_CHIP_DEREK_A.csv.2.fasta.gz
-python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1fNKgrlyBSMTvKusbpayu-ZJcfXDWKNp7 9913_CHIP_DEREK_A.csv.3.fasta.gz
-python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1EUp7z8AYWu7bEq1S0gM0b98cDfb25KS7 9913_CHIP_DEREK_B.csv.1.fasta.gz
-python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1__zzw19a9nmZFPmr4soa8ylYF5R4k274 9913_CHIP_DEREK_B.csv.2.fasta.gz
-python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 12Z-bgAhUVKQ96nXhtVCbrYbMWELuzfa5 9913_CHIP_DEREK_B.csv.3.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 11ouBkPXCNr0blgkFsAcmMGIGt9daH3iM 9913_CHIP_DEREK_A.csv.1.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1-n9iFE1qUMy4OqZrySVclEBahYfo5qYG 9913_CHIP_DEREK_A.csv.2.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1dC6zHFv31RC4podsUZaFdZhz7sRT5HAW 9913_CHIP_DEREK_A.csv.3.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1uXAuaQe-QTuHulu-53owIOqq1qhWRvfu 9913_CHIP_DEREK_B.csv.1.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1pvRxVQMQZZyEWo25h-rb70H7uLSjuwnW 9913_CHIP_DEREK_B.csv.2.fasta.gz
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1gIeU5X5Hw4OqaQ8IEYSqhlwmEAPY084N 9913_CHIP_DEREK_B.csv.3.fasta.gz
 
 for i in 9913_CHIP_DEREK_*.gz; do echo $i; gunzip $i; done
 

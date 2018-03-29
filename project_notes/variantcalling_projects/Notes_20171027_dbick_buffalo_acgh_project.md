@@ -188,5 +188,8 @@ for i in *logratios.bed; do name=`echo $i | cut -d'.' -f1`; echo $name; bedtools
 for i in *-vs-PC1*.count; do name=`echo $i | cut -d'.' -f1`; echo $name; mv $i $name.sorted.merged.window-1000.minw-4.count; done
 
 # Ok, now I'm going to do a direct intersection and then generate the data comparison
+for i in ITWB*.count.tab; do echo $i; perl -e '<>; while(<>){chomp; @s = split(/\t/); print "$s[1]\t$s[2]\t$s[3]\t$s[7]\t$s[8]\n";}' < $i > $i.bed; done
+for i in *.count.tab.bed; do name=`echo $i | cut -d'.' -f1`; echo $name; bedtools sort -i $i > $name.dacgh.sorted.bed; done
+
 
 ```

@@ -565,5 +565,17 @@ sbatch --nodes=1 --ntasks-per-node=5 --mem=25000 -p assemble1 --wrap="../../../b
 ls f1_sire*mashmap > sire_mashmap.tab
 perl convert_agp_to_bed.pl sire_mashmap.tab sire_scaffold_salsa.agp sire_scaffold_salsa.contigmap.bed
 
-# There were too many agp entries to edit
+# I modified the script to print out the "last" scaffold association so that bedtools doesn't explode due to unequal column lengths
+perl -lane 'print "$F[0]\t1\t$F[1]";' < ../bostaurus_angus.reformat.fasta.fai > sire_assembly_contig_lengths.bed
+bedtools intersect -a sire_assembly_contig_lengths.bed -b sire_scaffold_salsa.contigmap.bed -v | perl -lane 'print $F[0];' | sort | uniq | perl -lane 'print $F[0]; system("samtools faidx ../bostaurus_angus.reformat.fasta $F[0] >> sire_scaffold_salsa_only.missingctg.fasta");'
+
+cat sire_scaffold_salsa_only.ref.fasta sire_scaffold_salsa_only.missingctg.fasta > sire_scaffold_salsa_only.complete.fasta
+
 ```
+
+##### Salsa only scaffolding statistics
+
+|Assembly | OriginalCtgs | UnscaffoldedCtgs | UnscaffoldCtgLen | ScaffoldCtgLen |
+| :--- | ---: | ---: | ---: | ---: |
+|Sire  | 1747 | 1477 | 87,976,369 | 2,494,659,122 |
+|Dam   | 1585 | 1337 | 76,849,908 | 2,604,211,377 |

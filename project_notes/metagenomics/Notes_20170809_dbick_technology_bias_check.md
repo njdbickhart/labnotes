@@ -1175,3 +1175,4 @@ And the redo of pilon correction.
 bwa index rumen_pacbio_multiround.asm.fasta
 
 perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t ../usda_illumina_fastas.tab -f rumen_pacbio_multiround.asm.fasta -m -p assemble1
+```
