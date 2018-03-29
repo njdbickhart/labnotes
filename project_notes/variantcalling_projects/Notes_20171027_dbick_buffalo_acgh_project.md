@@ -4,6 +4,10 @@
 
 These are my notes on converting the Buffalo aCGH results from 2014 over to the released UMD_CASPUR WB2.0 assembly and generating figures and tables for the manuscript.
 
+## Table of Contents
+* [dACGH results](#dacgh)
+* [ACGH ratio gathering](#acgh)
+
 ## Coordinate conversions
 
 I need to start first with the full coordinate conversion of UMD3 against UMD_CASPUR. Let's download that file and begin the conversion.
@@ -99,7 +103,7 @@ bedtools intersect -a ITWB_acgh_combined_regions.bed -b buffalo_combined_cnvrs.b
         Smallest Length:        1459
         Largest Length:         142490159
 ```
-
+<a name="dacgh"></a>
 ## "dACGH" results
 
 I know that George wants to mirror our 2012 GR manuscript, but many of the methods that we used were highly subjective and required extensive reference vetting. I will use the statistical models to try to replicate the same methods we used, but with some added veracity in prediction.
@@ -153,6 +157,7 @@ for i in ITWB1 ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB3 ITWB4 ITWB5
 
 ```
 
+<a name="acgh"></a>
 ## Gathering aCGH ratios and generating comparisons
 
 George uploaded the raw data on the cluster. Unfortunately the raw data was incredibly, incredibly discursive and complex. I was able to find the logratio in the files and I will test out some stats to see if it is suitable for comparison.
@@ -190,6 +195,68 @@ for i in *-vs-PC1*.count; do name=`echo $i | cut -d'.' -f1`; echo $name; mv $i $
 # Ok, now I'm going to do a direct intersection and then generate the data comparison
 for i in ITWB*.count.tab; do echo $i; perl -e '<>; while(<>){chomp; @s = split(/\t/); print "$s[1]\t$s[2]\t$s[3]\t$s[7]\t$s[8]\n";}' < $i > $i.bed; done
 for i in *.count.tab.bed; do name=`echo $i | cut -d'.' -f1`; echo $name; bedtools sort -i $i > $name.dacgh.sorted.bed; done
+
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do bedtools intersect -a $i.dacgh.sorted.bed -b $i.logratios.sorted.bed -wa -wb > $i.dacgh.acgh.combined.tab; done
+
+# Now to generate the input data for the correlation
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); print "$s[3]\t$s[8]\t$ARGV[1]\n";} close IN;' $i.dacgh.acgh.combined.tab $i >> complete.dacgh.acgh.values.tab; done
+
+# And the CNV intersected regions, only
+# NOTE: I'm only using the aCGH CNV regions here
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do bedtools intersect -a ITWB_acgh_combined_regions.bed -b $i.dacgh.acgh.combined.tab -wb | perl -e 'chomp(@ARGV); while(<STDIN>){chomp; @s = split(/\t/); print "$s[7]\t$s[12]\t$ARGV[0]\n";}' $i >> cnv.dacgh.acgh.values.tab; done
+
+wc -l cnv.dacgh.acgh.values.tab complete.dacgh.acgh.values.tab
+   2237430 cnv.dacgh.acgh.values.tab
+  25113675 complete.dacgh.acgh.values.tab
+
+# There was a problem with Infinite values
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[3] =~ /Inf/){next;} print "$s[3]\t$s[8]\t$ARGV[1]\n";} close IN;' $i.dacgh.acgh.combined.tab $i >> complete.dacgh.acgh.values.tab; done
+
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do bedtools intersect -a ITWB_acgh_combined_regions.bed -b $i.dacgh.acgh.combined.tab -wb | perl -e 'chomp(@ARGV); while(<STDIN>){chomp; @s = split(/\t/); if($s[7] =~ /Inf/){next;} print "$s[7]\t$s[12]\t$ARGV[0]\n";}' $i >> cnv.dacgh.acgh.values.tab; done
+```
+
+Now to attempt to plot the correlations.
+
+```R
+library(ggplot2)
+complete <- read.delim("complete.dacgh.acgh.values.tab", header=FALSE)
+colnames(complete) <- c("dacgh", "acgh", "Sample")
+
+cor.test(complete$dacgh, complete$acgh, use = "complete.obs")
+
+        Pearson's product-moment correlation
+
+data:  complete$dacgh and complete$acgh
+t = 1307.6, df = 22825000, p-value < 2.2e-16
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ 0.2636033 0.2643666
+sample estimates:
+     cor
+0.263985
+
+# So the complete dataset has poor correlation
+
+cnv <- read.delim("cnv.dacgh.acgh.values.tab", header=FALSE)
+colnames(cnv) <- c("dacgh", "acgh", "Sample")
+
+cor.test(cnv$dacgh, cnv$acgh, use = "complete.obs")
+
+        Pearson's product-moment correlation
+
+data:  cnv$dacgh and cnv$acgh
+t = 1204.1, df = 1822100, p-value < 2.2e-16
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ 0.6648626 0.6664798
+sample estimates:
+     cor
+0.665672
+
+# Much better, but not amazing
+cnv$Sample <- as.factor(cnv$Sample)
+png(file="correlation_cnvregions_dacgh.png", height=2000, width=2000)
+ggplot(cnv, aes(x=dacgh, y=acgh, color=Sample)) + geom_point(shape=19, alpha=0.3) + geom_smooth(method=lm, se=FALSE) + theme_set(theme_gray(base_size = 24))
 
 
 ```
