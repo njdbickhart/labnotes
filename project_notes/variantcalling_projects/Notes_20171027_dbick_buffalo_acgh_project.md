@@ -152,3 +152,41 @@ module load samtools
 for i in ITWB1 ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7 ITWB9; do echo $i; sbatch -p assemble1 ../binaries/cnv-seq/cnv-seq.pl --test $i/$i/$i.sorted.merged.bam --ref PC1/PC1/PC1.sorted.merged.bam --window-size 1000 --genome-size 2800000000; done
 
 ```
+
+## Gathering aCGH ratios and generating comparisons
+
+George uploaded the raw data on the cluster. Unfortunately the raw data was incredibly, incredibly discursive and complex. I was able to find the logratio in the files and I will test out some stats to see if it is suitable for comparison.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/buffalo_acgh
+ 
+```bash
+perl -e 'for($x = 0; $x < 10; $x++){<>;} while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); printf("%.10g\n", $s[15]);}' < aCGH_buffalo/US83800207_255144910001_S01_CGH_1105_Oct12.txt |  perl ~/sperl/bed_cnv_fig_table_pipeline/statStd.pl
+total   972478
+Minimum -1.234553856
+Maximum 2.196189466
+Average -0.001129
+Median  0.0032069637105
+Standard Deviation      0.070513
+Mode(Highest Distributed Value) 0
+
+# Hmm... I can't find the probe coordinates. I will try to infer them from the probe sequence 
+perl -lane 'if($F[6] =~ /[ACGT]+/){print ">$F[1]\n$F[6]";}' < aCGH_buffalo/US83800207_255144910001_S01_CGH_1105_Oct12.txt > acgh_probes.fa
+bwa mem /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa acgh_probes.fa > acgh_probes.umd3.sam
+
+perl -lane 'if($F[0] =~ /^@/){next;}else{$e = length($F[9]) + $F[3]; print "$F[2]\t$F[3]\t$e\t$F[0]";}' < acgh_probes.umd3.sam > acgh_probes.umd3.bed
+
+# OK, so now I need to grep out all of the logr values, then associate them with specific coordinates
+for i in US83800207_255144910049_S01_CGH_1105_Oct12.txt US83800207_255144910050_S01_CGH_1105_Oct12.txt US83800207_255144910090_S01_CGH_1105_Oct12.txt US83800207_255144910091_S01_CGH_1105_Oct12.txt US83800207_255144910092_S01_CGH_1105_Oct12.txt US83800207_255144910093_S01_CGH_1105_Oct12.txt US83800207_255144910094_S01_CGH_1105_Oct12.txt US83800207_255144910095_S01_CGH_1105_Oct12.txt US83800207_255144910096_S01_CGH_1105_Oct12.txt US83800207_255144910097_S01_CGH_1105_Oct12.txt US83800207_255144910098_S01_CGH_1105_Oct12.txt US83800207_255144910099_S01_CGH_1105_Oct12.txt US83800207_255144910103_S01_CGH_1105_Oct12.txt US83800207_255144910104_S01_CGH_1105_Oct12.txt; do name=`echo $i | cut -d'_' -f1,2`; echo $name; perl -e 'for($x = 0; $x < 10; $x++){<>;} while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); printf("%s\t%.10g\n", $s[1], $s[15]);}' < aCGH_buffalo/$i > $name.logratios; done
+
+# I changed them all to their ITWB callsigns
+# Now to swap probe numbers for the coordinates
+for i in *.logratios; do echo $i; perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $h{$s[3]} = [$s[0], $s[1], $s[2]];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){print join("\t", @{$h{$s[0]}}) . "\t$s[1]\n";}}' acgh_probes.umd3.bed $i > $i.bed; done
+
+for i in *logratios.bed; do name=`echo $i | cut -d'.' -f1`; echo $name; bedtools sort -i $i > $name.logratios.sorted.bed; done
+
+# modifying the data so that I can compare it
+for i in *-vs-PC1*.count; do name=`echo $i | cut -d'.' -f1`; echo $name; mv $i $name.sorted.merged.window-1000.minw-4.count; done
+
+# Ok, now I'm going to do a direct intersection and then generate the data comparison
+
+```

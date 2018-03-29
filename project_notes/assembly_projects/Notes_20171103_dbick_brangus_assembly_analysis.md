@@ -521,3 +521,49 @@ java -Xmx100g -jar CombineFasta.jar agp2fasta -f dam_scaffold_salsa.fasta -a dam
 * Adjusted scaffold_539 for chr15 50484937-126484936
 * Salsa scaffold_65 appears to be circular on chr10
 * Salsa scaffold_1283 appears to be circular on chr27
+
+```bash
+# Adding the missing contigs
+perl convert_agp_to_bed.pl dam_scaffolding_tech_mashmap.tab dam_scaffold_salsa.agp dam_scaffold_salsa.agp.bed
+
+bedtools intersect -a dam_assembly_contig_lengths.bed -b dam_scaffold_salsa.agp.bed -v | perl -lane 'print "$F[0]"; system("samtools faidx ../bostaurus_brahma.reformat.fasta $F[0] >> dam_scaffold_salsa_only.missingctg.fasta");'
+
+cat dam_scaffold_salsa_only.ref.fasta dam_scaffold_salsa_only.missingctg.fasta > dam_scaffold_salsa_only.complete.fasta
+
+## Now to generate the sire assembly
+perl compare_algns_per_chrassignment.pl -l sire_scaffs.salsa.list -f ../../ars_ucd_123/ARS-UCDv1.0.23.fasta.fai -t 50000 -o sire_scaffs_consensus.salsa.tab
+# Oh man, it's worse than the previous one! Still going to try
+
+perl -e '%row = ("salsa" => 3, "phase" => 8); <>; while(<>){chomp; @s = split(/\t/); $scaff = $s[$row{$s[1]} - 1]; @ss = split(/;/, $scaff); $p = 0; for(my $x = 0; $x < scalar(@ss); $x++){$j = $ss[$x]; $p++; $sname = $j =~ s/,.+$//; print "$s[0]\t0\t0\t$p\tA\t$j\t0\t0\t?\t$s[1]\n"; unless($x + 1 >= scalar(@ss)){$p++; print "$s[0]\t0\t0\t$p\tU\t100\tscaffold\tyes\tmap\n";}}}' < sire_scaffs_consensus.salsa.tab > sire_scaffs_consensus.salsa.pagp
+
+perl prepare_master_fasta.pl sire_scaffs_consensus.salsa.pagp sire_scaffold_fastas.tab sire_scaffold_salsa
+
+perl -ne '$_ =~ s/\?/+/g; print $_;' < sire_scaffold_salsa.agp > temp
+mv temp sire_scaffold_salsa.agp
+```
+
+#### Changes list for Sire
+* Removed scaffold_520 from chr1 (small alignment)
+* The first 133986306 of scaffold_520 belongs on chr2
+* The 133986306-253622838 range of scaffold_520 belongs on chr5
+* Only the first 19792045 bases of scaffold_1039 belong on chr8
+* NOTE: the middle of scaffold_1032 (34 mb - 45 mb) belong on chrs 28 and 24
+* Adjusted the range of scaffold_1039 on chr12 to 19792045-107435571
+* Removed scaffold_68 from chr15 (small alignment)
+* The first 70494700 of scaffold_68 belongs on chr20
+* Removed the first 70494700 of scaffold_68 from chr23
+* Removed scaffold_1032 from chr28 (small alignment)
+
+So that's ALLOT more editting needed! The Angus side is somehow more error prone from the Hi-C perspective? Very strange.
+
+```bash
+samtools faidx sire_scaffold_salsa.fasta
+java -Xmx100g -jar CombineFasta.jar agp2fasta -f sire_scaffold_salsa.fasta -a sire_scaffold_salsa.agp -o sire_scaffold_salsa_only.ref.fasta
+
+sbatch --nodes=1 --ntasks-per-node=5 --mem=25000 -p assemble1 --wrap="../../../binaries/mashmap-Linux64-v2.0/mashmap -r ../bostaurus_angus.reformat.fasta -q f1_sire_salsa.fasta -t 5 -f one-to-one -o f1_sire_salsa.fasta.mashmap"
+
+ls f1_sire*mashmap > sire_mashmap.tab
+perl convert_agp_to_bed.pl sire_mashmap.tab sire_scaffold_salsa.agp sire_scaffold_salsa.contigmap.bed
+
+# There were too many agp entries to edit
+```
