@@ -570,6 +570,9 @@ perl -lane 'print "$F[0]\t1\t$F[1]";' < ../bostaurus_angus.reformat.fasta.fai > 
 bedtools intersect -a sire_assembly_contig_lengths.bed -b sire_scaffold_salsa.contigmap.bed -v | perl -lane 'print $F[0];' | sort | uniq | perl -lane 'print $F[0]; system("samtools faidx ../bostaurus_angus.reformat.fasta $F[0] >> sire_scaffold_salsa_only.missingctg.fasta");'
 
 cat sire_scaffold_salsa_only.ref.fasta sire_scaffold_salsa_only.missingctg.fasta > sire_scaffold_salsa_only.complete.fasta
+perl -ne '$_ =~ s/\?/+/g; print $_;' < sire_scaffold_3ddna2.agp > temp
+mv temp sire_scaffold_3ddna2.agp
+
 
 ```
 
@@ -579,3 +582,36 @@ cat sire_scaffold_salsa_only.ref.fasta sire_scaffold_salsa_only.missingctg.fasta
 | :--- | ---: | ---: | ---: | ---: |
 |Sire  | 1747 | 1477 | 87,976,369 | 2,494,659,122 |
 |Dam   | 1585 | 1337 | 76,849,908 | 2,604,211,377 |
+
+Serge suggested making just a 3ddnav2 assembly as that scaffolding required fewer manual edits than the salsa assembly.
+
+```bash
+sbatch --nodes=1 --ntasks-per-node=25 --mem=25000 -p assemble1 --wrap="../../../binaries/mashmap-Linux64-v2.0/mashmap -r ../bostaurus_angus.reformat.fasta -q f1_sire_3ddna_v2.fasta -t 25 -f one-to-one -o f1_sire_3ddnav2.fasta.mashmap"
+
+perl compare_algns_per_chrassignment.pl -l sire_scaffs.3ddna2.list -f ../../ars_ucd_123/ARS-UCDv1.0.23.fasta.fai -t 50000 -o sire_scaffs_consensus.3ddna2.tab
+
+perl -e '%row = ("3ddna2" => 3, "phase" => 8); <>; while(<>){chomp; @s = split(/\t/); $scaff = $s[$row{$s[1]} - 1]; @ss = split(/;/, $scaff); $p = 0; for(my $x = 0; $x < scalar(@ss); $x++){$j = $ss[$x]; $p++; $sname = $j =~ s/,.+$//; print "$s[0]\t0\t0\t$p\tA\t$j\t0\t0\t?\t$s[1]\n"; unless($x + 1 >= scalar(@ss)){$p++; print "$s[0]\t0\t0\t$p\tU\t100\tscaffold\tyes\tmap\n";}}}' < sire_scaffs_consensus.3ddna2.tab > sire_scaffs_consensus.3ddna2.pagp
+
+perl prepare_master_fasta.pl sire_scaffs_consensus.3ddna2.pagp sire_scaffold_fastas.tab sire_scaffold_3ddna2
+samtools faidx sire_scaffold_3ddna2.fasta
+ls f1_sire*.mashmap > sire_mashmap.tab
+
+java -Xmx100g -jar CombineFasta.jar agp2fasta -f sire_scaffold_3ddna2.fasta -a sire_scaffold_3ddna2.agp -o sire_scaffold_3ddna2_only.ref.fasta
+
+perl convert_agp_to_bed.pl sire_mashmap.tab sire_scaffold_3ddna2.agp sire_scaffold_3ddna2.contigmap.bed
+bedtools intersect -a sire_assembly_contig_lengths.bed -b sire_scaffold_3ddna2.contigmap.bed -v | perl -lane 'print $F[0];' | sort | uniq | perl -lane 'print $F[0]; system("samtools faidx ../bostaurus_angus.reformat.fasta $F[0] >> sire_scaffold_3ddna2_only.missingctg.fasta");'
+
+cat sire_scaffold_3ddna2_only.ref.fasta sire_scaffold_3ddna2_only.missingctg.fasta > angus_3ddna2_v1.complete.fasta
+```
+
+#### 3ddna2 sire only assembly changes
+* Removed HiC_scaffold_3 from the end of chr1 (small alignment)
+* Removed HiC_scaffold_49 from the end of chr24 (small alignment)
+
+##### Updated scaffolding statistics
+
+|Assembly | Scaffolds | OriginalCtgs | UnscaffoldedCtgs | UnscaffoldCtgLen | ScaffoldCtgLen |
+| :--- | :--- |---: | ---: | ---: | ---: |
+|Sire  | Salsa| 1747 | 1477 | 87,976,369 | 2,494,659,122 |
+|Sire  |3ddna2| 1747 | 1198 | 50,677,645 | 2,523,588,061 |
+|Dam   | Salsa| 1585 | 1337 | 76,849,908 | 2,604,211,377 |

@@ -380,7 +380,7 @@ cat sorted.merged.bam.list | xargs -I {} sbatch indel_realign_markdups.sh {} ARS
 
 I need to select suitable BAM files for the analysis. It looks like there are some bams with very low coverage that may impact the variant calling. I would want to remove them to avoid biasing our variant calls.
 
-> Assembler2: 
+> Assembler2: /mnt/nfs/nfs1/derek.bickhart/CDDR-Project/vcfs
 
 ```bash
 ls ./*/*/*.dedup.bam > dedup.final.bam.list
@@ -419,7 +419,44 @@ squeue -u dbickhart | grep call | perl -lane 'print $F[0];' | xargs -I {} scance
 
 # Rerunning the call commands
 sbatch --nodes=1 --mem=30000 -p assemble1 --ntasks-per-node=1 process_bcfs.sh
+
+# Now I need to condense the VCFs into singular files
+mkdir mkdir condensed_vcfs
+
+# Creating sorted file lists for each chromosome/scaffold-category
+perl -e 'use File::Basename; %uniques;  @f = `ls vcf_files/*.vcf.gz`; chomp(@f); foreach my $f (@f){@fsegs = split(/_/, basename($f)); push(@{$uniques{"$fsegs[0]\_$fsegs[1]\_$fsegs[2]"}}, $f);} foreach my $n (keys(%uniques)){open(OUT, "> $n.file.list"); foreach my $v (@{$uniques{$n}}){print OUT "$v\n";} close OUT;}'
+
+for i in *.file.list; do name=`echo $i | cut -d'.' -f1 | cut -d'_' -f3`; echo $name; for j in `cat $i`; do bcftools index $j; done; sbatch --nodes=1 --ntasks-per-node=1 --mem=20000 -p assemble1 --wrap="bcftools concat -a -f $i -O z -o condensed_vcfs/$name.vcf.gz -d all";done
+
+# Calculating stats
+mkdir condensed_vstats
+for i in condensed_vcfs/*.vcf.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; bcftools index $i; bcftools stats -F ../ARS-UCD1.0.14.clean.wIGCHaps.fasta --af-bins '(0.05,0.1,0.5,1)' $i > condensed_vstats/$name.vcf.stats; done
+
+mkdir vcfstatplots
+for i in condensed_vstats/*.stats; do name=`basename $i | cut -d'.' -f1`; echo $name; plot-vcfstats -r -p vcfstatplots/$name -T "chr$name" $i; done
 ```
 
+## Remapping
 
+I want to see how quickly I can remap the reads to other assemblies if needed.
 
+> Assembler2: /mnt/nfs/nfs1/derek.bickhart/CDDR-Project
+
+```bash
+# Test on a small subset of reads
+samtools fasta /mnt/nfs/SequenceData/wustl/set1/xfer.genome.wustl.edu/gxfer1/23166236125780/gerald_HGK3FALXX_5_AAGGAAGG-AAGGAAGG.bam | head -n 100 | /mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -ax sr /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/bt_ref_Bos_taurus_UMD_3.1.1.fasta - | samtools sort -T /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/temp -o /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/temp.test.sorted.bam -
+
+# Reference indexing takes a long time! Let's test it with a prebuilt index
+/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -d /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/bt_ref_Bos_taurus_UMD_3.1.1.mmi /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/bt_ref_Bos_taurus_UMD_3.1.1.fasta
+
+samtools fasta /mnt/nfs/SequenceData/wustl/set1/xfer.genome.wustl.edu/gxfer1/23166236125780/gerald_HGK3FALXX_5_AAGGAAGG-AAGGAAGG.bam | head -n 100 | /mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -ax sr /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/bt_ref_Bos_taurus_UMD_3.1.1.mmi - | samtools sort -T /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/temp -o /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/temp.test.sorted.bam -
+
+# OK that worked! Let's adapt my script to use minmap2 instead
+cat wustl_remaining_seq_files_list.tab wustl_round2_bam_remaining_files.tab > wustl_complete_seq_files.tab
+
+# Fingers crossed!
+perl ~/sperl/sequence_data_pipeline/alignBamReadsMinimapSlurm.pl -b umd3 -t wustl_complete_seq_files.tab -f /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/bt_ref_Bos_taurus_UMD_3.1.1.mmi -p assemble1 -m
+
+# Moved some to assemble3
+squeue | grep 'bwaAlign' | tail -n 500 | perl -lane 'print $F[0];' | xargs -I {} scontrol update jobid={} partition=assemble3
+```
