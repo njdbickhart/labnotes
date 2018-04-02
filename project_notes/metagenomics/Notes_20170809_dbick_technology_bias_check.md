@@ -1165,6 +1165,13 @@ python ../../binaries/download_from_gdrive.py 1BEVP_ft3Tk24faPprYtnfW19EPgaHVP1 
 sbatch --nodes=1 --mem=20000 -p assemble1 --ntasks-per-node=1 --wrap="bwa index mick_megahit_final_full.fasta"
 
 sleep 4h; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t ../usda_illumina_fastas.tab -f mick_megahit_final_full.fasta -m -p assemble1
+
+perl ~/sperl/sequence_data_scripts/getBamStats.pl -b aligns/USDA/USDA.sorted.merged.bam
+Determining raw x coverage from 1 bams...
+BamName TotalReads      MappedReads     UnmappedReads   RawXCov MapXCov AvgRawChrcov    AvgMapChrcov
+aligns/USDA/USDA.sorted.merged.bam      877788309       749716538       128071771       25.933269543747 22.1495329363732        23.7102037517908 22.3336682467173	<- 85.4 % mapping rate (double the pacbio)
+
+/mnt/nfs/nfs2/bickhart-users/binaries/bin/diamond blastx --query mick_megahit_final_full.fasta --db /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteosomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 > ilmn_accum_diamond_uniprot.tsv
 ```
 
 And the redo of pilon correction.
@@ -1175,4 +1182,6 @@ And the redo of pilon correction.
 bwa index rumen_pacbio_multiround.asm.fasta
 
 perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t ../usda_illumina_fastas.tab -f rumen_pacbio_multiround.asm.fasta -m -p assemble1
+
+perl ~/sperl/assembly_scripts/slurmPilonFasta.pl -f aligns/USDA/USDA.sorted.merged.bam -g rumen_pacbio_multiround.asm.fasta -o pilon
 ```
