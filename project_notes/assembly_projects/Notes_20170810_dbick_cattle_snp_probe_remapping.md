@@ -537,4 +537,8 @@ for i in 9913_CHIP_DEREK_*.gz; do echo $i; gunzip $i; done
 
 for i in 9913_CHIP_DEREK_*.fasta; do echo $i; sbatch --mem=20000 -p assemble1 --ntasks-per-node=1 --nodes=1 --wrap="perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a ARS-UCD1.2.PlusY.fa -p $i -o $i; bwa mem ARS-UCD1.2.PlusY.fa $i > $i.sam"; done
 
+# And for UMD3
+module load bwa; for i in snp_remappings/*.fasta; do name=`basename $i`; echo $name; sbatch --mem=20000 --ntasks-per-node=1 --nodes=1 --wrap="perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a bt_ref_Bos_taurus_UMD_3.1.1.fasta -p $i -o $name; bwa mem bt_ref_Bos_taurus_UMD_3.1.1.fasta $i > $name.sam"; done
+
+mv 9913_CHIP* ./umd3_mappings/
 ```

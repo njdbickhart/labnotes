@@ -1172,6 +1172,10 @@ BamName TotalReads      MappedReads     UnmappedReads   RawXCov MapXCov AvgRawCh
 aligns/USDA/USDA.sorted.merged.bam      877788309       749716538       128071771       25.933269543747 22.1495329363732        23.7102037517908 22.3336682467173	<- 85.4 % mapping rate (double the pacbio)
 
 /mnt/nfs/nfs2/bickhart-users/binaries/bin/diamond blastx --query mick_megahit_final_full.fasta --db /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteosomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 > ilmn_accum_diamond_uniprot.tsv
+
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools taxify -f ilmn_accum_diamond_uniprot.tsv -m /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteomes.taxids -s 0 -t 2 -o illumina_accum_diamond_uniprot
+
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools create -i mick_megahit_final_full.fasta -b aligns/USDA/USDA.sorted.merged.bam -t illumina_accum_diamond_uniprot.ilmn_accum_diamond_uniprot.tsv.taxified.out -o mick_megahit_illumina_blobplot
 ```
 
 And the redo of pilon correction.
