@@ -1176,6 +1176,11 @@ aligns/USDA/USDA.sorted.merged.bam      877788309       749716538       12807177
 /mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools taxify -f ilmn_accum_diamond_uniprot.tsv -m /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteomes.taxids -s 0 -t 2 -o illumina_accum_diamond_uniprot
 
 /mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools create -i mick_megahit_final_full.fasta -b aligns/USDA/USDA.sorted.merged.bam -t illumina_accum_diamond_uniprot.ilmn_accum_diamond_uniprot.tsv.taxified.out -o mick_megahit_illumina_blobplot
+
+#### Plot generation ####
+# Please note: these plots were generated before Diamond completed!
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i mick_megahit_illumina_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -o usda_illumina_phylum
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i mick_megahit_illumina_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -r superkingdom -o usda_illumina_supkingdom
 ```
 
 And the redo of pilon correction.
@@ -1187,5 +1192,5 @@ bwa index rumen_pacbio_multiround.asm.fasta
 
 perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t ../usda_illumina_fastas.tab -f rumen_pacbio_multiround.asm.fasta -m -p assemble1
 
-perl ~/sperl/assembly_scripts/slurmPilonFasta.pl -f aligns/USDA/USDA.sorted.merged.bam -g rumen_pacbio_multiround.asm.fasta -o pilon
+perl ~/sperl/assembly_scripts/slurmPilonFasta.pl -f aligns/USDA/USDA.sorted.merged.bam -g rumen_pacbio_multiround.asm.fasta -o pilon -p assemble2
 ```
