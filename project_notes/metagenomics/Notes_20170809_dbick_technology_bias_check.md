@@ -1181,6 +1181,9 @@ aligns/USDA/USDA.sorted.merged.bam      877788309       749716538       12807177
 # Please note: these plots were generated before Diamond completed!
 /mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i mick_megahit_illumina_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -o usda_illumina_phylum
 /mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i mick_megahit_illumina_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -r superkingdom -o usda_illumina_supkingdom
+
+# These plots were generated after Diamond completed
+
 ```
 
 And the redo of pilon correction.
@@ -1193,4 +1196,7 @@ bwa index rumen_pacbio_multiround.asm.fasta
 perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b aligns -t ../usda_illumina_fastas.tab -f rumen_pacbio_multiround.asm.fasta -m -p assemble1
 
 perl ~/sperl/assembly_scripts/slurmPilonFasta.pl -f aligns/USDA/USDA.sorted.merged.bam -g rumen_pacbio_multiround.asm.fasta -o pilon -p assemble2
+
+# There were too many fastas to correct using the slurm job scheduler. Let's try running the whole shebang
+java -Xmx100g -jar $PILONHOME/pilon-1.22.jar --genome rumen_pacbio_multiround.asm.fasta --frags aligns/USDA/USDA.sorted.merged.bam --nostrays --fix indels --output rumen_pacbio_multiround.asm.pilon --vcf --tracks
 ```

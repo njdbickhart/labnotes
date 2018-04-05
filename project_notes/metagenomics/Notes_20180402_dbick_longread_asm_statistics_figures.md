@@ -100,6 +100,8 @@ I want to try to separate out some information based on taxonomic assignment of 
 pwd
 	/mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_pilon_accumulated
 perl -lane 'if($F[0] =~ /\#/){next;} else{print "$F[0]\t$F[1]\t$F[5]";}' < usda_pacbio_supkingdom.usda_pacbio_pilon_blobplot.blobDB.table.txt > usda_pacbio_supkingdom.contig.lens.tab
+
+perl -lane 'if($F[0] =~ /\#/){next;} else{print "$F[0]\t$F[1]\t$F[5]";}' < ../illumina_usda_accumulated/usda_illumina_dontuse_supkingdom.mick_megahit_illumina_blobplot.blobDB.table.txt > usda_illumina_dontuse_supkingdom.contig.lens.tab
 ```
 
 ```R
@@ -118,7 +120,24 @@ ggplot(data, aes(x= Len, fill=Kingdom)) + geom_density() + facet_grid(Kingdom ~ 
 dev.off()
 
 # This gives me an idea: Let's plot both the pacbio and illumina contig lengths per kingdom instead, and facet the data
+library(dplyr)
+illumina <- read.delim("usda_illumina_dontuse_supkingdom.contig.lens.tab", header=FALSE)
+colnames(illumina) <- c("Contig", "Len", "Kingdom")
+
+data <- mutate(data, Tech = c("PacBio"))
+illumina <- mutate(illumina, Tech = c("Illumina"))
+total <- bind_rows(illumina, data)
+
+total$Kingdom <- as.factor(total$Kingdom)
+total$Tech <- as.factor(total$Tech)
+
+pdf(file="usda_ilmn_pacbio_supkingdom_contiglens_density.pdf", useDingbats=FALSE)
+p <- ggplot(total, aes(x= Len)) + geom_density(aes(fill=Tech), alpha=0.5) + xlim(c(0,150000)) + facet_grid(Kingdom ~ .) + ylim(c(0, 0.0006))
+p
+dev.off()
 ```
+
+Now to generate the merged file. 
 
 ## CRISPR and defense system detection
 
@@ -142,6 +161,52 @@ Let's start by searching for spacers from CRISPR.
 *** FATAL ERROR ***  ReadMFA: buffer too small
 # It's probably because Mick's asm doesn't have normal newline delimits in the fasta sequence. I can reformat but it may take some time
 
+samtools faidx mick_megahit_final_full.fasta k127_21 k127_37 k127_39 k127_42 k127_43 k127_46 k127_48 k127_49 k127_51 k127_60 k127_62 k127_63 k127_68 k127_72 k127_73 k127_75 k127_81 k127_83 k127_86 k127_93 k127_94 k127_95 k127_98 k127_99 k127_100 k127_103 k127_106 k127_115 k127_121 k127_122 > test.fasta
+
+/mnt/nfs/nfs2/bickhart-users/binaries/pilercr1.06/pilercr -in test.fasta -out test.crispr.out
+# That was it. The fasta file just needed to be properly formatted
+
+# Testing it with the pacbio data
+/mnt/nfs/nfs2/bickhart-users/binaries/pilercr1.06/pilercr -in ../pacbio_pilon_accumulated/pacbio_pilon_unique_contigs.fasta -out pacbio_pilon_unique_contigs.crispr.spacer.out
+# Could not create parameters errors. I think that the program was designed to work under 32 bit constraints
+# Rather than rewrite it, let's try to parse it out on the pre-accumulated pilon corrected pacbio data
+mkdir pacbio
+for i in ../pacbio_usda_pilon/*.fasta; do name=`basename $i | cut -d'.' -f1,2`; echo $name; /mnt/nfs/nfs2/bickhart-users/binaries/pilercr1.06/pilercr -in $i -out pacbio/$name.crispr.spacer.out -minarray 3 -minrepeat 23 -maxrepeat 50 -minspacer 26 -maxspacer 50 -seq pacbio/$name.crispr.fasta -trimseqs; done
+
+# It's annoying, but the software was developed long ago for another type of computer.
+find -maxdepth 1 -size +0 -print -type f | grep 'fasta' | wc -l
+70 <- fastas that contained CRISPR repeats according to pilecr
+
+# The file format is not easy to parse. Trying to parse it with a one-liner, but I'll have to conver this to a script later
+for i in `find -maxdepth 1 -size +0 -print -type f | grep 'fasta'`; do crispr=`basename $i | cut -d'.' -f1,2,3`; echo $crispr; perl -e '$name; @spacers; @pos; $start = 0; $int = 0; while(<>){chomp; if($start == 0){if($_ =~ DETAIL){$start = 1; next;}}else{if($_ =~ /^>(.+)_pilon/){$name = $1; next;} if($_ =~ /^=/){$int = ($int == 1)? 0 : 1; next;} if($int){$_ =~ s/^\s+//; @s = split(/\s+/); push(@pos, $s[0]); push(@spacers, $s[-1]);}}} for($x = 0; $x < scalar(@spacers); $x++){print ">$name\_$pos[$x]\n$spacers[$x]\n";}' < $crispr.spacer.out > $crispr.spacers.fasta; done
+
+wc -l *.spacers.fasta
+3902 total <- 1951 spacers in total so far
+
+# Let's combine them all
+cat *.spacers.fasta > ../pacbio_pilon_unique_first.crispr.spacers.fasta
+# And let's gather basic statistics (ie. contig and count of spacers)
+grep '>' pacbio_pilon_unique_first.crispr.spacers.fasta | perl -e '%h; while(<>){chomp; $_ =~ /^>(.+)\_/; $h{$1} += 1;} foreach my $k (sort{$a cmp $b} keys(%h)){print "$k\t$h{$k}\n";}' > pacbio_pilon_unique_first.crispr.spacer.contig.cnt
+
+wc -l pacbio_pilon_unique_first.crispr.spacer.contig.cnt
+70 pacbio_pilon_unique_first.crispr.spacer.contig.cnt
+
+# OOPs! There was a flaw in my script! Creating a formal script to process the data instead
+for i in `find -maxdepth 1 -size +0 -print -type f | grep 'fasta'`; do crispr=`basename $i | cut -d'.' -f1,2,3`; echo $crispr; perl ~/sperl/metagenomics_scripts/pilecr_processing_script.pl -i $crispr.spacer.out -o $crispr.r; done
+cat *.r*.fasta > ../pacbio_pilon_unique_first.crispr.spacers.fasta
+cat *.r*.stats > ../pacbio_pilon_unique_first.crispr.spacer.contig.cnt
+wc -l ../pacbio_pilon_unique_first.crispr.spacer.contig.cnt
+90 ../pacbio_pilon_unique_first.crispr.spacer.contig.cnt  <- that's more like it
+
+# Now to do this on the illumina data using my pipeline script
+mkdir illumina
+cd illumina
+perl ~/sperl/metagenomics_scripts/pilecr_processing_script.pl -f ../../illumina_usda_accumulated/mick_megahit_final_full.fasta -o mick_megahit_crispr
+
+# Now let's clean up the junk
+rm *temp*.fa
+find . -empty -type f -delete
+
 ### NOTE: this was on my local Virtualbox desktop
 # I am having some success with minced, but it processes the fasta in serial and takes about one second per fasta entry -- which would be over 1 million seconds!
 # Actually, I was wrong! It processed everything in an hour and found 5,000+ unique spacers
@@ -155,7 +220,33 @@ grep 'Repeats:' pacbio_pilon_unique_contigs.fasta.crisprs | perl -e '$c = 0; whi
 1516
 
 # Damn, it's fewer! But these are only the clustered pacbio pilon CRISPR arrays and they're not validated
+# Creating stat tables for plotting in the /figure_drafts/raw_stats folder
+grep '>' ../../../pilot_project/assemblies/rumen_illuminaR3PCRFree_megahit.final.contigs.fa_spacers.fa | perl -e '%h; while(<>){chomp; $_ =~ s/>//g; @s = split(/_/); $h{"$s[0]_$s[1]"} += 1;} foreach my $k (keys(%h)){print "$k\t$h{$k}\n";}' > mick_megahit_crisprviz_spacer_counts.tab
+grep '>' ../../../pilot_project/assemblies/pacbio_pilon/pacbio_pilon_unique_contigs.fasta_spacers.fa | perl -e '%h; while(<>){chomp; $_ =~ s/>//g; @s = split(/_/); $h{"$s[0]_$s[1]"} += 1;} foreach my $k (keys(%h)){print "$k\t$h{$k}\n";}' > pacbio_pilon_firsttry_spacers.fa
 ```
+
+#### Alignment and association of spacer elements
+
+I want to get a sense of what types of contigs the spacers align to.
+
+```bash
+# Pacbio first
+bwa mem ../pacbio_pilon_accumulated/total_contigs.fasta pacbio_pilon_unique_first.crispr.spacers.fasta > pacbio_pilon_unique_first.crispr.spacers.sam
+
+# Finding non-self hits -- note: there are lots of alternative alignments that I'm not checking!
+perl -lane 'if($F[0] =~ /^@/){next;} @nsegs = split(/_/, $F[0]); if($nsegs[0] ne $F[2] && $F[2] ne "*"){print "$F[0]\t$F[2]";}' < pacbio_pilon_unique_first.crispr.spacers.sam > pacbio_pilon_unique_first.crispr.spacers.assignable.tab
+
+cat pacbio_pilon_unique_first.crispr.spacers.assignable.tab | cut -f2 | sort | uniq | xargs -I {} grep {} ../pacbio_pilon_accumulated/usda_pacbio_supkingdom.usda_pacbio_pilon_blobplot.blobDB.table.txt | perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 5
+Entry   Count
+Bacteria        48
+Eukaryota       1
+Viruses 3
+no-hit  2
+
+# looks like many could be other CRISPR arrays on other bacteria, or may be due to false positive CRISPR assignment
+
+```
+
 
 ## ORF detection and comparison
 
@@ -167,4 +258,68 @@ I will be running Prodigal as a means of finding ORFs in our contigs.
 /mnt/nfs/nfs2/bickhart-users/binaries/Prodigal/prodigal -a mick_megahit_final_full.prod.prottrans -c -d mick_megahit_final_full.prod.genenuc -f gff -i mick_megahit_final_full.fasta -o mick_megahit_final_full.prod.out -p meta
 
 
+```
+
+## Preliminary stat drawings
+
+Let's make some small figures and tables to show how the data looks.
+
+#### Venn of bp overlap between datasets
+
+```R
+library(VennDiagram)
+pdf(file="pacbio_illumina_megabase_overlap.pdf", useDingbats=FALSE)
+# Using MBp overlap values drawn from my first mashmap -- LIKELY TO CHANGE!!!!!!!!!
+draw.pairwise.venn(area2=5111, area1=845, cross.area=277, category=c("PacBio", "Illumina"), fill=c("blue", "red"), cat.pos=c(-10,10), cex=c(2,2,2), cat.cex=c(3,3))
+dev.copy2pdf(file="pacbio_illumina_megabase_overlap.pdf", useDingbats=FALSE)
+
+
+```
+
+
+#### Crisprviz spacer length plots
+
+```R
+library(dplyr)
+# This will need to be adjusted with the pilecr data, but let's generate some stats now
+pilon <- read.delim("pacbio_pilon_firsttry_spacers.fa", header=FALSE)
+illumina <- read.delim("mick_megahit_crisprviz_spacer_counts.tab", header=FALSE)
+
+colnames(pilon) <- c("Contig", "Count")
+colnames(illumina) <- c("Contig", "Count")
+
+pilon <- mutate(pilon, Dataset=c("PacBio"))
+illumina <- mutate(illumina, Dataset=c("Illumina"))
+
+total <- bind_rows(pilon, illumina)
+total$Dataset <- as.factor(total$Dataset)
+
+ks.test(pilon$Count, illumina$Count)
+
+	Two-sample Kolmogorov-Smirnov test
+
+data:  pilon$Count and illumina$Count
+D = 0.25786, p-value = 2.822e-06
+alternative hypothesis: two-sided
+
+Warning message:
+In ks.test(pilon$Count, illumina$Count) :
+  p-value will be approximate in the presence of ties
+
+> summary(pilon$Count)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   3.00    5.00    7.00   12.43   16.00  115.00 
+> summary(illumina$Count)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+  3.000   3.000   5.000   8.714   9.000 112.000 
+
+
+plot(ecdf(x = pilon$Count), main = "ECDF of PacBio and Illumina CRISPR spacer counts per array", col = "blue")
+lines(ecdf(x = illumina$Count), col = "red")
+legend("center", c("Illumina", "PacBio"), col = c("red", "blue"), pch = c(20))
+dev.copy2pdf(file="pacbio_illumina_crispr_ecdf.pdf", useDingbats=FALSE)
+
+library(ggplot2)
+ggplot(total, aes(x=Dataset, y=Count, fill=Dataset)) + geom_boxplot() + ylab("Count of CRISPR spacers per array")
+dev.copy2pdf(file="pacbio_illumina_crispr_spacers_boxplot.pdf", useDingbats=FALSE)
 ```
