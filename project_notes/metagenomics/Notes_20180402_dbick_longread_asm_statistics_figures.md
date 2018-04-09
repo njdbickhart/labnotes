@@ -254,9 +254,10 @@ I will be running Prodigal as a means of finding ORFs in our contigs.
 
 #### Illumina first
 
-```bash
-/mnt/nfs/nfs2/bickhart-users/binaries/Prodigal/prodigal -a mick_megahit_final_full.prod.prottrans -c -d mick_megahit_final_full.prod.genenuc -f gff -i mick_megahit_final_full.fasta -o mick_megahit_final_full.prod.out -p meta
+> Assemble2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina_usda_accumulated
 
+```bash
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/Prodigal/prodigal -a mick_megahit_final_full.prod.prottrans -c -d mick_megahit_final_full.prod.genenuc -f gff -i mick_megahit_final_full.fasta -o mick_megahit_final_full.prod.out -p meta"
 
 ```
 
@@ -273,8 +274,13 @@ pdf(file="pacbio_illumina_megabase_overlap.pdf", useDingbats=FALSE)
 draw.pairwise.venn(area2=5111, area1=845, cross.area=277, category=c("PacBio", "Illumina"), fill=c("blue", "red"), cat.pos=c(-10,10), cex=c(2,2,2), cat.cex=c(3,3))
 dev.copy2pdf(file="pacbio_illumina_megabase_overlap.pdf", useDingbats=FALSE)
 
-
 ```
+
+#### AlignQC charts and graphs
+
+I am going to generate some AlignQC data on the pilon-corrected reads and data.
+
+
 
 
 #### Crisprviz spacer length plots

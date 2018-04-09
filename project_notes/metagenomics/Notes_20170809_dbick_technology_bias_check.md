@@ -1183,7 +1183,8 @@ aligns/USDA/USDA.sorted.merged.bam      877788309       749716538       12807177
 /mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i mick_megahit_illumina_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -r superkingdom -o usda_illumina_supkingdom
 
 # These plots were generated after Diamond completed
-
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i mick_megahit_illumina_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -o usda_illumina_phylum_r
+/mnt/nfs/nfs2/bickhart-users/binaries/blobtools/blobtools plot -i mick_megahit_illumina_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -r superkingdom -o usda_illumina_supkingdom_r
 ```
 
 And the redo of pilon correction.
@@ -1199,4 +1200,7 @@ perl ~/sperl/assembly_scripts/slurmPilonFasta.pl -f aligns/USDA/USDA.sorted.merg
 
 # There were too many fastas to correct using the slurm job scheduler. Let's try running the whole shebang
 java -Xmx100g -jar $PILONHOME/pilon-1.22.jar --genome rumen_pacbio_multiround.asm.fasta --frags aligns/USDA/USDA.sorted.merged.bam --nostrays --fix indels --output rumen_pacbio_multiround.asm.pilon --vcf --tracks
+
+# That didn't run in time. I rewrote the script to include a larger segment scale to multiplex these fastas
+perl ~/sperl/assembly_scripts/slurmPilonFasta.pl -f aligns/USDA/USDA.sorted.merged.bam -g rumen_pacbio_multiround.asm.fasta -o pilon_segs -p assemble3 -s 2000
 ```
