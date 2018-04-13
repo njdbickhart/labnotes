@@ -466,6 +466,10 @@ for i in chrchunks/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; /mnt
 module load blat
 for i in chrchunks/*.fa; do sbatch -p assemble3 faSplit_blat_align.sh umd3_kary_unmask_ngap.2bit $i; done
 
+
+## Kiranmayee: the following notes in this section are only to test an alternative, faster aligner for making chain files. ## 
+## Please ignore until you are finished with the above file creation. If you have time, it may be worthwhile comparing these methods ##
+## minimap2 completes the alignment of the genome-to-genome comparison at least 13 days faster than blat ##
 # testing minimap2 to see if it is faster than blat
 ln -s /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa umd3_kary_unmask_ngap.fa
 sbatch faSplit_minimap2_align.sh umd3_kary_unmask_ngap.fa chrchunks/10.fa
