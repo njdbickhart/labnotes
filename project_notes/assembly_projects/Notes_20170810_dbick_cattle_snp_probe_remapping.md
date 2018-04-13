@@ -5,8 +5,15 @@
 These are my notes for remapping UMD3-based SNP probes onto the new cattle assembly. My hope is to do as thorough of a job as possible and to resolve >99% of marker locations, if possible. 
 
 ## Table of contents
+* [Preparing reference fastas and generating metadata](#prepwork)
+	* [Coordinate changes](#coordchanges)
+	* [HD probe remapping](#hdremapping)
+* [Testing regions of the assembly for completion](#testcompletion)
+* [Non-repeatmasked chain of assembly file](#nonrepeatmasked)
+	* [Chaining v25 to UMD3](#chain25umd)
+* [Mapping Bob's markers to v25 from NCBI](#mapbobsmarkers)
 
-
+<a name="prepwork"></a>
 ## Preparing reference fastas and generating metadata
 
 First, let's talk about what I need. I want to approach this from a hierarchical standpoint, where I:
@@ -155,6 +162,7 @@ perl -e '<>; while(<>){chomp; @s = split(/,/); $s[1] =~ s/chr//g; if($s[1] ne $s
 	2141 <- changed chromosome from UMD3 to ARS-UCD14
 ```
 
+<a name="coordchanges"></a>
 #### Coordinate changes
 
 Bob just informed me of a big flaw in the infinium assays: Two types of transversions will cause problems with my assumptions of variant base position. In variants: [A/T], [T/A], [C/G] and [G/C], the variant base is exactly at the end of the probe, whereas in all other probes the variant is at the 3' + 1 position.
@@ -310,6 +318,7 @@ python3 ../../../binaries/python_toolchain/snpMapping/getProbeSeqCoords.py -s SN
 # Note that I added a new "-c" flag to toggle the 1bp correction algorithm in the above python script between now and then.
 ```
 
+<a name="hdremapping"></a>
 #### HD probe remapping
 
 I will try to remap the BovineHD probes using both liftover and BWA to compare positions and profiles.
@@ -388,7 +397,7 @@ summary(hd_full)
 
 count(filter(hd_full, abscdiff >= 1)) # 37934 
 ```
-
+<a name="testcompletion"></a>
 ## Testing regions of the assembly for completion
 
 I am going to check several canu haplotypes for alignment to the v14 reference.
@@ -440,7 +449,7 @@ sh ../../../binaries/run_nucmer_plot_automation_script.sh umd3_chr4.fa ars_ucd_p
 
 ````
 
-
+<a name="nonrepeatmasked"></a>
 ## Non-repeatmasked chain of assembly file
 
 I  need to check to see if I can get this working on my non-repeatmasked fastas for full liftover of v14 to umd3.
@@ -470,7 +479,7 @@ sbatch --nodes=1 --mem=18000 --ntasks-per-node=4 --exclude=vm-agil-[233,235] --w
 sbatch -p assemble2 psl_merge.sh umd3_kary_unmask_ngap.2bit ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit
 ```
 
-
+<a name="chain25umd"></a>
 #### Chaining v25 to UMD3
 
 > Lewis: /home/bickhartd/bickhartd/ars
@@ -488,6 +497,7 @@ for i in chrchunks/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sbat
 
 ```
 
+<a name="mapbobsmarkers"></a>
 ## Mapping Bob's markers to v25 from NCBI
 
 Using Bob's script to download and standardize the assembly.

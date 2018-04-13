@@ -7,6 +7,13 @@ These are my notes on generating figures, tables and other statistics for our as
 ## Table of Contents
 
 
+## Analysis ideas
+
+#### Cluster assessment
+
+We have so many different clustering and binning methods that it would make sense to generate some metric by which the clustering algorithms compare to one another. One method that I found online was the Rand Index, which rates the group membership of clusters. If I calculate the Rand Index between tetra-nucleotide-based binning methods and then by Hi-C clustering, and then run an ANOVA on the clusters based on their GC + read depth (from illumina reads), then that might result in interesting data points
+
+
 ## Full-assembly comparison alignments
 
 I want to generate alignment comparisons between the long-read and short read assemblies from our sample. I think that this comparison will show the unique regions to further interrogate and may reveal interesting differences between the technologies. My inspiration is from [this paper](http://genome.cshlp.org/content/25/4/534.full).
@@ -276,12 +283,124 @@ dev.copy2pdf(file="pacbio_illumina_megabase_overlap.pdf", useDingbats=FALSE)
 
 ```
 
+#### GC content and contig length histograms
+
+I need basic stat drawings to fill in some of our multi-part figures in the schema.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_pilon_accumulated
+
+```bash
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/sequenceData/calcGCcontentFasta.py  -f pacbio_pilon_unique_contigs.fasta -o pacbio_pilon_unique_contigs.gc -t 10
+
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/sequenceData/calcGCcontentFasta.py  -f ../illumina_usda_accumulated/mick_megahit_final_full.fasta -o mick_megahit_final_full.gc -t 10
+perl -lane 'print "$F[0]\t$F[-1]";' < mick_megahit_final_full.gc > mick_megahit_final_full.simpnames.gc
+```
+
+And now for the plots. I'll keep it simple so that we have a placeholder for future refinement.
+
+```R
+library(ggplot2)
+pacbio.gc <- read.delim("pacbio_pilon_unique_contigs.gc", header = FALSE)
+colnames(pacbio.gc) <- c("Contig", "GC Perc")
+
+illumina.gc <- read.delim("mick_megahit_final_full.simpnames.gc", header = FALSE)
+colnames(illumina.gc) <- c("Contig", "GC Perc")
+
+ks.test(pacbio.gc$GC_Perc, illumina.gc$GC_Perc)
+
+        Two-sample Kolmogorov-Smirnov test
+
+data:  pacbio.gc$GC_Perc and illumina.gc$GC_Perc
+D = 0.35114, p-value < 2.2e-16
+alternative hypothesis: two-sided
+
+Warning message:
+In ks.test(pacbio.gc$GC_Perc, illumina.gc$GC_Perc) :
+  p-value will be approximate in the presence of ties
+
+library(dplyr)
+pacbio.gc <- mutate(pacbio.gc, Tech = c("PacBio"))
+pacbio.gc$Tech <- as.factor(pacbio.gc$Tech)
+illumina.gc <- mutate(illumina.gc, Tech = c("Illumina"))
+illumina.gc$Tech <- as.factor(illumina.gc$Tech)
+
+total.gc <- bind_rows(illumina.gc, pacbio.gc)
+total.gc$Tech <- as.factor(total.gc$Tech)
+
+pdf(file="ilmn_pacbio_usda_gcperc_boxplot.pdf", useDingbats=FALSE)
+ggplot(total.gc, aes(x=Tech, y=GC_Perc, fill=Tech)) + geom_boxplot() + ylab("Average GC percentage per Contig")
+dev.off()
+
+# In this folder I have a preloaded data from my taxonomic facet_grid plots
+ks.test(total[total$Tech == "PacBio","Len"], total[total$Tech == "Illumina","Len"])
+
+        Two-sample Kolmogorov-Smirnov test
+
+data:  total[total$Tech == "PacBio", "Len"] and total[total$Tech == "Illumina", "Len"]
+D = 0.83783, p-value < 2.2e-16
+alternative hypothesis: two-sided
+
+Warning message:
+In ks.test(total[total$Tech == "PacBio", "Len"], total[total$Tech ==  :
+  p-value will be approximate in the presence of ties
+
+
+pdf(file="ilmn_pacbio_usda_ctglen_boxplot.pdf", useDingbats=FALSE)
+ggplot(total, aes(x=Tech, y=Len, fill=Tech)) + geom_boxplot() + ylab("Contig length (bp)") + scale_y_continuous(trans = 'log10')
+dev.off()
+
+p <- ggplot(total, aes(x=Tech, y=Len, fill=Tech)) + geom_boxplot() + ylab("Log10 Contig length (bp)") + scale_y_continuous(trans = 'log10')
+ggsave("ilmn_pacbio_usda_ctglen_boxplot.png", plot = p)
+```
+
 #### AlignQC charts and graphs
 
 I am going to generate some AlignQC data on the pilon-corrected reads and data.
 
 
+#### ANVIO statistics
 
+After some incredibly painful workarounds, I was finally able to create an anvio virtual environment by using anaconda3. The virtual environment is here:
+
+> /mnt/nfs/nfs2/bickhart-users/binaries/virtual_env/anvio
+
+Now to try to generate some anvio data on our pacbio contigs.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_pilon_accumulated
+
+```bash
+source activate /mnt/nfs/nfs2/bickhart-users/binaries/virtual_env/anvio
+
+anvi-gen-contigs-database -f pacbio_pilon_unique_contigs.fasta -o pacbio_pilon_unique_contigs.anvio.db -n 'USDA PacBio Pilon Database'
+
+#HMM checking
+anvi-run-hmms -c pacbio_pilon_unique_contigs.anvio.db
+
+# I need to run this once to set up the NCBI cog database
+anvi-setup-ncbi-cogs --cog-data-dir /mnt/nfs/nfs2/bickhart-users/binaries/anvio_ncbi_cogs -T 10
+
+# COG annotation
+anvi-run-ncbi-cogs -c pacbio_pilon_unique_contigs.anvio.db -T 10 --cog-data-dir /mnt/nfs/nfs2/bickhart-users/binaries/anvio_ncbi_cogs
+
+# Bam read profiling
+anvi-profile -c pacbio_pilon_unique_contigs.anvio.db -i aligns/USDA/USDA.sorted.merged.bam --output-dir anvio_pacbio_profile --sample-name 'PacBioPilon' -T 10
+```
+
+And for the Illumina data.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina_usda_accumulated
+
+```bash
+source activate /mnt/nfs/nfs2/bickhart-users/binaries/virtual_env/anvio
+
+perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/metagenomics_scripts/pilecr_processing_script.pl -f mick_megahit_final_full.fasta -d 2000 -o mick_megahit_final_full
+
+anvi-gen-contigs-database -f mick_megahit_final_full.rfmt.fa -o mick_megahit_final_full.rfmt.anvio.db -n 'USDA Illumina Database'
+
+anvi-run-ncbi-cogs -c mick_megahit_final_full.rfmt.anvio.db -T 10 --cog-data-dir /mnt/nfs/nfs2/bickhart-users/binaries/anvio_ncbi_cogs
+
+anvi-profile -c mick_megahit_final_full.rfmt.anvio.db -i aligns/USDA/USDA.sorted.merged.bam --output-dir anvio_illumina_profile --sample-name 'IlluminaMega' -T 10
+```
 
 #### Crisprviz spacer length plots
 

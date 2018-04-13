@@ -260,3 +260,31 @@ ggplot(cnv, aes(x=dacgh, y=acgh, color=Sample)) + geom_point(shape=19, alpha=0.3
 
 
 ```
+
+#### Original MrsFAST CN values
+
+The original MrsFAST computed CN values are located here:
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/dbickhart_blade2/Buffalo/umd3_calls/
+
+Let's try to generate the associations again so that we can reestimate the corelations between the aCGH and the original MrsFAST data.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/buffalo_acgh 
+
+```bash
+# First, let's calculate the log2 ratio of the test / reference copy number
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do echo $i; perl calculate_log2_ratio.pl /mnt/nfs/nfs2/bickhart-users/dbickhart_blade2/Buffalo/umd3_calls/PC1_umd3/hits_umd3_template_file3.bed.gc.depth.normalized.CN /mnt/nfs/nfs2/bickhart-users/dbickhart_blade2/Buffalo/umd3_calls/Sample_${i}/hits_umd3_template_file3.bed.gc.depth.normalized.CN ${i}_mrsfast_log2.bed; done
+
+
+module load bedtools/2.26.0; for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do bedtools intersect -a ${i}_mrsfast_log2.bed -b $i.logratios.sorted.bed -wa -wb > $i.mrsfast.dacgh.acgh.combined.bed; done
+
+for i in *mrsfast.dacgh.acgh.combined.bed; do name=`echo $i | cut -d'.' -f1`; echo $name; perl -lane 'print "$F[3]\t$F[7]";' < $i > $name.mrsfast.dacgh.acgh.values.tab; done
+```
+
+OK, now to plot them individually as George wants to see individual correlations and plots
+
+```R
+buff <- c("ITWB10", "ITWB11", "ITWB12", "ITWB13", "ITWB14", "ITWB15", "ITWB1", "ITWB2", "ITWB3", "ITWB4", "ITWB5", "ITWB6", "ITWB7")
+
+library(ggplot2); for(b in buff){print(b); outpng <- paste0(b, ".mrsfast.corr.png"); infile <- paste0(b, ".mrsfast.dacgh.acgh.values.tab"); cnv <- read.delim(infile, header=FALSE); colnames(cnv) <- c("MrsFAST", "aCGH"); cor <- cor.test(cnv$MrsFAST, cnv$aCGH, use = "complete.obs"); print(cor$estimate);  png(file=outpng, height=2000, width=2000); ggplot(cnv, aes(x=MrsFAST, y=aCGH)) + geom_point(shape=19, alpha=0.5) + geom_smooth(method=lm, se=FALSE) + theme_set(theme_gray(base_size=24)) + ggtitle(paste0("dACGH correlation for ", b, " (r = ", cor$estimate, " )")); dev.off();}
+```
