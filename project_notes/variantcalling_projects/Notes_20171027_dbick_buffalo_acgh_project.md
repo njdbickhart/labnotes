@@ -279,6 +279,36 @@ for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5
 module load bedtools/2.26.0; for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do bedtools intersect -a ${i}_mrsfast_log2.bed -b $i.logratios.sorted.bed -wa -wb > $i.mrsfast.dacgh.acgh.combined.bed; done
 
 for i in *mrsfast.dacgh.acgh.combined.bed; do name=`echo $i | cut -d'.' -f1`; echo $name; perl -lane 'print "$F[3]\t$F[7]";' < $i > $name.mrsfast.dacgh.acgh.values.tab; done
+
+# OK, I forgot to select only the CNV region areas! Let's do that quickly
+cat /mnt/nfs/nfs2/bickhart-users/dbickhart_blade2/Buffalo/umd3_calls/*/*.final* | bedtools sort -i stdin | bedtools merge -i stdin > mrsfast_buffalo_cnv_regions.bed
+
+cat mrsfast_buffalo_cnv_regions.bed | perl ~/sperl/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       1371
+        Total Length:           60,062,616
+        Length Average:         43809.3479212254
+        Length Median:          22815
+        Length Stdev:           68334.5305998886
+        Smallest Length:        989
+        Largest Length:         885429
+
+# Looks pretty similar to my previous counts. Let's intersect it with the cn values
+mkdir mrsfast_cnv_cns
+bedtools intersect -a mrsfast_buffalo_cnv_regions.bed -b /mnt/nfs/nfs2/bickhart-users/dbickhart_blade2/Buffalo/umd3_calls/PC1_umd3/hits_umd3_template_file3.bed.gc.depth.normalized.CN -wb | perl -lane 'print "$F[3]\t$F[4]\t$F[5]\t$F[6]";' > mrsfast_cnv_cns/PC1_umd3_cnv_cns.bed
+
+wc -l mrsfast_cnv_cns/PC1_umd3_cnv_cns.bed
+24188 mrsfast_cnv_cns/PC1_umd3_cnv_cns.bed # Not as many windows! about 100 fold less
+
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do echo $i; bedtools intersect -a mrsfast_buffalo_cnv_regions.bed -b /mnt/nfs/nfs2/bickhart-users/dbickhart_blade2/Buffalo/umd3_calls/Sample_${i}/hits_umd3_template_file3.bed.gc.depth.normalized.CN -wb | perl -lane 'print "$F[3]\t$F[4]\t$F[5]\t$F[6]";' > mrsfast_cnv_cns/${i}_umd3_cnv_cns.bed; done
+
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do echo $i; perl calculate_log2_ratio.pl mrsfast_cnv_cns/PC1_umd3_cnv_cns.bed mrsfast_cnv_cns/${i}_umd3_cnv_cns.bed mrsfast_cnv_cns/${i}_mrsfast_cnvcns_log2.bed; done
+
+# Now to combine the acgh with the dacgh calls
+mkdir mrsfast_cnv_acgh/
+for i in ITWB10 ITWB11 ITWB12 ITWB13 ITWB14 ITWB15 ITWB2 ITWB1 ITWB3 ITWB4 ITWB5 ITWB6 ITWB7; do bedtools intersect -a mrsfast_cnv_cns/${i}._mrsfast_cnvcns_log2.bed -b $i.logratios.sorted.bed -wa -wb > mrsfast_cnv_acgh/$i.mrsfast.dacgh.acgh.combined.bed; done
+
+# Stripping it down to just the values:
+for i in mrsfast_cnv_acgh/*.bed; do name=`basename $i | cut -d'.' -f1`; echo $name; perl -lane 'print "$F[3]\t$F[7]";' < $i > mrsfast_cnv_acgh/$name.mrsfast.dacgh.acgh.cnvcn.values.tab; done
 ```
 
 OK, now to plot them individually as George wants to see individual correlations and plots
@@ -286,5 +316,5 @@ OK, now to plot them individually as George wants to see individual correlations
 ```R
 buff <- c("ITWB10", "ITWB11", "ITWB12", "ITWB13", "ITWB14", "ITWB15", "ITWB1", "ITWB2", "ITWB3", "ITWB4", "ITWB5", "ITWB6", "ITWB7")
 
-library(ggplot2); for(b in buff){print(b); outpng <- paste0(b, ".mrsfast.corr.png"); infile <- paste0(b, ".mrsfast.dacgh.acgh.values.tab"); cnv <- read.delim(infile, header=FALSE); colnames(cnv) <- c("MrsFAST", "aCGH"); cor <- cor.test(cnv$MrsFAST, cnv$aCGH, use = "complete.obs"); print(cor$estimate);  png(file=outpng, height=2000, width=2000); ggplot(cnv, aes(x=MrsFAST, y=aCGH)) + geom_point(shape=19, alpha=0.5) + geom_smooth(method=lm, se=FALSE) + theme_set(theme_gray(base_size=24)) + ggtitle(paste0("dACGH correlation for ", b, " (r = ", cor$estimate, " )")); dev.off();}
+library(ggplot2); for(b in buff){print(b); outpng <- paste0(b, ".mrsfast.corr.png"); infile <- paste0(b, ".mrsfast.dacgh.acgh.values.tab"); cnv <- read.delim(infile, header=FALSE); colnames(cnv) <- c("MrsFAST", "aCGH"); cor <- cor.test(cnv$MrsFAST, cnv$aCGH, use = "complete.obs"); print(cor$estimate);  png(file=outpng, height=2000, width=2000); print(ggplot(cnv, aes(x=MrsFAST, y=aCGH)) + geom_point(shape=19, alpha=0.5) + geom_smooth(method=lm, se=FALSE) + theme_set(theme_gray(base_size=24)) + ggtitle(paste0("dACGH correlation for ", b, " (r = ", cor$estimate, " )"))); dev.off();}
 ```

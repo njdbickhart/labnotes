@@ -66,6 +66,7 @@ for i in masked_chr_fastas/10.fa masked_chr_fastas/11.fa masked_chr_fastas/12.fa
 # Because the OLD files are so numerous, I'm going to get rid of them
 ls psl/chr_sub_chunks/OLD*.psl | xargs -I{} rm {}
 
+## Kiranmayee: here is where I was in the pipeline listed below. As you can see, I did the faSplit_blat_align.sh step already, but we need to make chain files next ##
 # Now to turn the psl files into chains. I'll condense the chr_sub_chunks first
 faToTwoBit ARS-UCD1.0.14.clean.wIGCHaps.fasta.masked ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit
 sbatch --partition=assemble3 psl_merge.sh umd3_kary_unmask_ngap.2bit ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit

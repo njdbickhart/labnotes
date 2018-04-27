@@ -384,6 +384,57 @@ anvi-run-ncbi-cogs -c pacbio_pilon_unique_contigs.anvio.db -T 10 --cog-data-dir 
 
 # Bam read profiling
 anvi-profile -c pacbio_pilon_unique_contigs.anvio.db -i aligns/USDA/USDA.sorted.merged.bam --output-dir anvio_pacbio_profile --sample-name 'PacBioPilon' -T 10
+
+# Read depth profile merger
+anvi-merge -o SAMPLES-MERGED -c pacbio_pilon_unique_contigs.anvio.db --sample-name pacbio_pilon /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_pilon_accumulated/anvio_pacbio_profile/PROFILE.db
+# NOTE: if you try to merge only one RD profile, the program exits. Apparently it wants more data!
+
+# I can import the phase cluster results as separate bins now
+# Generating the simple tab delimited format they want
+for i in ../pacbio_usda_clusters/*.fai; do echo $i; fname=`basename $i`; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); $ARGV[1] =~ s/\.fasta\.fai//; while(<IN>){chomp; @s = split(/\t/); print "$s[0]\t$ARGV[1]\n";} close IN;' $i $fname >> pacbio_hic_clusters.tab; done
+
+# OK, I got an error about the duplicate assignment of bins. Let me keep only the first observed bin in the file for each contig
+## NOTE: Anvio hates non-underscore characters. I had to replace them in the cluster names ##
+perl -e '%h; while(<>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){next;} else{$s[1] =~ s/[.-]/_/g; print join("\t", @s); print "\n"; $h{$s[0]} = 1;}}' < pacbio_hic_clusters.tab > pacbio_hic_clusters.firstobs.tab
+
+wc -l pacbio_hic_clusters.tab pacbio_hic_clusters.firstobs.tab
+  53222 pacbio_hic_clusters.tab
+  53098 pacbio_hic_clusters.firstobs.tab
+
+# There weren't too many. Oh well, continuing!
+anvi-import-collection -c pacbio_pilon_unique_contigs.anvio.db -p /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_pilon_accumulated/anvio_pacbio_profile/PROFILE.db -C "ProxiMeta"  --contigs-mode pacbio_hic_clusters.firstobs.tab
+
+# Finally, summarizing before using interative output
+anvi-summarize -p /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_pilon_accumulated/anvio_pacbio_profile/PROFILE.db -c pacbio_pilon_unique_contigs.anvio.db -C "ProxiMeta" -o PACBIO-PRELIM
+
+# That crashed with an error. The problem is that even though I have clustering via ProxiMeta, it was done only on a contig-by-contig basis. I would need more alignment files on my contigs to proceed.
+# Maybe I can run alignments using Hess et al and some others?
+ls /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/datasources/SRR094* > ../hess_rumen_fiber_sequence.tab
+perl -lane 'print "$_\tHESS\tHESS";' < ../hess_rumen_fiber_sequence.tab > ../temp
+mv ../temp ../hess_rumen_fiber_sequence.tab
+
+perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b hess -t ../hess_rumen_fiber_sequence.tab -f pacbio_pilon_unique_contigs.fasta -m
+# ARG! SRA screwed up with the read names! I need to reformat
+perl -lane 'system("sbatch reformat_sra_files.pl $F[0] $F[1] /mnt/nfs/nfs1/derek.bickhart/metagenomics/reformated_sra/");' < hess_rumen_fiber_sequence.tab
+
+ls /mnt/nfs/nfs1/derek.bickhart/metagenomics/reformated_sra/*.fq* > hess_rumen_fiber_sequence.tab
+perl -lane 'print "$_\tHESS\tHESS";' < hess_rumen_fiber_sequence.tab > temp
+mv temp hess_rumen_fiber_sequence.tab
+
+sleep 1h; for i in SRR094926_1.fq SRR094926_2.fq SRR094437_1.fq SRR094437_2.fq; do echo $i; pigz /mnt/nfs/nfs1/derek.bickhart/metagenomics/reformated_sra/$i; done; perl ~/sperl/sequence_data_pipeline/generateAlignSlurmScripts.pl -b hess -t ../hess_rumen_fiber_sequence.tab -f pacbio_pilon_unique_contigs.fasta -m
+rm hess/HESS/*sorted.bam*
+
+## Now, I have an idea to make this complete in a reasonable amount of time: let's reprofile without indvidual base composition metrics ##
+# Hess first
+anvi-profile -i hess/HESS/HESS.sorted.merged.bam -c pacbio_pilon_unique_contigs.anvio.db -T 25 --skip-SNV-profiling --sample-name PbHessNoSNV -o PbHessNoSNVProfile
+# Now the illumina data
+anvi-profile -i aligns/USDA/USDA.sorted.merged.bam -c pacbio_pilon_unique_contigs.anvio.db -T 25 --skip-SNV-profiling --sample-name PbIlmnNoSNV -o PbIlmnNoSNVProfile
+# And merging:
+anvi-merge -o NoSNV-merged -c pacbio_pilon_unique_contigs.anvio.db PbHessNoSNVProfile/PROFILE.db PbIlmnNoSNVProfile/PROFILE.db
+# Adding Proximeta bins
+anvi-import-collection -p NoSNV-merged/PROFILE.db -c pacbio_pilon_unique_contigs.anvio.db -C "ProxiMeta" --contigs-mode pacbio_hic_clusters.firstobs.tab
+# Now summarizing...
+anvi-summarize -p NoSNV-merged/PROFILE.db -c pacbio_pilon_unique_contigs.anvio.db -C "CONCOCT" -o PbCombNoSNV
 ```
 
 And for the Illumina data.
@@ -447,4 +498,76 @@ dev.copy2pdf(file="pacbio_illumina_crispr_ecdf.pdf", useDingbats=FALSE)
 library(ggplot2)
 ggplot(total, aes(x=Dataset, y=Count, fill=Dataset)) + geom_boxplot() + ylab("Count of CRISPR spacers per array")
 dev.copy2pdf(file="pacbio_illumina_crispr_spacers_boxplot.pdf", useDingbats=FALSE)
+```
+
+## Methylation check
+
+I think that DNA methylation is an important metric to use to bin our samples. There has been some work done on detecting Methylated sites in both Nanopore and Pacbio reads using HMMs and Neural networks. I want to see if I can run some software on our corrected sites to detect methylation signatures.
+
+#### Nanopore methylation detection
+
+While several groups have published theory and datasets, only a handful have tried to detect methyl-adenine reads from their data. Let's use the existing Nanopore data from my sequencing of the sample to try to classify reads. Here's my conceptualized order of operations:
+
+1. Determine methyl adenine sites on assembled contigs from Serge's assembly of our data
+2. Map those contigs back to the PacBio data and determine meythlyation status
+3. Eventually, determine Pacbio contig methylation status and compare back to Nanopore calls
+
+I am first going to try to use [signalAlign](https://github.com/ArtRand/signalAlign). 
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/nanopore
+
+```bash
+# Downloading data
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 0BxbRXPCzWa5-Q1VMa1RLOTNhWm8 nanopore_asm_mhap.fasta.gz
+
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 0BxbRXPCzWa5-SlpWWHVpNFp1TkE 20170802_YuAndMorrison6.tar.gz
+
+# I need to basecall the fast5 files using the latest version of albacore. I setup a virtual env on the Agil cluster
+# to do this.
+source activate albacore
+
+read_fast5_basecaller.py --flowcell FLO-MIN106 --kit SQK-LSK108 --barcoding --output_format fast5 --input /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/nanopore/fast5 --save_path basecalled --worker_threads 30 -r
+
+virtualenv --python=python2.7 virtual_env/signalAlign
+source virtual_env/signalAlign/bin/activate
+# Apparently there's a big issue with signalAlign, I may need to try a different solution
+
+# Trying tombo
+conda install -c bioconda ont-tombo
+# Conda couldn't install on the cluster due to the outdated version of R we have
+pip install ont-tombo[full]
+
+tombo resquiggle basecalled/ ../pacbio_pilon_accumulated/pacbio_pilon_unique_contigs.fasta --processes 20
+```
+
+#### PacBio methylation detection
+
+I will try to use [mbin](https://github.com/fanglab/mbin) to classify some CCS reads from Cheryl's dataset and use them similar to my strategy with the Nanopore methylated reads.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_methylation
+
+```bash
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1FmsVqMhUmA66TcyybbX2gxF-N6dYDWbR chery_rumen.css.tar.gz
+
+# Damn! That tarball did not have the bam files I needed.
+sbatch /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 0BxbRXPCzWa5-OGhweUVzMXdSZW8 01Aug17_USMARC_Sequel.tar.gz
+tar -xvf 01Aug17_USMARC_Sequel.tar.gz
+
+# OK, this one did!
+## INSTALLING MBIN ##
+# Now I need to set up a virtual environment
+virtualenv --python=python2.7 virtual_env/mbin
+source virtual_env/mbin/bin/activate
+pip install mbin
+
+# Adding bhtsne to PATH
+pwd
+/mnt/nfs/nfs2/bickhart-users/binaries/bhtsne
+
+export PATH=$PATH:/mnt/nfs/nfs2/bickhart-users/binaries/bhtsne
+# OK, the solution was to check the stacktrace error, pip uninstall the offending package, and then reinstall without the use of the cache dir (--no-cache-dir)
+
+
+# I need to align non-adenine methylated bases to my dataset using the SMRT tools pipeline so that the IPD length gets carried over.
+# This is part of the in initial "buildcontrols" step of the pipeline that is needed to interrogate the signal. It's also super painful and I may need to return to it later. 
 ```

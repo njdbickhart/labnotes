@@ -407,3 +407,17 @@ perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -d '\t' -f LIB30
 perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -d '\t' -f LIB30176_S4_L001_R1_001.kraken.labels -c 1 | perl -e '<>; while(<>){chomp; @s = split(/\t/); @b = split(/\;/, $s[0]); print "$s[1]\t" . join("\t", @b); print "\n";}' > LIB30176_S4_L001_R1_001.kraken.ktinput
 
 /mnt/nfs/nfs2/bickhart-users/binaries/KronaTools-2.7/bin/bin/ktImportText -o LIB30176_S4_L001_R1_001.krona.html -n 'root' LIB30176_S4_L001_R1_001.kraken.ktinput
+
+# Checking how many reads map to the current cattle reference.
+
+
+# Hmm, that didn't work as well as I had hoped! I would have to do complex filtering with mapping quality to get anything useful. Let's try the full cattle db from NCBI
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-build --download-taxonomy --db 9913
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-build --add-to-library /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_125/ARS-UCDv1.0.25.fasta --db 9913
+
+# Damn, the program needs NCBI tax IDs for chromosomes!
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-build --add-to-library /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/bt_ref_Bos_taurus_UMD_3.1.1.fasta --db 9913
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-build --build --db 9913
+
+
+```
