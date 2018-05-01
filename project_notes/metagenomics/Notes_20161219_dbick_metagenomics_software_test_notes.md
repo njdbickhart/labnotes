@@ -419,5 +419,19 @@ perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -d '\t' -f LIB30
 /mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-build --add-to-library /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/bt_ref_Bos_taurus_UMD_3.1.1.fasta --db 9913
 /mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-build --build --db 9913
 
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-build --build --threads 30 --db 9913
+
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken --db 9913 LIB30175_S3_L001_R1_001.fastq.gz --output LIB30175_S3_L001_R1_001.cow.kraken.out
+
+# Converting to Krona
+/mnt/nfs/nfs2/bickhart-users/binaries/kraken-1.0/bin/kraken-translate --db 9913 LIB30175_S3_L001_R1_001.cow.kraken.out > LIB30175_S3_L001_R1_001.cow.kraken.labels
+
+# Let's merge with the other dataset I ran
+perl -e '%h; chomp(@ARGV); foreach my $r (@ARGV){open(IN, "< $r"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){next;}else{$h{$s[0]} += 1; print join("\t", @s); print "\n";}} close IN; }' LIB30175_S3_L001_R1_001.cow.kraken.labels LIB30175_S3_L001_R1_001.kraken.labels > LIB30175_S3_L001_R1_001.comb.kraken.labels
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -d '\t' -f LIB30175_S3_L001_R1_001.comb.kraken.labels -c 1 | perl -e '<>; while(<>){chomp; @s = split(/\t/); @b = split(/\;/, $s[0]); print "$s[1]\t" . join("\t", @b); print "\n";}' > LIB30175_S3_L001_R1_001.comb.kraken.ktinput
+
+/mnt/nfs/nfs2/bickhart-users/binaries/KronaTools-2.7/bin/bin/ktImportText -o LIB30175_S3_L001_R1_001.comb.krona.html -n 'root' LIB30175_S3_L001_R1_001.comb.kraken.ktinput
+# The plot looks good, but there are allot of missing, unclassified reads
+# That's right, I  need to add the unclassified reads back in as a manual edit!
 
 ```

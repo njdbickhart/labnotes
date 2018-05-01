@@ -538,6 +538,8 @@ conda install -c bioconda ont-tombo
 pip install ont-tombo[full]
 
 tombo resquiggle basecalled/ ../pacbio_pilon_accumulated/pacbio_pilon_unique_contigs.fasta --processes 20
+
+tombo test_significance --fast5-basedirs basecalled --alternate-bases 5mC 6mA --statistics-file-basename YuAndMorrison6 --processes 30
 ```
 
 #### PacBio methylation detection

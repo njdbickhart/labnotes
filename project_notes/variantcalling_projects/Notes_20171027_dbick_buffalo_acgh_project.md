@@ -317,4 +317,7 @@ OK, now to plot them individually as George wants to see individual correlations
 buff <- c("ITWB10", "ITWB11", "ITWB12", "ITWB13", "ITWB14", "ITWB15", "ITWB1", "ITWB2", "ITWB3", "ITWB4", "ITWB5", "ITWB6", "ITWB7")
 
 library(ggplot2); for(b in buff){print(b); outpng <- paste0(b, ".mrsfast.corr.png"); infile <- paste0(b, ".mrsfast.dacgh.acgh.values.tab"); cnv <- read.delim(infile, header=FALSE); colnames(cnv) <- c("MrsFAST", "aCGH"); cor <- cor.test(cnv$MrsFAST, cnv$aCGH, use = "complete.obs"); print(cor$estimate);  png(file=outpng, height=2000, width=2000); print(ggplot(cnv, aes(x=MrsFAST, y=aCGH)) + geom_point(shape=19, alpha=0.5) + geom_smooth(method=lm, se=FALSE) + theme_set(theme_gray(base_size=24)) + ggtitle(paste0("dACGH correlation for ", b, " (r = ", cor$estimate, " )"))); dev.off();}
+
+# Trying this again with the CNV-intersected values
+library(ggplot2); for(b in buff){print(b); outpng <- paste0(b, ".mrsfast.corr.png"); infile <- paste0(b, ".mrsfast.dacgh.acgh.cnvcn.values.tab"); cnv <- read.delim(infile, header=FALSE); colnames(cnv) <- c("MrsFAST", "aCGH"); cor <- cor.test(cnv$MrsFAST, cnv$aCGH, use = "complete.obs"); print(cor$estimate);  png(file=outpng, height=2000, width=2000); print(ggplot(cnv, aes(x=MrsFAST, y=aCGH)) + geom_point(shape=19, alpha=0.5) + geom_smooth(method=lm, se=FALSE) + theme_set(theme_gray(base_size=24)) + ggtitle(paste0("CNV dACGH correlation for ", b, " (r = ", cor$estimate, " )"))); dev.off();}
 ```
