@@ -573,3 +573,90 @@ export PATH=$PATH:/mnt/nfs/nfs2/bickhart-users/binaries/bhtsne
 # I need to align non-adenine methylated bases to my dataset using the SMRT tools pipeline so that the IPD length gets carried over.
 # This is part of the in initial "buildcontrols" step of the pipeline that is needed to interrogate the signal. It's also super painful and I may need to return to it later. 
 ```
+
+
+#### Testing new CCS data
+
+I want to see how similar our pacbio CCS data is to our previous sample.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics/pilot_project/new_ccs_pacbio
+
+```bash
+# Let's sketch this and check against the error corrected pacbio reads
+/mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash sketch -p 10 -s 100000 -o ccs.fastq.21.100k ccs.fastq.gz
+
+# Error corrected reads
+/mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash sketch -p 10 -s 100000 -o rumen_pacbio_corrected.fasta.10.100k ../error_corrected_reads/rumen_pacbio_corrected.fasta.gz
+
+# Mash gave me a warning about the kmer size for the pacbio error corrected reads. Still, the similarity is quite close
+/mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash dist ccs.fastq.21.100k.msh rumen_pacbio_corrected.fasta.10.100k.msh
+ccs.fastq.gz    ../error_corrected_reads/rumen_pacbio_corrected.fasta.gz        0.185048        0       1037/100000
+```
+
+## RePilon and finalization of PacBio dataset
+
+I need to run two rounds of Pilon to check and confirm that the Pacbio assembly is correct. Then we'll decide on the final analysis steps and hand off the assembly to our working teams to generate some information.
+
+I will be running this on Ceres for the first time. Since Ceres does not have Mouse installed, and because I'm worried about asking the team to install Perl modules, I rewrote my pipeline script for read alignment in python just for this purpose.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_first_assembly
+
+```bash
+# Preparing the input fasta file list
+/home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_first_assembly
+
+# Just checking to see if the path is recognized on external nodes
+sbatch --nodes=1 --mem=100 --ntasks-per-node=1 --partition short --wrap="ls /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/pilot_project/illumina/*.gz"
+
+# Looks like they're recognized. Let's test out the python script to see if it generates files correctly
+module load python_3/gcc/64/3.6.2
+python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b align -t ../ymprep_run3_illumina_reads.tab -f usda_pacbio_multiround.asm.fasta -p medium -m
+
+# Note, due to a bug at the time, the dependencies for the merger script didn't queue up. I need to run that separately after the alignment jobs finish
+# Now to run the pilon correction
+python3 ~/python_toolchain/sequenceData/slurmPilonCorrectionPipeline.py -f USDA.sorted.merged.bam -g usda_pacbio_multiround.asm.fasta -o pilon -p short
+
+# That didn't work out so well, since the scheduler has a job submission limit of 1000 jobs per user!
+# Doing a manual edit to queue them all up
+ls pilon/scripts/*.sh | perl -e '$c = 0; while(<STDIN>){chomp; open(IN, "< $_"); open(OUT, "> pilon/newscripts/pilon_$c\.sh"); $n = 0; whil
+e(<IN>){if($n < 14){print OUT $_;} $n++;} close IN; for($x = 0; $x < 6; $x++){$d = <STDIN>; chomp $d; $n = 0; open(IN, "< $d"); while(<IN>){if($n
+>= 12 && $n < 14){ print OUT $_;} $n++;} close IN;} $c++; close OUT;}'
+
+# still too many scripts. Queueing up the last 100
+for i in `seq 901 999` `seq 90 99` 9; do echo $i; sbatch pilon/newscripts/pilon_${i}.sh; done
+
+# I have a simple script for combining all of the entries and removing the pilon tags
+sbatch ../../consolidate_pilon_fastas.sh usda_pacbio_pilon_round1.fa
+cp pacbio_first_assembly/pilon/usda_pacbio_pilon_round1.fa ./pacbio_first_pilon/
+```
+
+OK, now I can run the second round of pilon correction on the data.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_first_pilon
+
+```bash
+module load bwa/0.7.12
+sbatch --nodes=1 --ntasks-per-node=2 --mem=6000 -p short --wrap="bwa index usda_pacbio_pilon_round1.fa; samtools faidx usda_pacbio_pilon_round1.fa"
+
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b align -t ../ymprep_run3_illumina_reads.tab -f usda_pacbio_pilon_round1.fa -p medium -m
+
+# The dependencies still didn't load for the merger step! Grr!
+sbatch --dependency=afterany:225158:225159:225160:225161 align/USDA/scripts/samMerger_22929245490.sh
+
+# I was finally able to fix the bugs in the pilon pipeline script
+python3 ~/python_toolchain/sequenceData/slurmPilonCorrectionPipeline.py -f align/USDA/USDA.sorted.merged.bam -g usda_pacbio_pilon_round1.fa
+ -o pilon -p short -m
+
+sbatch ../../consolidate_pilon_fastas.sh usda_pacbio_second_pilon_round.fa
+samtools faidx usda_pacbio_second_pilon_round.fa
+perl -e 'chomp(@ARGV); %h; foreach $a (@ARGV){open(IN, "< $a"); while(<IN>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]); } close IN; } foreach $c (keys(%h)){for($x = 1; $x < scalar(@{$h{$c}}); $x++){ $d = abs($h{$c}->[$x] - $h{$c}->[$x - 1]); if($d != 0){print "$c\t" . join("\t", @{$h{$c}}) . "\t$d\n";}}}' usda_pacbio_second_pilon_round.fa.fai ../usda_pacbio_pilon_round1.fa.fai > ../usda_pacbio_pilon_round2.changes.tab
+
+# Damn! I corrected all bases instead of indels! Going to redo the correction
+python3 ~/python_toolchain/sequenceData/slurmPilonCorrectionPipeline.py -f align/USDA/USDA.sorted.merged.bam -g usda_pacbio_pilon_round1.fa -o pilon2 -p short -m
+sbatch ../../consolidate_pilon_fastas.sh usda_pacbio_second_pilon_indelsonly.fa
+
+perl -e 'chomp(@ARGV); %h; foreach $a (@ARGV){open(IN, "< $a"); while(<IN>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]); } close IN; } foreach $c (keys(%h)){for($x = 1; $x < scalar(@{$h{$c}}); $x++){ $d = abs($h{$c}->[$x] - $h{$c}->[$x - 1]); if($d != 0){print "$c\t" . join("\t", @{$h{$c}}) . "\t$d\n";}}}' usda_pacbio_second_pilon_indelsonly.fa.fai ../usda_pacbio_pilon_round1.fa.fai > ../usda_pacbio_pilon_round2_indelsonly.changes.tab
+
+# Tabulating the results of the pilon correction
+for i in pilon2/outLog/*.out; do echo $i; perl -e '%h; while($l = <>){chomp $l; if($l =~ /^Confirmed/){$b = <>; $s = <>; if($s =~ /^Large/){while(1){$s = <>; if($s =~ /^Large/){}else{last;}}} chomp $b; chomp $s; ($samp, $len) = $s =~ /(.+):\d+-(\d+)/; ($perc) = $l =~ /\((.+)\%\)/; ($snp, $amb, $ins, $del) = $b =~ /Found (\d+) snps; (\d+) ambiguous .* corrected (\d+) .* (\d+) small deletions .*/; $h{$samp} = [$len, $perc, $snp, $amb, $ins, $del];}} foreach $k (sort {$a cmp $b} keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' < $i >> pilon_round2_correction_stats.tab ; done
+```

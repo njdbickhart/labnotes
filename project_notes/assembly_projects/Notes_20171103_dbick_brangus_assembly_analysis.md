@@ -615,3 +615,14 @@ cat sire_scaffold_3ddna2_only.ref.fasta sire_scaffold_3ddna2_only.missingctg.fas
 |Sire  | Salsa| 1747 | 1477 | 87,976,369 | 2,494,659,122 |
 |Sire  |3ddna2| 1747 | 1198 | 50,677,645 | 2,523,588,061 |
 |Dam   | Salsa| 1585 | 1337 | 76,849,908 | 2,604,211,377 |
+
+
+## Testing gene location assumptions
+
+There is some ambiguity as to the sex chromosome PAR locations. I want to run a read depth analysis to check and confirm the status of some genes on the PAR. Here is the [SRA page](https://www.ncbi.nlm.nih.gov/Traces/study/?WebEnv=NCID_1_70820143_130.14.18.97_5555_1525359272_3835068197_0MetA0_S_HStore&query_key=22).
+
+> assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/angus_x_brahman
+
+```bash
+for i in SRX3666413 SRX3666412  SRX3666411  SRX3666410  SRX3666409  SRX3666408  SRX3666407  SRX3666403  SRX3666451  SRX3666450  SRX3666449; do sbatch download_sra_align.sh $i; done
+```
