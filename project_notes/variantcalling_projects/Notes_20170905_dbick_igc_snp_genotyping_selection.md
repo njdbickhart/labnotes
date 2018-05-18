@@ -8,6 +8,7 @@ These are my notes on the selection and filtering of sequence variants suitable 
 * [Selecting regions for SNP analysis](#selecting)
 * [Generating VCFs for genomic region subsets](#generating)
 * [Including the last section of chr5 NKC](#last_sec)
+* [Tabulating and interpreting Neogen results](#neogen)
 
 <a name="selecting"></a>
 ## Selecting regions for SNP analysis
@@ -513,4 +514,300 @@ wc -l derek_marker_selections.round1.geneseek.tab doro_marker_selections.round2.
 
 # Some of Doro's selections have a high MAF and low mappability, but they're otherwise a good set
 # We'll see how the group reacts before we filter
+```
+
+<a name="neogen"></a>
+## Tabulating and interpreting Neogen results
+
+We Just got the data back from Neogen. I want to run some preliminary stats on the calls and send them to the group.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/neogen_results
+
+```bash
+# I wrote a script to condense the data into a format that will be useful for plotting
+perl calculate_summary_stats.pl
+
+perl -e '%c = ("18" => "LRC", "23" => "MHC", "5" => "NKC", "KIR" => "LRC"); $h = <>; chomp $h; @s = split(/\t/, $h); foreach $x (@s){ @bsegs = split(/_/, $x); $cat = ""; if(exists($c{$bsegs[0]})){$cat = $c{$bsegs[0]};}else{$cat = $bsegs[0];} print "$x\t$cat\n";}' < var_names.tab > var_names.cats.tab
+```
+
+> pwd: /home/dbickhart/share/grants/immune_gene_cluster_grant/variant_selection/neogen_first_round_results
+
+```R
+library(dplyr)
+library(ggplot2)
+
+samples <- read.delim("neogen_results_sampsummary.tab", header=TRUE)
+samples.alt <- mutate(samples, CallRate = Genotyped / TotMarkers, HetRate = Hets / (Hom + Hets))
+summary(samples.alt)
+        Sample       TotMarkers      Genotyped        Missing      
+ G0052_0001:   1   Min.   :49.00   Min.   :17.00   Min.   : 5.000  
+ G0052_0002:   1   1st Qu.:67.00   1st Qu.:59.00   1st Qu.: 6.000  
+ G0052_0031:   1   Median :67.00   Median :60.00   Median : 7.000  
+ G0052_0033:   1   Mean   :66.95   Mean   :59.87   Mean   : 7.081  
+ G0052_0034:   1   3rd Qu.:67.00   3rd Qu.:61.00   3rd Qu.: 8.000  
+ G0052_0037:   1   Max.   :67.00   Max.   :62.00   Max.   :47.000  
+ (Other)   :1791                                                   
+      Hets           HomAlt          HomRef          NumAlt     
+ Min.   : 0.00   Min.   : 5.00   Min.   : 7.00   Min.   :12.00  
+ 1st Qu.:10.00   1st Qu.:18.00   1st Qu.:26.00   1st Qu.:49.00  
+ Median :12.00   Median :20.00   Median :28.00   Median :52.00  
+ Mean   :11.66   Mean   :20.04   Mean   :28.18   Mean   :51.73  
+ 3rd Qu.:14.00   3rd Qu.:22.00   3rd Qu.:30.00   3rd Qu.:56.00  
+ Max.   :22.00   Max.   :29.00   Max.   :39.00   Max.   :65.00  
+                                                                
+     NumRef         CallRate         HetRate      
+ Min.   :18.00   Min.   :0.2537   Min.   :0.0000  
+ 1st Qu.:65.00   1st Qu.:0.8806   1st Qu.:0.1639  
+ Median :68.00   Median :0.8955   Median :0.1967  
+ Mean   :68.01   Mean   :0.8936   Mean   :0.1948  
+ 3rd Qu.:72.00   3rd Qu.:0.9104   3rd Qu.:0.2295  
+ Max.   :88.00   Max.   :0.9254   Max.   :0.3684
+
+cor(samples.alt[,c(2,3,4,5,6,7,8,9,10,11)])
+            TotMarkers   Genotyped     Missing        Hets     HomAlt
+TotMarkers  1.00000000  0.51358993 -0.40495366  0.12077102  0.2277562
+Genotyped   0.51358993  1.00000000 -0.99251415  0.21364192  0.3524533
+Missing    -0.40495366 -0.99251415  1.00000000 -0.21047028 -0.3431621
+Hets        0.12077102  0.21364192 -0.21047028  1.00000000 -0.4422142
+HomAlt      0.22775618  0.35245330 -0.34316213 -0.44221423  1.0000000
+HomRef      0.23787454  0.56843306 -0.57187355 -0.25403239 -0.1572339
+NumAlt      0.31825561  0.50679649 -0.49475145  0.04181606  0.8776333
+NumRef      0.29626396  0.67361855 -0.67565002  0.20088900 -0.3618677
+CallRate    0.51358993  1.00000000 -0.99251415  0.21364192  0.3524533
+HetRate     0.04241602 -0.04856465  0.05778864  0.95852953 -0.5414084
+               HomRef      NumAlt      NumRef    CallRate     HetRate
+TotMarkers  0.2378745  0.31825561  0.29626396  0.51358993  0.04241602
+Genotyped   0.5684331  0.50679649  0.67361855  1.00000000 -0.04856465
+Missing    -0.5718735 -0.49475145 -0.67565002 -0.99251415  0.05778864
+Hets       -0.2540324  0.04181606  0.20088900  0.21364192  0.95852953
+HomAlt     -0.1572339  0.87763330 -0.36186774  0.35245330 -0.54140843
+HomRef      1.0000000 -0.31091475  0.89644616  0.56843306 -0.40984963
+NumAlt     -0.3109147  1.00000000 -0.29574732  0.50679649 -0.09084570
+NumRef      0.8964462 -0.29574732  1.00000000  0.67361855  0.02407009
+CallRate    0.5684331  0.50679649  0.67361855  1.00000000 -0.04856465
+HetRate    -0.4098496 -0.09084570  0.02407009 -0.04856465  1.00000000
+
+
+library(ggcorrplot)
+ggcorrplot(cor(samples.alt[,c(2,3,4,5,6,7,8,9,10,11)]), hc.order=TRUE, type="upper", outline.col = "white")
+
+# Now Let's load and intersect the sample information 
+sampinfo <- read.delim("holstein_state_info.tab", header=TRUE)
+samples.alt.full <- left_join(samples.alt, sampinfo)
+
+# Now to generate a sample callrate plot
+ggplot(samples.alt.full, aes(CallRate)) + stat_bin(binwidth=0.02, aes(fill=TB_pheno)) + stat_bin(binwidth=0.02, geom="text", aes(label=..count.., alpha=..count..), vjust=-1.5) + facet_grid(. ~ TB_pheno) + ggtitle(label="Custom Genotype Callrate Per TB_Phenotype")
+
+# Now let's plot a scatterpot of the number of Alt alleles and number of Reference alleles per TB phenotype
+allele <- ggplot(samples.alt.full, aes(x=NumRef, y=NumAlt, color=TB_pheno, alpha=CallRate)) + geom_count() + ggtitle(label="Reference and Alt Allele counts among samples")
+
+# Final plot: a density of heterozygous calls 
+ggplot(samples.alt.full, aes(x=Hets, fill=TB_pheno)) + geom_density(alpha=0.4) + xlab(label="Heterozygous Genotypes per sample") + ggtitle(label="Heterozygous alleles per TB Phenotype")
+dev.copy2pdf(file="density_het_alleles_persample.pdf", useDingbats=FALSE)
+
+## Now for the per marker site stats
+markers <- read.delim("neogen_results_variantsummary.tab", header=TRUE)
+markers.alt <- mutate(markers, CallRate = 1 - (Missing / (Genotyped + Missing)), p = NumRef / (NumRef + NumAlt), q = NumAlt / (NumRef + NumAlt))
+markers.alt.full <- mutate(markers.alt, ExpAA = p ** 2 * (HomAlt + HomRef + Hets), ExpAa = 2 * p * q * (HomAlt + HomRef + Hets), Expaa = q ** 2 * (HomAlt + HomRef + Hets), chi = (((HomRef - ExpAA) ** 2) / ExpAA) + (((Hets - ExpAa) ** 2) / ExpAa) + (((HomAlt - Expaa)) ** 2 / Expaa))
+markers.short <- select(markers.alt.full, -p, -q, -ExpAA, -ExpAa, -Expaa)
+
+summary(markers.short)
+         Marker     Genotyped       Missing            Hets       
+ 18_62404864: 1   Min.   :   0   Min.   :   0.0   Min.   :   0.0  
+ 18_62438492: 1   1st Qu.:1695   1st Qu.:  10.0   1st Qu.:   0.0  
+ 18_62460291: 1   Median :1777   Median :  19.0   Median : 158.0  
+ 18_62469715: 1   Mean   :1606   Mean   : 189.9   Mean   : 312.7  
+ 18_62559417: 1   3rd Qu.:1786   3rd Qu.: 101.5   3rd Qu.: 557.5  
+ 18_62575095: 1   Max.   :1791   Max.   :1797.0   Max.   :1790.0  
+ (Other)    :61                                                   
+     HomAlt           HomRef           NumAlt           NumRef    
+ Min.   :   0.0   Min.   :   0.0   Min.   :   0.0   Min.   :   0  
+ 1st Qu.:   2.5   1st Qu.:  10.5   1st Qu.: 146.5   1st Qu.: 470  
+ Median : 119.0   Median : 655.0   Median : 939.0   Median :2001  
+ Mean   : 537.4   Mean   : 755.7   Mean   :1387.4   Mean   :1824  
+ 3rd Qu.:1001.0   3rd Qu.:1419.0   3rd Qu.:2542.0   3rd Qu.:3156  
+ Max.   :1791.0   Max.   :1791.0   Max.   :3582.0   Max.   :3582  
+                                                                  
+    CallRate           chi           
+ Min.   :0.0000   Min.   :   0.0001  
+ 1st Qu.:0.9435   1st Qu.:   0.4622  
+ Median :0.9894   Median :   7.3879  
+ Mean   :0.8943   Mean   : 299.4821  
+ 3rd Qu.:0.9944   3rd Qu.: 481.0365  
+ Max.   :1.0000   Max.   :1790.0000  
+                  NA's   :21
+
+# First a simple correlation plot:
+ggcorrplot(cor(markers.short[,c(2,3,4,5,6,7,8,9,10)], use ="complete.obs"), hc.order=TRUE, type="upper", outline.col = "white")
+
+# Now to associate marker regions with the markers
+markercats <- read.delim("var_names.cats.tab", header=FALSE)
+colnames(markercats) <- c("Marker", "IGC")
+markers.short.full <- left_join(markers.short, markercats)
+
+# Now a callrate plot:
+ggplot(markers.short.full, aes(CallRate)) + stat_bin(binwidth=0.1, aes(fill=IGC)) + stat_bin(binwidth=0.1, geom="text", aes(label=..count.., alpha=..count..), vjust=-1.5) + facet_grid(. ~ IGC) + ggtitle(label = "Custom Genotype Callrate per Marker Site")
+dev.copy2pdf(file="genotype_callrate_permaker.pdf", useDingbats=FALSE)
+
+# Now one more histogram 
+markers.short.full <- mutate(markers.short.full, HetRate = Hets / (Hets + HomAlt + HomRef))
+ggplot(markers.short.full, aes(x = HetRate, y = chi, alpha = CallRate, color = IGC)) + geom_point() + facet_grid( . ~ IGC) + geom_hline(yintercept=3.84) + xlab(label="Heterozygous rate (Hets / SampleNum)") + ylab(label="Chi squared HWE value (solid line is 95% confidence)") + ggtitle(label="Call rate distribution for markers and Hardy Weinberg Equillibrium test")
+dev.copy2pdf(file="marker_status_hwe_permaker.pdf", useDingbats=FALSE)
+
+# Final plot = let's separate markers into categories of useability
+markers.use <- mutate(markers.short.full, Use = ifelse(HetRate > 0.025 & HetRate < 1.0 & CallRate > 0.85, TRUE, FALSE))
+ggplot(markers.use, aes(Use, fill = IGC)) + stat_count() + stat_count(geom="text", aes(label=..count..), vjust=-1.5) + facet_grid(. ~ IGC) + xlab(label="Suitable marker site?") + ylab(label="Count of Useable Markers") + ggtitle(label="Marker sites likely to be suitable for analysis")
+dev.copy2pdf(file="count_of_passing_markers.pdf", useDingbats=FALSE)
+
+```
+
+And finally, here is the analysis perl script used to partition the results:
+
+#### calculate_summary_stats.pl
+
+```perl
+#!/usr/bin/perl
+# This is a script designed to process the neogen results and calculate summary stats for plotting in R
+
+use strict;
+my $input = "neogen_results_5_18_2018.tab";
+my $persamp = "neogen_results_sampsummary.tab";
+my $pervar = "neogen_results_variantsummary.tab";
+
+my %varRefAlleles = (
+        "18_62404864" => "G",
+        "18_62438492" => "T",
+        "18_62460291" => "C",
+        "18_62469715" => "C",
+        "18_62559417" => "A",
+        "18_62575095" => "A",
+        "18_62644240" => "T",
+        "18_62670367" => "G",
+        "18_62723255" => "C",
+        "18_62774779" => "C",
+        "18_62812297" => "A",
+        "18_62824331" => "G",
+        "18_62914384" => "C",
+        "18_62985809" => "C",
+        "18_63089154" => "T",
+        "18_63138493" => "C",
+        "18_63222615" => "C",
+        "18_63269795" => "C",
+        "18_63308589" => "C",
+        "18_63356424" => "C",
+        "23_28481840" => "T",
+        "23_28518797" => "A",
+        "23_28535354" => "C",
+        "23_28651088" => "A",
+        "5_98985645" => "A",
+        "5_99036250" => "C",
+        "5_99073686" => "T",
+        "5_99228484" => "C",
+        "5_99266853" => "T",
+        "5_99333595" => "A",
+        "5_99392730" => "C",
+        "5_99445508" => "A",
+        "5_99560651" => "C",
+        "5_99706728" => "A",
+        "5_99763326" => "G",
+        "5_99766613" => "C",
+        "5_99780983" => "C",
+        "KIR_41480" => "T",
+        "LRC_106729" => "G",
+        "LRC_118549" => "T",
+        "LRC_174904" => "G",
+        "LRC_61352" => "A",
+        "LRC_65014" => "G",
+        "LRC_72198" => "G",
+        "LRC_81028" => "T",
+        "LRC_82562" => "G",
+        "LRC_98357" => "G",
+        "LRC_98785" => "A",
+        "MHC_103858" => "C",
+        "MHC_115082" => "G",
+        "MHC_121069" => "G",
+        "MHC_143922" => "A",
+        "MHC_154399" => "A",
+        "MHC_208321" => "T",
+        "MHC_260913" => "A",
+        "MHC_286137" => "C",
+        "MHC_317666" => "A",
+        "MHC_324231" => "T",
+        "MHC_356873" => "T",
+        "MHC_359718" => "A",
+        "MHC_380177" => "T",
+        "MHC_400205" => "A",
+        "MHC_43656" => "G",
+        "MHC_59013" => "A",
+        "MHC_63411" => "A",
+        "MHC_86084" => "A",
+        "MHC_9213" => "A");
+
+my %sampStats; #{sample} = [variantsGtyped, missing, hetcalls, homcalls, homref, altcalls, refcalls]
+my %varStats; #{variant} = [callcount, missingcount, hetcalls, homcalls, homref, altcalls, refcalls]
+
+open(my $IN, "< $input") || die "Could not open input file: $input!\n";
+my $head = <$IN>;
+chomp $head;
+my @hsegs = split(/\t/, $head);
+my %varIdx;
+for(my $x = 2; $x < scalar(@hsegs); $x++){
+	$varIdx{$x} = $hsegs[$x];
+	$varStats{$hsegs[$x]} = [0, 0, 0, 0, 0, 0, 0];
+}
+while(my $line = <$IN>){
+	chomp $line;
+	my @segs = split(/\t/, $line);
+	my $sampGtype = 0; my $sampMiss = 0; my $sampHet = 0; my $sampHom = 0; my $sampHRef = 0; my $sampRef = 0; my $sampAlt = 0;
+	for(my $x = 2; $x < scalar(@segs); $x++){
+		my $var = $varIdx{$x};
+		my $hallele = $varRefAlleles{$var};
+		if(!defined($segs[$x]) || $segs[$x] eq ""){
+			$sampMiss++;
+			$varStats{$var}->[1] += 1;
+		}else{
+			$sampGtype++;
+			$varStats{$var}->[0] += 1;
+			if(length($segs[$x]) > 1){
+				$sampHet++;
+				$sampRef++; $sampAlt++;
+				$varStats{$var}->[2] += 1;
+				$varStats{$var}->[5] += 1;
+				$varStats{$var}->[6] += 1;
+			}elsif($segs[$x] eq $hallele){
+				$sampHRef++;
+				$sampRef += 2;
+				$varStats{$var}->[4] += 1;
+				$varStats{$var}->[6] += 2;
+			}else{
+				$sampHom++;
+				$sampAlt += 2;
+				$varStats{$var}->[3] += 1;
+				$varStats{$var}->[5] += 2;
+			}
+		}
+	}
+	$sampStats{$segs[0]} = [$sampGtype, $sampMiss, $sampHet, $sampHom, $sampHRef, $sampAlt, $sampRef];
+}
+close $IN;
+
+open(my $OUT, "> $persamp");
+print {$OUT} "Sample\tTotMarkers\tGenotyped\tMissing\tHets\tHomAlt\tHomRef\tNumAlt\tNumRef\n";
+foreach my $s (sort {$a cmp $b} keys(%sampStats)){
+	my $entry = $sampStats{$s};
+	my $tot = $entry->[0] + $entry->[1];
+	print {$OUT} "$s\t$tot\t" . join("\t", @{$entry}) . "\n";
+}
+close $OUT;
+
+open(my $OUT, "> $pervar");
+#{variant} = [callcount, missingcount, hetcalls, homcalls]
+print {$OUT} "Marker\tGenotyped\tMissing\tHets\tHomAlt\tHomRef\tNumAlt\tNumRef\n";
+foreach my $v (sort{$a cmp $b} keys(%varStats)){
+	print {$OUT} "$v\t" . join("\t", @{$varStats{$v}}) . "\n";
+}
+close $OUT;
+
+exit;
+
 ```

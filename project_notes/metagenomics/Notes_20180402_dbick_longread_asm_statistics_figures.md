@@ -660,3 +660,81 @@ perl -e 'chomp(@ARGV); %h; foreach $a (@ARGV){open(IN, "< $a"); while(<IN>){chom
 # Tabulating the results of the pilon correction
 for i in pilon2/outLog/*.out; do echo $i; perl -e '%h; while($l = <>){chomp $l; if($l =~ /^Confirmed/){$b = <>; $s = <>; if($s =~ /^Large/){while(1){$s = <>; if($s =~ /^Large/){}else{last;}}} chomp $b; chomp $s; ($samp, $len) = $s =~ /(.+):\d+-(\d+)/; ($perc) = $l =~ /\((.+)\%\)/; ($snp, $amb, $ins, $del) = $b =~ /Found (\d+) snps; (\d+) ambiguous .* corrected (\d+) .* (\d+) small deletions .*/; $h{$samp} = [$len, $perc, $snp, $amb, $ins, $del];}} foreach $k (sort {$a cmp $b} keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}' < $i >> pilon_round2_correction_stats.tab ; done
 ```
+
+#### Anvio run on pacbio2 dataset
+
+I want to quantify the improvement of the second round of pilon correction on the pacbio dataset. I will attempt to run Anvio on it with alignment of the Hess dataset and our dataset
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon
+
+```bash
+python /mnt/nfs/nfs2/bickhart-users/binaries/download_from_gdrive.py 1Ky0CWfmc6dwrrRUaAC8_9bWaFFqLqOuJ usda_pacbio_second_pilon_indelsonly.fa.gz
+unpigz usda_pacbio_second_pilon_indelsonly.fa.gz
+
+sbatch --mem=15000 --ntasks-per-node=1 --nodes=1 -p assemble3 -wrap="bwa index usda_pacbio_second_pilon_indelsonly.fa; module load samtools; samtools faidx usda_pacbio_second_pilon_indelsonly.fa"
+
+```
+
+
+#### Kmeans clustering to determine clustering averages
+
+> Assembler2: 
+
+```R
+library(dplyr)
+library(broom)
+library(ggplot2)
+data <- read.delim("usda_clusters_rg_counts.ext.full.tab", header=TRUE)
+data <- data[data$ReadGroup == "USDA", c(1,2,4,5,6,7,8)]
+
+data.filt <- mutate(data, Cov = Count * 150 / Len, Name = paste(Cluster, Contig, sep="_"))
+
+# Removing high coverage outliers
+data.final.filt <- filter(data.final, Cov < 137944)
+
+data.matrix <- cbind(GC = data.final.filt$GC,Cov =  data.final.filt$Cov)
+kclusts <- data.frame(k=2:10) %>% group_by(k) %>% do(kclust=kmeans(data.matrix, .$k))
+clusterings <- kclusts %>% group_by(k) %>% do(glance(.$kclust[[1]]))
+assignments <- kclusts %>% group_by(k) %>% do(augment(.$kclust[[1]], data.matrix))
+
+png("usda_pacbio_kmeans_clustering.png")
+p1 <- ggplot(assignments, aes(GC, Cov)) + geom_point(aes(color=.cluster)) + facet_wrap(~ k)
+p1
+dev.off()
+
+png("usda_pacbio_kmeans_variance.png")
+ggplot(clusterings, aes(k, tot.withinss)) + geom_line()
+dev.off()
+
+# And now, how to draw out summary stat information from the kmeans
+five <- assignments[assignments$k == 5,]
+five.means <- group_by(five, .cluster)
+
+summarize(five.means, count= n(), gc = mean(GC), cov = mean(Cov), stdv = sd(Cov))
+# A tibble: 5 x 5
+  .cluster count    gc   cov  stdv
+  <chr>    <int> <dbl> <dbl> <dbl>
+1 1           46 0.422 25838  4843
+2 2          119 0.476 11361  3081
+3 3           12 0.297 59433  9749
+4 4          670 0.508  2953  1375
+5 5        42682 0.491   107   174
+
+ten <- assignments[assignments$k == 10,]
+ten.means <- group_by(ten, .cluster)
+summarize(ten.means, count = n(), gc = mean(GC), cov = mean(Cov), stdv = sd(Cov))
+# A tibble: 10 x 5
+   .cluster count    gc     cov   stdv
+   <chr>    <int> <dbl>   <dbl>  <dbl>
+ 1 1           52 0.472 14370   1816
+ 2 10          17 0.391 30979   3440
+ 3 2           29 0.440 22824   2342
+ 4 3          841 0.504  1316    351
+ 5 4        37364 0.491    56.4   49.9
+ 6 5           66 0.477  9053   1314
+ 7 6          317 0.508  2867    559
+ 8 7           12 0.297 59433   9749
+ 9 8         4712 0.491   373    148
+10 9          119 0.496  5508    839
+
+```
