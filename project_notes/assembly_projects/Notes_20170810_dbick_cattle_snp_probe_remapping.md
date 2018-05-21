@@ -557,3 +557,98 @@ module load bwa; for i in snp_remappings/*.fasta; do name=`basename $i`; echo $n
 
 mv 9913_CHIP* ./umd3_mappings/
 ```
+
+#### Testing UMD3 liftover conversions
+
+Kiranmayee has prepared liftover chain files in these locations on the AGIL cluster:
+
+> /mnt/nfs/nfs2/bickhart-users/cattle_asms/liftovers/
+
+The files may need to be relabeled to be clearer. Here's the current designation of forward and reverse liftover chains:
+
+* **Forward** (UMD3 -> ARS-UCD1.2): /mnt/nfs/nfs2/bickhart-users/cattle_asms/liftovers/UMD3.11_to_ARS-UCD1.2/umd3_kary_unmask_ngap_to_ARS-UCD1.2.mmap.liftover.chain
+* **Reverse** (ARS-UCD1.2 -> UMD3): /mnt/nfs/nfs2/bickhart-users/cattle_asms/liftovers/ARS-UCD1.2_to_UMD3.11/ARS-UCD1.2_to_umd3_kary_unmask_ngap.mmap.liftover.chain 
+
+Let's test these out on Bob's markers to see how they perform.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi
+
+```bash
+# First, convert the markers to bed file format
+perl -lane 'if($F[1] eq "*"){next;} $e = $F[2] + 1; print "$F[1]\t$F[2]\t$e\t$F[0]";' < 9913_CHIP_ZOETIS_DEREK_A.3.bwa.tab | bedtools sort -i stdin > 9913_CHIP_ZOETIS_DEREK_A.3.bwa.sorted.bed
+
+# Now to liftover in the reverse direction
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/liftOver 9913_CHIP_ZOETIS_DEREK_A.3.bwa.sorted.bed /mnt/nfs/nfs2/bickhart-users/cattle_asms/liftovers/ARS-UCD1.2_to_UMD3.11/ARS-UCD1.2_to_umd3_kary_unmask_ngap.mmap.liftover.chain ARS1.2_to_umd3_liftover_test.bed ARS1.2_to_umd3_liftover_test.unmapped
+
+wc -l ARS1.2_to_umd3_liftover_test*
+ 138315 ARS1.2_to_umd3_liftover_test.bed
+   5924 ARS1.2_to_umd3_liftover_test.unmapped <- 2962 that couldn't be lifted over (~ 2.1%)
+
+# And a check for the forward direction
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa -p 9913_CHIP_ZOETIS_DEREK_A.csv.3.fasta -o 9913_CHIP_ZOETIS_DEREK_A.3.myumd3
+perl -lane 'if($F[1] eq "*"){next;} $e = $F[2] + 1; print "$F[1]\t$F[2]\t$e\t$F[0]";' < 9913_CHIP_ZOETIS_DEREK_A.3.myumd3.tab | bedtools sort -i stdin > 9913_CHIP_ZOETIS_DEREK_A.3.myumd3.sorted.bed
+
+# And, lifting over in the forward direction
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/liftOver 9913_CHIP_ZOETIS_DEREK_A.3.myumd3.sorted.bed /mnt/nfs/nfs2/bickhart-users/cattle_asms/liftovers/UMD3.11_to_ARS-UCD1.2/umd3_kary_unmask_ngap_to_ARS-UCD1.2.mmap.liftover.chain Umd3_to_ars1.2.liftover_test.bed Umd3_to_ars1.2.liftover_test.unmapped
+
+wc -l Umd3_to_ars1.2.liftover_test*
+ 139393 Umd3_to_ars1.2.liftover_test.bed
+   2184 Umd3_to_ars1.2.liftover_test.unmapped
+ 141577 total   <- 1092 that couldn't be lifted over (~ 0.7%)
+
+# Let's do a straight marker coordinate conversion test
+# Forward test
+perl -e '$out = "mismapped_forward_markers.list"; chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[3]} = [$s[0], $s[1]]; }close IN; open(OUT, "> $out"); open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[3]})){$v = $h{$s[3]}; if($v->[0] ne $s[0] && $v->[1] != $s[1]){$c++; print OUT "$s[3]\n";}}} close OUT; close IN; print "mismapped markers: $c\n";' Umd3_to_ars1.2.liftover_test.bed 9913_CHIP_ZOETIS_DEREK_A.3.bwa.sorted.bed
+mismapped markers: 1062	<- again, around 0.7% of the total and it looks like it's mostly on chrX and is due to the missing chrunknown markers in the version of umd3 used
+
+# Reverse test
+perl -e '$out = "mismapped_reverse_markers.list"; chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[3]} = [$s[0], $s[1]]; }close IN; open(OUT, "> $out"); open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[3]})){$v = $h{$s[3]}; if($v->[0] ne $s[0] && $v->[1] != $s[1]){$c++; print OUT "$s[3]\n";}}} close OUT; close IN; print "mismapped markers: $c\n";' ARS1.2_to_umd3_liftover_test.bed 9913_CHIP_ZOETIS_DEREK_A.3.myumd3.sorted.bed
+mismapped markers: 169 <- far, far less! Not too shabby!
+
+# Now to do my big venn comparison using the marker site names
+perl -lane 'print $F[0];' < 9913_CHIP_ZOETIS_DEREK_A.3.umd3.tab > 9913_CHIP_ZOETIS_DEREK_A.3.markers.list
+grep -v '#' ARS1.2_to_umd3_liftover_test.unmapped | perl -lane 'print $F[3];' > ARS1.2_to_umd3_liftover_test.unmapped.list
+grep -v '#' Umd3_to_ars1.2.liftover_test.unmapped | perl -lane 'print $F[3];' > Umd3_to_ars1.2.liftover_test.unmapped.list
+
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl 9913_CHIP_ZOETIS_DEREK_A.3.markers.list ARS1.2_to_umd3_liftover_test.unmapped.list Umd3_to_ars1.2.liftover_test.unmapped.list mismapped_forward_markers.list mismapped_reverse_markers.list
+Set     Count
+1       137722
+1;2     1439
+1;2;3   723		<- markers that failed in both liftovers
+1;2;4   800		<- markers that were mismapped in forward liftover and failed in reverse liftover
+1;3     331
+1;3;5   38		<- markers that were mismapped in the reverse liftover and failed in the forward liftover
+1;4     161
+1;4;5   101		<- markers that were mismapped in the forward and reverse liftovers
+1;5     30
+
+# Testing the markers that were mismapped in forward and reverse liftovers
+perl ~/sperl/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1_4_5 9913_CHIP_ZOETIS_DEREK_A.3.markers.list ARS1.2_to_umd3_liftover_test.unmapped.list Umd3_to_ars1.2.liftover_test.unmapped.list mismapped_forward_markers.list mismapped_reverse_markers.list | xargs -I {} grep {} Umd3_to_ars1.2.liftover_test.bed 9913_CHIP_ZOETIS_DEREK_A.3.bwa.sorted.bed ARS1.2_to_umd3_liftover_test.bed 9913_CHIP_ZOETIS_DEREK_A.3.myumd3.sorted.bed | perl -lane '@b = split(/\:/, $F[0]); print $b[1];' | perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0
+
+# They were pretty evenly distributed amongst all chromosomes
+
+```
+
+| Category | Count | Perc |
+| :--- | ---: | ---: |
+| Total markers | 141,345 | 100% |
+| Failed liftover (either direction) | 3331 | 2.4% |
+| Mismapped coordinates (either direction) | 1130 | 0.8% |
+| Total, nonredundant, faulty markers | 3623 | 2.6% |
+
+
+Now to check the larger file
+
+```bash
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa -p snp_remappings/9913_CHIP_DEREK_B.csv.1.fasta -o snp_remappings/9913_CHIP_DEREK_B.csv.myumd3.1.fasta
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a /mnt/nfs/nfs2/Genomes/umd3_kary_unmask_ngap.fa -p snp_remappings/9913_CHIP_DEREK_A.csv.1.fasta -o snp_remappings/9913_CHIP_DEREK_A.csv.myumd3.1.fasta
+
+perl -lane 'if($F[1] eq "*"){next;} $e = $F[2] + 1; print "$F[1]\t$F[2]\t$e\t$F[0]";' < snp_remappings/9913_CHIP_DEREK_A.csv.1.fasta.tab | bedtools sort -i stdin > snp_remappings/9913_CHIP_DEREK_A.csv.ars1.1.fasta.sorted.bed
+
+# Reverse liftover and check
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/liftOver snp_remappings/9913_CHIP_DEREK_A.csv.ars1.1.fasta.sorted.bed /mnt/nfs/nfs2/bickhart-users/cattle_asms/liftovers/ARS-UCD1.2_to_UMD3.11/ARS-UCD1.2_to_umd3_kary_unmask_ngap.mmap.liftover.chain snp_remappings/ARS1.2_to_umd3_liftover_test.bed snp_remappings/ARS1.2_to_umd3_liftover_test.unmapped
+
+wc -l snp_remappings/ARS1.2_to_umd3_liftover_test.bed snp_remappings/ARS1.2_to_umd3_liftover_test.unmapped
+ 2395033 snp_remappings/ARS1.2_to_umd3_liftover_test.bed
+   37858 snp_remappings/ARS1.2_to_umd3_liftover_test.unmapped (~ 0.7%)
+```
