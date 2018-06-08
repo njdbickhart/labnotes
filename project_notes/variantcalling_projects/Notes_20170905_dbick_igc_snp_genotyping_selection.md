@@ -811,3 +811,36 @@ close $OUT;
 exit;
 
 ```
+
+## Flirting with graph format
+
+These are my barebones notes on using fermi to assemble our contigs into graph format for plotting.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc
+
+```bash
+perl ~/sperl/sequence_data_pipeline/splitFASTAintoOVLPChunks.pl -f total_assembled_bacs.fa -o total_assembled_bacs.ovlp.segs.fq
+
+mv temp.fq total_assembled_bacs.ovlp.segs.fq
+
+/mnt/nfs/nfs2/bickhart-users/binaries/fermikit/fermi.kit/fermi2.pl unitig -s 1m -t 16 -l 100 -p total_assembled_segs total_assembled_bacs.ovlp.segs.fq > total_assembled_segs.mak
+
+make -f total_assembled_segs.mak
+
+/mnt/nfs/nfs2/bickhart-users/binaries/mag2gfa/mag2gfa total_assembled_segs.mag.gz > total_assembled_segs.mag.gfa
+
+# I ran bandage on my linux virtualbox. Looks OK, but is a mess! Let's try a targetted area first
+
+samtools faidx total_assembled_bacs.fa
+samtools faidx total_assembled_bacs.fa Domino_MHCclassI_gene2-5hap1_MHC TPI4222_A14_MHCclassI_MHC LIB14427_MHC > graph_mhc_regions.fa
+
+samtools faidx ARS-UCD1.0.14.clean.wIGCHaps.fasta 23:28460024-28533695 >> graph_mhc_regions.fa
+
+perl ~/sperl/sequence_data_pipeline/splitFASTAintoOVLPChunks.pl -f graph_mhc_regions.fa -o graph_mhc_regions.segs.fq
+mv temp.fq graph_mhc_regions.segs.fq
+
+/mnt/nfs/nfs2/bickhart-users/binaries/fermikit/fermi.kit/fermi2.pl unitig -s 1m -t 16 -l 100 -p graph_mhc_regions.segs.fermi graph_mhc_regions.segs.fq > graph_mhc_regions.segs.fermi.mak
+make -f graph_mhc_regions.segs.fermi.mak
+/mnt/nfs/nfs2/bickhart-users/binaries/mag2gfa/mag2gfa graph_mhc_regions.segs.fermi.mag.gz > graph_mhc_regions.segs.fermi.mag.gfa
+
+```

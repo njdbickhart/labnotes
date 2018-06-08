@@ -738,3 +738,70 @@ summarize(ten.means, count = n(), gc = mean(GC), cov = mean(Cov), stdv = sd(Cov)
 10 9          119 0.496  5508    839
 
 ```
+
+## Public dataset alignment and binning
+
+I want to download and analyze publically accessible rumen WGS reads for further binning and classification of the rumen microbes in this project. I wanted to download everything possible in the SRA. Here was my command for finding the illumina-only, WGS-only datasets: **((cattle rumen) NOT "pcr"[Selection]) NOT "ls454"[Platform] **. Unfortunately, that wasn't enough, and I had to manually filter away the ION torrent, 454 and amplicon reads that remained. I also had to add the HESS dataset in (it was missing). Now I need to download the files sequentially on Ceres.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/public_datasets
+
+```bash
+# Downloading the files
+cat cattle_rumen_illumina_run_sheet_sra.txt | perl -e '$h = <STDIN>; while(<STDIN>){chomp; @s = split(/\t/); print "$s[0]\n";}' | xargs -I {} sbatch --nodes=1 --tasks-per-node=1 --mem=500 -p short --wrap="fastq-dump.2 -I --gzip --split-files {}"
+
+# Quite a few worked, but quite a few also failed! Perhaps it was a simultaneous query issue? I will have to ensure that all of the files are properly accounted for in the folder.
+# Also, many of the files were corrupt
+
+# An online git error shows that most of the modern SRA tools need to prefetch data and convert them inplace. It's a pain, but let me see what I can do. 
+# In true NCBI fashion, it tries to download stuff to home even if you don't want it to!
+rm ~/ncbi/public/sra/*
+prefetch --max-size 50000000 ERR2282092
+fastq-dump.2 -I --gzip --split-files ERR2282092
+
+# This worked, but it took a long time! Let's script it so that I have 3 running processes to download all of the files
+head -n 41 cattle_rumen_illumina_run_sheet_sra.txt | tail -n 40 | perl -lane 'print $F[0];' > download_set_one.list
+head -n 81 cattle_rumen_illumina_run_sheet_sra.txt | tail -n 40 | perl -lane 'print $F[0];' > download_set_two.list
+tail -n 40 cattle_rumen_illumina_run_sheet_sra.txt | perl -lane 'print $F[0];' > download_set_three.list
+
+sbatch download_sra_dataset.sh download_set_one.list
+sbatch download_sra_dataset.sh download_set_two.list
+sbatch download_sra_dataset.sh download_set_three.list
+
+cat remaining_set.list | xargs -I {} sbatch --nodes=1 --ntasks-per-node=2 --mem=2000 --time=12:00:00 --wrap="prefetch --max-size 45000000 {}; fastq-dump.2 -I --gzip --split-files {}"
+
+# OK, now to generate a spreadsheet tab file for the projects
+perl -ne '$d = "/scinet01/gov/usda/ars/scinet/project/rumen_longread_metagenome_assembly/sequence_data/public_datasets"; chomp; @F = split(/\t/); if($F[0] =~ /^Run/){next;} @files = `ls $F[0]*`; chomp(@files); if(scalar(@files) < 2){next;} print "$d/$files[0]\t$d/$files[1]\t$F[0]\t$F[21]\n";' < cattle_rumen_illumina_run_sheet_sra.txt > cattle_rumen_illumina_data_spreadsheet.tab
+
+# We should be set for alignment... fingers crossed!
+```
+
+I am going to run alignments of all 109 of these datasets against each respective assembly for comparisons.
+
+#### Pacbio
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon
+
+```bash
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p short --wrap="module load bwa/gcc/64/0.7.12; bwa index usda_pacbio_second_pilon_indelsonly.fa"
+
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b publicdb -t ../../../sequence_data/public_datasets/cattle_rumen_illumina_data_spreadsheet.tab -f usda_pacbio_second_pilon_indelsonly.fa -p short -m
+
+# Dammit all! I forgot that the SRA creates read names with BWA errors!
+# Remaking all of the fastq files:
+
+perl -lane 'system("sbatch --nodes=1 --mem=6000 --ntasks-per-node=2 -p short --wrap=\"python3 ~/python_toolchain/sequenceData/fixSRAFastqFiles.py -f $F[0] -r $F[1] -o $F[2]\_r -l $F[2]\_r.log\"");' < cattle_rumen_illumina_data_spreadsheet.tab
+
+# Some of the files were too big. Rather than restarting and wasting more time, I'm going to truncate them
+for i in SRR094437_r SRR094926_r SRR094424_r ERR2282092_r ERR2530126_r ERR2027896_r; do echo $i; sbatch --nodes=1 -p short --mem=2000 --ntasks-per-node=4 --wrap="for b in ${i}.*; do echo $b; unpigz -c $b | wc -l; done"; done
+
+# Damn, the compression corrupted the files. Let's reprocess them instead
+for i in SRR094437 SRR094926 SRR094424 ERR2282092 ERR2530126 ERR2027896; do echo $i; sbatch --nodes=1 --mem=6000 --ntasks-per-node=2 -p long --wrap="python3 ~/python_toolchain/sequenceData/fixSRAFastqFiles.py -f ${i}_1.fastq.gz -r ${i}_2.fastq.gz -o ${i}_r -l ${i}_r.log"; done
+```
+
+#### Illumina
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
+
+```bash
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p short --wrap="module load bwa/gcc/64/0.7.12; bwa index illumina_megahit_final_contigs.fa"
+```
