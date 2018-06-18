@@ -796,6 +796,24 @@ for i in SRR094437_r SRR094926_r SRR094424_r ERR2282092_r ERR2530126_r ERR202789
 
 # Damn, the compression corrupted the files. Let's reprocess them instead
 for i in SRR094437 SRR094926 SRR094424 ERR2282092 ERR2530126 ERR2027896; do echo $i; sbatch --nodes=1 --mem=6000 --ntasks-per-node=2 -p long --wrap="python3 ~/python_toolchain/sequenceData/fixSRAFastqFiles.py -f ${i}_1.fastq.gz -r ${i}_2.fastq.gz -o ${i}_r -l ${i}_r.log"; done
+
+# Updating the spreadsheet
+perl -lane '$F[0] =~ s/1.fastq.gz/r.1.fq.gz/; $F[1] =~ s/2.fastq.gz/r.2.fq.gz/; if( -s $F[0] ||  -s $F[1]){print join("\t", @F);}' < cattle_rumen_illumina_data_spreadsheet.tab > cattle_rumen_illumina_data_spreadsheet.revised.tab
+
+# Finger's crossed! Let's try again
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b publicdb -t ../../../sequence_data/public_datasets/cattle_rumen_illumina_data_spreadsheet.revised.tab -f usda_pacbio_second_pilon_indelsonly.fa -p short -m
+
+# OK, now to generate anvio fasta profiles
+sbatch --nodes=1 --ntasks-per-node=2 --mem=18000 -p short --wrap="module load prodigalorffinder/gcc/64/2.6.3 samtools/gcc/64/1.4.1 hmmer3/gcc/64/3.1b2; source ~/rumen_longread_metagenome_assembly/binaries/virtual_envs/anvio-4/bin/activate; anvi-gen-contigs-database -f usda_pacbio_second_pilon_indelsonly.fa -o usda_pacbio_second_pilon_indelsonly.anvio.db"
+
+# Generating NCBI cogs
+sbatch --nodes=1 --ntasks-per-node=2 --mem=18000 -p short --wrap="module load prodigalorffinder/gcc/64/2.6.3 samtools/gcc/64/1.4.1 hmmer3/gcc/64/3.1b2; source ~/rumen_longread_metagenome_assembly/binaries/virtual_envs/anvio-4/bin/activate; anvi-setup-ncbi-cogs --cog-data-dir ~/rumen_longread_metagenome_assembly/binaries/anvi_ncbi_cogs;"
+
+#NOTE: the program didn't see ncbi tools installed, so it did not create a blast search DB for the files!
+
+sbatch --nodes=1 --ntasks-per-node=6 --mem=20000 -p short --wrap="module load prodigalorffinder/gcc/64/2.6.3 samtools/gcc/64/1.4.1 hmmer3/gcc/64/3.1b2; source ~/rumen_longread_metagenome_assembly/binaries/virtual_envs/anvio-4/bin/activate; anvi-run-hmms -c usda_pacbio_second_pilon_indelsonly.anvio.db --num-threads 6;"
+
+sbatch --nodes=1 --ntasks-per-node=6 --mem=20000 -p short --wrap="module load prodigalorffinder/gcc/64/2.6.3 samtools/gcc/64/1.4.1 hmmer3/gcc/64/3.1b2 blast/gcc/64/2.2.26; source ~/rumen_longread_metagenome_assembly/binaries/virtual_envs/anvio-4/bin/activate; anvi-run-ncbi-cogs -c usda_pacbio_second_pilon_indelsonly.anvio.db --num-threads 6 --cog-data-dir ~/rumen_longread_metagenome_assembly/binaries/anvi_ncbi_cogs"
 ```
 
 #### Illumina
@@ -804,4 +822,27 @@ for i in SRR094437 SRR094926 SRR094424 ERR2282092 ERR2530126 ERR2027896; do echo
 
 ```bash
 sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p short --wrap="module load bwa/gcc/64/0.7.12; bwa index illumina_megahit_final_contigs.fa"
+
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b publicdb -t ../../../sequence_data/public_datasets/cattle_rumen_illumina_data_spreadsheet.revised.tab -f illumina_megahit_final_contigs.fa -p short -m
+
+# Now to reformat the fasta and generate anvio input data
+sbatch --nodes=1 --ntasks-per-node=2 --mem=18000 -p short --wrap="module load prodigalorffinder/gcc/64/2.6.3 samtools/gcc/64/1.4.1 hmmer3/gcc/64/3.1b2; source ~/rumen_longread_metagenome_assembly/binaries/virtual_envs/anvio-4/bin/activate; anvi-script-reformat-fasta -o illumina_megahit_final_contigs.reformated.fa --simplify-names illumina_megahit_final_contigs.fa"
+
+# Ah, so anvio strips ALL contig names! That would be a huge pain to deal with later
+# Going to do it the safe way with perl
+perl -ne 'if($_ =~ /^>/){@b = split(/\s+/); print "$b[0]\n";}else{print $_;}' < illumina_megahit_final_contigs.fa > illumina_megahit_final_contigs.perl.fa
+
+sbatch --nodes=1 --ntasks-per-node=2 --mem=18000 -p short --wrap="module load prodigalorffinder/gcc/64/2.6.3 samtools/gcc/64/1.4.1 hmmer3/gcc/64/3.1b2; source ~/rumen_longread_metagenome_assembly/binaries/virtual_envs/anvio-4/bin/activate; anvi-gen-contigs-database -f illumina_megahit_final_contigs.perl.fa -o illumina_megahit_final_contigs.perl.anvio.db"
+
+# It ran out of memory! Let's increase the memory size
+sbatch --nodes=1 --ntasks-per-node=3 --mem=30000 -p short --wrap="module load prodigalorffinder/gcc/64/2.6.3 samtools/gcc/64/1.4.1 hmmer3/gcc/64/3.1b2; source ~/rumen_longread_metagenome_assembly/binaries/virtual_envs/anvio-4/bin/activate; anvi-gen-contigs-database -f illumina_megahit_final_contigs.perl.fa -o illumina_megahit_final_contigs.perl.anvio.db"
+
+# I think it failed again. Let's try this again, but this time with only the contigs that were above 2342 bp in length (the average; the median contig size was 1583 bp).
+# I'm taking advantage of the fact that the megahit fasta is two lines per fasta entry
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while($n = <IN>){$s = <IN>; chomp $n; chomp $s; $b = substr($n, 1); if(exists($h{$b})){print "$n\n$s\n";}}' illumina_megahit_contigs.tosave.list illumina_megahit_final_contigs.perl.fa > illumina_megahit_final_contigs.gt2kb.fa
+
+sbatch --nodes=1 --ntasks-per-node=3 --mem=30000 -p short --wrap="module load prodigalorffinder/gcc/64/2.6.3 samtools/gcc/64/1.4.1 hmmer3/gcc/64/3.1b2; source ~/rumen_longread_metagenome_assembly/binaries/virtual_envs/anvio-4/bin/activate; anvi-gen-contigs-database -f illumina_megahit_final_contigs.gt2kb.fa -o illumina_megahit_final_contigs.gt2kb.anvio.db"
 ```
+
+#### Anvio processing
+
