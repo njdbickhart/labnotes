@@ -74,9 +74,42 @@ sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p short --wrap="lumpyexpress -
 
 # Hmm, I need to ask the scinet team to install FRC_align or code it myself without the lib-gmp dependencies
 
+# QV generation
+sbatch calculate_qv.sh water_buffalo_20180219.freebayes.vcf buffalo/buffalo/buffalo.sorted.merged.bam water_buffalo_20180219.qv
 
-## for the Caspur assembly
+#### for the Caspur assembly ####
 sbatch --nodes=1 --ntasks-per-node=3 --mem=35000 -p medium --dependency=afterany:203505 --wrap="freebayes -C 2 -0 -O -q 20 -z 0.10 -E 0 -X -u -p 2 -F 0.75 -f bbu_ref_UMD_CASPUR_WB_2.0_chrUn.rfmt.fa -v bbu_ref_UMD_CASPUR_WB_2.0.freebayes.vcf caspur/buffalo/buffalo.sorted.merged.bam"
 
 sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p short --dependency=afterany:203505 --wrap="lumpyexpress -B caspur/buffalo/buffalo.sorted.merged.bam -o bbu_ref_UMD_CASPUR_WB_2.0.lumpy.vcf"
+
+# QV generation
+sbatch calculate_qv.sh bbu_ref_UMD_CASPUR_WB_2.0.freebayes.vcf caspur/buffalo/buffalo.sorted.merged.bam bbu_ref_UMD_CASPUR_WB_2.0.qv
+```
+
+
+And here is the code for the QV calculation script.
+
+#### calculate_qv.sh
+
+```bash
+#!/usr/bin/bash
+#SBATCH --nodes=1
+#SBATCH --mem=10000
+#SBATCH --ntasks-per-node=1
+#SBATCH -p short
+
+# $1 = vcf file
+# $2 = input bam file
+# $3 = output QV file
+
+module load samtools
+
+NUM_BP=`samtools depth $2 | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if(scalar(@s) >= 3){$c++;}} print "$c\n";'`
+echo "num bp: "$NUM_BP
+
+NUM_SNP=`cat $1 |grep -v "#" | awk -F "\t" '{if (!match($NF, "0/1")) print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$8}' | tr ';' ' ' | sed s/AB=//g | awk -v WEIGHT=0 '{if ($6 >= WEIGHT) print $0}' | awk -v SUM=0 '{if (length($4) == length($5)) { SUM+=length($4); } else if (length($4) < length($5)) { SUM+=length($5)-length($4); } else { SUM+=length($4)-length($5)}} END { print SUM}'`
+echo "num snp: "$NUM_SNP
+
+perl -e 'chomp(@ARGV); $ns = $ARGV[0]; $nb = $ARGV[1]; print (-10 * log($ns/$nb)/log(10)); print "\n";' $NUM_SNP $NUM_BP > $3
+cat $3
 ```

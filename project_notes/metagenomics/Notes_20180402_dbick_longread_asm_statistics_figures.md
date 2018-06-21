@@ -846,3 +846,26 @@ sbatch --nodes=1 --ntasks-per-node=3 --mem=30000 -p short --wrap="module load pr
 
 #### Anvio processing
 
+
+#### Metabat binning
+
+I am going to generate Metabat bin files for each assembly based on the public db bams.
+
+#### Pacbio
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon
+
+```bash
+module load metabat/2.12.1
+
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=2 -p medium --wrap="jgi_summarize_bam_contig_depths --outputDepth usda_second_pilon_publicdb.depths.tab --pairedContigs usda_second_pilon_publicdb.paired.txt publicdb/*/*.merged.bam"
+
+sbatch --nodes=1 --dependency=afterany:203050 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i usda_pacbio_second_pilon_indelsonly.fa -a usda_second_pilon_publicdb.depths.tab -o usda_second_pilon_publicdb_metabat -t 8 -v"
+```
+#### Illumina
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
+
+```bash
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=2 -p medium --wrap="jgi_summarize_bam_contig_depths --outputDepth illumina_megahit_contigs_publicdb.depths.tab --pairedContigs illumina_megahit_contigs_publicdb.paired.txt publicdb/*/*.merged.bam"
+
+sbatch --nodes=1 --dependency=afterany:203053 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i illumina_megahit_final_contigs.perl.fa -a illumina_megahit_contigs_publicdb.depths.tab -o usda_illumina_publicdb_metabat -t 8 -v"
+```
