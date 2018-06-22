@@ -860,6 +860,12 @@ module load metabat/2.12.1
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=2 -p medium --wrap="jgi_summarize_bam_contig_depths --outputDepth usda_second_pilon_publicdb.depths.tab --pairedContigs usda_second_pilon_publicdb.paired.txt publicdb/*/*.merged.bam"
 
 sbatch --nodes=1 --dependency=afterany:203050 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i usda_pacbio_second_pilon_indelsonly.fa -a usda_second_pilon_publicdb.depths.tab -o usda_second_pilon_publicdb_metabat -t 8 -v"
+
+# Now to organize the data and run checkM
+mv usda_second_pilon_publicdb* ./metabat/
+module load pplacer/v1.1.alpha19 hmmer3/gcc/64/3.1b2 prodigalorffinder/gcc/64/2.6.3
+sbatch --nodes=1 --mem=45000 --ntasks-per-node=8 -p short --wrap="checkm lineage_wf -f metabat/CheckM.txt -t 8 -x fa metabat/ metabat/SCG"
+
 ```
 #### Illumina
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
