@@ -9,6 +9,7 @@ These are my notes on the selection and filtering of sequence variants suitable 
 * [Generating VCFs for genomic region subsets](#generating)
 * [Including the last section of chr5 NKC](#last_sec)
 * [Tabulating and interpreting Neogen results](#neogen)
+* [Placing variant sites](#placing)
 
 <a name="selecting"></a>
 ## Selecting regions for SNP analysis
@@ -843,4 +844,29 @@ mv temp.fq graph_mhc_regions.segs.fq
 make -f graph_mhc_regions.segs.fermi.mak
 /mnt/nfs/nfs2/bickhart-users/binaries/mag2gfa/mag2gfa graph_mhc_regions.segs.fermi.mag.gz > graph_mhc_regions.segs.fermi.mag.gfa
 
+```
+
+<a name="placing"></a>
+## Placing variant sites
+
+I am going to give Kiranmayee mapping locations of the haplotypes and the SNP markers. The first thing that I realized is that I sent her coordinates from the v1.25 assembly, but the mapping coordinates I have are from the v14 assembly. Let's remap the BovineHD coordinates to that assembly first.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/natdb_sequencing/prelim_gwas/
+
+```bash
+# Generating the tab file for comparisons
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a ../../cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.umdcoords.fa -o ARS-UCD1.0.14.BovineHD
+
+# Generating the bed file for marker site coordinates
+perl -lane '$e = $F[3] + 1; print "$F[2]\t$F[3]\t$e\t$F[0]";' < ../doro_marker_selections.round3.geneseek.tab > marker_selections_arsv1.14.locs.bed
+
+# Now to do the mappings. I know that the last haplotypes on the v14_igc assembly are the haplotypes that need to be aligned. Let's do the comparison of this assembly against the previous version that did not contain the haplotypes so as to avoid perfect identity overlaps
+# Generating the list of haplotypes for alignment
+samtools faidx ../../cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta CH240_391K10_KIR Domino_MHCclassI_gene2-5hap1_MHC CH240_370M3_LILR_LRC TPI4222_A14_MHCclassI_MHC HF_LRC_hap1_KIR_LRC LIB14427_MHC LIB14413_LRC > alt_haplotype_segments.fa
+
+# Now, performing the alignment
+/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -x asm5 -t 10 ../../cattle_asms/ars_ucd_114/ARS-UCD1.0.14.clean.fasta alt_haplotype_segments.fa > alt_haplotype_segments.paf
+
+# Adding the cigar string to the paf file:
+/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -x asm5 -c -L -t 10 ../../cattle_asms/ars_ucd_114/ARS-UCD1.0.14.clean.fasta alt_haplotype_segments.fa > alt_haplotype_segments.cigar.paf
 ```

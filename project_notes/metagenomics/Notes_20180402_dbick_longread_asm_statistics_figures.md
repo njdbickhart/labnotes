@@ -857,6 +857,9 @@ I am going to generate Metabat bin files for each assembly based on the public d
 ```bash
 module load metabat/2.12.1
 
+# I need to add in the YMprep3 data
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b publicdb -t ../ymprep_run3_illumina_reads.tab -p short -m -f usda_pacbio_second_pilon_indelsonly.fa
+
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=2 -p medium --wrap="jgi_summarize_bam_contig_depths --outputDepth usda_second_pilon_publicdb.depths.tab --pairedContigs usda_second_pilon_publicdb.paired.txt publicdb/*/*.merged.bam"
 
 sbatch --nodes=1 --dependency=afterany:203050 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i usda_pacbio_second_pilon_indelsonly.fa -a usda_second_pilon_publicdb.depths.tab -o usda_second_pilon_publicdb_metabat -t 8 -v"
@@ -871,7 +874,284 @@ sbatch --nodes=1 --mem=45000 --ntasks-per-node=8 -p short --wrap="checkm lineage
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
 
 ```bash
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b publicdb -t ../ymprep_run3_illumina_reads.tab -p short -m -f illumina_megahit_final_contigs.fa
+
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=2 -p medium --wrap="jgi_summarize_bam_contig_depths --outputDepth illumina_megahit_contigs_publicdb.depths.tab --pairedContigs illumina_megahit_contigs_publicdb.paired.txt publicdb/*/*.merged.bam"
 
 sbatch --nodes=1 --dependency=afterany:203053 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i illumina_megahit_final_contigs.perl.fa -a illumina_megahit_contigs_publicdb.depths.tab -o usda_illumina_publicdb_metabat -t 8 -v"
 ```
+
+
+## Hybrid assembly comparison
+
+Serge generated opera scaffolds from our Illumina megahit assembly and the raw pacbio reads. We need to validate the assembly, check to see what's been incorporated and how it all looks. First, let's start with an alignment comparison. Here are the assumptions:
+
+* All of the contigs in the Illumina assembly 
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/opera_scaffolds
+
+```bash
+module load minimap2/2.6
+sbatch --nodes=1 --ntasks-per-node=6 --mem=40000 -p short --wrap="minimap2 -x asm5 -t 6 rumen_opera_pacbio.scaffoldSeq.filled.fasta ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa > opera_vs_pacbio_asm5_align.paf"
+sbatch --nodes=1 --ntasks-per-node=6 --mem=40000 -p short --wrap="minimap2 -x asm5 -t 6 rumen_opera_pacbio.scaffoldSeq.filled.fasta ../illumina_megahit/illumina_megahit_final_contigs.fa > opera_vs_illumina_asm5_align.paf"
+
+# Let's find out how many Illumina contigs are missing
+srun --nodes=1 --ntasks-per-node=8 --mem=45000 --pty bash
+perl -lane 'print $F[0];' < opera_vs_illumina_asm5_align.paf > opera_vs_illumina_asm5_align.illumina.ctgs.list
+perl -lane 'print "$F[0]";' < ../illumina_megahit/illumina_megahit_final_contigs.fa.fai > illumina_megahit_contigs.list
+perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl opera_vs_illumina_asm5_align.illumina.ctgs.list illumina_megahit_contigs.list
+	File Number 1: opera_vs_illumina_asm5_align.illumina.ctgs.list
+	File Number 2: illumina_megahit_contigs.list
+	Set     Count
+	1;2     1712719
+	2       469544
+# Storing the results for later comparison
+perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o opera_vs_illumina_asm5_align.illumina.ctgs.list illumina_megahit_contigs.list
+wc -l opera_vs_illumina_asm5_align.missingilmn.ctgs.list
+
+
+# Now let's find out how many pacbio contigs are missing
+perl -lane 'print "$F[0]";' < opera_vs_pacbio_asm5_align.paf > opera_vs_pacbio_asm5_align.pacbio.ctgs.list
+perl -lane 'print "$F[0]";' < ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa.fai > pacbio_pilon_contigs.list
+perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl opera_vs_pacbio_asm5_align.pacbio.ctgs.list pacbio_pilon_contigs.list
+	File Number 1: opera_vs_pacbio_asm5_align.pacbio.ctgs.list
+	File Number 2: pacbio_pilon_contigs.list
+	Set     Count
+	1;2     76401
+	2       1269	<- interesting!!
+# Storing for later comparisons again
+mv group_2.txt opera_vs_pacbio_asm5_align.missingpacb.ctgs.list
+
+# Finally, let's see what opera scaffolds are completely unique and are unmapped in each dataset
+perl -lane 'print "$F[0]";' < rumen_opera_pacbio.scaffoldSeq.filled.fasta.fai > opera_contigs.list
+perl -lane 'print "$F[5]";' < opera_vs_illumina_asm5_align.paf > opera_in_illumina_contigs.list
+perl -lane 'print "$F[5]";' < opera_vs_pacbio_asm5_align.paf > opera_in_pacbio_contigs.list
+perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl opera_contigs.list opera_in_illumina_contigs.list opera_in_pacbio_contigs.list
+	File Number 1: opera_contigs.list
+	File Number 2: opera_in_illumina_contigs.list
+	File Number 3: opera_in_pacbio_contigs.list
+	Set     Count
+	1;2     857761
+	1;2;3   281175
+
+# OK, that makes sense, they're contained entirely in the illumina contig list
+
+###### Checking Pacbio-unique contigs ######
+# Let's see what's unique to the pacbio dataset
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){print "$s[1]\n";}}' opera_vs_pacbio_asm5_align.missingpacb.ctgs.list ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa.fai | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   1269
+Minimum 1047
+Maximum 31005
+Average 6299.130024
+Median  6149
+Standard Deviation      3620.589719
+Mode(Highest Distributed Value) 1298
+
+# OK, these tend to be the smaller contigs, but there half of this list is over 6kb in size
+# To confirm, let's test this on the illumina contigs (just to make sure that the smaller contigs are overrepresented
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){print "$s[1]\n";}}' opera_vs_illumina_asm5_align.missingilmn.ctgs.list ../illumina_megahit/illumina_megahit_final_contigs.fa.fai | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   469544
+Minimum 1000
+Maximum 1499
+Average 1200.532195
+Median  1178
+Standard Deviation      140.280609
+Mode(Highest Distributed Value) 1012
+
+# Oh yeah, everything under 1500 as Serge predicted. I wonder if those illumina contigs have matches to the pacbio missing contigs though...
+# Creating the fasta files
+perl -e '@d; while(<>){chomp; push(@d, $_); if(scalar(@d > 100)){$wl = join(" ", @d); system("samtools faidx ../illumina_megahit/illumina_megahit_final_contigs.fa $wl >> opera_vs_illumina_asm5_align.missingilmn.ctgs.fa"); print "joining " . scalar(@d) . " contigs\n"; @d = ();}}' < opera_vs_illumina_asm5_align.missingilmn.ctgs.list
+
+# That's taking a long, long time! Let's try aligning to the whole dataset in the meantime
+sbatch --ntasks-per-node=6 --nodes=1 --mem=45000 -p short --wrap="minimap2 -x asm5 -t 6 ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa ../illumina_megahit/illumina_megahit_final_contigs.fa > pacbio_pilon_to_illumina_minimap2.paf"
+sbatch --ntasks-per-node=6 --nodes=1 --mem=45000 -p short --wrap="minimap2 -x asm5 -t 6 ../illumina_megahit/illumina_megahit_final_contigs.fa ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa > illumina_to_pacbio_pilon_minimap2.paf"
+
+perl -lane 'print $F[5];' < pacbio_pilon_to_illumina_minimap2.paf > pacbio_contigs_with_illumina_aligns.list
+perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl opera_vs_pacbio_asm5_align.missingpacb.ctgs.list pacbio_contigs_with_illumina_aligns.list pacbio_pilon_contigs.list
+File Number 1: opera_vs_pacbio_asm5_align.missingpacb.ctgs.list
+File Number 2: pacbio_contigs_with_illumina_aligns.list
+File Number 3: pacbio_pilon_contigs.list
+Set     Count
+1;2;3   562
+1;3     707
+2;3     76070
+3       331
+
+# OK, so it looks like there are 707 contigs unaccounted for. Let's see what they look like
+perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o opera_vs_pacbio_asm5_align.missingpacb.ctgs.list pacbio_contigs_with_illumina_aligns.list pacbio_pilon_contigs.list
+mv group_1_3.txt opera_vs_pacbio_no_ilm_aligns.ctgs.list
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){print "$s[1]\n";}}' opera_vs_pacbio_no_ilm_aligns.ctgs.list ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa.fai | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   707
+Minimum 1047
+Maximum 31005
+Average 6094.702970
+Median  5774
+Standard Deviation      3455.965324
+Mode(Highest Distributed Value) 3401
+
+# Still some larger contigs present! Now let's look at it from the Illumina side
+perl -lane 'print $F[5];' < illumina_to_pacbio_pilon_minimap2.paf > illumina_contigs_with_pacbio_aligns.list
+perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl opera_vs_illumina_asm5_align.missingilmn.ctgs.list illumina_contigs_with_pacbio_aligns.list illumina_megahit_contigs.list
+File Number 1: opera_vs_illumina_asm5_align.missingilmn.ctgs.list
+File Number 2: illumina_contigs_with_pacbio_aligns.list
+File Number 3: illumina_megahit_contigs.list
+Set     Count
+1;2;3   26977
+1;3     442567
+2;3     488110
+3       1224609
+
+# There are still a ton of smaller contigs with no mapping sites in the pacbio dataset!
+perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o opera_vs_illumina_asm5_align.missingilmn.ctgs.list illumina_contigs_with_pacbio_aligns.list illumina_megahit_contigs.list
+mv group_1_3.txt opera_vs_illumina_no_pacb_aligns.ctgs.list
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){print "$s[1]\n";}}' opera_vs_illumina_no_pacb_aligns.ctgs.list ../illumina_megahit/illumina_megahit_final_contigs.fa.fai | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   442567
+Minimum 1000
+Maximum 1499
+Average 1200.050101
+Median  1177
+Standard Deviation      140.181060
+Mode(Highest Distributed Value) 1012
+
+# I want to generate a venn of all shared nucleotides, but it's difficult to use shared coordinates here. Let's use the Illumina megahit assembly here (it's a subset of all assemblies) and subtract downwards
+perl -lane 'print "$F[0]\t$F[2]\t$F[3]";' < pacbio_pilon_to_illumina_minimap2.paf > pacbio_pilon_ilmn_coords.unsorted.bed
+perl -lane 'print "$F[0]\t$F[2]\t$F[3]";' < opera_vs_illumina_asm5_align.paf > opera_ilmn_coords.unsorted.bed
+perl -lane 'print "$F[0]\t1\t$F[1]";' < ../illumina_megahit/illumina_megahit_final_contigs.fa.fai > illmn_coords.unsorted.bed
+
+# Pacbio bases not in the Opera or Illumina assemblies
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$c += $s[1];}} print "$c\n";' opera_vs_pacbio_no_ilm_aligns.ctgs.list ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa.fai
+4308955
+
+##### Are there any regions of the opera assembly that have no counterparts in the Illumina assembly? ####
+module load bedtools/2.25.0
+perl -lane 'print "$F[5]\t$F[7]\t$F[8]";' < opera_vs_illumina_asm5_align.paf | bedtools sort -i stdin | bedtools merge -i stdin > opera_vs_illumina_asm5_operaonly.bed
+perl -lane 'print "$F[0]\t1\t$F[1]";' < rumen_opera_pacbio.scaffoldSeq.filled.fasta.fai | bedtools sort -i stdin > rumen_opera_pacbio.scaffoldSeq.filled.lens.bed
+
+# Raw overlap and count
+bedtools subtract -a rumen_opera_pacbio.scaffoldSeq.filled.lens.bed -b opera_vs_illumina_asm5_operaonly.bed | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       2149505
+        Total Length:           55309422
+        Length Average:         25.7312367265952
+        Length Median:          10
+        Length Stdev:           224.486278327532
+        Smallest Length:        1
+        Largest Length:         25809
+
+# Most of these are tiny little junk segments though, what happens if we take only the 1kb+ fraction?
+bedtools subtract -a rumen_opera_pacbio.scaffoldSeq.filled.lens.bed -b opera_vs_illumina_asm5_operaonly.bed | perl -lane 'if($F[2] - $F[1] > 1000){print $_;}' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       11345
+        Total Length:           28682425
+        Length Average:         2528.19964742177
+        Length Median:          1961
+        Length Stdev:           1724.66393169366
+        Smallest Length:        1001
+        Largest Length:         25809
+
+# OK, that's more convincing. Let's see if these regions have NO alignment to the pacbio assembly at all.
+bedtools subtract -a rumen_opera_pacbio.scaffoldSeq.filled.lens.bed -b opera_vs_illumina_asm5_operaonly.bed | perl -lane 'if($F[2] - $F[1] > 1000){print $_;}' > opera_vs_illumina_asm5_operaonly.gt1kb.bed
+perl -lane 'print "$F[5]\t$F[7]\t$F[8]";' < opera_vs_pacbio_asm5_align.paf | bedtools sort -i stdin | bedtools merge -i stdin > opera_vs_pacbio_asm5_operaonly.bed
+bedtools subtract -a opera_vs_illumina_asm5_operaonly.gt1kb.bed -b opera_vs_pacbio_asm5_operaonly.bed |perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+        Interval Numbers:       7705
+        Total Length:           21215715
+        Length Average:         2753.49967553537
+        Length Median:          2079
+        Length Stdev:           1957.79685571838
+        Smallest Length:        1001
+        Largest Length:         25809
+
+#### VENN information ####
+# Interesting, so the assembled pacbio reads don't map very well to the pacbio scaffold sites
+# I think that I have enough info to generate a venn
+# Pacbio only: 4,308,955
+# Illumina only: 
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); $c = 0; while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$c += $s[1];}} print "$c\n";' opera_vs_illumina_asm5_align.missingilmn.ctgs.list ../illumina_megahit/illumina_megahit_final_contigs.fa.fai
+	563,702,689
+# Opera only: 21,215,715
+
+# Pacbio area: 1076426244
+# Illumina area: 5111042186
+# Opera area: 3942687706
+
+# Illumina + Pacbio area: 
+bedtools sort -i pacbio_pilon_ilmn_coords.unsorted.bed | bedtools merge -i stdin | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+1386185112  <- longer than the total pacbio assembly area. Why? Because of indels in the alignment
+
+```
+
+Because I could not install pybedtools on CERES, I transfered everything over to the AGIL server.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/opera_scaffolds
+
+```bash
+scp -pr derek.bickharhth@ceres:/home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/opera_scaffolds/*.bed ./
+
+bedtools sort -i illmn_coords.unsorted.bed | bedtools merge -i stdin > illmn_coords.sorted.bed
+bedtools sort -i opera_ilmn_coords.unsorted.bed | bedtools merge -i stdin > opera_ilmn_coords.sorted.bed
+bedtools sort -i pacbio_pilon_ilmn_coords.unsorted.bed | bedtools merge -i stdin > pacbio_pilon_ilmn_coords.sorted.bed
+``` 
+
+```python
+import pybedtools
+ilmn = pybedtools.BedTool('illmn_coords.sorted.bed')
+opera = pybedtools.BedTool('opera_ilmn_coords.sorted.bed')
+pacbio = pybedtools.BedTool('pacbio_pilon_ilmn_coords.sorted.bed')
+
+# Total bp in Illumina
+sum(map(len, ilmn))
+	# 5108859923
+# Total bp in Opera
+sum(map(len, opera))
+	# 4212340985
+# Total bp in Pacbio
+sum(map(len, pacbio))
+	# 1386185112 (+ 4308955 = 1390494067)
+
+# Illumina + opera
+sum(map(len, (ilmn + opera)))
+	# 4545626778
+# Illumina + pacbio
+sum(map(len, (ilmn + pacbio)))
+	# 2406188564
+# opera + pacbio
+sum(map(len, (opera + pacbio)))
+	# 
+
+# Bases only in Illumina
+sum(map(len, (ilmn - opera - pacbio)))
+	# 520752537
+# Bases in Illumina + opera, but not in pacbio
+sum(map(len, (ilmn + opera - pacbio)))
+	# 2181918822
+# Bases in Illumina + pacbio, but not in opera
+sum(map(len, (ilmn - opera + pacbio)))
+	# 42480608
+# Bases in all three
+sum(map(len, (ilmn + opera + pacbio)))
+	# 2363707956
+# Bases in Pacbio + opera but not in Illumina
+sum(map(len, (opera + pacbio - ilmn)))
+	# 0
+# Bases only in opera
+sum(map(len, (opera - pacbio - ilmn)))
+	# 0
+# Bases only in Pacbio
+sum(map(len, (pacbio - opera - ilmn)))
+	# 0 (here, but not in reality), it should be 4308955
+
+# damn, this is not a good utility because the intersection is dependent on the order of input
+```
+
+
+## Tallying all data into a larger table
+
+We have lots of bin information and metrics on each assembly. I want to do cross tool comparisons, but it's difficult with all of the data separated in different compartments. Let's gather it all together into one larger table.
+
+Here's the information that I'm dealing with:
+* Bin assignment (DAStool concatenation?)
+* Read depth
+* GC percentage
+* Diamond tax classification
+* Keggs/cogs present
+
+
