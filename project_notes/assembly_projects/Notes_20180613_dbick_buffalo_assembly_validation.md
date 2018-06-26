@@ -6,8 +6,12 @@ These are my notes on the generation of QV and quality metric statistics on the 
 
 
 ## Table of Contents
+* [Preparing the files](#preparing)
+	* [Caspur assembly alignment](#caspur)
+* [Generating quality metrics](#quality)
+	* [calculate_qv.sh](#calculatescript)
 
-
+<a name="preparing"></a>
 ## Preparing files
 
 I am going to start downloading and preparing the files for alignment and processing. 
@@ -36,6 +40,7 @@ perl -lane '$F[0] =~ s/_1.fastq.gz/_r.1.fq.gz/; $F[1] =~ s/_2.fastq.gz/_r.2.fq.g
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b buffalo -t reformated_sra_buffal_paired_end.tab -f water_buffalo_20180219_gapf_noMito_arrowRename4_pilon.fasta -p short -m
 ```
 
+<a name="caspur"></a>
 #### Caspur 2.0 WB assembly
 
 It would be a good point of comparison to identify the quality metrics for this assembly vs the older caspur buffalo assembly.
@@ -59,6 +64,7 @@ sbatch --nodes=1 --ntasks-per-node=2 --mem=18000 -p short --wrap="bwa index bbu_
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b caspur -t reformated_sra_buffal_paired_end.tab -f bbu_ref_UMD_CASPUR_WB_2.0_chrUn.rfmt.fa -p short -m
 ```
 
+<a name="quality"></a>
 ## Generating quality metrics
 
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/b_bubalus
@@ -89,6 +95,7 @@ sbatch calculate_qv.sh bbu_ref_UMD_CASPUR_WB_2.0.freebayes.vcf caspur/buffalo/bu
 
 And here is the code for the QV calculation script.
 
+<a name="calculatescript"></a>
 #### calculate_qv.sh
 
 ```bash
