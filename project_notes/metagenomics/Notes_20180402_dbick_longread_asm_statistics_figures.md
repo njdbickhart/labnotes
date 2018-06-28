@@ -862,7 +862,7 @@ python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b publicdb -t ..
 
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=2 -p medium --wrap="jgi_summarize_bam_contig_depths --outputDepth usda_second_pilon_publicdb.depths.tab --pairedContigs usda_second_pilon_publicdb.paired.txt publicdb/*/*.merged.bam"
 
-sbatch --nodes=1 --dependency=afterany:203050 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i usda_pacbio_second_pilon_indelsonly.fa -a usda_second_pilon_publicdb.depths.tab -o usda_second_pilon_publicdb_metabat -t 8 -v"
+sbatch --nodes=1 --dependency=afterany:208209 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i usda_pacbio_second_pilon_indelsonly.fa -a usda_second_pilon_publicdb.depths.tab -o usda_second_pilon_publicdb_metabat -t 8 -v"
 
 # Now to organize the data and run checkM
 mv usda_second_pilon_publicdb* ./metabat/
@@ -878,7 +878,7 @@ python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b publicdb -t ..
 
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=2 -p medium --wrap="jgi_summarize_bam_contig_depths --outputDepth illumina_megahit_contigs_publicdb.depths.tab --pairedContigs illumina_megahit_contigs_publicdb.paired.txt publicdb/*/*.merged.bam"
 
-sbatch --nodes=1 --dependency=afterany:203053 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i illumina_megahit_final_contigs.perl.fa -a illumina_megahit_contigs_publicdb.depths.tab -o usda_illumina_publicdb_metabat -t 8 -v"
+sbatch --nodes=1 --dependency=afterany:208211 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i illumina_megahit_final_contigs.perl.fa -a illumina_megahit_contigs_publicdb.depths.tab -o usda_illumina_publicdb_metabat -t 8 -v"
 ```
 
 
@@ -1077,6 +1077,17 @@ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; $h{$_} = 1
 bedtools sort -i pacbio_pilon_ilmn_coords.unsorted.bed | bedtools merge -i stdin | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
 1386185112  <- longer than the total pacbio assembly area. Why? Because of indels in the alignment
 
+#### Digging into the Unique PacBio contigs ####
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o pacbio_pilon_contigs.list pacbio_contigs_no_illumina_aligns.list opera_vs_pacbio_asm5_align.missingpacb.ctgs.list
+Set     Count
+1       76070
+1;2     331	<- no illumina aligns at all
+1;2;3   707	<- no illumina aligns but used in scaffolding
+1;3     562 <- extra contigs used in scaffolding
+
+mv group_1_2.txt pacbio_contigs_no_illumina_no_opera.list
+mv group_1_3.txt pacbio_contigs_with_illumina_and_opera.list
+mv group_1_2_3.txt pacbio_contigs_no_illumina_and_opera.list
 ```
 
 Because I could not install pybedtools on CERES, I transfered everything over to the AGIL server.
@@ -1141,6 +1152,49 @@ sum(map(len, (pacbio - opera - ilmn)))
 
 # damn, this is not a good utility because the intersection is dependent on the order of input
 ```
+
+#### Detecting gaps in the assembly
+
+Mick identified some absurd number of gaps in our Opera assembly! Let's see what's there.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/opera_scaffolds
+
+```bash
+module load java/64/1.8.0_121
+sbatch --nodes=1 --ntasks-per-node=4 --mem=35000 -p short --wrap="java -jar ~/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f rumen_opera_pacbio.scaffoldSeq.filled.fasta -o rumen_opera_pacbio.scaffoldSeq.filled.gaps.bed -s rumen_opera_pacbio.scaffoldSeq.filled.gaps.stats"
+
+```
+
+## Final blobplots
+
+I am going to include all of the public data in our final blobplots
+
+#### Pacbio
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon
+
+```bash
+module load samtools/gcc/64/1.4.1
+sbatch --nodes=1 --ntasks-per-node=5 --mem=35000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools map2cov -i usda_pacbio_second_pilon_indelsonly.fa -b publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b publicdb/PRJNA255688/PRJNA255688.sorted.merged.bam -b publicdb/PRJNA270714/PRJNA270714.sorted.merged.bam -b publicdb/PRJNA280381/PRJNA280381.sorted.merged.bam -b publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b publicdb/PRJNA366460/PRJNA366460.sorted.merged.bam -b publicdb/PRJNA366463/PRJNA366463.sorted.merged.bam -b publicdb/PRJNA366471/PRJNA366471.sorted.merged.bam -b publicdb/PRJNA366487/PRJNA366487.sorted.merged.bam -b publicdb/PRJNA366591/PRJNA366591.sorted.merged.bam -b publicdb/PRJNA366667/PRJNA366667.sorted.merged.bam -b publicdb/PRJNA366681/PRJNA366681.sorted.merged.bam -b publicdb/PRJNA398239/PRJNA398239.sorted.merged.bam -b publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b publicdb/USDA/USDA.sorted.merged.bam -o usda_pacbio_secpilon"
+```
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_final_pilon
+
+```bash
+/mnt/nfs/nfs2/bickhart-users/binaries/bin/diamond blastx --query usda_pacbio_second_pilon_indelsonly.fa --db ../../diamond/uniprot_ref_proteosomes.diamond.dmnd --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 > usda_pacbio_second_pilon_indelsonly.diamond.hits
+```
+
+#### Illumina
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
+
+```bash
+sbatch --nodes=1 --ntasks-per-node=5 --mem=45000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools map2cov -i illumina_megahit_final_contigs.fa -b publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b publicdb/PRJNA255688/PRJNA255688.sorted.merged.bam -b publicdb/PRJNA270714/PRJNA270714.sorted.merged.bam -b publicdb/PRJNA280381/PRJNA280381.sorted.merged.bam -b publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b publicdb/PRJNA366460/PRJNA366460.sorted.merged.bam -b publicdb/PRJNA366463/PRJNA366463.sorted.merged.bam -b publicdb/PRJNA366471/PRJNA366471.sorted.merged.bam -b publicdb/PRJNA366487/PRJNA366487.sorted.merged.bam -b publicdb/PRJNA366591/PRJNA366591.sorted.merged.bam -b publicdb/PRJNA366667/PRJNA366667.sorted.merged.bam -b publicdb/PRJNA366681/PRJNA366681.sorted.merged.bam -b publicdb/PRJNA398239/PRJNA398239.sorted.merged.bam -b publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b publicdb/USDA/USDA.sorted.merged.bam -o usda_illum_megahit"
+```
+
+## Mash contig assignment
+
+Todo: assign contigs to different mash profiles from Hungate and refseq
 
 
 ## Tallying all data into a larger table

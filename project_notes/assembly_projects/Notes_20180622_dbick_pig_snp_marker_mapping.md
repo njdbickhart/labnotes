@@ -46,3 +46,26 @@ for i in ggp_marker_sites pig_60k_marker_sites pig_80k_marker_sites; do echo $i;
 # Finally, aligning to ss10.2
 for i in ggp_marker_sites pig_60k_marker_sites pig_80k_marker_sites; do echo $i; perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a ssc_10.2_ncbi.reference.fa -p $i.fa -o $i.SS10.snps; done
 ```
+
+## Correlation analysis
+
+```bash
+# Generating relative marker order for Spearman rank correlation
+grep '>' pig_60k_marker_sites.fa | perl -e '%h; while(<>){chomp; $_ =~ s/^>//; @b = split(/\./); $h{$b[1]}->{$b[2]} = $_;} foreach my $chr (sort {$a <=> $b} keys(%h)){$c = 1; foreach my $pos (sort{$a <=> $b} keys(%{$h{$chr}})){print "$h{$chr}->{$pos}\t$c\n"; $c++;}}' > pig_60k_marker_order.tab
+cat pig_60k_marker_sites.ROSLIN.snps.tab | perl -e '%h; while(<>){chomp; @b = split(/\t/); $h{$b[1]}->{$b[2]} = "$b[0].$b[4].$b[5]";} $c = 1; foreach my $chr (sort {$a <=> $b} keys(%h)){foreach my $pos (sort{$a <=> $b} keys(%{$h{$chr}})){print "$h{$chr}->{$pos}\t$c\n"; $c++;}}' > pig_60k_marker_ROSLIN_snporder.tab
+```
+
+```R
+library(dplyr)
+original <- read.delim("pig_60k_marker_order.tab", header=FALSE)
+colnames(original) <- c("PROBE", "ORank")
+roslin <- read.delim("pig_60k_marker_ROSLIN_snporder.tab", header=FALSE)
+colnames(roslin) <- c("PROBE", "RRank")
+
+combined <- left_join(original, roslin, by="PROBE")
+combined.ranks <- select(combined, -PROBE)
+cor(combined.ranks, method="kendall", use="pairwise")
+          ORank     RRank
+ORank 1.0000000 0.7762156
+RRank 0.7762156 1.0000000
+```
