@@ -120,3 +120,29 @@ echo "num snp: "$NUM_SNP
 perl -e 'chomp(@ARGV); $ns = $ARGV[0]; $nb = $ARGV[1]; print (-10 * log($ns/$nb)/log(10)); print "\n";' $NUM_SNP $NUM_BP > $3
 cat $3
 ```
+
+## Calculating FRC and SV statistics
+
+These are my notes on how to generate SV and FRC statistics on the two assemblies.
+
+#### Longread assembly
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/side_projects/buffalo_asm
+
+```bash
+# Queuing up Lumpy-sv
+module load lumpy-sv/0.2.13-85-gc1bcea1
+module load samtools
+
+for i in *.bam; do echo $i; samtools index $i; done
+export LUMPY_HOME=/opt/agil_cluster/lumpy-sv/0.2.13-85-gc1bcea1/
+python2 -m virtualenv virtual_env/lumpy
+source virtual_env/lumpy/bin/activate
+sbatch --nodes=1 --ntasks-per-node=2 --mem=20000 -p assemble1 --wrap="lumpyexpress -B caspur.sorted.merged.bam -o caspur.lumpy.sv.vcf"
+sbatch --nodes=1 --ntasks-per-node=2 --mem=20000 -p assemble1 --wrap="lumpyexpress -B longread.sorted.merged.bam -o longread.lumpy.sv.vcf"
+
+# And FRC align
+sbatch --nodes=1 --mem=35000 --ntasks-per-node=2 -p assemble2 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/FRC_align/bin/FRC --pe-sam longread.sorted.merged.bam --pe-max-insert 1500 --output longread.sorted.frc_features.txt"
+
+sbatch --nodes=1 --mem=35000 --ntasks-per-node=2 -p assemble2 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/FRC_align/bin/FRC --pe-sam caspur.sorted.merged.bam --pe-max-insert 1500 --output caspur.sorted.frc_features.txt"
+```
