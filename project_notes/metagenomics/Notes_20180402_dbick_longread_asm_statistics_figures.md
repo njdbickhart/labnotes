@@ -878,7 +878,12 @@ python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b publicdb -t ..
 
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=2 -p medium --wrap="jgi_summarize_bam_contig_depths --outputDepth illumina_megahit_contigs_publicdb.depths.tab --pairedContigs illumina_megahit_contigs_publicdb.paired.txt publicdb/*/*.merged.bam"
 
-sbatch --nodes=1 --dependency=afterany:208211 --mem=50000 --ntasks-per-node=8 --wrap="metabat2 -i illumina_megahit_final_contigs.perl.fa -a illumina_megahit_contigs_publicdb.depths.tab -o usda_illumina_publicdb_metabat -t 8 -v"
+sbatch --nodes=1 --mem=70000 --ntasks-per-node=10 -p short --wrap="metabat2 -i illumina_megahit_final_contigs.perl.fa -a illumina_megahit_contigs_publicdb.depths.tab -o usda_illumina_publicdb_metabat -t 10 -v"
+
+mkdir public_metabat
+mv usda_illumina_publicdb_metabat*.fa ./public_metabat/
+module load pplacer/v1.1.alpha19 hmmer3/gcc/64/3.1b2 prodigalorffinder/gcc/64/2.6.3 checkm/v1.0.11
+sbatch --nodes=1 --mem=45000 --ntasks-per-node=8 -p short --wrap="checkm lineage_wf -f metabat/CheckM.txt -t 8 -x fa public_metabat/ public_metabat/SCG"
 ```
 
 
@@ -1181,7 +1186,7 @@ sbatch --nodes=1 --ntasks-per-node=5 --mem=35000 -p short --wrap="~/rumen_longre
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_final_pilon
 
 ```bash
-/mnt/nfs/nfs2/bickhart-users/binaries/bin/diamond blastx --query usda_pacbio_second_pilon_indelsonly.fa --db ../../diamond/uniprot_ref_proteosomes.diamond.dmnd --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 > usda_pacbio_second_pilon_indelsonly.diamond.hits
+sbatch --nodes=1 --mem=45000 --ntasks-per-node=3 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/bin/diamond blastx --query usda_pacbio_second_pilon_indelsonly.fa --db ../../diamond/uniprot_ref_proteosomes.diamond.dmnd --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 > usda_pacbio_second_pilon_indelsonly.diamond.hits"
 ```
 
 #### Illumina
@@ -1189,13 +1194,40 @@ sbatch --nodes=1 --ntasks-per-node=5 --mem=35000 -p short --wrap="~/rumen_longre
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
 
 ```bash
-sbatch --nodes=1 --ntasks-per-node=5 --mem=45000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools map2cov -i illumina_megahit_final_contigs.fa -b publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b publicdb/PRJNA255688/PRJNA255688.sorted.merged.bam -b publicdb/PRJNA270714/PRJNA270714.sorted.merged.bam -b publicdb/PRJNA280381/PRJNA280381.sorted.merged.bam -b publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b publicdb/PRJNA366460/PRJNA366460.sorted.merged.bam -b publicdb/PRJNA366463/PRJNA366463.sorted.merged.bam -b publicdb/PRJNA366471/PRJNA366471.sorted.merged.bam -b publicdb/PRJNA366487/PRJNA366487.sorted.merged.bam -b publicdb/PRJNA366591/PRJNA366591.sorted.merged.bam -b publicdb/PRJNA366667/PRJNA366667.sorted.merged.bam -b publicdb/PRJNA366681/PRJNA366681.sorted.merged.bam -b publicdb/PRJNA398239/PRJNA398239.sorted.merged.bam -b publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b publicdb/USDA/USDA.sorted.merged.bam -o usda_illum_megahit"
+sbatch --nodes=1 --ntasks-per-node=8 --mem=70000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools map2cov -i illumina_megahit_final_contigs.fa -b publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b publicdb/PRJNA255688/PRJNA255688.sorted.merged.bam -b publicdb/PRJNA270714/PRJNA270714.sorted.merged.bam -b publicdb/PRJNA280381/PRJNA280381.sorted.merged.bam -b publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b publicdb/PRJNA366460/PRJNA366460.sorted.merged.bam -b publicdb/PRJNA366463/PRJNA366463.sorted.merged.bam -b publicdb/PRJNA366471/PRJNA366471.sorted.merged.bam -b publicdb/PRJNA366487/PRJNA366487.sorted.merged.bam -b publicdb/PRJNA366591/PRJNA366591.sorted.merged.bam -b publicdb/PRJNA366667/PRJNA366667.sorted.merged.bam -b publicdb/PRJNA366681/PRJNA366681.sorted.merged.bam -b publicdb/PRJNA398239/PRJNA398239.sorted.merged.bam -b publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b publicdb/USDA/USDA.sorted.merged.bam -o usda_illum_megahit"
 ```
 
 ## Mash contig assignment
 
-Todo: assign contigs to different mash profiles from Hungate and refseq
+> Assembler2: 
 
+```bash
+/mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash screen -p 10 -i 0.85 -w  ../hungate.msh usda_pacbio_second_pilon_indelsonly.fa > pacbio_second_pilon_hungate_mashscreen.tab
+/mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash screen -p 10 -i 0.85 -w  ../refseq.nucl_plas.k21s1000.msh usda_pacbio_second_pilon_indelsonly.fa > pacbio_second_pilon_refseq_mashscreen.tab
+```
+
+## Rarefaction using Nonpareil
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina
+
+```bash
+# First, testing nonpareil on one of the reads from the YMPrep_run3 Illumina data
+sbatch --nodes=1 --mem=150000 --ntasks-per-node=20 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/nonpareil/nonpareil -s YMPrepCannula_run3_L3_R1.fastq.gz -T kmer -b YMPrepCannula_nonpareil_test_L3_R1 -t 20 -R 150000"
+```
+
+## DAS_tool concatenation
+
+#### Illumina megahit
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
+
+```bash
+# OK, I need to grep out the BIN ids for each file from the metabat and Hi-C data
+perl -e '@f = `ls public_metabat/*.fa`; chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-2]\n";}} close IN;}' > illumina_megahit_public_metabat.unsorted.bins
+
+#TODO: check megahit binning again after it successfuly completes
+
+```
 
 ## Tallying all data into a larger table
 
@@ -1207,5 +1239,5 @@ Here's the information that I'm dealing with:
 * GC percentage
 * Diamond tax classification
 * Keggs/cogs present
-
+* Present in Hungate and/or refseq above X cutoff?
 

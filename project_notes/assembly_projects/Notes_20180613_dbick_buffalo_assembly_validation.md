@@ -143,6 +143,50 @@ sbatch --nodes=1 --ntasks-per-node=2 --mem=20000 -p assemble1 --wrap="lumpyexpre
 
 # And FRC align
 sbatch --nodes=1 --mem=35000 --ntasks-per-node=2 -p assemble2 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/FRC_align/bin/FRC --pe-sam longread.sorted.merged.bam --pe-max-insert 1500 --output longread.sorted.frc_features.txt"
+```
 
+#### Caspur assembly
+
+```bash
 sbatch --nodes=1 --mem=35000 --ntasks-per-node=2 -p assemble2 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/FRC_align/bin/FRC --pe-sam caspur.sorted.merged.bam --pe-max-insert 1500 --output caspur.sorted.frc_features.txt"
+```
+
+## Comparing results
+
+Now to tabulate the differences between the assemblies.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/side_projects/buffalo_asm
+
+```bash
+# Generating the FRC table
+perl ~/sperl/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f caspur.sorted.frc_features.txt_Features.txt,longread.sorted.frc_features.txt_Features.txt -c 1 -m
+File1:  caspur.sorted.frc_features.txt_Features.txt
+File2:  longread.sorted.frc_features.txt_Features.txt
+```
+
+|Caspur           |  Count|Long-Read        |  Count| Description |
+|:----------------|------:|:----------------|------:|:------------|
+|COMPR_PE         | 141414|COMPR_PE         | 110744| Areas with low CE statistics |
+|HIGH_COV_PE      |  60344|HIGH_COV_PE      |   3816| Higher read coverage |
+|HIGH_NORM_COV_PE |  51907|HIGH_NORM_COV_PE |   3081| High coverage of normal paired-end reads |
+|HIGH_OUTIE_PE    |   1150|HIGH_OUTIE_PE    |     36| Regions with high numbers of misoriented or distant pairs |
+|HIGH_SINGLE_PE   |   1710|HIGH_SINGLE_PE   |     28| Regions with high numbers of unmapped pairs |
+|HIGH_SPAN_PE     | 191388|HIGH_SPAN_PE     |   1304| Regions with high numbers of disc. pairs that map to different scaffolds |
+|LOW_COV_PE       | 282257|LOW_COV_PE       |  37079| Low read coverage |
+|LOW_NORM_COV_PE  | 354658|LOW_NORM_COV_PE  |  38162| Low coverage of normal paired-end reads |
+|STRECH_PE        | 148619|STRECH_PE        | 100124| Areas with high CE statistics |
+|QV               |  36.46|QV               |  41.96| Phred-based assessment of INDEL and SNP errors in assembly |
+
+
+Now plotting the feature response curves (FRC):
+
+```R
+longread <- read.delim("longread.sorted.frc_features.txt_FRC.txt", sep=" ", header=FALSE)
+caspur <- read.delim("caspur.sorted.frc_features.txt_FRC.txt", sep=" ", header=FALSE)
+pdf(file="buffalo_c_vs_l_frc.pdf", useDingbats=FALSE)
+
+plot(longread$V1, longread$V2, type="l", col="red")
+lines(caspur$V1, caspur$V2, col="green")
+legend("topleft", legend=c("LongRead", "Caspur"), lty=c(1,1), lwd=c(2,2), col=c("red", "green"))
+dev.off()
 ```
