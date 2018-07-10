@@ -1181,6 +1181,12 @@ I am going to include all of the public data in our final blobplots
 ```bash
 module load samtools/gcc/64/1.4.1
 sbatch --nodes=1 --ntasks-per-node=5 --mem=35000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools map2cov -i usda_pacbio_second_pilon_indelsonly.fa -b publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b publicdb/PRJNA255688/PRJNA255688.sorted.merged.bam -b publicdb/PRJNA270714/PRJNA270714.sorted.merged.bam -b publicdb/PRJNA280381/PRJNA280381.sorted.merged.bam -b publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b publicdb/PRJNA366460/PRJNA366460.sorted.merged.bam -b publicdb/PRJNA366463/PRJNA366463.sorted.merged.bam -b publicdb/PRJNA366471/PRJNA366471.sorted.merged.bam -b publicdb/PRJNA366487/PRJNA366487.sorted.merged.bam -b publicdb/PRJNA366591/PRJNA366591.sorted.merged.bam -b publicdb/PRJNA366667/PRJNA366667.sorted.merged.bam -b publicdb/PRJNA366681/PRJNA366681.sorted.merged.bam -b publicdb/PRJNA398239/PRJNA398239.sorted.merged.bam -b publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b publicdb/USDA/USDA.sorted.merged.bam -o usda_pacbio_secpilon"
+
+sbatch --nodes=1 --ntasks-per-node=2 --mem=15000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools taxify -f usda_pacbio_second_pilon_indelsonly.diamond.hits -m ../uniprot_ref_proteomes.taxids -s 0 -t 2 -o usda_pacbio_second_pilon_indelsonly.uniprot"
+
+mv usda_pacbio_second_pilon_indelsonly.uniprot.usda_pacbio_second_pilon_indelsonly.diamond.hits.taxified.out usda_pacbio_second_pilon_indelsonly.diamond.hits.uniprot.taxified.out
+for i in *.cov; do echo -n "-c $i "; done; echo
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools create -i usda_pacbio_second_pilon_indelsonly.fa -c usda_pacbio_secpilon.PRJEB10338.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJEB21624.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJEB8939.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA214227.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA255688.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA270714.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA280381.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA291523.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366460.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366463.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366471.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366487.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366591.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366667.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366681.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA398239.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA60251.sorted.merged.bam.cov -c usda_pacbio_secpilon.USDA.sorted.merged.bam.cov -t usda_pacbio_second_pilon_indelsonly.diamond.hits.uniprot.taxified.out -o pacbio_secpilon_blobplot"
 ```
 
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_final_pilon
@@ -1206,13 +1212,24 @@ sbatch --nodes=1 --ntasks-per-node=8 --mem=70000 -p short --wrap="~/rumen_longre
 /mnt/nfs/nfs2/bickhart-users/binaries/mash-Linux64-v2.0/mash screen -p 10 -i 0.85 -w  ../refseq.nucl_plas.k21s1000.msh usda_pacbio_second_pilon_indelsonly.fa > pacbio_second_pilon_refseq_mashscreen.tab
 ```
 
-## Rarefaction using Nonpareil
+## Rarefaction using Nonpareil and kmerspectrum analyzer
 
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina
 
 ```bash
 # First, testing nonpareil on one of the reads from the YMPrep_run3 Illumina data
-sbatch --nodes=1 --mem=150000 --ntasks-per-node=20 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/nonpareil/nonpareil -s YMPrepCannula_run3_L3_R1.fastq.gz -T kmer -b YMPrepCannula_nonpareil_test_L3_R1 -t 20 -R 150000"
+sbatch --nodes=1 --mem=150000 --ntasks-per-node=60 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/nonpareil/nonpareil -s YMPrepCannula_run3_L3_R1.fastq.gz -T kmer -b YMPrepCannula_nonpareil_test_L3_R1 -t 20 -R 150000"
+
+module load jellyfish/2.2.3
+cp /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/countkmers21.sh ./
+# I hard-linked the kmer-tool2 invocation in the script
+vim countkmers21.sh
+
+sbatch --nodes=1 --mem=60000 --ntasks-per-node=4 -p assemble1 --wrap="zcat YMPrepCannula_run3_L*.fastq.gz | ./countkmers21.sh"
+# Bah, it's really outdated and unsuitable for analysis. Let me generate the jellyfish db the old-fashioned way
+
+ls *.fastq.gz | xargs -n 1 echo gunzip -c > generators
+sbatch --nodes=1 --mem=90000 --ntasks-per-node=20 -p assemble1 --wrap="jellyfish count -m 21 -s 100M -t 20 -C -g generators -o illumina_run3_21mer"
 ```
 
 ## DAS_tool concatenation
@@ -1225,7 +1242,30 @@ sbatch --nodes=1 --mem=150000 --ntasks-per-node=20 -p assemble3 --wrap="/mnt/nfs
 # OK, I need to grep out the BIN ids for each file from the metabat and Hi-C data
 perl -e '@f = `ls public_metabat/*.fa`; chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-2]\n";}} close IN;}' > illumina_megahit_public_metabat.unsorted.bins
 
-#TODO: check megahit binning again after it successfuly completes
+mkdir hicbins
+mv illumina_megahit_hicbins.zip ./hicbins/
+
+perl -e '@f = `ls hicbins/best_genome_clusters/*.fasta`; chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-2]\n";}} close IN;}' > illumina_megahit_hic.unsorted.bins
+
+wc -l *.bins
+ 183402 illumina_megahit_hic.unsorted.bins
+ 387167 illumina_megahit_public_metabat.unsorted.bins
+
+# I think that the hi-c bins are missing quite a few fasta entries! Google must be screwing up  here. I'll check later
+module load dastool/1.1.0 diamond prodigalorffinder/2.6.3
+sbatch --nodes=1 --ntasks-per-node=10 --mem=45000 -p short --wrap="DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c illumina_megahit_final_contigs.perl.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 10"
+
+# OK, the Iowa team screwed up the DAS_tool installation and did not extract the db zip into the proper directory. Doing that now
+cd ..
+cp /software/7/apps/dastool/1.1.0/db.zip ./
+unzip db.zip
+mkdir db
+mv *.faa ./db
+mv *.lookup ./db
+cd illumina_megahit/
+
+
+sbatch --nodes=1 --ntasks-per-node=10 --mem=45000 -p short --wrap="DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c illumina_megahit_final_contigs.perl.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 10 --db_directory /scinet01/gov/usda/ars/scinet/project/rumen_longread_metagenome_assembly/assemblies/pilot_project/db"
 
 ```
 
