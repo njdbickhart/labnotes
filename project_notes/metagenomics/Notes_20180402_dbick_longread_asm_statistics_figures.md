@@ -1188,8 +1188,27 @@ mv usda_pacbio_second_pilon_indelsonly.uniprot.usda_pacbio_second_pilon_indelson
 for i in *.cov; do echo -n "-c $i "; done; echo
 sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools create -i usda_pacbio_second_pilon_indelsonly.fa -c usda_pacbio_secpilon.PRJEB10338.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJEB21624.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJEB8939.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA214227.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA255688.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA270714.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA280381.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA291523.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366460.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366463.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366471.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366487.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366591.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366667.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366681.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA398239.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA60251.sorted.merged.bam.cov -c usda_pacbio_secpilon.USDA.sorted.merged.bam.cov -t usda_pacbio_second_pilon_indelsonly.diamond.hits.uniprot.taxified.out -o pacbio_secpilon_blobplot --db /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/blobtools/data/nodesDB.txt"
 
+# I am using multiplots to try to separate out the different components here
 # Phylum plot
-sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools plot -i pacbio_secpilon_blobplot.blobDB.json --notitle --sort_title "no-hit,other,undef" -p 2 -o pacbio_secpilon_blobplot_phylum"
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools plot -i pacbio_secpilon_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -o pacbio_secpilon_blobplot_phylum -m"
+
+# Superkingdom plot
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools plot -i pacbio_secpilon_blobplot.blobDB.json --notitle --sort_first "no-hit,other,undef" -p 14 -o pacbio_secpilon_blobplot_supkingdom -m -r superkingdom"
+
+# Generating the full table
+sbatch --nodes=1 --ntasks-per-node=2 --mem=5000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools view -i pacbio_secpilon_blobplot.blobDB.json --out pacbio_secpilon_blobplot_all -r all -b"
+
+# reducing the verbosity of the filenames
+for i in *.png; do echo $i; perl -e 'chomp(@ARGV); @asegs = split(/\./, $ARGV[0]); shift(@asegs);$temp = join(".", @asegs); $temp =~ s/\.blobDB\.json\.bestsum//g; $temp =~ s/\.p14\.span\.100//g; print "$temp\n"; system("mv $ARGV[0] $temp");' $i; done
+mv pacbio_secpilon_blobplot_supkingdom.pacbio_secpilon_blobplot.blobDB.json.bestsum.superkingdom.p14.span.100.blobplot.multiplot.stats.txt pacbio_secpilon_blobplot.superkingdom.blobplot.multiplot.stats.txt
+mv pacbio_secpilon_blobplot_phylum.pacbio_secpilon_blobplot.blobDB.json.bestsum.phylum.p14.span.100.blobplot.multiplot.stats.txt pacbio_secpilon_blobplot.phylum.blobplot.multiplot.stats.txt
+
+# compressing and storing the files
+mkdir pacbio_blobplot_superkingdom; ls *superkingdom.* | xargs -I {} mv {} ./pacbio_blobplot_superkingdom/; tar -czvf pacbio_blobplot_superkingdom.tar.gz ./pacbio_blobplot_superkingdom
+mkdir pacbio_blobplot_phylum; ls *phylum.* | xargs -I {} mv {} ./pacbio_blobplot_phylum; tar -czvf pacbio_blobplot_phylum.tar.gz ./pacbio_blobplot_phylum
+
+# I created a script to automate the steps above: 
+sbatch ../run_blobplot_generation.sh genus pacbio pacbio_secpilon_blobplot.blobDB.json
 ```
 
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_final_pilon
@@ -1204,6 +1223,17 @@ sbatch --nodes=1 --mem=45000 --ntasks-per-node=3 -p assemble3 --wrap="/mnt/nfs/n
 
 ```bash
 sbatch --nodes=1 --ntasks-per-node=8 --mem=70000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools map2cov -i illumina_megahit_final_contigs.fa -b publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b publicdb/PRJNA255688/PRJNA255688.sorted.merged.bam -b publicdb/PRJNA270714/PRJNA270714.sorted.merged.bam -b publicdb/PRJNA280381/PRJNA280381.sorted.merged.bam -b publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b publicdb/PRJNA366460/PRJNA366460.sorted.merged.bam -b publicdb/PRJNA366463/PRJNA366463.sorted.merged.bam -b publicdb/PRJNA366471/PRJNA366471.sorted.merged.bam -b publicdb/PRJNA366487/PRJNA366487.sorted.merged.bam -b publicdb/PRJNA366591/PRJNA366591.sorted.merged.bam -b publicdb/PRJNA366667/PRJNA366667.sorted.merged.bam -b publicdb/PRJNA366681/PRJNA366681.sorted.merged.bam -b publicdb/PRJNA398239/PRJNA398239.sorted.merged.bam -b publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b publicdb/USDA/USDA.sorted.merged.bam -o usda_illum_megahit"
+
+scp -pr illumina_accum_diamond_uniprot.ilmn_accum_diamond_uniprot.tsv.taxified.out derek.bickharhth@ceres:/home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/ilmn_accum_diamond_uniprot.tsv.taxified.out
+
+for i in *.cov; do echo -n "-c $i "; done; echo
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools create -i illumina_megahit_final_contigs.perl.fa -t ilmn_accum_diamond_uniprot.tsv.taxified.out --db /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/blobtools/data/nodesDB.txt -o illumina_megahit_blobplot -c usda_illum_megahit.PRJEB10338.sorted.merged.bam.cov -c usda_illum_megahit.PRJEB21624.sorted.merged.bam.cov -c usda_illum_megahit.PRJEB8939.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA214227.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA255688.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA270714.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA280381.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA291523.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366460.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366463.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366471.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366487.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366591.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366667.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366681.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA398239.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA60251.sorted.merged.bam.cov -c usda_illum_megahit.USDA.sorted.merged.bam.cov"
+
+# Generating the table
+sbatch --nodes=1 --ntasks-per-node=2 --mem=5000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools view -i illumina_megahit_blobplot.blobDB.json --out illumina_megahit_blobplot_all -r all -b"
+
+# Generating the plots
+for i in phylum superkingdom genus; do echo $i; sbatch ../run_blobplot_generation.sh $i illumina illumina_megahit_blobplot.blobDB.json; done
 ```
 
 ## Mash contig assignment
