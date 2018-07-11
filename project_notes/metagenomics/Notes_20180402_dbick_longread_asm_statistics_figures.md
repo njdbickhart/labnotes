@@ -1186,7 +1186,10 @@ sbatch --nodes=1 --ntasks-per-node=2 --mem=15000 -p short --wrap="~/rumen_longre
 
 mv usda_pacbio_second_pilon_indelsonly.uniprot.usda_pacbio_second_pilon_indelsonly.diamond.hits.taxified.out usda_pacbio_second_pilon_indelsonly.diamond.hits.uniprot.taxified.out
 for i in *.cov; do echo -n "-c $i "; done; echo
-sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools create -i usda_pacbio_second_pilon_indelsonly.fa -c usda_pacbio_secpilon.PRJEB10338.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJEB21624.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJEB8939.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA214227.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA255688.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA270714.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA280381.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA291523.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366460.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366463.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366471.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366487.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366591.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366667.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366681.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA398239.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA60251.sorted.merged.bam.cov -c usda_pacbio_secpilon.USDA.sorted.merged.bam.cov -t usda_pacbio_second_pilon_indelsonly.diamond.hits.uniprot.taxified.out -o pacbio_secpilon_blobplot"
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools create -i usda_pacbio_second_pilon_indelsonly.fa -c usda_pacbio_secpilon.PRJEB10338.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJEB21624.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJEB8939.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA214227.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA255688.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA270714.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA280381.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA291523.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366460.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366463.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366471.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366487.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366591.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366667.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA366681.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA398239.sorted.merged.bam.cov -c usda_pacbio_secpilon.PRJNA60251.sorted.merged.bam.cov -c usda_pacbio_secpilon.USDA.sorted.merged.bam.cov -t usda_pacbio_second_pilon_indelsonly.diamond.hits.uniprot.taxified.out -o pacbio_secpilon_blobplot --db /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/blobtools/data/nodesDB.txt"
+
+# Phylum plot
+sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools plot -i pacbio_secpilon_blobplot.blobDB.json --notitle --sort_title "no-hit,other,undef" -p 2 -o pacbio_secpilon_blobplot_phylum"
 ```
 
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_final_pilon
@@ -1229,7 +1232,7 @@ sbatch --nodes=1 --mem=60000 --ntasks-per-node=4 -p assemble1 --wrap="zcat YMPre
 # Bah, it's really outdated and unsuitable for analysis. Let me generate the jellyfish db the old-fashioned way
 
 ls *.fastq.gz | xargs -n 1 echo gunzip -c > generators
-sbatch --nodes=1 --mem=90000 --ntasks-per-node=20 -p assemble1 --wrap="jellyfish count -m 21 -s 100M -t 20 -C -g generators -o illumina_run3_21mer"
+sbatch --nodes=1 --mem=200000 --ntasks-per-node=20 -p assemble1 --wrap="jellyfish count -m 21 -s 100M -t 20 -C -g generators -o illumina_run3_21mer"
 ```
 
 ## DAS_tool concatenation
