@@ -1230,7 +1230,7 @@ for i in *.cov; do echo -n "-c $i "; done; echo
 sbatch --nodes=1 --ntasks-per-node=2 --mem=25000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools create -i illumina_megahit_final_contigs.perl.fa -t ilmn_accum_diamond_uniprot.tsv.taxified.out --db /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/blobtools/data/nodesDB.txt -o illumina_megahit_blobplot -c usda_illum_megahit.PRJEB10338.sorted.merged.bam.cov -c usda_illum_megahit.PRJEB21624.sorted.merged.bam.cov -c usda_illum_megahit.PRJEB8939.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA214227.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA255688.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA270714.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA280381.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA291523.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366460.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366463.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366471.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366487.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366591.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366667.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA366681.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA398239.sorted.merged.bam.cov -c usda_illum_megahit.PRJNA60251.sorted.merged.bam.cov -c usda_illum_megahit.USDA.sorted.merged.bam.cov"
 
 # Generating the table
-sbatch --nodes=1 --ntasks-per-node=2 --mem=5000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools view -i illumina_megahit_blobplot.blobDB.json --out illumina_megahit_blobplot_all -r all -b"
+sbatch --nodes=1 --ntasks-per-node=4 --mem=50000 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/blobtools/blobtools view -i illumina_megahit_blobplot.blobDB.json --out illumina_blobplot_all -r all -b"
 
 # Generating the plots
 for i in phylum superkingdom genus; do echo $i; sbatch ../run_blobplot_generation.sh $i illumina illumina_megahit_blobplot.blobDB.json; done
@@ -1263,6 +1263,40 @@ sbatch --nodes=1 --mem=60000 --ntasks-per-node=4 -p assemble1 --wrap="zcat YMPre
 
 ls *.fastq.gz | xargs -n 1 echo gunzip -c > generators
 sbatch --nodes=1 --mem=200000 --ntasks-per-node=20 -p assemble1 --wrap="jellyfish count -m 21 -s 100M -t 20 -C -g generators -o illumina_run3_21mer"
+
+jellyfish histo -o illumina_run3_21mer.histo -t 10 illumina_run3_21mer
+
+# Damn, the jellyfish2 output didn't work! Let's try jellyfish1
+sbatch --nodes=1 --mem=200000 --ntasks-per-node=20 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/jellyfish-1.1.11/bin/jellyfish count -m 21 -s 20000M -t 20 -C -o illumina_run3_21mer.j1 YMPrepCannula_run3_L3_R1.fastq"
+
+# Oh, pssh! I should have read the script more carefully. It interprets kmer histograms instead of the jellyfish dump. Let's do a jellyfish screen with a huge spectrum plot and include the pacbio reads too
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=2 -p assemble3 --wrap="jellyfish histo -o illumina_run3_21mer.high.histo -t 10 --high=10000000 illumina_run3_21mer"
+
+echo gunzip -c ../error_corrected_reads/rumen_pacbio_corrected.fasta.gz > pbgenerators
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=20 -p assemble1 --wrap="jellyfish count -m 21 -s 100M -t 20 -C -o pacbio_error_corrected_21mer -g pbgenerators"
+
+# Plotting illumina jf reads
+python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkmerspectrum.py illumina_run3_21mer.high.histo -w png -g 1
+python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkmerspectrum.py illumina_run3_21mer.high.histo -w png -g 5
+python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkmerspectrum.py illumina_run3_21mer.high.histo -w png -g 6
+```
+
+
+Attempting to use another tool for rarefaction. This one is bbmap and it has a "saturation" curve generation program. It needs 100 bytes per read pair, and I think that we have close to 500 million read pairs to analyze (ie. 50 gbytes). Let's confirm first before I dump a big memory job on the cluster.
+
+> Ceres: 
+
+```bash
+module load java_sdk/64/1.8.0_121
+# testing read pair counts
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p short --wrap="gunzip -c YMPrepCannula_S1_L001_R1_001.fastq.gz | wc -l"
+
+# I think that it is actually going to be unnecessary because the script only processes a pair at a time!
+# Using lane 3 because that had the fewest issues on the Nextseq
+sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --mail-type=ALL --mail-user=derek.bickhart@ars.usda.gov ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=YMPrepCannula_S1_L003_R1_001.fastq.gz in2=YMPrepCannula_S1_L003_R2_001.fastq.gz out=YMPrepCannula_S1_L003.bbunique.stats interval=100000 cumulative=t count=t printlastbin=t minprob=10 -Xmx20g
+
+# Hmm, that only gave me quality estimates! Trying something else
+sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=YMPrepCannula_S1_L003_R1_001.fastq.gz in2=YMPrepCannula_S1_L003_R2_001.fastq.gz out=YMPrepCannula_S1_L003.bbunique.nominprob.stats interval=100000 cumulative=t count=t printlastbin=t -Xmx20g
 ```
 
 ## DAS_tool concatenation
@@ -1302,6 +1336,16 @@ sbatch --nodes=1 --ntasks-per-node=10 --mem=45000 -p short --wrap="DAS_Tool -i i
 
 ```
 
+OK, they didn't even install ruby!! I have to transition this to Steve's server.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina_usda_accumulated
+
+```bash
+scp -pr derek.bickharhth@ceres:/home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/*.bins ./
+
+sbatch --nodes=1 --ntasks-per-node=20 --mem=100000 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c mick_megahit_final_full.rfmt.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 20 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db"
+```
+
 ## Tallying all data into a larger table
 
 We have lots of bin information and metrics on each assembly. I want to do cross tool comparisons, but it's difficult with all of the data separated in different compartments. Let's gather it all together into one larger table.
@@ -1314,3 +1358,64 @@ Here's the information that I'm dealing with:
 * Keggs/cogs present
 * Present in Hungate and/or refseq above X cutoff?
 
+It turns out that Blobtools did this for me! Now to try to sort out the data into something more graphical (ie. an NMDS).
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/blob_data_tables
+
+```bash
+grep -v '##' illumina_blobplot_all.illumina_megahit_blobplot.blobDB.table.txt > illumina_blobplot_all.reformat.tab
+grep -v '##' pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt > pacbio_secpilon_blobplot_all.reformat.tab
+```
+
+```R
+library(dplyr)
+library(vegan)
+
+illumina <- read.delim("illumina_blobplot_all.reformat.tab", header=TRUE)
+illumina.reformat <- illumina[,c(2:24)]
+rownames(illumina.reformat) <- illumina[,1]
+illumina.reformat$Tech <- c("Illumina")
+
+pacbio <- read.delim("pacbio_secpilon_blobplot_all.reformat.tab", header=TRUE)
+pacbio.reformat <- pacbio[,c(2:24)]
+rownames(pacbio.reformat) <- pacbio[,1]
+pacbio.reformat$Tech <- c("Pacbio")
+
+combined <- bind_rows(illumina.reformat, pacbio.reformat)
+
+# OK, this probably won't end well! Let's explode things anyways
+nmds <- metaMDS(combined[,c(1:23)], k=2, trymax=1000)
+
+# OK, it can only work on numeric values. Let's also remove the coverage sum as that's a derived variable
+nmds <- metaMDS(combined[,c(1:21)], k=2, trymax=1000)
+Error: cannot allocate vector of size 19026.2 Gb
+
+# Hah! OK, let's try it with fewer values
+nmds <- metaMDS(combined[,c(1:3, 22)], k=2, trymax=1000)
+Error: cannot allocate vector of size 19026.2 Gb
+
+# OK, it's because of the rows, not the columns. I need to remove some of the "chaff" from the Illumina assembly
+combined.filtered <- filter(combined, length > 2572)
+nmds <- metaMDS(combined.filtered[,c(1:3, 22)], k=2, trymax=1000)
+Error: cannot allocate vector of size 1188.5 Gb
+
+# Getting closer! Let's do it by 5000
+combined.filtered <- filter(combined, length > 5000)
+nmds <- metaMDS(combined.filtered[,c(1:3, 22)], k=2, trymax=1000)
+Error in distfun(comm, method = distance, ...) :
+  long vectors (argument 4) are not supported in .Fortran
+
+# damn! Let's try a principal component analysis instead
+pca <- rda(combined.filtered[,c(1:3, 22)])
+png("rumen_combined_pca_plot.first.png", width=2000, height=1500)
+biplot(pca, display = c("sites", "species"), type= c("text", "points"))
+def.off()
+
+# OK, not the best! Let's try again
+pca <- rda(combined.filtered[,c(1:21)])
+biplot(pca, display = c("sites", "species"), type= c("text", "points"), cex=3)
+ordihull(pca, group=combined.filtered$Tech)
+dev.off()
+
+# Still not good. Perhaps I need to include something like # of orfs and the like?
+```
