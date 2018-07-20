@@ -22,3 +22,28 @@ module load samtools; for i in *.bam; do echo $i; samtools index $i; done
 
 
 ```
+
+## Running trinity assembly of Rna seq transcripts
+
+> Ceres:
+
+```bash
+# Generating list of different rumens and technical replicate files
+ls *.fastq.gz > trinity_rna_replicates.tab
+
+module load bedtools
+module load samtools
+module load salmon
+module load trinityrnaseq/2.6.6
+
+sbatch --nodes=1 --mem=75000 --ntasks-per-node=10 -p medium --wrap="Trinity --seqType fq --max_memory 75G --CPU 10 --trimmomatic --output trinity_epimural_assembly --samples_file trinity_rna_replicates.tab"
+
+# Damn! The quality control step failed, so I need to reprocess the reads.
+# The program is too stringent with read-name quality filtering, so I need to reprocess all of the reads
+for i in *_R1.fastq.gz; do echo $i; name=`echo $i | cut -c1-9`; echo $name; sbatch -p short process_read_name.pl $i 1 $name"_format_R1.fastq"; done
+for i in *_R2.fastq.gz; do echo $i; name=`echo $i | cut -c1-9`; echo $name; sbatch -p short process_read_name.pl $i 2 $name"_format_R2.fastq"; done
+
+perl -lane '$F[2] = substr($F[2], 0, 9) . "_format_R1.fastq.gz"; $F[3] = substr($F[3], 0, 9) . "_format_R2.fastq.gz"; print join("\t", @F);' < trinity_rna_replicates.tab > trinity_rna_replicates.reformat.tab
+
+sbatch --nodes=1 --mem=75000 --ntasks-per-node=10 -p medium --wrap="Trinity --seqType fq --max_memory 75G --CPU 10 --trimmomatic --output trinity_epimural_rerun --samples_file trinity_rna_replicates.reformat.tab"
+```

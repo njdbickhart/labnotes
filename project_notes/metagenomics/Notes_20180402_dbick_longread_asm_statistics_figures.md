@@ -331,6 +331,12 @@ pdf(file="ilmn_pacbio_usda_gcperc_boxplot.pdf", useDingbats=FALSE)
 ggplot(total.gc, aes(x=Tech, y=GC_Perc, fill=Tech)) + geom_boxplot() + ylab("Average GC percentage per Contig")
 dev.off()
 
+# Violin plot
+pdf("rumen_contig_gc_violin_plot.pdf", useDingbats=FALSE)
+p <- ggplot(total.gc, aes(x=Tech, y=GC_Perc, fill=Tech)) + geom_violin(trim=FALSE) + geom_boxplot(width=0.1, outlier.shape = NA, fill = "white")
+p + labs(x="Technology", y="Avg GC ratio") + scale_fill_brewer(palette="Dark2") + theme_classic()
+dev.off()
+
 # In this folder I have a preloaded data from my taxonomic facet_grid plots
 ks.test(total[total$Tech == "PacBio","Len"], total[total$Tech == "Illumina","Len"])
 
@@ -1284,7 +1290,7 @@ python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkm
 
 Attempting to use another tool for rarefaction. This one is bbmap and it has a "saturation" curve generation program. It needs 100 bytes per read pair, and I think that we have close to 500 million read pairs to analyze (ie. 50 gbytes). Let's confirm first before I dump a big memory job on the cluster.
 
-> Ceres: 
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/pilot_project/illumina
 
 ```bash
 module load java_sdk/64/1.8.0_121
@@ -1297,6 +1303,18 @@ sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --mail-type=ALL --mail
 
 # Hmm, that only gave me quality estimates! Trying something else
 sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=YMPrepCannula_S1_L003_R1_001.fastq.gz in2=YMPrepCannula_S1_L003_R2_001.fastq.gz out=YMPrepCannula_S1_L003.bbunique.nominprob.stats interval=100000 cumulative=t count=t printlastbin=t -Xmx20g
+
+# That worked, but let's try to generate the histogram without the cumulative function
+sbatch --nodes=1 --ntasks-per-node=4 --mem=31000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=YMPrepCannula_S1_L003_R1_001.fastq.gz in2=YMPrepCannula_S1_L003_R2_001.fastq.gz out=YMPrepCannula_S1_L003.bbunique.nocumulative.stats interval=100000 count=t printlastbin=t -Xmx30g
+
+# Now to combine all the data together for one larger estimate
+sbatch --nodes=1 --ntasks-per-node=1 --mem=5000 -p short --wrap='for i in YMPrepCannula_S1_L001_R1*; do gunzip -c $i; done | gzip > YMPrepCannula_combined_R1.fastq.gz'
+sbatch --nodes=1 --ntasks-per-node=1 --mem=5000 -p short --wrap='for i in YMPrepCannula_S1_L001_R2*; do gunzip -c $i; done | gzip > YMPrepCannula_combined_R2.fastq.gz'
+
+# In the meantime, let's estimate the kmer rarity of our error corrected pacbio reads
+sbatch --nodes=1 --ntasks-per-node=4 --mem=31000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=../pacbio/rumen_pacbio_corrected.fasta.gz out=rumen_pacbio_corrected.bbunique.stats count=t printlastbin=t -Xmx30g
+
+sbatch --nodes=1 --ntasks-per-node=4 --mem=61000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=YMPrepCannula_combined_R1.fastq.gz in2=YMPrepCannula_combined_R2.fastq.gz out=YMPrepCannula_combined.bbunique.stats count=t printlastbin=t -Xmx60g
 ```
 
 ## DAS_tool concatenation
@@ -1343,7 +1361,49 @@ OK, they didn't even install ruby!! I have to transition this to Steve's server.
 ```bash
 scp -pr derek.bickharhth@ceres:/home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/*.bins ./
 
+export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/bin/:$PATH
 sbatch --nodes=1 --ntasks-per-node=20 --mem=100000 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c mick_megahit_final_full.rfmt.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 20 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db"
+
+# Dammit! It crashed because it's missing the "doMC" package! It's an R package that needed to be installed
+# Ah, I see, Rscript and R interpreter use different installation pathways for local libs
+/usr/bin/Rscript -e "install.packages('doMC', repos='http://cran.us.r-project.org')"
+/usr/bin/Rscript -e "install.packages('./package/DASTool_1.1.0.tar.gz', type='source')"
+/usr/bin/Rscript -e "install.packages('ggplot2', repos='http://cran.us.r-project.org')"
+
+# Ah, I know why! It's because Steve doesn't show the home directory to the nodes, and all of my local R libs are being packaged in my home directory
+/mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c mick_megahit_final_full.rfmt.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 20 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db
+
+# Preparing prodigal output for shipment to Bradd
+gunzip -c illumina_megahit_prodigal_proteins.faa.gz | grep '>' | perl -e '@ids = ("ID", "partial", "start_type", "rbs_motif", "rbs_spacer", "gc_cont"); print "ContigID\tStart\tEnd\tOrient\t" . join("\t", @ids) . "\n"; while(<STDIN>){chomp; $_ =~ s/\>//g; @lsegs = split(/\s*\#\s*/); @bsegs = split(/\;/, $lsegs[-1]); print "$lsegs[0]\t$lsegs[1]\t$lsegs[2]\t$lsegs[3]"; foreach my $k (@bsegs){$k =~ s/^.+\=//; print "\t$k";} print "\n";}' > illumina_megahit_prodigal_proteins.shortform.tab
+
+/mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c mick_megahit_final_full.rfmt.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 30 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db --write_bins 1
+```
+
+#### Pacbio pilon
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon
+
+```bash
+# Gathering the bins
+perl -e '@f = `ls metabat2/*.fa`; chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-2]\n";}} close IN;}'> pacbio_final_public_metabat.unsorted.bins
+
+mkdir hic_clusters
+mv new_rumen_pacbio_best_genome_clusters.zip ./hic_clusters/
+perl -e '@f = `ls hic_clusters/best_genome_clusters/*.fasta`; chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-2]\n";}} close IN;}' > pacbio_final_public_hic.unsorted.bins
+```
+
+Now to do the DAS_tool concatenation
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_final_pilon
+
+```bash
+scp -pr derek.bickharhth@ceres:/home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/*.bins ./
+
+export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/bin/:$PATH
+/mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i pacbio_final_public_hic.unsorted.bins,pacbio_final_public_metabat.unsorted.bins -c usda_pacbio_second_pilon_indelsonly.fa -o pacbio_final_dastool -l HiC,metabat --search_engine diamond -t 30 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db --write_bins 1
+
+# Generating list of master bins
+perl -e '@f = `ls pacbio_final_dastool_DASTool_bins/*.fa`; chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-3]\n";}} close IN;}'> pacbio_final_dastool_DASTool_bins.tab
 ```
 
 ## Tallying all data into a larger table
@@ -1419,3 +1479,83 @@ dev.off()
 
 # Still not good. Perhaps I need to include something like # of orfs and the like?
 ```
+
+#### Hypothesis: GC bias is not present in the reads
+
+I'm testing a hypothesis that the GC bias identified in the pacbio dataset is not present in the original reads.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/pilot_project/illumina
+
+```bash
+for i in YMPrepCannula_S1*.fastq.gz; do echo $i; sbatch -p short ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/metagenomics_scripts/calculateReadGCHisto.pl -f $i -o $i.gcbin; done
+sbatch -p short ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/metagenomics_scripts/calculateReadGCHisto.pl -f ../pacbio/rumen_pacbio_corrected.fasta.gz -o rumen_pacbio_corrected.fasta.gz.gcbin
+
+# now to combine all of the Illumina bins
+perl -e '@files = `ls YMPrep*.gcbin`; chomp(@files); %gcbin; foreach my $f (@files){open(IN, "< $f"); <IN>; while(<IN>){chomp; @s = split(/\t/); $gcbin{$s[0]} += $s[1];} close IN;} open(OUT, "> YMPrepCombined_allfastas.gcbin"); print OUT "GC\tCount\n"; foreach my $gc (sort{$a <=> $b}keys(%gcbin)){print OUT "$gc\t$gcbin{$gc}\n";} close OUT;'
+
+# The Nextseq kinda hosed us here. The GC percentages of individual reads is quite high
+module load r
+srun --nodes=1 --mem=8000 --ntasks-per-node=2 --pty bash
+
+# Rerunning with revised program and output
+for i in YMPrepCannula_S1*.fastq.gz; do echo $i; sbatch -p short ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/metagenomics_scripts/calculateReadGCHisto.pl -f $i -o $i.gclist; done
+sbatch -p short ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/metagenomics_scripts/calculateReadGCHisto.pl -f ../pacbio/rumen_pacbio_corrected.fasta.gz -o rumen_pacbio_corrected.fasta.gz.gclist
+
+# Cleaning up the illumina reads to decrease the verbosity
+sbatch average_gc_lists.pl YMPrepCannula_S1_L001_R1_001.fastq.gz.gclist YMPrepCannula_S1_L001_R2_001.fastq.gz.gclist YMPrepCannula_S1_L001_avg.gclist
+sbatch average_gc_lists.pl YMPrepCannula_S1_L002_R1_001.fastq.gz.gclist YMPrepCannula_S1_L002_R2_001.fastq.gz.gclist YMPrepCannula_S1_L002_avg.gclist
+sbatch average_gc_lists.pl YMPrepCannula_S1_L003_R1_001.fastq.gz.gclist YMPrepCannula_S1_L003_R2_001.fastq.gz.gclist YMPrepCannula_S1_L003_avg.gclist
+sbatch average_gc_lists.pl YMPrepCannula_S1_L004_R1_001.fastq.gz.gclist YMPrepCannula_S1_L004_R2_001.fastq.gz.gclist YMPrepCannula_S1_L004_avg.gclist
+
+sbatch average_gc_lists.pl YMPrepCannula_S1_L001_avg.gclist YMPrepCannula_S1_L002_avg.gclist YMPrepCannula_S1_L003_avg.gclist YMPrepCannula_S1_L004_avg.gclist YMPrepCannula_S1_combined_avg.gclist
+srun --nodes=1 --mem=50000 --ntasks-per-node=3 -p short --pty bash
+```
+
+```R
+illumina <- read.delim("YMPrepCombined_allfastas.gcbin", header=TRUE)
+pacbio <- read.delim("rumen_pacbio_corrected.fasta.gz.gcbin", header=TRUE)
+
+# Removing the "All N's" and "All G's" artifacts from the count
+illumina.filt <- illumina[seq(from=3, to=nrow(illumina)-2),]
+
+colnames(illumina.filt) <- c("GC", "Illumina")
+colnames(pacbio) <- c("GC", "PacBio")
+
+combined <- left_join(illumina.filt, pacbio, by="GC")
+combined$PacBio[is.na(combined$PacBio)] <- 0
+combined.format <- combined[,c(2,3)]
+rownames(combined.format) <- combined[,1]
+
+library(plotly)
+pdf("rumen_read_gc_perc.pdf", useDingbats=FALSE)
+p <- ggplot(combined, aes(x=GC)) + geom_point(aes(y=Illumina, color="red")) + geom_point(aes(y=PacBio, color="blue")) + stat_smooth(aes(y=Illumi> p color="darkred")) + stat_smooth(aes(y=PacBio, color="darkblue"))
+dev.off()
+
+# That did not go the way I had hoped! I need to create a file with GC counts per read. 
+# Trying with the flat list
+files <- c("YMPrepCannula_S1_L001_avg.gclist", "YMPrepCannula_S1_L002_avg.gclist", "YMPrepCannula_S1_L003_avg.gclist", "YMPrepCannula_S1_L004_avg.gclist")
+
+library(data.table)
+#illumina <- do.call(rbind, lapply(files, fread))
+illumina <- read.delim("YMPrepCannula_S1_combined_avg.gclist", header=FALSE)
+pacbio <- read.delim("rumen_pacbio_corrected.fasta.gz.gclist", header=FALSE)
+colnames(illumina) <- c("GC")
+colnames(pacbio) <- c("GC")
+
+# Adding categories
+illumina <- mutate(illumina, Tech=c("Illumina"))
+pacbio <- mutate(pacbio, Tech=c("PacBio"))
+
+combined <- bind_rows(illumina, pacbio)
+pdf("rumen_read_gc_violin_plot.pdf", useDingbats=FALSE)
+p <- ggplot(combined, aes(x=Tech, y=GC, fill=Tech)) + geom_violin(trim=FALSE) + geom_boxplot(width=0.1, outlier.shape = NA, fill = "white")
+p + labs(x="Technology", y="Avg GC ratio") + scale_fill_brewer(palette="Dark2") + theme_classic()
+
+# I think that I may have "smoothed out" too much in the combined averaging
+illumina <- read.delim("YMPrepCannula_S1_L003_avg.gclist", header=FALSE)
+
+```
+
+##### Conclusions: The Bias is present in both datasets, but the low GC data isn't being assembled by either dataset. The Protists are too complex and have reference genomes that are too large. 
+
+##### Idea: Remove the low GC reads before doing kmer rarefaction, as we are interested in teasing out the coverage of those datasets as well.
