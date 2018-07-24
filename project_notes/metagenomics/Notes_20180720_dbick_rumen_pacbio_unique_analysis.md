@@ -127,7 +127,64 @@ perl -lane 'if($F[0] =~ /^#/){next;}elsif($F[22] <= 235 && $F[9] <=  1){print $_
 ```
 
 
+## KAT plots for asm kmer comparisons
+
+I should have done this far earlier, but I am going to generate some kmer comparisons for the new assembly and the reads. My hope is to pick up the same trend I noticed in the whisker plot to see what we're missing.
+
+I already compiled 21 mer counts for each of read datasets (using the pacbio error corrected reads rather than the raw reads). 
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina
+
+```bash
+module load jellyfish/2.2.3
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=20 -p assemble1 --wrap="jellyfish count -m 21 -s 100M -t 20 -C -o pacbio_final_asm_21mer ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa"
+
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=20 -p assemble1 --wrap="jellyfish count -m 21 -s 100M -t 20 -C -o illumina_megahit_asm_21mer ../illumina_usda_accumulated/mick_megahit_final_full.rfmt.fa"
+
+# Let's try to generate a two way read plot first
+sbatch --nodes=1 --mem=500000 --ntasks-per-node=25 -p assemble2 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/kat-2.3.4/src/kat comp -t 25 -o illumina_run3_pb_errorcorrect_21comp.kat illumina_run3_21mer pacbio_error_corrected_21mer"
+
+# Now illumina kmer vs pacbio
+export LD_LIBRARY_PATH=/mnt/nfs/nfs2/bickhart-users/binaries/anaconda3/lib:/mnt/nfs/nfs2/bickhart-users/binaries/KAT/deps/boost/build/lib:$LD_LIBRARY_PATH
+sbatch --nodes=1 --mem=400000 --ntasks-per-node=20 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat comp -t 20 -o illumina_run3_pbpilon_asm 'YMPrepCannula_run3_L1_R1.fastq.gz YMPrepCannula_run3_L2_R1.fastq.gz YMPrepCannula_run3_L2_R2.fastq.gz YMPrepCannula_run3_L3_R1.fastq.gz YMPrepCannula_run3_L3_R2.fastq.gz YMPrepCannula_run3_L4_R1.fastq.gz YMPrepCannula_run3_L4_R2.fastq.gz' ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa"
+
+# Now illumina kmer vs illumina
+sbatch --nodes=1 --mem=500000 --ntasks-per-node=20 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat comp -t 20 -o illumina_run3_illumina_asm 'YMPrepCannula_run3_L1_R1.fastq.gz YMPrepCannula_run3_L2_R1.fastq.gz YMPrepCannula_run3_L2_R2.fastq.gz YMPrepCannula_run3_L3_R1.fastq.gz YMPrepCannula_run3_L3_R2.fastq.gz YMPrepCannula_run3_L4_R1.fastq.gz YMPrepCannula_run3_L4_R2.fastq.gz' ../illumina_usda_accumulated/mick_megahit_final_full.rfmt.fa"
+```
+
 ## TODO: Generate KAT plots for everything
 ## TODO: Also, combine the kmerspectra plots for Illumina and Pacbio
 ## TODO: Compute rand index for bins and check bin fidelity for pacbio-unique contigs with no illumina mappings
 ## TODO: look into viral genomes to estimate size, frequency and bias in pacbio and illumina datasets 
+
+## Viral genomes
+
+I want to fully characterize the viruses and see how they pan out with respect to host specificity and kmer composition.
+
+Here are the specific types of analysis I want to perform:
+1. alignment of error corrected pacbio reads to identify "junctions" with other contigs
+2. the difference in kmers between the two sets of viral contigs
+3. the difference in read counts between viral contigs
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/blobtools
+
+```bash
+srun --nodes=1 --ntasks-per-node=4 --mem=15000 -p short --pty bash
+
+module load samtools bwa
+grep 'Viruses' illumina_blobplot_all.illumina_megahit_blobplot.blobDB.table.txt | perl -lane 'system("samtools faidx ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.fa $F[0] >> illumina_megahit_viruses.fa");'
+
+grep 'Viruses' pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt | perl -lane 'system("samtools faidx ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa $F[0] >> pacbio_pilon_viruses.fa");'
+
+module load minimap2/2.6
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=3 -p short --wrap="minimap2 -x map-pb pacbio_pilon_viruses.fa ~/rumen_longread_metagenome_assembly/sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta.gz > pacbio_pilon_viruses_ecpbreads.paf"
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=3 -p short --wrap="minimap2 -x map-pb illumina_megahit_viruses.fa ~/rumen_longread_metagenome_assembly/sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta.gz > illumina_megahit_viruses_ecpbreads.paf"
+
+# Number of error corrected reads that map to the tail ends of viral contigs and may impart some host specificity data
+perl -lane 'if($F[9] > 500 && ($F[7] < 200 || $F[6] - $F[8] < 200)){print $_;}' < pacbio_pilon_viruses_ecpbreads.paf | wc -l
+12406
+
+# Far fewer, suggesting that there's either a chimerism thing with the pacbio data or that the illumina contigs are somehow off
+perl -lane 'if($F[9] > 500 && ($F[7] < 200 || $F[6] - $F[8] < 200)){print $_;}' < illumina_megahit_viruses_ecpbreads.paf | wc -l
+9422
+```

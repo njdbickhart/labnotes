@@ -1285,6 +1285,11 @@ sbatch --nodes=1 --mem=300000 --ntasks-per-node=20 -p assemble1 --wrap="jellyfis
 python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkmerspectrum.py illumina_run3_21mer.high.histo -w png -g 1
 python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkmerspectrum.py illumina_run3_21mer.high.histo -w png -g 5
 python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkmerspectrum.py illumina_run3_21mer.high.histo -w png -g 6
+
+# Now for the Pacbio jf reads
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=2 -p assemble3 --wrap="jellyfish histo -o pacbio_error_corrected_21mer.high.histo -t 10 --high=10000000 pacbio_error_corrected_21mer"
+
+ls illumina_run3_21mer.high.histo pacbio_error_corrected_21mer.high.histo > histos_list.tab
 ```
 
 

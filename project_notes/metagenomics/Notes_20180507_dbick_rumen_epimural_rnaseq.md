@@ -31,10 +31,7 @@ module load samtools; for i in *.bam; do echo $i; samtools index $i; done
 # Generating list of different rumens and technical replicate files
 ls *.fastq.gz > trinity_rna_replicates.tab
 
-module load bedtools
-module load samtools
-module load salmon
-module load trinityrnaseq/2.6.6
+module load bedtools samtools salmon trinityrnaseq/2.6.6
 
 sbatch --nodes=1 --mem=75000 --ntasks-per-node=10 -p medium --wrap="Trinity --seqType fq --max_memory 75G --CPU 10 --trimmomatic --output trinity_epimural_assembly --samples_file trinity_rna_replicates.tab"
 
@@ -46,4 +43,7 @@ for i in *_R2.fastq.gz; do echo $i; name=`echo $i | cut -c1-9`; echo $name; sbat
 perl -lane '$F[2] = substr($F[2], 0, 9) . "_format_R1.fastq.gz"; $F[3] = substr($F[3], 0, 9) . "_format_R2.fastq.gz"; print join("\t", @F);' < trinity_rna_replicates.tab > trinity_rna_replicates.reformat.tab
 
 sbatch --nodes=1 --mem=75000 --ntasks-per-node=10 -p medium --wrap="Trinity --seqType fq --max_memory 75G --CPU 10 --trimmomatic --output trinity_epimural_rerun --samples_file trinity_rna_replicates.reformat.tab"
+
+# That ran out of memory! It's because I have around 150 million read pairs and I need 1 gig per read pair
+sbatch --nodes=1 --mem=151000 --ntasks-per-node=15 -p mem --wrap="Trinity --seqType fq --max_memory 150G --CPU 15 --trimmomatic --output trinity_epimural_highmem --samples_file trinity_rna_replicates.reformat.tab"
 ```
