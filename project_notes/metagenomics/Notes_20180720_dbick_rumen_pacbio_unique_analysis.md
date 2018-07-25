@@ -187,4 +187,32 @@ perl -lane 'if($F[9] > 500 && ($F[7] < 200 || $F[6] - $F[8] < 200)){print $_;}' 
 # Far fewer, suggesting that there's either a chimerism thing with the pacbio data or that the illumina contigs are somehow off
 perl -lane 'if($F[9] > 500 && ($F[7] < 200 || $F[6] - $F[8] < 200)){print $_;}' < illumina_megahit_viruses_ecpbreads.paf | wc -l
 9422
+
+# I wrote a custom script to try to filter and organize the data
+### PACBIO FIRST ###
+perl selectLikelyViralOverhangs.pl pacbio_pilon_viruses_ecpbreads.paf pacbio_pilon_viruses_ecpbreads.filt
+
+# Hmm... most of the alignments were smaller than expected. Let's keep things that are larger than 150 bp so that we can get a good alignment on other contigs
+perl -lane 'if($F[2] - $F[1] > 150){print $_;}' < pacbio_pilon_viruses_ecpbreads.filt.subread.bed > pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.bed
+# Now to generate a new fasta and align to the whole PacBio dataset
+samtools faidx ../../sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta
+
+perl -e '@list; while(<>){chomp; @s = split(/\t/); push(@list, "$s[0]:$s[1]-$s[2]"); if(scalar(@list) > 500){print "Printing...\n"; system("samtools faidx ../../sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta " . join(" ", @list) . " >> pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.fa"); @list = ();}} system("samtools faidx ../../sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta " . join(" ", @list) . " >> pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.fa");' < pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.bed
+
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=3 -p short --wrap="minimap2 -x map-pb ../../assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.fa > pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.paf"
+
+perl -lane 'print $F[11];' < pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.paf | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   30443
+Sum:    337001
+Minimum 0
+Maximum 60
+Average 11.069901
+Median  0
+Standard Deviation      20.821972
+Mode(Highest Distributed Value) 0
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); if($s[11] == 0){next;} $s[0] =~ s/\:\d+\-\d+$//; push(@{$data{$s[0]}}, $s[5]);} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($data{$s[0]})){push(@{$data{$s[0]}}, $s[5]);}} close IN; foreach my $k (keys(%data)){print "$k\t" . join("\t", @{$data{$k}}) . "\n";}' pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.paf pacbio_pilon_viruses_ecpbreads.paf > pacbio_pilon_viruses_ecpbreads.assoc.filt.tab
+
+# Stringent filtering of association sites
+perl -lane 'if(scalar(@F) > 3){next;}else{print $_;}' < pacbio_pilon_viruses_ecpbreads.assoc.filt.tab > pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.tab
 ```
