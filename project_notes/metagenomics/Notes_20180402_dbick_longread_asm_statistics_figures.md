@@ -1382,6 +1382,8 @@ sbatch --nodes=1 --ntasks-per-node=20 --mem=100000 -p assemble1 --wrap="/mnt/nfs
 gunzip -c illumina_megahit_prodigal_proteins.faa.gz | grep '>' | perl -e '@ids = ("ID", "partial", "start_type", "rbs_motif", "rbs_spacer", "gc_cont"); print "ContigID\tStart\tEnd\tOrient\t" . join("\t", @ids) . "\n"; while(<STDIN>){chomp; $_ =~ s/\>//g; @lsegs = split(/\s*\#\s*/); @bsegs = split(/\;/, $lsegs[-1]); print "$lsegs[0]\t$lsegs[1]\t$lsegs[2]\t$lsegs[3]"; foreach my $k (@bsegs){$k =~ s/^.+\=//; print "\t$k";} print "\n";}' > illumina_megahit_prodigal_proteins.shortform.tab
 
 /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c mick_megahit_final_full.rfmt.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 30 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db --write_bins 1
+
+perl -e '@f = `ls illumina_megahit_dastool_DASTool_bins/*.fa`;chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-3]\n";}} close IN;}'> illumina_megahit_dastool_DASTool_bins.tab
 ```
 
 #### Pacbio pilon
@@ -1409,6 +1411,11 @@ export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/bin/:$PATH
 
 # Generating list of master bins
 perl -e '@f = `ls pacbio_final_dastool_DASTool_bins/*.fa`; chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-3]\n";}} close IN;}'> pacbio_final_dastool_DASTool_bins.tab
+
+# Transforming prodigal predictions into the shortform tab delimited file
+grep  '>' pacbio_final_dastool_proteins.faa | grep '>' | perl -e '@ids = ("ID", "partial", "start_type", "rbs_motif", "rbs_spacer", "gc_cont"); print "ContigID\tStart\tEnd\tOrient\t" . join("\t", @ids) . "\n"; while(<STDIN>){chomp; $_ =~ s/\>//g; @lsegs = split(/\s*\#\s*/); @bsegs = split(/\;/, $lsegs[-1]); print "$lsegs[0]\t$lsegs[1]\t$lsegs[2]\t$lsegs[3]"; foreach my $k (@bsegs){$k =~ s/^.+\=//; print "\t$k";} print "\n";}' > pacbio_final_prodigal_proteins.shortform.tab
+
+
 ```
 
 ## Tallying all data into a larger table

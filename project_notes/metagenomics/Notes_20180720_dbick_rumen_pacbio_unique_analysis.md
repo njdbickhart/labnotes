@@ -150,6 +150,23 @@ sbatch --nodes=1 --mem=400000 --ntasks-per-node=20 -p assemble1 --wrap="/mnt/nfs
 
 # Now illumina kmer vs illumina
 sbatch --nodes=1 --mem=500000 --ntasks-per-node=20 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat comp -t 20 -o illumina_run3_illumina_asm 'YMPrepCannula_run3_L1_R1.fastq.gz YMPrepCannula_run3_L2_R1.fastq.gz YMPrepCannula_run3_L2_R2.fastq.gz YMPrepCannula_run3_L3_R1.fastq.gz YMPrepCannula_run3_L3_R2.fastq.gz YMPrepCannula_run3_L4_R1.fastq.gz YMPrepCannula_run3_L4_R2.fastq.gz' ../illumina_usda_accumulated/mick_megahit_final_full.rfmt.fa"
+
+# Because the default spectra plots are always undersized, let's resize them
+/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat plot spectra-cn -o illumina_run3_illumina_asm-extend.spectra-cn.png -t "Illumina Reads vs Illumina megahit ASM" -y 55000000 -x 150 illumina_run3_illumina_asm-main.mx
+/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat plot spectra-cn -o illumina_run3_pacbio_asm-extend.spectra-cn.png -t "Illumina Reads vs PacBio Pilon ASM" -y 90000000 -x 150 illumina_run3_pbpilon_asm-main.mx
+
+# And with minimum cov filters
+/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat plot spectra-cn -o illumina_run3_pacbio_asm-mincov.spectra-cn.png -t "Illumina Reads vs PacBio Pilon ASM" -y 90000000 -x 150 -i 1 illumina_run3_pbpilon_asm-main.mx
+/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat plot spectra-cn -o illumina_run3_illumina_asm-mincov.spectra-cn.png -t "Illumina Reads vs Illumina megahit ASM" -y 55000000 -x 150 -i 1 illumina_run3_illumina_asm-main.mx
+
+# Density analysis
+/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat plot density -o illumina_run3_illumina_asm.density.png -x 150 illumina_run3_illumina_asm-main.mx
+/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat plot density -o illumina_run3_pbpilon_asm.density.png -x 150 illumina_run3_pbpilon_asm-main.mx
+
+
+# Finally, generating kat sect plots for everything
+sbatch --nodes=1 --mem=500000 --ntasks-per-node=40 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat sect -o illumina_run3_pbpilon_asm-sect -t 40 -E ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa YMPrepCannula_run3_L2_R1.fastq.gz YMPrepCannula_run3_L2_R2.fastq.gz YMPrepCannula_run3_L3_R1.fastq.gz YMPrepCannula_run3_L3_R2.fastq.gz YMPrepCannula_run3_L4_R1.fastq.gz YMPrepCannula_run3_L4_R2.fastq.gz"
+sbatch --nodes=1 --mem=500000 --ntasks-per-node=40 -p assemble1 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat sect -o illumina_run3_illumina_asm-sect -t 40 -E ../illumina_usda_accumulated/mick_megahit_final_full.rfmt.fa YMPrepCannula_run3_L2_R1.fastq.gz YMPrepCannula_run3_L2_R2.fastq.gz YMPrepCannula_run3_L3_R1.fastq.gz YMPrepCannula_run3_L3_R2.fastq.gz YMPrepCannula_run3_L4_R1.fastq.gz YMPrepCannula_run3_L4_R2.fastq.gz"
 ```
 
 ## TODO: Generate KAT plots for everything
@@ -211,8 +228,52 @@ Median  0
 Standard Deviation      20.821972
 Mode(Highest Distributed Value) 0
 
+# Note: the first contig column is the non-viral contig
 perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); if($s[11] == 0){next;} $s[0] =~ s/\:\d+\-\d+$//; push(@{$data{$s[0]}}, $s[5]);} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($data{$s[0]})){push(@{$data{$s[0]}}, $s[5]);}} close IN; foreach my $k (keys(%data)){print "$k\t" . join("\t", @{$data{$k}}) . "\n";}' pacbio_pilon_viruses_ecpbreads.filt.subread.gt150.paf pacbio_pilon_viruses_ecpbreads.paf > pacbio_pilon_viruses_ecpbreads.assoc.filt.tab
 
 # Stringent filtering of association sites
 perl -lane 'if(scalar(@F) > 3){next;}else{print $_;}' < pacbio_pilon_viruses_ecpbreads.assoc.filt.tab > pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.tab
+
+# I scripted a means of condensing down all of these associations into a summary table
+perl generateViralAssociationGraph.pl pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.tab pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
+
+# There were 183 associations! Of these, 124 associations were greater than one observation. 
+perl -lane 'if($F[2] > 1){print $_;}' < pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab | perl -alne 'print $F[0];' | sort | uniq | wc -l
+45  <- unique viral contigs with potential host data!
+
+# I am now downloading this tab file for viewing in cytoscape and eventual conversion into a circos plot if I see allot of co-infectivity.
+
+
+#### Illumina comparison ####
+perl selectLikelyViralOverhangs.pl illumina_megahit_viruses_ecpbreads.paf illumina_megahit_viruses_ecpbreads.filt
+Finished. Identified 3403 errors
+perl -lane 'if($F[2] - $F[1] > 150){print $_;}' < illumina_megahit_viruses_ecpbreads.filt.subread.bed > illumina_megahit_viruses_ecpbreads.filt.subread.gt150.bed
+perl -e '@list; while(<>){chomp; @s = split(/\t/); push(@list, "$s[0]:$s[1]-$s[2]"); if(scalar(@list) > 500){print "Printing...\n"; system("samtools faidx ../../sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta " . join(" ", @list) . " >> illumina_megahit_viruses_ecpbreads.filt.subread.gt150.fa"); @list = ();}} system("samtools faidx ../../sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta " . join(" ", @list) . " >> illumina_megahit_viruses_ecpbreads.filt.subread.gt150.fa");' < illumina_megahit_viruses_ecpbreads.filt.subread.gt150.bed
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=3 -p short --wrap="minimap2 -x map-pb ../../assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa illumina_megahit_viruses_ecpbreads.filt.subread.gt150.fa > illumina_megahit_viruses_ecpbreads.filt.subread.gt150.paf"
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); if($s[11] == 0){next;} $s[0] =~ s/\:\d+\-\d+$//; push(@{$data{$s[0]}}, $s[5]);} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($data{$s[0]})){push(@{$data{$s[0]}}, $s[5]);}} close IN; foreach my $k (keys(%data)){print "$k\t" . join("\t", @{$data{$k}}) . "\n";}' illumina_megahit_viruses_ecpbreads.filt.subread.gt150.paf illumina_megahit_viruses_ecpbreads.paf > illumina_megahit_viruses_ecpbreads.assoc.filt.tab
+perl -lane 'if(scalar(@F) > 3){next;}else{print $_;}' < illumina_megahit_viruses_ecpbreads.assoc.filt.tab > illumina_megahit_viruses_ecpbreads.assoc.filt.stringent.tab
+
+# And now for the Cytoscape tab file
+perl generateViralAssociationGraph.pl illumina_blobplot_all.illumina_megahit_blobplot.blobDB.table.txt illumina_megahit_viruses_ecpbreads.assoc.filt.stringent.tab illumina_megahit_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
+
+
+# General stats on association:
+wc -l *.cyto.tab
+  223 illumina_megahit_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
+  184 pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
+
+for i in *.cyto.tab; do echo $i; perl -lane 'if($F[2] > 1){print $_;}' < $i | wc -l; done
+illumina_megahit_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
+73
+pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
+124
+
+for i in *.cyto.tab; do echo $i; perl -lane 'if($F[2] > 1){print $F[0];}' < $i | sort | uniq | wc -l; done
+illumina_megahit_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
+64
+pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
+45
+
+# So the illumina data shows far fewer edges between host-virus integration
 ```
