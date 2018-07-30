@@ -1240,6 +1240,9 @@ sbatch --nodes=1 --ntasks-per-node=4 --mem=50000 -p short --wrap="~/rumen_longre
 
 # Generating the plots
 for i in phylum superkingdom genus; do echo $i; sbatch ../run_blobplot_generation.sh $i illumina illumina_megahit_blobplot.blobDB.json; done
+
+for i in *.png; do echo $i; perl -e 'chomp(@ARGV); @asegs = split(/\./, $ARGV[0]); shift(@asegs);$temp = join(".", @asegs); $temp =~ s/\.blobDB\.json\.bestsum//g; $temp =~ s/\.p14\.span\.100//g; print "$temp\n"; system("mv $ARGV[0] $temp");' $i; done
+
 ```
 
 ## Mash contig assignment
@@ -1320,6 +1323,21 @@ sbatch --nodes=1 --ntasks-per-node=1 --mem=5000 -p short --wrap='for i in YMPrep
 sbatch --nodes=1 --ntasks-per-node=4 --mem=31000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=../pacbio/rumen_pacbio_corrected.fasta.gz out=rumen_pacbio_corrected.bbunique.stats count=t printlastbin=t -Xmx30g
 
 sbatch --nodes=1 --ntasks-per-node=4 --mem=61000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=YMPrepCannula_combined_R1.fastq.gz in2=YMPrepCannula_combined_R2.fastq.gz out=YMPrepCannula_combined.bbunique.stats count=t printlastbin=t -Xmx60g
+
+### The GC problem ###
+# I think that low GC protists are screwing up the rarefaction estimates from BB unique. Let's separate out the components and see if that changes rarefaction estimates
+sbatch extractLowGCReads.pl -f YMPrepCannula_combined_R1.fastq.gz -r YMPrepCannula_combined_R2.fastq.gz -c 0.3 -s YMPrepCannula_combined_30_gccutoff.stats
+cat YMPrepCannula_combined_30_gccutoff.stats
+Total pairs: 142952897
+GCCutoff: 0.3
+LowGC: 51622141
+HighGC: 90795373
+LowQualFilt: 535383
+
+for i in YMPrepCannula_combined_R1.f.hgc.fq YMPrepCannula_combined_R1.f.lgc.fq YMPrepCannula_combined_R2.f.hgc.fq YMPrepCannula_combined_R2.f.lgc.fq; do echo $i; sbatch --nodes=1 --ntasks-per-node=4 --mem=5000 -p short --wrap="pigz $i"; done
+
+sbatch --nodes=1 --ntasks-per-node=4 --mem=61000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=YMPrepCannula_combined_R1.f.hgc.fq.gz in2=YMPrepCannula_combined_R2.f.hgc.fq.gz out=YMPrepCannula_combined.hgc.bbunique.stats count=t printlastbin=t -Xmx60g
+sbatch --nodes=1 --ntasks-per-node=4 --mem=61000 -p short --mail-type=ALL --mail-user=derek.bickharhth ~/rumen_longread_metagenome_assembly/binaries/bbmap/bbcountunique.sh in=YMPrepCannula_combined_R1.f.lgc.fq.gz in2=YMPrepCannula_combined_R2.f.lgc.fq.gz out=YMPrepCannula_combined.lgc.bbunique.stats count=t printlastbin=t -Xmx60g
 ```
 
 ## DAS_tool concatenation

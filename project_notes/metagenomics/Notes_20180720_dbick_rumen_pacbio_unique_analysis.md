@@ -277,3 +277,140 @@ pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
 
 # So the illumina data shows far fewer edges between host-virus integration
 ```
+
+## Alignment to other generated rumen microbial datasets
+
+I want to see how much of our assembly space is already occupied by other assemblies for the rumen.
+
+#### Hungate 1000
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate
+
+```bash
+for i in assembly_fasta/*.fasta.gz; do echo $i; gunzip -c $i >> hungate_combined_unordered_reference.fasta; done
+
+# Damn, the hungate fastas have redundant scaffold names! I need to automate this differently
+perl -e '@files = `ls ./assembly_fasta/*.gz`; chomp(@files); foreach $f (@files){@fname = split(/[\/\.\-]/, $f); my $use = $fname[3]; open(IN, "gunzip -c $f |"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//g; print ">$use\.$_\n";}else{print $_;}} close IN; }' > hungate_combined_unordered_reference.fasta
+
+module load minimap2/2.6
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 hungate_combined_unordered_reference.fasta ../pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa > hungate_vs_pb_pilon.paf"
+
+## Quick test to see if they assembled any prophage that we observe in our dataset
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f hungate_vs_pb_pilon.paf -c 0 -l /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/blobtools/pacbio_pilon_viruses_ecpbreads.list
+# Nothing! Wow!
+
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 hungate_combined_unordered_reference.fasta ../pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa > hungate_vs_ilmn_megahit.paf"
+
+# and the association tab files for later use in the master table
+perl -lane 'if($F[11] > 0 && $F[10] > 100){print "$F[0]\t$F[5]";}' < hungate_vs_pb_pilon.paf | perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]);} foreach my $k (keys(%h)){print "$k\t" . join(";", @{$h{$k}}) . "\n";}' > hungate_vs_pb_pilon.assoc.condensed.tab
+perl -lane 'if($F[11] > 0 && $F[10] > 100){print "$F[0]\t$F[5]";}' < hungate_vs_ilmn_megahit.paf | perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]);} foreach my $k (keys(%h)){print "$k\t" . join(";", @{$h{$k}}) . "\n";}' > hungate_vs_ilmn_megahit.assoc.condensed.tab
+```
+
+#### Mick's RUG
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug
+
+```bash
+for i in genomes/*.fa; do echo $i; cat $i >> mick_combined_900_rug.fa; done
+
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 mick_combined_900_rug.fa ../pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa > mick_vs_pb_pilon.paf"
+
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 mick_combined_900_rug.fa ../pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa > mick_vs_ilmn_megahit.paf"
+
+# Now to generate simple association files for my master table
+perl -lane 'if($F[11] > 0 && $F[10] > 100){print "$F[0]\t$F[5]";}' < mick_vs_ilmn_megahit.paf > mick_vs_ilmn_megahit.assoc.tab
+perl -lane 'if($F[11] > 0 && $F[10] > 100){print "$F[0]\t$F[5]";}' < mick_vs_pb_pilon.paf > mick_vs_pb_pilon.assoc.tab
+
+# Concatenating the multiplehit entries by semi-colon
+perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]);} foreach my $k (keys(%h)){print "$k\t" . join(";", @{$h{$k}}) . "\n";}' < mick_vs_pb_pilon.assoc.tab > mick_vs_pb_pilon.assoc.condensed.tab
+perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]);} foreach my $k (keys(%h)){print "$k\t" . join(";", @{$h{$k}}) . "\n";}' < mick_vs_ilmn_megahit.assoc.tab > mick_vs_ilmn_megahit.assoc.condensed.tab
+```
+
+
+## Concatenating everything into master tables.
+
+My goal is to generate "master tables" of all known data about each contig. For each assembly, this includes the following information.
+
+##### Essential table data
+* Contig name
+* Length
+* GC percent
+* Alignment data
+	* From 17 datasets including the YMprep run3 illumina data
+	* Other historic rumen WGS data
+* Taxonomic assignment
+* General functional categorization (ie. FAPROTAX)
+* Binning results
+	* Metabat
+	* Hi-C
+	* DAS_tool concatenation
+* Number of predicted ORFs
+* Contains CRISPR array
+* Non-viral host with association to viral contig
+* Analog alignment in the opposite assembly
+* Alignment to Mick's RMGs
+* Alignment to Hungate 1000
+
+Blobtools has already generated tabular data on the rumen microbial data up to the taxonomic assignment. I want to generate association data on all of the other tabs and then join them all into the larger dataset. 
+
+
+#### FAPROTAX association
+
+OK, I need to format the data so that it is suitable for analysis by FAPROTAX. There is a format conversion from BIOM in the QIME package but my blobplots data is not directly convertible. Custom scripting to the rescue!
+
+> CERES: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/blobtools
+
+```bash
+perl convert_blob_to_otu_table.pl -b illumina_blobplot_all.illumina_megahit_blobplot.blobDB.table.txt -l 21 -c 23,27,31,35,39,43 -o illumina_blobplot_mock_otu_table.tab
+
+perl convert_blob_to_otu_table.pl -b pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt -l 21 -c 23,27,31,35,39,43 -o pacbio_blobplot_mock_otu_table.tab
+```
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/binaries/FAPROTAX_1.1
+
+```bash
+python2.7 collapse_table.py -i illumina_blobplot_mock_otu_table.tab -g FAPROTAX.txt -c '#' -d 'taxonomy' --omit_columns 0 --column_names_are_in last_comment_line -r illumina_report.txt -n columns_after_collapsing -v -o illumina_functional_table.tsv
+  Reading input table..
+  Loaded 8349 out of 8349 rows amongst 8350 lines, and 18 columns, from file 'illumina_blobplot_mock_otu_table.tab'
+  Reading groups..
+  Read 8563 lines from file 'FAPROTAX.txt', found 90 groups with 7820 members (4724 unique members)
+  Assigning rows to groups..
+  Collapsing table..
+  Note: No entry found for group 'arsenite_oxidation_energy_yielding'
+  Note: No entry found for group 'chlorate_reducers'
+  Note: No entry found for group 'chloroplasts'
+  Assigned 3571 records to groups, 4778 records were leftovers
+  Writing report 'illumina_report.txt'..
+
+python2.7 collapse_table.py -i pacbio_blobplot_mock_otu_table.tab -g FAPROTAX.txt -c '#' -d 'taxonomy' --omit_columns 0 --column_names_are_in last_comment_line -r pacbio_report.txt -n columns_after_collapsing -v -o pacbio_functional_table.tsv
+  Reading input table..
+  Loaded 2952 out of 2952 rows amongst 2953 lines, and 18 columns, from file 'pacbio_blobplot_mock_otu_table.tab'
+  Reading groups..
+  Read 8563 lines from file 'FAPROTAX.txt', found 90 groups with 7820 members (4724 unique members)
+  Assigning rows to groups..
+  Collapsing table..
+  Note: No entry found for group 'arsenite_oxidation_detoxification'
+  Note: No entry found for group 'arsenite_oxidation_energy_yielding'
+  Note: No entry found for group 'dissimilatory_arsenite_oxidation'
+  Note: No entry found for group 'aliphatic_non_methane_hydrocarbon_degradation'
+  Note: No entry found for group 'chlorate_reducers'
+  Note: No entry found for group 'chloroplasts'
+  Note: No entry found for group 'anoxygenic_photoautotrophy_Fe_oxidizing'
+  Assigned 1378 records to groups, 1574 records were leftovers
+  Writing collapsed table 'pacbio_functional_table.tsv'..
+  Writing report 'pacbio_report.txt'..
+```
+
+> CERES: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/blobtools
+
+```bash
+# Now to convert those report.txt files into a direct association of contig with metabolic record
+perl -e '$/ = "\#"; %h; while(<>){@lines = split(/\n/); $lines[0] =~ s/\s+//g; $lines[0] =~ s/\(.+\)\://;  for($x = 1; $x < scalar(@lines); $x++){$lines[$x] =~ s/\s+//g; if(length($lines[$x]) < 2){next;}push(@{$h{$lines[0]}}, $lines[$x]);}} foreach my $k (keys(%h)){foreach my $r (@{$h{$k}}){print "$r\t$k\n";}}' < illumina_report_shortened.txt > illumina_tax_functional_association.tab
+
+perl -e '$/ = "\#"; %h; while(<>){@lines = split(/\n/); $lines[0] =~ s/\s+//g; $lines[0] =~ s/\(.+\)\://;  for($x = 1; $x < scalar(@lines); $x++){$lines[$x] =~ s/\s+//g; if(length($lines[$x]) < 2){next;}push(@{$h{$lines[0]}}, $lines[$x]);}} foreach my $k (keys(%h)){foreach my $r (@{$h{$k}}){print "$r\t$k\n";}}' < pacbio_shortened_report.txt > pacbio_tax_functional_association.tab
+
+# Finally, process the reads the same way, but reverse associate the previous taxonomic assignments into a simple tab delimited list
+perl generate_blob_tax_functional_tab.pl -b illumina_blobplot_all.illumina_megahit_blobplot.blobDB.table.txt -c 23,27,31,35,39,43 -o illumina_megahit_contigs_functional_assign.tab -t illumina_tax_functional_association.tab
+
+perl generate_blob_tax_functional_tab.pl -b pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt -c 23,27,31,35,39,43 -o pacbio_secpilon_contigs_functional_assign.tab -t pacbio_tax_functional_association.tab
+```
