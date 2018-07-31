@@ -276,6 +276,11 @@ pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab
 45
 
 # So the illumina data shows far fewer edges between host-virus integration
+
+
+#### Preparing files for master tables ####
+perl -lane 'if($F[0] eq "VirusCtg"){next;}elsif($F[2] < 2){next;} print "$F[1]\t$F[0]\t$F[3]";' < pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab > pacbio_pilon_viruses.host.assoc.tab
+perl -lane 'if($F[0] eq "VirusCtg"){next;}elsif($F[2] < 2){next;} print "$F[1]\t$F[0]\t$F[3]";' < illumina_megahit_viruses_ecpbreads.assoc.filt.stringent.cyto.tab > illumina_megahit_viruses.host.assoc.tab
 ```
 
 ## Alignment to other generated rumen microbial datasets
@@ -339,17 +344,35 @@ My goal is to generate "master tables" of all known data about each contig. For 
 	* From 17 datasets including the YMprep run3 illumina data
 	* Other historic rumen WGS data
 * Taxonomic assignment
-* General functional categorization (ie. FAPROTAX)
+* General functional categorization (ie. FAPROTAX) 
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/blobtools/illumina_megahit_contigs_functional_assign.tab*
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/blobtools/pacbio_secpilon_contigs_functional_assign.tab*
 * Binning results
 	* Metabat
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/illumina_megahit_public_metabat.unsorted.bins*
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/pacbio_final_public_metabat.unsorted.bins*
 	* Hi-C
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/illumina_megahit_hic.unsorted.bins*
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/pacbio_final_public_hic.unsorted.bins*
 	* DAS_tool concatenation
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/illumina_megahit_dastool_DASTool_bins.tab*
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/pacbio_final_dastool_DASTool_bins.tab*
 * Number of predicted ORFs
-* Contains CRISPR array
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/prodigal/illumina_megahit_prodigal_proteins.count.tab*
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/prodigal/pacbio_final_prodigal_proteins.count.tab*
+* Contains CRISPR array **TODO**
 * Non-viral host with association to viral contig
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/blobtools/illumina_megahit_viruses.host.assoc.tab*
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/blobtools/pacbio_pilon_viruses.host.assoc.tab*
 * Analog alignment in the opposite assembly
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_vs_pacbio_minimap2.assoc.condensed.tab*
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_vs_illumina_minimap2.assoc.condensed.tab*
 * Alignment to Mick's RMGs
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_vs_ilmn_megahit.assoc.condensed.tab*
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_vs_pb_pilon.assoc.condensed.tab*
 * Alignment to Hungate 1000
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_vs_ilmn_megahit.assoc.condensed.tab*
+	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_vs_pb_pilon.assoc.condensed.tab*
 
 Blobtools has already generated tabular data on the rumen microbial data up to the taxonomic assignment. I want to generate association data on all of the other tabs and then join them all into the larger dataset. 
 
@@ -413,4 +436,191 @@ perl -e '$/ = "\#"; %h; while(<>){@lines = split(/\n/); $lines[0] =~ s/\s+//g; $
 perl generate_blob_tax_functional_tab.pl -b illumina_blobplot_all.illumina_megahit_blobplot.blobDB.table.txt -c 23,27,31,35,39,43 -o illumina_megahit_contigs_functional_assign.tab -t illumina_tax_functional_association.tab
 
 perl generate_blob_tax_functional_tab.pl -b pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt -c 23,27,31,35,39,43 -o pacbio_secpilon_contigs_functional_assign.tab -t pacbio_tax_functional_association.tab
+```
+
+#### Final data associations for master table
+
+##### Accumulating orf prediction totals
+
+> CERES: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/prodigal 
+
+```bash
+# Column 2 is the count of full protein orfs, column 3 is the count of partial protein orfs
+gunzip -c ../prodigal/illumina_megahit_prodigal_proteins.shortform.tab.gz | perl -e '<>; %p; %h; while(<>){chomp; @s = split(/\t/); @base = split(/_/, $s[0]); pop(@base); $name = join("_", @base); if(!exists($h{$name})){$h{$name} = 0;} if(!exists($p{$name})){$p{$name} = 0;} if($s[5] =~ /00/){$h{$name} += 1;}else{$p{$name} += 1;}} foreach my $ctg (sort {$a cmp $b} keys(%h)){print "$ctg\t$h{$ctg}\t$p{$ctg}\n";}' > illumina_megahit_prodigal_proteins.count.tab
+
+gunzip -c pacbio_final_prodigal_proteins.shortform.tab.gz | perl -e '<>; %p; %h; while(<>){chomp; @s = split(/\t/); @base = split(/_/, $s[0]); pop(@base); $name = join("_", @base); if(!exists($h{$name})){$h{$name} = 0;} if(!exists($p{$name})){$p{$name} = 0;} if($s[5] =~ /00/){$h{$name} += 1;}else{$p{$name} += 1;}} foreach my $ctg (sort {$a cmp $b} keys(%h)){print "$ctg\t$h{$ctg}\t$p{$ctg}\n";}' > pacbio_final_prodigal_proteins.count.tab
+
+# Simple stat collection on full protein orfs
+## PACBIO ##
+cat pacbio_final_prodigal_proteins.count.tab | cut -f2 | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   77664
+Sum:    1191681
+Minimum 0
+Maximum 663
+Average 15.344059
+Median  12
+Standard Deviation      16.430460
+Mode(Highest Distributed Value) 8
+
+## Illumina ##
+cat illumina_megahit_prodigal_proteins.count.tab | cut -f2 | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   2178467
+Sum:    3082127
+Minimum 0
+Maximum 351
+Average 1.414815
+Median  1
+Standard Deviation      3.011941
+Mode(Highest Distributed Value) 0
+
+```
+
+##### Alignment to other assembly
+
+> CERES: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project
+
+```bash
+module load minimap2/2.6
+
+# Pacbio as reference
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa illumina_megahit/illumina_megahit_final_contigs.perl.fa > illumina_vs_pacbio_minimap2.paf"
+
+# Illumina as reference
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 illumina_megahit/illumina_megahit_final_contigs.perl.fa pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa > pacbio_vs_illumina_minimap2.paf"
+
+# And the association tab file generation
+perl -lane 'if($F[11] > 0 && $F[10] > 100){print "$F[0]\t$F[5]";}' < illumina_vs_pacbio_minimap2.paf | perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]);} foreach my $k (keys(%h)){print "$k\t" . join(";", @{$h{$k}}) . "\n";}' > illumina_vs_pacbio_minimap2.assoc.condensed.tab
+perl -lane 'if($F[11] > 0 && $F[10] > 100){print "$F[0]\t$F[5]";}' < pacbio_vs_illumina_minimap2.paf | perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]);} foreach my $k (keys(%h)){print "$k\t" . join(";", @{$h{$k}}) . "\n";}' > pacbio_vs_illumina_minimap2.assoc.condensed.tab
+```
+
+#### Generation of master table files using JSON python script
+
+OK, I have tabulated nearly every extraneous data file and now I can reformat the tables. First, let's preprocess the blobtools data tables before adding the data in.
+
+> CERES: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+cp ../blobtools/illumina_blobplot_all.illumina_megahit_blobplot.blobDB.table.txt ./illumina_preliminary_blobtools_table.tab
+cp ../blobtools/pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt ./pacbio_preliminary_blobtools_table.tab
+
+# I used vim to remove the superceeding comment lines at the top of the file
+
+# OK, after some fumbling through Python's non-intuitive json interface, I think I managed to concatenate everything!
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j pacbio_data_files.json -t pacbio_preliminary_blobtools_table.tab -o pacbio_final_pilon_master_table_2018_07_31.tab
+
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j illumina_data_files.json -t illumina_preliminary_blobtools_table.tab -o illumina_megahit_master_table_2018_07_31.tab
+```
+
+
+#### Gathering stats on major elements of the master tables.
+
+> CERES: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```R
+data <- read.delim("pacbio_final_pilon_master_table_2018_07_31.tab", header=TRUE)
+summary(data)
+
+# Here are the noteworthy stats in full tables
+          name           length             GC               N
+ tig00000002:    1   Min.   :  1044   Min.   :0.1544   Min.   :0.00e+00
+ tig00000003:    1   1st Qu.:  6622   1st Qu.:0.4313   1st Qu.:0.00e+00
+ tig00000004:    1   Median :  9916   Median :0.4898   Median :0.00e+00
+ tig00000005:    1   Mean   : 13859   Mean   :0.4795   Mean   :2.57e-05
+ tig00000009:    1   3rd Qu.: 15798   3rd Qu.:0.5363   3rd Qu.:0.00e+00
+ tig00000012:    1   Max.   :710205   Max.   :0.9799   Max.   :1.00e+00
+ (Other)    :77664
+
+      cov6                cov7             cov_sum         superkingdom.t.24
+ Min.   :   0.0000   Min.   :   0.000   Min.   :     0.8   Archaea  :  943
+ 1st Qu.:   0.0000   1st Qu.:   0.149   1st Qu.:    99.6   Bacteria :72099
+ Median :   0.0000   Median :   0.479   Median :   235.0   Eukaryota:  757
+ Mean   :   0.0344   Mean   :  14.256   Mean   :   460.8   no-hit   : 3755
+ 3rd Qu.:   0.0000   3rd Qu.:   2.549   3rd Qu.:   535.1   Viruses  :  116
+ Max.   :1455.9300   Max.   :7501.035   Max.   :343451.0
+
+                                                                 TaxFuncCategory
+ N/A                                                                     :33914
+ animal_parasites_or_symbionts                                           :16891
+ fermentation;chemoheterotrophy                                          :11710
+ fermentation;chemoheterotrophy;xylanolysis;animal_parasites_or_symbionts: 3583
+ fermentation;chemoheterotrophy;animal_parasites_or_symbionts            : 1953
+ fermentation;chemoheterotrophy;cellulolysis                             : 1267
+ (Other)                                                                 : 8352
+   MetabatBin        HiCBin          DASBin       CompleteORFs
+ NOBIN  :34496   NOBIN  :14599   NOBIN  :68760   Min.   :  0.00
+ 292    : 1348   215    :  410   504    :  320   1st Qu.:  7.00
+ 632    :  717   173    :  312   194    :  283   Median : 12.00
+ 365    :  681   186    :  310   269    :  261   Mean   : 15.34
+ 108    :  542   86     :  310   542    :  234   3rd Qu.: 18.00
+ 188    :  457   128    :  305   372    :  229   Max.   :663.00
+ (Other):39429   (Other):61424   (Other): 7583
+
+
+# And the illumina data
+data <- read.delim("illumina_megahit_master_table_2018_07_31.tab", header=TRUE)
+```
+
+#### PacBio assembly Master Table Noteworthy stats
+
+| Attribute | Value | Description |
+| :--- | :--- | :--- |
+| Max Len | 710,205 | Max Contig len |
+| Median Len | 9,916 | Median Contig len |
+| Tax No-hits | 3,755 | Contigs with no Diamond taxonomic hit assignments |
+| FAPROTAX No-hits | 33,914 | Contigs with no FAPROTAX metabolic summaries|
+| Metabat NoBIN | 34,496 | Contigs with no assigned Metabat bins |
+| Hi-C NoBIN | 14,599 | Contigs with no assigned Hi-C bins |
+| DAStool NoBin| 68,760 | Contigs with no assigned DASTools bin |
+| Max ORF count | 663 | The maximum number of complete ORFs found in one contig |
+| Not found in Ilmn | 796 | The count of contigs with no large alignments in the Illumina dataset |
+| Not found in MICK | 25,056 | Contigs with no large alignments in the MICK RMG dataset |
+| Not found in Hungate | 45,389 | Contigs with no large alignments in the Hungate 1000 dataset|
+
+#### Illumina assembly Master Table Noteworthy stats
+
+| Attribute | Value | Description |
+| :--- | :--- | :--- |
+| Max Len | 320,393 | Max Contig len |
+| Median Len | 1,583 | Median Contig len |
+| Tax No-hits | 598,994 | Contigs with no Diamond taxonomic hit assignments |
+| FAPROTAX No-hits | 1,365,778 | Contigs with no FAPROTAX metabolic summaries|
+| Metabat NoBIN | 1,998,861 | Contigs with no assigned Metabat bins |
+| Hi-C NoBIN | 1,998,861 | Contigs with no assigned Hi-C bins |
+| DAStool NoBin| 2,133,769 | Contigs with no assigned DASTools bin |
+| Max ORF count | 351 | The maximum number of complete ORFs found in one contig |
+| Not found in Pacbio | 1,474,099 | The count of contigs with no large alignments in the Pacbio dataset |
+| Not found in MICK | 1,624,079 | Contigs with no large alignments in the MICK RMG dataset |
+| Not found in Hungate | 1,955,529 | Contigs with no large alignments in the Hungate 1000 dataset|
+
+#### Finding additional values for the manuscript
+
+This is a collection of methods for me to try to find very obvious associations in the data for use in the manuscript.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/master_tables
+
+```bash
+# Simple trick to find index of columns for association
+head -n 1 illumina_megahit_master_table_2018_07_31.tab | perl -lane 'for($x = 0; $x < scalar(@F); $x++){print "$F[$x]\t$x";}'
+
+# First, DASTool bins compared to previously observed datasets
+# Vs Micks
+perl -ne '@F = split(/\t/); if($F[0] eq "name"){next;}elsif($F[50] ne "NOBIN"){print "$F[56]\n";}' < illumina_megahit_master_table_2018_07_31.tab | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 | less
+# All accounted for in Mick's dataset
+
+# Vs Hungate
+perl -ne '@F = split(/\t/); if($F[0] eq "name"){next;}elsif($F[50] ne "NOBIN"){print "$F[57]\n";}' < illumina_megahit_master_table_2018_07_31.tab | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 | less
+# again, all accounted for. 
+
+# Vs PacBio
+perl -ne '@F = split(/\t/); if($F[0] eq "name"){next;}elsif($F[50] ne "NOBIN"){print "$F[55]\n";}' < illumina_megahit_master_table_2018_07_31.tab | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 | less
+# Again, all accounted for.
+
+# Let's see this in the pacbio dataset
+perl -ne '@F = split(/\t/); if($F[0] eq "name"){next;}elsif($F[50] ne "NOBIN"){print "$F[56]\n";}' < pacbio_final_pilon_master_table_2018_07_31.tab | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 | less
+perl -ne '@F = split(/\t/); if($F[0] eq "name"){next;}elsif($F[50] ne "NOBIN"){print "$F[57]\n";}' < pacbio_final_pilon_master_table_2018_07_31.tab | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 | less
+perl -ne '@F = split(/\t/); if($F[0] eq "name"){next;}elsif($F[50] ne "NOBIN"){print "$F[55]\n";}' < pacbio_final_pilon_master_table_2018_07_31.tab | perl /mnt/nfs/nfs2/bickhart-users/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 | less
+
+# Nothing! Looks like all of the DAStool bins are fully accounted for in already observed data. Let's try the hic bins instead
+# Nothing again. Let's try a correlation style analysis instead
+
 ```
