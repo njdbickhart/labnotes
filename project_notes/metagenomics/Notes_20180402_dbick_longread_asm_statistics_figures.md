@@ -1293,6 +1293,8 @@ python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkm
 sbatch --nodes=1 --mem=15000 --ntasks-per-node=2 -p assemble3 --wrap="jellyfish histo -o pacbio_error_corrected_21mer.high.histo -t 10 --high=10000000 pacbio_error_corrected_21mer"
 
 ls illumina_run3_21mer.high.histo pacbio_error_corrected_21mer.high.histo > histos_list.tab
+for i in `seq 1 6`; do python /mnt/nfs/nfs2/bickhart-users/binaries/kmerspectrumanalyzer/scripts/plotkmerspectrum.py -l histos_list.tab -w png -g $i; done
+
 ```
 
 

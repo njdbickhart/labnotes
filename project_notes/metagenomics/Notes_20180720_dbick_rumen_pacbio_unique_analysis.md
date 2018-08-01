@@ -163,6 +163,10 @@ sbatch --nodes=1 --mem=500000 --ntasks-per-node=20 -p assemble3 --wrap="/mnt/nfs
 /mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat plot density -o illumina_run3_illumina_asm.density.png -x 150 illumina_run3_illumina_asm-main.mx
 /mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat plot density -o illumina_run3_pbpilon_asm.density.png -x 150 illumina_run3_pbpilon_asm-main.mx
 
+# Now pacbio kmer vs illumina
+sbatch --nodes=1 --mem=500000 --ntasks-per-node=20 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat comp -t 20 -o pacbio_ecreads_illumina_asm ../error_corrected_reads/rumen_pacbio_corrected.fasta.gz ../illumina_usda_accumulated/mick_megahit_final_full.rfmt.fa"
+# And pacbio kmer vs pacbio
+sbatch --nodes=1 --mem=500000 --ntasks-per-node=20 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat comp -t 20 -o pacbio_ecreads_pbpilon_asm ../error_corrected_reads/rumen_pacbio_corrected.fasta.gz ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa"
 
 # Finally, generating kat sect plots for everything
 sbatch --nodes=1 --mem=500000 --ntasks-per-node=40 -p assemble3 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/KAT/src/kat sect -o illumina_run3_pbpilon_asm-sect -t 40 -E ../pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa YMPrepCannula_run3_L2_R1.fastq.gz YMPrepCannula_run3_L2_R2.fastq.gz YMPrepCannula_run3_L3_R1.fastq.gz YMPrepCannula_run3_L3_R2.fastq.gz YMPrepCannula_run3_L4_R1.fastq.gz YMPrepCannula_run3_L4_R2.fastq.gz"
@@ -622,5 +626,65 @@ perl -ne '@F = split(/\t/); if($F[0] eq "name"){next;}elsif($F[50] ne "NOBIN"){p
 
 # Nothing! Looks like all of the DAStool bins are fully accounted for in already observed data. Let's try the hic bins instead
 # Nothing again. Let's try a correlation style analysis instead
+# First, let's check the pacbio unique contigs
 
+summary(data.filt[!data.filt$IlluminaCtgAligns, c(1:11)])
+     length            GC             cov17                cov1
+ Min.   : 1047   Min.   :0.1628   Min.   :     0.02   Min.   :    0.47
+ 1st Qu.: 3285   1st Qu.:0.4142   1st Qu.:     1.94   1st Qu.:    9.27
+ Median : 5776   Median :0.4899   Median :     3.03   Median :   19.45
+ Mean   : 6109   Mean   :0.4802   Mean   :   423.42   Mean   :  153.79
+ 3rd Qu.: 8163   3rd Qu.:0.5538   3rd Qu.:     4.81   3rd Qu.:   42.73
+ Max.   :31005   Max.   :0.9799   Max.   :289050.96   Max.   :43629.37
+
+ superkingdom.t.24         phylum.t.28             order.t.32
+ Archaea  :  9     Firmicutes    :389   Clostridiales   :313
+ Bacteria :571     no-hit        :212   no-hit          :212
+ Eukaryota:  4     Bacteroidetes : 77   Bacteroidales   : 64
+ no-hit   :212     Actinobacteria: 29   Firmicutes-undef: 28
+ Viruses  :  0     Proteobacteria: 26   Eggerthellales  : 20
+                   Spirochaetes  : 14   Spirochaetales  : 14
+                   (Other)       : 49   (Other)         :145
+          family.t.36                  genus.t.40
+ no-hit         :212   no-hit               :212
+ Lachnospiraceae:120   Lachnospiraceae-undef: 50
+ Ruminococcaceae: 63   Clostridium          : 48
+ Clostridiaceae : 55   Ruminococcus         : 33
+ Eubacteriaceae : 34   Eubacterium          : 30
+ Prevotellaceae : 33   Firmicutes-undef     : 28
+ (Other)        :279   (Other)              :395
+                        species.t.44 TaxFuncCategory
+ no-hit                       :212   Mode :logical
+ Clostridiales bacterium      : 12   FALSE:543
+ Sphingobacteriaceae bacterium:  7   TRUE :253
+ Denitrobacterium detoxificans:  6   NA's :0
+ Ruminococcus albus           :  6
+ Ruminococcus sp. YE71        :  6
+ (Other)                      :547
+
+# So, most of these have read coverage and only 212 have no taxonomic assignment
+summary(data.filt[!data.filt$IlluminaCtgAligns, c(12:17, 19,20)])
+ MetabatBin        HiCBin          DASBin         CompleteORFs
+ Mode :logical   Mode :logical   Mode :logical   Min.   : 0.000
+ FALSE:711       FALSE:546       FALSE:770       1st Qu.: 4.000
+ TRUE :85        TRUE :250       TRUE :26        Median : 9.000
+ NA's :0         NA's :0         NA's :0         Mean   : 9.907
+                                                 3rd Qu.:14.000
+                                                 Max.   :54.000
+  PartialORFs    ViralContig     MICKRMGAligns   Hungate1000Aligns
+ Min.   :0.000   Mode :logical   Mode :logical   Mode :logical
+ 1st Qu.:1.000   FALSE:796       FALSE:682       FALSE:748
+ Median :1.000   NA's :0         TRUE :114       TRUE :48
+ Mean   :1.041                   NA's :0         NA's :0
+ 3rd Qu.:2.000
+ Max.   :2.000
+
+# Most (682 - 748) haven't been seen before and have complete ORFs! And are binned! Let's how the binned population turns out
+sum(data.filt[!data.filt$IlluminaCtgAligns & data.filt$DASBin & !data.filt$MICKRMGAligns,c(1)])
+[1] 137992  # <- 137,992 bases of sequence that have DASbins and not found in Mick's dataset
+
+# Most at the higher GC spectrum end. High coverage in cov1 and cov17 libraries. All bacteria. Most Firmicutes. Some of these could be plasmid dna? No viruses
+
+# Let's see the "no-hit" super-kingdom results
+# 3755 contigs. Generally, lower GC hits. high cov17 and cov1 values. 59 DASBins and 1589 Hi-CBined contigs. Max 111 complete ORFs. 212 aren't present in the Illumina dataset. 8 are viral hosts. 349 found in Mick. 25 found in Hungate 1000
 ```
