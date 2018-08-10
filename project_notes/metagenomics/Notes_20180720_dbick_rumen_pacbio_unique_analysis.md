@@ -124,8 +124,75 @@ Mode(Highest Distributed Value) 3380
 # some of these are large contigs! Let's see what they look like; Allot of no-hits, but some definite taxa
 # OK, let's see if any of these ended up in bins
 perl -lane 'if($F[0] =~ /^#/){next;}elsif($F[22] <= 235 && $F[9] <=  1){print $_;}' < pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt | perl -lane 'print $F[0];' > pacbio_low_illumina_cov_ctgs.list
-```
 
+# Progressively adding stats to the tables
+perl -ne 'chomp; @F = split(/\t/); if($F[55] eq "-"){print "$F[1]\n";}' < pacbio_final_pilon_master_table_2018_07_31.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+perl -ne 'chomp; @F = split(/\t/); if($F[55] eq "-" && $F[56] eq "-"){print "$F[1]\n";}' < pacbio_final_pilon_master_table_2018_07_31.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+perl -ne 'chomp; @F = split(/\t/); if($F[55] eq "-" && $F[56] eq "-" && $F[57] eq "-"){print "$F[1]\n";}' < pacbio_final_pilon_master_table_2018_07_31.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+```
+#### Pacbio Unique contig count table
+
+| Combination | Count | Total BP | Min BP | Max BP | Avg BP | Median BP |
+| :---------- | -----:| --------:|-------:|-------:|-------:|----------:|
+|-Ilmn        | 796   | 4862643  | 1047   | 31005  | 6108   | 5776      |
+|-Ilmn -RMG   | 682   | 4089505  | 1047   | 31005  | 5996   | 5700      |
+|-Ilmn -RMG -H| 655   | 3919783  | 1047   | 31005  | 5984   | 5649      |
+
+```bash
+# I need comparisons, so let's do the same for the Illumina side
+perl -ne 'chomp; @F = split(/\t/); if($F[55] eq "-"){print "$F[1]\n";}' < illumina_megahit_master_table_2018_07_31.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+perl -ne 'chomp; @F = split(/\t/); if($F[55] eq "-" && $F[56] eq "-"){print "$F[1]\n";}' < illumina_megahit_master_table_2018_07_31.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+perl -ne 'chomp; @F = split(/\t/); if($F[55] eq "-" && $F[56] eq "-" && $F[57] eq "-"){print "$F[1]\n";}' < illumina_megahit_master_table_2018_07_31.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+``` 
+#### Illumina Unique contig count table
+
+| Combination |  Count |  Total BP | Min BP | Max BP | Avg BP | Median BP |
+| :---------- | ------:| ---------:|-------:|-------:|-------:|----------:|
+| -Pb         | 1474099| 2894091717| 1000   | 219586 | 1963   | 1481      |
+| -Pb -RMG    | 1279779| 2458724722| 1000   | 219586 | 1921   | 1465      |
+| -Pb -RMG -H | 1236195| 2363549480| 1000   | 219586 | 1911   | 1462      |
+
+```bash
+# calculating how much is not present in one previously published dataset vs another
+perl -ne 'chomp; @F = split(/\t/); if($F[56] ne "-" && $F[1] > 2000){print "$F[0]\n";}' < illumina_megahit_master_table_2018_07_31.tab > illumina_megahit_present_inMICK.list
+perl -ne 'chomp; @F = split(/\t/); if($F[57] ne "-" && $F[1] > 2000){print "$F[0]\n";}' < illumina_megahit_master_table_2018_07_31.tab > illumina_megahit_present_inHUN.list
+perl -lane 'if($F[1] > 2000){print $F[0];}' < ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.gt2kb.fa.fai > illumina_megahit_gt2kb.list
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl illumina_megahit_gt2kb.list illumina_megahit_present_inMICK.list illumina_megahit_present_inHUN.list
+File Number 1: illumina_megahit_gt2kb.list
+File Number 2: illumina_megahit_present_inMICK.list
+File Number 3: illumina_megahit_present_inHUN.list
+Set     Count
+1       334360
+1;2     139951
+1;2;3   73218
+1;3     26853
+2       35445
+2;3     10962
+3       7042
+
+# Hmm, something fishy with that venn. Let's try my previously created list
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa.fai -l illumina_megahit_no_other_db_aligns.gt15kb.ctgs.list -c 0 | perl -lane 'if($F[1] > 2000){print $F[1];}' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   327615
+Sum:    1134301921
+Minimum 2001
+Maximum 219586
+Average 3462.301546
+Median  2747
+Standard Deviation      2528.372692
+Mode(Highest Distributed Value) 2027
+
+# now for Pacbio
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa.fai -l pacbio_final_no_other_db_aligns.ctgs.list -c 0 | perl -lane 'print $F[1];' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   655
+Sum:    3919783
+Minimum 1047
+Maximum 31005
+Average 5984.401527
+Median  5649
+Standard Deviation      3481.092459
+Mode(Highest Distributed Value) 7263
+```
 
 ## KAT plots for asm kmer comparisons
 
@@ -479,7 +546,7 @@ Mode(Highest Distributed Value) 0
 
 ```
 
-##### Alignment to other assembly
+##### Alignment to other assemblies
 
 > CERES: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project
 
@@ -562,6 +629,50 @@ summary(data)
 
 # And the illumina data
 data <- read.delim("illumina_megahit_master_table_2018_07_31.tab", header=TRUE)
+# Noteworthy stats again:
+           name             length             GC               N
+ k127_100    :      1   Min.   :  1000   Min.   :0.0573   Min.   :0
+ k127_1000   :      1   1st Qu.:  1216   1st Qu.:0.3108   1st Qu.:0
+ k127_10000  :      1   Median :  1583   Median :0.4201   Median :0
+ k127_1000000:      1   Mean   :  2342   Mean   :0.4083   Mean   :0
+ k127_1000002:      1   3rd Qu.:  2415   3rd Qu.:0.5060   3rd Qu.:0
+ k127_1000003:      1   Max.   :320393   Max.   :0.8146   Max.   :0
+ (Other)     :2182257
+
+      cov6               cov7             cov_sum         superkingdom.t.24
+ Min.   :    0.00   Min.   :    0.00   Min.   :     2.6   Archaea  :  20620
+ 1st Qu.:    0.00   1st Qu.:    0.00   1st Qu.:    21.5   Bacteria :1503853
+ Median :    0.00   Median :    0.03   Median :    53.0   Eukaryota:  57227
+ Mean   :    0.01   Mean   :    4.12   Mean   :   163.2   no-hit   : 598994
+ 3rd Qu.:    0.00   3rd Qu.:    0.11   3rd Qu.:   142.9   undef    :     32
+ Max.   :22747.03   Max.   :38175.30   Max.   :373395.2   Viruses  :   1537
+
+                                                                 TaxFuncCategory
+ N/A                                                                     :1365778
+ fermentation;chemoheterotrophy                                          : 251542
+ animal_parasites_or_symbionts                                           : 249208
+ fermentation;chemoheterotrophy;xylanolysis;animal_parasites_or_symbionts:  46614
+ chemoheterotrophy;aerobic_chemoheterotrophy                             :  36805
+ fermentation;chemoheterotrophy;xylanolysis;cellulolysis                 :  34543
+ (Other)                                                                 : 197773
+
+   MetabatBin          HiCBin            DASBin         CompleteORFs
+ NOBIN  :1795096   NOBIN  :1998861   NOBIN  :2133769   Min.   :  0.000
+ 1393   :  32608   1145   :   1426   204    :   1392   1st Qu.:  0.000
+ 659    :  17345   16     :   1392   450    :   1011   Median :  1.000
+ 164    :  14025   1117   :   1306   1130   :    691   Mean   :  1.412
+ 1256   :   8064   1288   :   1299   177    :    690   3rd Qu.:  2.000
+ 634    :   7627   2285   :   1278   1096   :    673   Max.   :351.000
+ (Other): 307498   (Other): 176701   (Other):  44037
+  PartialORFs          ViralContig              ViralClass
+ Min.   :0.000   -           :2182190   -            :2182190
+ 1st Qu.:1.000   k127_176453 :      3   Phikzvirus   :     32
+ Median :2.000   k127_1792982:      3   C5virus      :      8
+ Mean   :1.439   k127_2201563:      3   Cp8virus     :      6
+ 3rd Qu.:2.000   k127_162296 :      2   Schizot4virus:      6
+ Max.   :2.000   k127_75260  :      2   N4virus      :      5
+                 (Other)     :     60   (Other)      :     16
+
 ```
 
 #### PacBio assembly Master Table Noteworthy stats
@@ -688,3 +799,476 @@ sum(data.filt[!data.filt$IlluminaCtgAligns & data.filt$DASBin & !data.filt$MICKR
 # Let's see the "no-hit" super-kingdom results
 # 3755 contigs. Generally, lower GC hits. high cov17 and cov1 values. 59 DASBins and 1589 Hi-CBined contigs. Max 111 complete ORFs. 212 aren't present in the Illumina dataset. 8 are viral hosts. 349 found in Mick. 25 found in Hungate 1000
 ```
+
+## Hacking together a Krona diagram
+
+I want to do one more visualization for the team.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/master_tables
+
+```bash
+# reformatting taxonomic affiliation and printing counts to file
+perl -ne '@F = split(/\t/); @b = ("root"); @t = (23,27,31,35,39,43); foreach my $k (@t){push(@b, $F[$k]);} print join(";", @b) . "\n";' < illumina_megahit_master_table_2018_07_31.tab | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 > illumina_megahit_master_table_tax.labels
+
+perl -e '<>; while(<>){chomp; @s = split(/\t/); @b = split(/\;/, $s[0]); print "$s[1]\t" . join("\t", @b); print "\n";}' < illumina_megahit_master_table_tax.labels > illumina_megahit_master_table_tax.ktinput
+/mnt/nfs/nfs2/bickhart-users/binaries/KronaTools-2.7/bin/bin/ktImportText -o illumina_megahit_master_table_tax.krona.html -n 'root' illumina_megahit_master_table_tax.ktinput
+
+# That worked, let's try the pacbio now
+perl -ne '@F = split(/\t/); @b = ("root"); @t = (23,27,31,35,39,43); foreach my $k (@t){push(@b, $F[$k]);} print join(";", @b) . "\n";' < pacbio_final_pilon_master_table_2018_07_31.tab |  perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f stdin -c 0 > pacbio_final_pilon_master_table_tax.labels
+
+perl -e '<>; while(<>){chomp; @s = split(/\t/); @b = split(/\;/, $s[0]); print "$s[1]\t" . join("\t", @b); print "\n";}' < pacbio_final_pilon_master_table_tax.labels > pacbio_final_pilon_master_table_tax.ktinput
+/mnt/nfs/nfs2/bickhart-users/binaries/KronaTools-2.7/bin/bin/ktImportText -o pacbio_final_pilon_master_table_tax.krona.html -n 'root' pacbio_final_pilon_master_table_tax.ktinput
+```
+
+## Generating annotation of prodigal identified ORFS
+
+The goal of this exercise is to generate a listing of COGs, KEGGs and Go terms for both assemblies and to see what proportion of unique entries are present in the pacbio data.
+
+> Ceres: ~/rumen_metagenome_assembly_project/binaries/eggnogmapper
+
+```bash
+# Downloading eggnogmapper databases
+python download_eggnog_data.py euk bact arch viruses
+```
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/eggnog
+
+```bash
+# Separating out the kingdom assignments for each ORF
+module load diamond/0.9.18 hmmer3/3.1b2
+sbatch --nodes=1 --ntasks-per-node=1 --mem=8000 -p short --wrap="perl segregate_kingdom_fastas.pl ../master_tables/illumina_megahit_master_table_2018_07_31.tab 23 ../prodigal/illumina_megahit_prodigal_proteins.faa illumina_megahit"
+sbatch --nodes=1 --ntasks-per-node=1 --mem=8000 -p short --wrap="perl segregate_kingdom_fastas.pl ../master_tables/pacbio_final_pilon_master_table_2018_07_31.tab 23 ../prodigal/pacbio_final_prodigal_proteins.faa pacbio_final"
+
+# Hmm, the version of diamond on the server is “too new” for the diamond databases used in the search
+# I'm going to use the distributed Diamond binary in the eggnog-mapper package
+export PATH=~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/bin/:$PATH
+
+# Illumina
+sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p mem --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d bact -i illumina_megahit.Bacteria.split.faa --output illumina_megahit.Bacteria.eggnog --usemem --cpu 14"
+sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p mem --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d euk -i illumina_megahit.Eukaryota.split.faa --output illumina_megahit.Eukaryota.eggnog --usemem --cpu 14"
+sbatch --nodes=1 --ntasks-per-node=15 --mem=100000 -p mem --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d arch -i illumina_megahit.Archaea.split.faa --output illumina_megahit.Archaea.eggnog --usemem --cpu 14"
+
+# PacBio
+sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p mem --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d bact -i pacbio_final.Bacteria.split.faa --output pacbio_final.Bacteria.eggnog --usemem --cpu 14"
+sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p short --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d euk -i pacbio_final.Eukaryota.split.faa --output pacbio_final.Eukaryota.eggnog --usemem --cpu 14"
+sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p short --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d arch -i pacbio_final.Archaea.split.faa --output pacbio_final.Archaea.eggnog --usemem --cpu 14"
+
+# Now to generate the tables I need for further analysis
+for i in Eukaryota Archaea Bacteria; do echo $i; python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f pacbio_final.${i}.eggnog.emapper.annotations -c 11 -i '#' -d '\t' -m -o pacbio_final.${i}.full.cog.counts.md; done
+for i in Eukaryota Archaea Bacteria; do echo $i; python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f pacbio_final.${i}.eggnog.emapper.annotations -c 11 -i '#' -d '\t' -o pacbio_final.${i}.full.cog.counts.tab; done
+
+# Using a complex pipe to separate out the pacbio unique cogs
+# Eukaryotes
+perl -ne '@F = split(/\t/); @bsegs = split(/_/, $F[0]); pop(@bsegs); $F[0] = join("_", @bsegs); print join("\t", @F);' < pacbio_final.Eukaryota.eggnog.emapper.annotations | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -l ../master_tables/pacbio_final_no_other_db_aligns.ctgs.list -c 0 -i '#' -d '\t' | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 11 -i '#' -d '\t'
+
+
+# Bacteria
+perl -ne '@F = split(/\t/); @bsegs = split(/_/, $F[0]); pop(@bsegs); $F[0] = join("_", @bsegs); print join("\t", @F);' < pacbio_final.Bacteria.eggnog.emapper.annotations | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -l ../master_tables/pacbio_final_no_other_db_aligns.ctgs.list -c 0 -i '#' -d '\t' | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 11 -i '#' -d '\t' > pacbio_final.Bacteria.noalgn.cog.counts.tab
+
+# Archaea
+perl -ne '@F = split(/\t/); @bsegs = split(/_/, $F[0]); pop(@bsegs); $F[0] = join("_", @bsegs); print join("\t", @F);' < pacbio_final.Archaea.eggnog.emapper.annotations | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -l ../master_tables/pacbio_final_no_other_db_aligns.ctgs.list -c 0 -i '#' -d '\t' | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 11 -i '#' -d '\t' > pacbio_final.Archaea.noalgn.cog.counts.tab
+```
+
+Let's generate a precursor COG proportion plot to show how the proportions change in the pacbio unique ORFs
+
+> pwd: /home/dbickhart/share/metagenomics/pilot_manuscript/figure_drafts/eggnog
+
+```bash
+perl -e '<>; %h; $c = 0; while(<>){chomp; @s = split(/\t/); @bsegs = split(/, /, $s[0]); foreach my $k (@bsegs){$h{$k} += $s[1]; $c += $s[1];}} foreach my $k (sort{$a cmp $b}keys(%h)){print "$k\t" . ($h{$k} / $c) . "\tFull\n";}' < pacbio_final.Bacteria.full.cog.counts.tab > pacbio_final.Bacteria.full.cog.rfmt.tab
+perl -e '<>; %h; $c = 0; while(<>){chomp; @s = split(/\t/); @bsegs = split(/, /, $s[0]); foreach my $k (@bsegs){$h{$k} += $s[1]; $c += $s[1];}} foreach my $k (sort{$a cmp $b}keys(%h)){print "$k\t" . ($h{$k} / $c) . "\tUnique\n";}' < pacbio_final.Bacteria.noalgn.cog.counts.tab > pacbio_final.Bacteria.noalgn.cog.rfmt.tab
+```
+
+```R
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+full <- read.delim("pacbio_final.Bacteria.full.cog.rfmt.tab", header=FALSE)
+unique <- read.delim("pacbio_final.Bacteria.noalgn.cog.rfmt.tab", header=FALSE)
+colnames(full) <- c("COG", "Proportion", "Type")
+colnames(unique) <- c("COG", "Proportion", "Type")
+
+combined <- bind_rows(full, unique)
+combined <- mutate(combined, Perc = percent(Proportion))
+combined <- group_by(combined, Type) %>% mutate(pos = cumsum(Proportion) - (0.5 * Proportion))
+
+ggplot(combined, aes(y=Proportion, x = Type)) + geom_bar(aes(fill = COG), stat="identity") + geom_text(aes(label = Perc, y = pos), size = 3, vjust = 0.5, hjust = 0.5) + scale_fill_manual(values = colorRampPalette(brewer.pal(8, "Accent"))(24), guide = guide_legend(nrow=2)) + theme(legend.position="bottom")
+
+dev.copy2pdf(file="pacbio_uniq_vs_full_cog_categories.pdf", useDingbats=FALSE)
+```
+
+## Misc figure and table generation
+
+These are my notes for making miscellaneous figures and tables for the manuscript.
+
+#### Figure 1 alt to blobplot
+
+I want to make a nicer alternative to a blobplot that shows the types of contigs we are assembling, and compare them to the Illumina data. I may need to muck around with formats, but it may make for a nicer plot in the end.
+
+> pwd: /home/dbickhart/share/metagenomics/pilot_manuscript/figure_drafts/master_tables
+
+```bash
+# First, reduce the size of the tables so that I can actually load the data into R!
+perl -lane 'print "$F[1]\t$F[22]\t$F[23]\tIllumina";' < illumina_megahit_master_table_2018_07_31.tab > illumina_megahit_master_table_short_form_for_plot.tab
+perl -lane 'print "$F[1]\t$F[22]\t$F[23]\tPacBio";' <  pacbio_final_pilon_master_table_2018_07_31.tab > pacbio_final_pilon_master_table_short_form_for_plot.tab
+```
+Now to try to plot them
+
+```R
+library(dplyr)
+library(ggplot2)
+
+illumina <- read.delim("illumina_megahit_master_table_short_form_for_plot.tab")
+pacbio <- read.delim("pacbio_final_pilon_master_table_short_form_for_plot.tab")
+
+
+colnames(pacbio) <- c("length", "covSum", "superKingdom", "Tech")
+colnames(illumina) <- c("length", "covSum", "superKingdom", "Tech")
+combined <- bind_rows(illumina, pacbio)
+
+ggplot(combined, aes(x = superKingdom, y = length, size = covSum, fill=Tech)) + geom_point(shape=21, position = "jitter") + theme_bw() + scale_y_log10()
+dev.copy2pdf(file="a_mess_scatterplot.pdf", useDingbats=FALSE)
+
+library(ggridges)
+combined.filt$superKingdom <- factor(combined.filt$superKingdom, levels = c("no-hit", "Viruses", "Eukaryota", "Archaea", "Bacteria"))
+ggplot(combined.filt, aes(y=superKingdom, x=length, fill=Tech)) + geom_density_ridges() + theme_bw() + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_brewer(palette="Dark2") + scale_x_log10(breaks=c(100, 1000, 10000, 100000, 500000), limits=c(500, 500000), labels=c("100", "1000", "10,000", "100,000", "500,000")) + xlab(label = "Log10 Contig Length (bp)") + ylab(label = "Contig SuperKingdom Taxonomic Assignment")
+dev.copy2pdf(file="contig_len_ridgeplots.pdf", useDingbats=FALSE)
+```
+
+#### Figure 2 Network alignment similarity plot
+
+I want to generate a network plot of mash profile similarities between our datasets, Mick's, the Hungate1000 and refseq. This should give a good estimate of how similar they all are and how much novelty we contribute. I may want to kick off refseq at first, given the huge number of novel contigs in the dataset. I'll also remove all contigs sub 2kb from our illumina dataset to reduce the size of the hash.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/mash
+
+```bash
+# First pacbio, as that is the easiest to deal with
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=20 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash sketch -i -p 20 -o pacbio_final_pilon_indv_seq_k21_s1000 ../../assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa"
+
+# Running all of Mick's genomes individually
+mkdir mick_rug
+for i in ../../assemblies/mick_rug/genomes/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch --nodes=1 --mem=2000 --ntasks-per-node=1 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash sketch -p 1 -o mick_rug/${name} $i"; done
+~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash paste mick_rug_k21_s1000_combined ./mick_rug/*.msh
+
+# Now to selectively filter the Illumina assembly
+samtools faidx ../../assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa
+samtools faidx ../../assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.gt2kb.fa
+wc -l ../../assemblies/pilot_project/illumina_megahit/*.fai
+  2182263 ../../assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.fa.fai
+   574382 ../../assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.gt2kb.fa.fai
+  2182263 ../../assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa.fai
+  4938908 total
+
+# OK, > 2kb it is!
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=20 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash sketch -i -p 20 -o illumina_megahit_gt2kb_indiv_seq_k21_s1000 ../../assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.gt2kb.fa"
+
+# OK, now to try the distance estimation
+# Serge used a cutoff of D <= 0.05 and p <=10^-10
+# Looks like I may need to estimate the distance cutoff post-facto
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash dist -p 10 -v 0.00001 -t illumina_megahit_gt2kb_indiv_seq_k21_s1000.msh pacbio_final_pilon_indv_seq_k21_s1000.msh hungate_1000.msh mick_rug_k21_s1000_combined.msh > rumen_only_mash_distance_table.tab"
+```
+
+#### Figure 3 bin quality assessment margin plots
+
+I hope that this doesn't get messy too quickly, but I'm hoping to show differences between either the two different assemblies or the different binning methods in terms of overall assembly quality.
+
+> pwd: /home/dbickhart/share/metagenomics/pilot_manuscript/figure_drafts/das_tool
+
+```R
+library(dplyr)
+library(ggplot2)
+
+# blank plot for spacing
+blankPlot <- ggplot()+geom_blank(aes(1,1))+
++   theme(
++     plot.background = element_blank(), 
++    panel.grid.major = element_blank(),
++    panel.grid.minor = element_blank(), 
++    panel.border = element_blank(),
++    panel.background = element_blank(),
++    axis.title.x = element_blank(),
++    axis.title.y = element_blank(),
++    axis.text.x = element_blank(), 
++    axis.text.y = element_blank(),
++    axis.ticks = element_blank(),
++    axis.line = element_blank()
++      )
+
+library(gridExtra)
+illumina.hic <- read.delim("illumina_megahit_dastool_HiC.eval")
+illumina.metabat <- read.delim("illumina_megahit_dastool_metabat.eval")
+pacbio.hic <- read.delim("pacbio_final_dastool_HiC.eval")
+pacbio.metabat <- read.delim("pacbio_final_dastool_metabat.eval")
+
+pacbio.hic <- mutate(pacbio.hic, Tech = c("PacBio"), Bin = c("HiC"))
+illumina.hic <- mutate(illumina.hic, Tech = c("Illumina"), Bin = c("HiC"))
+illumina.metabat <- mutate(illumina.metabat, Tech = c("Illumina"), Bin = c("MetaBat"))
+pacbio.metabat <- mutate(pacbio.metabat, Tech = c("PacBio"), Bin = c("MetaBat"))
+
+keep <- c(1,12,13,14,15)
+combined <- bind_rows(illumina.hic[,keep], illumina.metabat[,keep], pacbio.hic[,keep], pacbio.metabat[,keep])
+combined$Tech <- as.factor(combined$Tech)
+combined$Bin <- as.factor(combined$Bin)
+
+# Now the individual plots
+scatterPlot <- ggplot(combined, aes(x=SCG_completeness, y=SCG_redundancy, color=Tech)) + geom_point() + scale_color_brewer(palette="Dark2") + theme(legend.position=c(0,1), legend.justification=c(0,1))
+
+xdensity <- ggplot(combined, aes(x=SCG_completeness, fill=Tech)) + geom_density(alpha=0.5) + scale_fill_brewer(palette="Dark2") + theme(legend.position = "none")
+
+ydensity <- ggplot(combined, aes(x=SCG_redundancy, fill=Tech)) + geom_density(alpha=0.5) + scale_fill_brewer(palette="Dark2") + theme(legend.position = "none") + coord_flip()
+
+grid.arrange(xdensity, blankPlot, scatterPlot, ydensity, ncol=2, nrow=2, widths=c(4,1.4), heights = c(1.4,4))
+dev.copy2pdf(file="tech_density_scg_bins_plot.pdf", useDingbats=FALSE)
+
+# That worked out well, but the theme was still present and the X axis text was still present. I can try to change that later.
+# Now let's try a binning strategy plot instead
+scatterPlot <- ggplot(combined, aes(x=SCG_completeness, y=SCG_redundancy, color=Bin)) + geom_point() + scale_color_brewer(palette="Paired") + theme(legend.position=c(0,1), legend.justification=c(0,1))
+
+xdensity <- ggplot(combined, aes(x=SCG_completeness, fill=Bin)) + geom_density(alpha=0.5) + scale_fill_brewer(palette="Paired") + theme(legend.position = "none", axis.title.x=element_blank(), axis.text.x=element_blank())
+
+ydensity <- ggplot(combined, aes(x=SCG_redundancy, fill=Bin)) + geom_density(alpha=0.5) + scale_fill_brewer(palette="Paired") + theme(legend.position = "none", axis.title.y=element_blank(), axis.text.y=element_blank()) + coord_flip()
+
+grid.arrange(xdensity, blankPlot, scatterPlot, ydensity, ncol=2, nrow=2, widths=c(4,1.4), heights = c(1.4,4))
+dev.copy2pdf(file="binner_density_scg_bins_plot.pdf", useDingbats=FALSE)
+
+# Final attempt, generate different shapes for each technology
+scatterPlot <- ggplot(combined, aes(x=SCG_completeness, y=SCG_redundancy, color=Bin)) + geom_point(aes(shape=Tech)) + scale_color_brewer(palette="Paired") + theme(legend.position=c(0,1), legend.justification=c(0,1))
+grid.arrange(xdensity, blankPlot, scatterPlot, ydensity, ncol=2, nrow=2, widths=c(4,1.4), heights = c(1.4,4))
+dev.copy2pdf(file="binner_density_scg_bins_plot_plustech.pdf", useDingbats=FALSE)
+```
+
+#### Redoing the CRISPR counts figure
+
+I will need to do this again after I recalculate the CRISPR arrays on the frozen assemblies, but let's make a good placeholder plot in the meantime.
+
+> pwd: ~/share/metagenomics/pilot_manuscript/figure_drafts/raw_stats
+
+```R
+# Using previously saved workspace
+ggplot(total, aes(x=Dataset, y=Count, color=Dataset)) + geom_violin(trim=FALSE) + geom_jitter(shape=16, position=position_jitter(0.2), alpha=0.75) + theme_bw() + scale_fill_brewer(palette="Dark2") + scale_colour_brewer(palette="Dark2")
+
+dev.copy2pdf(file="crispr_violin_jitter_plot.pdf", useDingbats=FALSE)
+```
+
+#### Network analysis 
+
+The mash analysis is far too data intensive and is unlikely to provide us with a useful plot. I want to plot the interactions between our two datasets with each other (Illumina + Pacbio) and with the previously posted Hungate and Mick RUG datasets. 
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/network
+
+```bash
+# Generating large-scale binary association files
+perl -lane 'print "$F[0] pp 913_RUG";' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_vs_pb_pilon.assoc.condensed.tab > pb_pilon_mick_align.sif
+
+perl -lane 'print "$F[0] pp 913_RUG";' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_vs_ilmn_megahit.assoc.condensed.tab > ilmn_megahit_mick_align.sif
+
+perl -lane 'print "$F[0] pp HUNGATE";' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_vs_pb_pilon.assoc.condensed.tab > pb_pilon_hungate_align.sif
+
+perl -lane 'print "$F[0] pp HUNGATE";' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_vs_ilmn_megahit.assoc.condensed.tab > ilmn_megahit_hungate_align.sif
+
+# Now the pairwise comparisons. Do I want to do this only once? Let's test first
+perl -lane '@bsegs = split(/;/, $F[1]); foreach $k (@bsegs){print $k;}' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_vs_pacbio_minimap2.assoc.condensed.tab > pb_contigs_ilmn_ref.list
+perl -lane '@bsegs = split(/;/, $F[1]); foreach $k (@bsegs){print $k;}' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_vs_illumina_minimap2.assoc.condensed.tab > ilmn_contigs_pb_ref.list
+perl -lane 'print $F[0];' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_vs_pacbio_minimap2.assoc.condensed.tab > ilmn_contigs_ilmn_ref.list
+perl -lane 'print $F[0];' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_vs_illumina_minimap2.assoc.condensed.tab > pb_contigs_pb_ref.list
+
+perl -lane 'print $F[0];' < ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa.fai > pb_contigs_total.list
+perl -lane 'print $F[0];' < ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa.fai > ilmn_contigs_total.list
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl pb_contigs_total.list pb_contigs_pb_ref.list pb_contigs_ilmn_ref.list
+File Number 1: pb_contigs_total.list
+File Number 2: pb_contigs_pb_ref.list
+File Number 3: pb_contigs_ilmn_ref.list
+Set     Count
+1       777
+1;2     2851
+1;2;3   74023
+1;3     19
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl ilmn_contigs_total.list ilmn_contigs_ilmn_ref.list ilmn_contigs_pb_ref.list
+File Number 1: ilmn_contigs_total.list
+File Number 2: ilmn_contigs_ilmn_ref.list
+File Number 3: ilmn_contigs_pb_ref.list
+Set     Count
+1       1461320
+1;2     286400
+1;2;3   421764
+1;3     12779
+
+# OK, so I need to include both relationships just to make sure. Also, I need to capture the unique contigs to each dataset (within reason! The Illumina junk under 2.5 kb needs to go)
+cat ilmn_megahit_hungate_align.sif ilmn_megahit_mick_align.sif | perl -lane 'print $F[0];' | sort | uniq > ilmn_ctgs_mick_hungate_align.list
+cat pb_pilon_hungate_align.sif pb_pilon_mick_align.sif | perl -lane 'print $F[0];' | sort | uniq > pb_ctgs_mick_hungate_align.list
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o ilmn_contigs_total.list ilmn_contigs_ilmn_ref.list ilmn_contigs_pb_ref.list ilmn_ctgs_mick_hungate_align.list
+File Number 1: ilmn_contigs_total.list
+File Number 2: ilmn_contigs_ilmn_ref.list
+File Number 3: ilmn_contigs_pb_ref.list
+File Number 4: ilmn_ctgs_mick_hungate_align.list
+Set     Count
+1       1231048
+1;2     119436
+1;2;3   184248
+1;2;3;4 237516
+1;2;4   166964
+1;3     5147
+1;3;4   7632
+1;4     230272
+
+mv group_1.txt ilmn_ctgs_noaligns.list
+# Let's remove all contigs that aren't larger than 2.5 kb to reduce the node list on cytoscape
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa.fai -c 0 -l ilmn_ctgs_noaligns.list | perl -lane 'if($F[1] < 2500){next;}else{print $F[0];}' > ilmn_ctgs_noaligns_gt2500.sif
+wc -l ilmn_ctgs_noaligns_gt2500.sif
+	201853 ilmn_ctgs_noaligns_gt2500.sif
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o pb_contigs_total.list pb_contigs_pb_ref.list pb_contigs_ilmn_ref.list pb_ctgs_mick_hungate_align.list
+File Number 1: pb_contigs_total.list
+File Number 2: pb_contigs_pb_ref.list
+File Number 3: pb_contigs_ilmn_ref.list
+File Number 4: pb_ctgs_mick_hungate_align.list
+Set     Count
+1       642
+1;2     669
+1;2;3   20569
+1;2;3;4 53454
+1;2;4   2182
+1;3     13
+1;3;4   6
+1;4     135
+
+mv group_1.txt pb_ctgs_noaligns.list
+# In the sake of fairness, we'll apply the same filter to the pb contigs
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa.fai -l pb_ctgs_noaligns.list -c 0 | perl -lane 'if($F[1] < 2500){next;}else{print $F[0];}' > pb_ctgs_noaligns_gt2500.sif
+wc -l pb_ctgs_noaligns_gt2500.sif
+	539 pb_ctgs_noaligns_gt2500.sif
+
+# finally, let's create the cross dataset sif files
+perl -lane '@bsegs = split(/;/, $F[1]); print "$F[0] pp " . join(" ", @bsegs);' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_vs_pacbio_minimap2.assoc.condensed.tab > ilmn_ref_pb_aligns.sif
+perl -lane '@bsegs = split(/;/, $F[1]); print "$F[0] pp " . join(" ", @bsegs);' < /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_vs_illumina_minimap2.assoc.condensed.tab > pb_ref_ilmn_aligns.sif
+
+wc -l *.sif
+  201853 ilmn_ctgs_noaligns_gt2500.sif
+  226734 ilmn_megahit_hungate_align.sif
+  558184 ilmn_megahit_mick_align.sif
+  708164 ilmn_ref_pb_aligns.sif
+     539 pb_ctgs_noaligns_gt2500.sif
+   32281 pb_pilon_hungate_align.sif
+   52614 pb_pilon_mick_align.sif
+   76874 pb_ref_ilmn_aligns.sif
+ 1857243 total
+
+# Now, making a master file
+cat *.sif > master_comparison_network_8_9_2018.sif
+
+# OK, my attempts at running a huge analysis on cytoscape crashed. Time to run it on Gephi instead!
+perl -lane 'if(scalar(@F) == 1){print "$F[0];$F[0]";}else{push(@temp, $F[0]); for($x = 2; $x < scalar(@F);$x++){push(@temp, $F[$x]);} print join(";", @temp); @temp = ()}' < master_comparison_network_8_9_2018.sif > master_comparison_network_8_9_2018.gephi.csv
+
+# OK, the graph is still far too big. Let's convert the contigs into bins instead
+perl convert_ctgs_to_bins.pl -i master_comparison_network_8_9_2018.gephi.csv -p ilmn.metabat -b ../dastool/illumina_megahit_public_metabat.unsorted.bins -o master_comparison_network_8_9_2018.ilmn.csv
+perl convert_ctgs_to_bins.pl -i master_comparison_network_8_9_2018.ilmn.csv -e 'tig' -p pb.hic -b ../dastool/pacbio_final_public_hic.unsorted.bins -o master_comparison_network_8_9_2018.ilmn.pb.csv
+
+sort master_comparison_network_8_9_2018.ilmn.pb.csv | uniq > master_comparison_network_8_9_2018.ilmn.pb.uniq.csv
+
+# Damn, It's still too big. Trying to remove all meaningless self-self dataset associations
+perl -lane '@bsegs = split(/;/, $F[0]); if($F[0] =~ /RUG/ || $F[0] =~ /HUNGATE/){print $F[0];}elsif($bsegs[0] eq $bsegs[1]){print $F[0];}elsif(scalar(@bsegs) == 2){$fn = substr($bsegs[0], 0, 2); $sn = substr($bsegs[1], 0, 2); if($fn eq $sn){print $F[0];}}' < master_comparison_network_8_9_2018.ilmn.pb.uniq.csv > master_comparison_network_8_9_2018.ilmn.pb.uniq.supcrop.csv
+
+# OK, so lessons learned -- stick to only the important nodes! 
+# Also, I need to use a better heuristic (not a repeated frequency scan) to condense the relationships I want to display in the graph
+
+# Let's start over, albeit in a bin-oriented fashion
+perl -ne 'chomp; @F = split(/\t/); if($F[49] ne "NOBIN" && $F[0] ne "name"){$F[49] = "pb.hic.$F[49]"; $F[56] = ($F[56] ne "-")? "913_RMG" : "-"; $F[57] = ($F[57] ne "-")? "HUNGATE" : "-"; if($F[56] eq "-" && $F[57] eq "-"){$F[56] = $F[49]; $F[57] = "";} print "$F[49]\t$F[56]\t$F[57]\n";}' < ../master_tables/pacbio_final_pilon_master_table_2018_07_31.tab | sort | uniq > pb_hic_bin_outside_db_relationship.tab
+
+perl -e '%keep = ("913_RMG" => 1, "HUNGATE" => 1); %h; while(<>){chomp; @s = split(/\t/); for($x = 1; $x < scalar(@s); $x++){if($s[$x] ne "-"){$h{$s[0]}->{$s[$x]} = 1;}}} foreach my $bin (keys(%h)){my @assoc = (keys(%{$h{$bin}})); print "$bin"; foreach my $i (@assoc){if(scalar(@assoc) > 1 && $i ne $bin){print "\t$i";}elsif(scalar(@assoc) == 1){print "\t$i";}} print "\n";}' < pb_hic_bin_outside_db_relationship.tab > pb_hic_bin_outside_db_relationship.uniq.tab
+perl -lane 'print join(";", @F);' < pb_hic_bin_outside_db_relationship.uniq.tab > pb_hic_bin_outside_db_relationship.uniq.csv
+
+# I can actually load these into cytoscape now!
+perl -lane 'for($x = 1; $x < scalar(@F); $x++){print "$F[0]\tpp\t$F[$x]";}' < pb_hic_bin_outside_db_relationship.uniq.tab > pb_hic_bin_outside_db_relationship.uniq.cyto.tab
+
+# Now to do this for the Illumina megahit dataset
+perl -ne 'chomp; @F = split(/\t/); if($F[48] ne "NOBIN" && $F[0] ne "name"){$F[48] = "ilmn.metab.$F[48]"; $F[56] = ($F[56] ne "-")? "913_RMG" : "-"; $F[57] = ($F[57] ne "-")? "HUNGATE" : "-"; if($F[56] eq "-" && $F[57] eq "-"){$F[56] = $F[48]; $F[57] = "";} print "$F[48]\t$F[56]\t$F[57]\n";}' < ../master_tables/illumina_megahit_master_table_2018_07_31.tab | sort | uniq > ilmn_metab_bin_outside_db_relationship.tab
+
+perl -e '%keep = ("913_RMG" => 1, "HUNGATE" => 1); %h; while(<>){chomp; @s = split(/\t/); for($x = 1; $x < scalar(@s); $x++){if($s[$x] ne "-"){$h{$s[0]}->{$s[$x]} = 1;}}} foreach my $bin (keys(%h)){my @assoc = (keys(%{$h{$bin}})); print "$bin"; foreach my $i (@assoc){if(scalar(@assoc) > 1 && $i ne $bin){print "\t$i";}elsif(scalar(@assoc) == 1){print "\t$i";}} print "\n";}' < ilmn_metab_bin_outside_db_relationship.tab > ilmn_metab_bin_outside_db_relationship.uniq.tab
+
+perl -lane 'for($x = 1; $x < scalar(@F); $x++){print "$F[0]\tpp\t$F[$x]";}' < ilmn_metab_bin_outside_db_relationship.uniq.tab > ilmn_metab_bin_outside_db_relationship.uniq.cyto.tab
+```
+
+#### Quick alignment of Itzik's rumen plasmidome dataset
+
+I saw that Itzik had previously sequenced and assembled portions of the "plasmidome." I'd like to see how much of this is represented in our dataset as well. The MGRast accessions are [here](http://www.mg-rast.org/mgmain.html?mgpage=project&project=mgp505).
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mgrast_rumen_plasmidome
+
+```bash
+# Gathering general size information
+samtools faidx 19988.fna
+perl -lane 'print $F[1];' < 19988.fna.fai | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   5771
+Sum:    2710501
+Minimum 100
+Maximum 7779
+Average 469.676139
+Median  170
+Standard Deviation      712.562593
+Mode(Highest Distributed Value) 100
+
+
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=3 -p short --wrap="minimap2 -x asm5 ../pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa 19988.fna > itzik_plasmid_vs_pacbio.paf"
+
+perl -lane 'if($F[11] > 0){print $_;}' < itzik_plasmid_vs_pacbio.paf | wc -l
+239 <- alignments with MAPQ > 0
+perl -lane 'if($F[11] > 0){print $F[5];}' < itzik_plasmid_vs_pacbio.paf | sort | uniq | wc -l
+179 <- # unique pacbio contigs
+
+perl -lane 'if($F[11] > 0){print $F[5];}' < itzik_plasmid_vs_pacbio.paf | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0
+Entry   Value
+tig00122470     10	<- 4kb contig 
+tig00178536     9   <- 2.7 kb contig
+tig00125079     6   <- 3.2 kb contig
+tig00082331     5
+tig00020805     5
+tig00137488     4
+tig00000072     3
+tig00044700     3
+tig00499823     3
+tig00139131     2
+tig00150954     2
+tig00104376     2
+tig00033950     2
+tig02637158     2
+tig00002986     2
+tig00008812     2
+tig00054211     2
+tig00059277     2
+tig00039471     2
+tig00072063     2
+...
+
+perl -lane 'if($F[11] > 0){print $F[5];}' < itzik_plasmid_vs_pacbio.paf | sort | uniq > itzik_plasmid_vs_pacbio.pbctgs.gtzero.list
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ../../analysis/master_tables/pacbio_final_pilon_master_table_2018_07_31.tab -l itzik_plasmid_vs_pacbio.pbctgs.gtzero.list -c 0 | perl -lane 'print $F[1];' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   179
+Sum:    5552721
+Minimum 1351
+Maximum 414595
+Average 31020.787709
+Median  16273
+Standard Deviation      48824.597125
+Mode(Highest Distributed Value) 23649
+
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=3 -p short --wrap="minimap2 -x asm5 ../pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa 19988.fna > itzik_plasmid_vs_ilmn.paf"
+perl -lane 'if($F[11] > 0){print $_;}' < itzik_plasmid_vs_ilmn.paf | wc -l
+1676 <- alignments with MapQ > 0
+perl -lane 'if($F[11] > 0){print $F[5];}' < itzik_plasmid_vs_ilmn.paf | sort | uniq | wc -l
+832 <- unique illumina contigs
+
+perl -lane 'if($F[11] > 0){print $F[5];}' < itzik_plasmid_vs_ilmn.paf | sort | uniq > itzik_plasmid_vs_ilmn.ilmctgs.gtzero.list
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ../../analysis/master_tables/illumina_megahit_master_table_2018_07_31.tab -l  itzik_plasmid_vs_ilmn.ilmctgs.gtzero.list -c 0 | perl -lane 'print $F[1];' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   832
+Sum:    3017981
+Minimum 1002
+Maximum 180507
+Average 3627.381010
+Median  2010
+Standard Deviation      7700.645672
+Mode(Highest Distributed Value) 1287
+```
+
+OK, I think that Itzik's plasmid sequence was contaminated or we've got some plasmid integration/chimerism in our assembly. What is interesting is that the pacbio assembly hits are fewer but tend to be larger contigs than the illumina. 

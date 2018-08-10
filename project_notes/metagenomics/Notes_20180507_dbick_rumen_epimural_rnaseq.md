@@ -46,4 +46,7 @@ sbatch --nodes=1 --mem=75000 --ntasks-per-node=10 -p medium --wrap="Trinity --se
 
 # That ran out of memory! It's because I have around 150 million read pairs and I need 1 gig per read pair
 sbatch --nodes=1 --mem=151000 --ntasks-per-node=15 -p mem --wrap="Trinity --seqType fq --max_memory 150G --CPU 15 --trimmomatic --output trinity_epimural_highmem --samples_file trinity_rna_replicates.reformat.tab"
+
+# Damn, even that ran out of memory!
+module load bedtools samtools salmon trinityrnaseq/2.6.6; sbatch --nodes=1 --mem=300000 --ntasks-per-node=15 -p mem --wrap="Trinity --seqType fq --max_memory 300G --CPU 15 --trimmomatic --output trinity_epimural_highermem --samples_file trinity_rna_replicates.reformat.tab"
 ```
