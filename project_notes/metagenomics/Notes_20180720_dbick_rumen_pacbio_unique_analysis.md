@@ -1272,3 +1272,37 @@ Mode(Highest Distributed Value) 1287
 ```
 
 OK, I think that Itzik's plasmid sequence was contaminated or we've got some plasmid integration/chimerism in our assembly. What is interesting is that the pacbio assembly hits are fewer but tend to be larger contigs than the illumina. 
+
+#### Generating contigs per bin plots
+
+> pwd: share/metagenomics/pilot_manuscript/figure_drafts/das_tool/
+
+```bash
+library(dplyr)
+library(ggplot2)
+
+bins.ilmn.meta <- read.delim("illumina_megahit_dastool_metabat.eval")
+bins.pac.meta <- read.delim("pacbio_final_dastool_metabat.eval")
+bins.ilmn.hic <- read.delim("illumina_megahit_dastool_HiC.eval")
+bins.pac.hic <- read.delim("pacbio_final_dastool_HiC.eval")
+
+bins.ilmn.meta <- mutate(bins.ilmn.meta, Tech = "Illumina")
+bins.ilmn.hic <- mutate(bins.ilmn.hic, Tech = "Illumina")
+bins.pac.meta <- mutate(bins.pac.meta, Tech = "PacBio")
+bins.pac.hic <- mutate(bins.pac.hic, Tech = "PacBio")
+bins.ilmn.meta <- mutate(bins.ilmn.meta, Bin = "MetaBat")
+bins.ilmn.hic <- mutate(bins.ilmn.hic, Bin = "HiC")
+bins.pac.meta <- mutate(bins.pac.meta, Bin = "MetaBat")
+bins.pac.hic <- mutate(bins.pac.hic, Bin = "HiC")
+combined <- bind_rows(bins.ilmn.meta, bins.ilmn.hic, bins.pac.meta, bins.pac.hic)
+
+combined <- mutate(combined, TechBin = paste0(Tech, Bin))
+# Ridgeline plot didn't look as good here
+ggplot(combined, aes(y=Bin, x=contigs, fill=Tech)) + geom_density_ridges() + theme_bw() + scale_fill_brewer(palette="Blues") + scale_x_log10()
+library(gridExtra)
+
+lower <- ggplot(combined, aes(x=TechBin, y=contigs, fill=Bin)) + geom_violin(trim=FALSE) + geom_boxplot(width=0.1, fill="white") + theme_bw() + scale_fill_brewer(palette="Blues") + ylim(c(0,1000))
+upper <- ggplot(combined, aes(x=TechBin, y=contigs, fill=Bin)) + geom_violin(trim=FALSE) + geom_boxplot(width=0.1, fill="white") + theme_bw() + scale_fill_brewer(palette="Blues") + ylim(c(1000, 35000)) + theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x=element_blank())
+grid.arrange(upper, lower, ncol=1)
+dev.copy2pdf(file="bin_scores_by_contig_count.pdf", useDingbats=FALSE)
+```

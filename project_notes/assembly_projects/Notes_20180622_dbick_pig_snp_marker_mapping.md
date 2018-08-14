@@ -32,6 +32,9 @@ dos2unix pig_80k_marker_sites.tab
 perl -ne '@s = split(/\t/); print ">$s[0].$s[9].$s[10]\n$s[5]\n";' < pig_60k_marker_sites.tab > pig_60k_marker_sites.fa
 perl -ne '@s = split(/\t/); print ">$s[0].$s[9].$s[10]\n$s[5]\n";' < ggp_marker_sites.tab > ggp_marker_sites.fa
 perl -ne '@s = split(/\t/); print ">$s[0].$s[9].$s[10]\n$s[5]\n";' < pig_80k_marker_sites.tab > pig_80k_marker_sites.fa
+
+# Preparing the markers from the Axiom array
+perl -lane 'if($F[0] =~ /^#/ || $F[0] =~ /^\"Probe/){next;} $F[0] =~ s/\"//g; @segs = split(/[,\[\/]/, $F[0]); print ">$segs[0].$segs[3].$segs[4]\n$segs[6]";' < Axiom_PigHD_v1_Annotation.r3.csv > Axiom_PigHD_v1_Annotation.r3.forprobe.fa
 ```
 
 ## Alignment
@@ -45,6 +48,10 @@ for i in ggp_marker_sites pig_60k_marker_sites pig_80k_marker_sites; do echo $i;
 
 # Finally, aligning to ss10.2
 for i in ggp_marker_sites pig_60k_marker_sites pig_80k_marker_sites; do echo $i; perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a ssc_10.2_ncbi.reference.fa -p $i.fa -o $i.SS10.snps; done
+
+module load samtools bwa; perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a GCA_002844635.1_USMARCv1.0_genomic.fna -p Axiom_PigHD_v1_Annotation.r3.forprobe.fa -o axiom_pigHD.USMARC.snps
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a GCF_000003025.6_Sscrofa11.1_genomic.fna -p Axiom_PigHD_v1_Annotation.r3.forprobe.fa -o axiom_pigHD.ROSLIN.snps
+perl ~/sperl/assembly_scripts/alignAndOrderSnpProbes.pl -a ssc_10.2_ncbi.reference.fa -p Axiom_PigHD_v1_Annotation.r3.forprobe.fa -o axiom_pigHD.SS10.snps
 ```
 
 ## Correlation analysis

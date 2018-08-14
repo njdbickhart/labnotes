@@ -49,4 +49,7 @@ sbatch --nodes=1 --mem=151000 --ntasks-per-node=15 -p mem --wrap="Trinity --seqT
 
 # Damn, even that ran out of memory!
 module load bedtools samtools salmon trinityrnaseq/2.6.6; sbatch --nodes=1 --mem=300000 --ntasks-per-node=15 -p mem --wrap="Trinity --seqType fq --max_memory 300G --CPU 15 --trimmomatic --output trinity_epimural_highermem --samples_file trinity_rna_replicates.reformat.tab"
+
+# OK, this is the last try. This is pretty ridiculous
+module load bedtools samtools salmon trinityrnaseq/2.6.6; sbatch --nodes=1 --mem=500000 --ntasks-per-node=20 -p mem --wrap="Trinity --seqType fq --max_memory 500G --CPU 20 --trimmomatic --output trinity_epimural_highestmem --samples_file trinity_rna_replicates.reformat.tab"
 ```
