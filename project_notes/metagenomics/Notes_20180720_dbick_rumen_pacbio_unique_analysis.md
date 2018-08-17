@@ -1306,3 +1306,50 @@ upper <- ggplot(combined, aes(x=TechBin, y=contigs, fill=Bin)) + geom_violin(tri
 grid.arrange(upper, lower, ncol=1)
 dev.copy2pdf(file="bin_scores_by_contig_count.pdf", useDingbats=FALSE)
 ```
+
+## Running DESMAN on the contigs
+
+I want to address Adam's concern with strain-level identification using the longer-read contigs. Let's try to run portions of the DESMAN pipeline on the reads to see if we can pull the appropriate information from them.
+
+First, making the DBs
+
+> Assembler2:
+
+```bash
+wget https://desmandatabases.s3.climb.ac.uk/rpsblast_cog_db.tar.gz
+ls rpsblast_cog_db
+mv rpsblast_cog_db ./Databases/
+
+wget https://desmandatabases.s3.climb.ac.uk/nr.faa
+```
+
+> Assembler2:/mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon
+
+```bash
+module load samtools bwa
+module load bedtools/2.27.1
+export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/bin:$PATH
+
+# I need the prodigal gff file first
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p assemble2 --wrap="/mnt/nfs/nfs2/bickhart-users/binaries/Prodigal/prodigal -a usda_pacbio_second_pilon_indelsonly.prod.faa -c -d usda_pacbio_second_pilon_indelsonly.prod.fna -f gff -p meta -i usda_pacbio_second_pilon_indelsonly.fa -o usda_pacbio_second_pilon_indelsonly.prod.gff"
+
+export COGSDB_DIR=/mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/Databases/rpsblast_cog_db/
+/mnt/nfs/nfs2/bickhart-users/binaries/CONCOCT/scripts/RPSBLAST.sh -f usda_pacbio_second_pilon_indelsonly.prod.faa -p -c 8 -r 1
+
+```
+
+And using Hansel and Gretel
+
+```bash
+module load samtools bcftools
+bcftools mpileup -Ou --threads 5 -f usda_pacbio_second_pilon_indelsonly.fa USDA.sorted.merged.bam | bcftools call -vmO z -o USDA.sorted.pacbio.pilon.vcf.gz
+
+
+```
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina_usda_accumulated
+
+```bash
+module load samtools bcftools
+bcftools mpileup -Ou --threads 5 -f mick_megahit_final_full.rfmt.fa USDA.sorted.merged.bam | bcftools call -vmO z -o USDA.sorted.illumina.megahit.vcf.gz
+```

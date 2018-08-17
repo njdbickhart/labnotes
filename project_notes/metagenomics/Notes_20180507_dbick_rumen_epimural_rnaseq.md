@@ -52,4 +52,8 @@ module load bedtools samtools salmon trinityrnaseq/2.6.6; sbatch --nodes=1 --mem
 
 # OK, this is the last try. This is pretty ridiculous
 module load bedtools samtools salmon trinityrnaseq/2.6.6; sbatch --nodes=1 --mem=500000 --ntasks-per-node=20 -p mem --wrap="Trinity --seqType fq --max_memory 500G --CPU 20 --trimmomatic --output trinity_epimural_highestmem --samples_file trinity_rna_replicates.reformat.tab"
+
+# That also failed, because it ran the kmer count and then apparently tried to alloc a HUGE hash to do the analysis! I'm just going to partition the data and request lots of high mem nodes to run this in parallel
+perl -lane 'open($OUT, "> $F[0].trinity.reformat.tab"); print {$OUT} join("\t", @F); close $OUT;' < trinity_rna_replicates.reformat.tab
+module load bedtools samtools salmon trinityrnaseq/2.6.6; for i in *.trinity.reformat.tab; do name=`echo $i | cut -d'.' -f1`; echo $name; sbatch --nodes=1 --mem=300000 --ntasks-per-node=15 -p mem --wrap="Trinity --seqType fq --max_memory 290G --CPU 15 --trimmomatic --output ${name}_epimural_asm --samples_file $i"; done
 ```
