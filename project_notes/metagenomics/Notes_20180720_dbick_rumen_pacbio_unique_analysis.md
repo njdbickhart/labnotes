@@ -1344,6 +1344,10 @@ And using Hansel and Gretel
 module load samtools bcftools
 bcftools mpileup -Ou --threads 5 -f usda_pacbio_second_pilon_indelsonly.fa USDA.sorted.merged.bam | bcftools call -vmO z -o USDA.sorted.pacbio.pilon.vcf.gz
 
+bcftools index USDA.sorted.pacbio.pilon.vcf.gz
+samtools index USDA.sorted.merged.bam
+
+# I ran into problem with a single contig test. There was a divide by zero error
 
 ```
 
