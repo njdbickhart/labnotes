@@ -1336,7 +1336,50 @@ sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p assemble2 --wrap="/mnt/nfs/
 export COGSDB_DIR=/mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/Databases/rpsblast_cog_db/
 /mnt/nfs/nfs2/bickhart-users/binaries/CONCOCT/scripts/RPSBLAST.sh -f usda_pacbio_second_pilon_indelsonly.prod.faa -p -c 8 -r 1
 
+# OK, I ran the first script, but it needs a cog to cddid file. Here's the comment line in the python script:
+# Read a simple tsv file with two columns, cddid and cogid respectively.
+
 ```
+
+#### attempts at running desman automated
+
+This may be a disaster, but here goes!
+
+```bash
+source activate python3
+module load samtools bwa java/jdk1.8.0_92 hmmer/3.1b2 
+export PATH=$PATH:/mnt/nfs/nfs2/bickhart-users/binaries/bin
+conda install cython numpy biopython
+
+export DESMANHOME=/mnt/nfs/nfs2/bickhart-users/binaries/DESMAN/
+
+bwa index usda_pacbio_second_pilon_indelsonly.fa
+# Creating the contig lists
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); push(@{$h{$s[1]}}, $s[0]);} close IN; foreach my $k (keys(%h)){open(OUT, "> hic_bin_$k.list"); foreach my $c (@{$h{$k}}){print OUT "$c\n";} close OUT;}' pacbio_final_public_hic.unsorted.bins
+# I rewrote the DESMAN nextflow script to avoid the lengthy alignment to the reference.
+mv hic_*.list ./hic_bins/
+
+# OK, I'm going to start with one of the high performing (ie. DAS-tool selected) bins
+# NOTE: DAS-Tool fudges the numbers on the bins. You must search using contig assignment
+grep 'tig00002711' ../pacbio_final_pilon/pacbio_final_dastool_DASTool_scaffolds2bin.txt
+# That corresponded to hic_bin_4.list
+
+/mnt/nfs/nfs2/bickhart-users/binaries/DESMAN/scripts/desmanflow_bams.nf --assembly=usda_pacbio_second_pilon_indelsonly.fa --speciescontigs=hic_bins/hic_bin_4.list --inputbams=./ --output=./hic_bin_4
+
+# NOTE: The phylosift program is screwed up -- it tries to download files from a defunct database URL
+# Worse: the desman script originaly overwrote my changes in the phylosiftrc file!
+/mnt/nfs/nfs2/bickhart-users/binaries/DESMAN/scripts/desmanflow_bams.nf --assembly=usda_pacbio_second_pilon_indelsonly.fa --speciescontigs=hic_bins/hic_bin_4.list --inputbams=./ --output=./hic_bin_4 -resume --straincount=4
+
+# It crashed again due to the weird pileup logic. I need to script this in another way.
+# I gave up on the nextflow script. Let’s try this directly
+
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/usda_pacbio_second_pilon_indelsonly.fa -c /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/hic_bins/hic_bin_345.list -b /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/USDA.sorted.merged.bam -o hic_bin_345 -d /mnt/nfs/nfs2/bickhart-users/binaries/DESMAN
+
+
+# OK, my test worked. let's try processing all of the Hi-c bins with my strain inference script
+for i in hic_bins/*.list; do name=`basename $i | cut -d'.' -f1`; echo $name; python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/usda_pacbio_second_pilon_indelsonly.fa -c /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/$i -b /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/USDA.sorted.merged.bam -o $name -d /mnt/nfs/nfs2/bickhart-users/binaries/DESMAN ; done
+```
+
 
 And using Hansel and Gretel
 
@@ -1356,4 +1399,149 @@ samtools index USDA.sorted.merged.bam
 ```bash
 module load samtools bcftools
 bcftools mpileup -Ou --threads 5 -f mick_megahit_final_full.rfmt.fa USDA.sorted.merged.bam | bcftools call -vmO z -o USDA.sorted.illumina.megahit.vcf.gz
+```
+
+## Finalizing bins
+
+These are my notes on the selection of final DAS_tool bins from the dataset. 
+
+Let's first check some distributions and see how the data stacks up.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_final_pilon/
+
+```R
+pacbio <- read.delim("pacbio_final_dastool_DASTool_summary.txt")
+
+pacbio.filt <- pacbio[,c("binScore", "SCG_completeness", "SCG_redundancy")]
+pacbio.filt$binScore <- pacbio.filt$binScore * 100
+
+summary(pacbio.filt)
+ SCG_completeness SCG_redundancy
+ Min.   : 50.98   Min.   : 0.000
+ 1st Qu.: 62.75   1st Qu.: 0.000
+ Median : 74.51   Median : 2.630
+ Mean   : 74.58   Mean   : 5.231
+ 3rd Qu.: 87.25   3rd Qu.: 5.880
+ Max.   :100.00   Max.   :37.250
+
+library(ggplot2)
+library(reshape)
+
+pacbio.melt <- melt(pacbio.filt)
+pdf(file="pacbio_dastool_select_bins.pdf", useDingbats=FALSE)
+ggplot(pacbio.melt, aes(x=variable, y=value, fill=variable)) + geom_violin(trim=TRUE) + geom_boxplot(width=0.1, fill="white") + theme_minimal()
+
+# That showed that only about 7 bins were outliers in the redundancy category
+nrow(pacbio.filt[pacbio.filt$SCG_redundancy < 10,])
+[1] 90
+
+# Let's see that plot
+pdf(file="pacbio_dastool_select_bins_lt10redundant.pdf", useDingbats=FALSE)
+pacbio.melt <- melt(pacbio.filt[pacbio.filt$SCG_redundancy < 10,])
+ggplot(pacbio.melt, aes(x=variable, y=value, fill=variable)) + geom_violin(trim=TRUE) + geom_boxplot(width=0.1, fill="white") + theme_minimal()
+dev.off()
+
+cor(pacbio.filt)
+                   binScore SCG_completeness SCG_redundancy
+binScore          1.0000000        0.7958932     -0.1421622
+SCG_completeness  0.7958932        1.0000000      0.4738371
+SCG_redundancy   -0.1421622        0.4738371      1.0000000
+
+# OK, lets do this with the illumina data then.
+illumina <- read.delim(file="../illumina_usda_accumulated/illumina_megahit_dastool_DASTool_summary.txt")
+illumina.filt <- illumina[,c("binScore", "SCG_completeness", "SCG_redundancy")]
+illumina.filt$binScore <- illumina.filt$binScore * 100
+
+summary(illumina)
+ SCG_completeness SCG_redundancy
+ Min.   : 50.98   Min.   : 0.000
+ 1st Qu.: 66.67   1st Qu.: 1.960
+ Median : 82.35   Median : 3.920
+ Mean   : 79.09   Mean   : 4.969
+ 3rd Qu.: 90.20   3rd Qu.: 5.880
+ Max.   :100.00   Max.   :23.530
+
+illumina.melt <- melt(illumina.filt)
+pdf(file="illumina_dastool_select_bins.pdf", useDingbats=FALSE)
+ggplot(illumina.melt, aes(x=variable, y=value, fill=variable)) + geom_violin(trim=TRUE) + geom_boxplot(width=0.1, fill="white") + theme_minimal()
+dev.off()
+
+# Again, only a few that are greater than 10% SCG redundancy
+nrow(illumina.filt[illumina.filt$SCG_redundancy < 10,])
+[1] 179
+
+cor(illumina.filt)
+                   binScore SCG_completeness SCG_redundancy
+binScore          1.0000000        0.9227543     -0.1079953
+SCG_completeness  0.9227543        1.0000000      0.2664311
+SCG_redundancy   -0.1079953        0.2664311      1.0000000
+
+# Now, let's print a density plot of SCG completeness and redundancy across groups
+illumina.melt <- melt(illumina.filt[illumina.filt$SCG_redundancy < 10,])
+
+library(dplyr)
+pacbio.melt <- mutate(pacbio.melt, Tech = c("PacBio"))
+illumina.melt <- mutate(illumina.melt, Tech = c("Illumina"))
+combined <- bind_rows(pacbio.melt, illumina.melt)
+
+pdf(file="illumina_pacbio_bins_lt10redundancy.pdf", useDingbats=FALSE)
+ggplot(combined, aes(x=variable, y=value, fill=variable)) + geom_violin(fill= "lightgrey") + geom_jitter(position = position_jitter(0.2)) + theme_bw() + facet_grid(Tech ~ .)
+dev.off()
+
+# Raw stats
+sum(pacbio[pacbio$SCG_redundancy < 10,"contigs"])  =  6,496
+sum(pacbio[pacbio$SCG_redundancy < 10,"size"])   =  153,755,142
+mean(pacbio[pacbio$SCG_redundancy < 10,"N50"])   =  55,733.68
+
+sum(illumina[illumina$SCG_redundancy < 10,"contigs"])  = 40,894
+sum(illumina[illumina$SCG_redundancy < 10,"size"])   = 279,703,145
+mean(illumina[illumina$SCG_redundancy < 10,"N50"])  =  13,458.51
+
+# Printing bin names for easier association later:
+write.table(pacbio[pacbio$SCG_redundancy < 10, c("bin", "size", "contigs", "N50", "binScore", "SCG_completeness", "SCG_redundancy")], file="pacbio_dastool_bins_lt10_redundancy.tab", quote=FALSE)
+write.table(illumina[illumina$SCG_redundancy < 10, c("bin", "size", "contigs", "N50", "binScore", "SCG_completeness", "SCG_redundancy")], file="illumina_dastool_bins_lt10_redundancy.tab", quote=FALSE)
+```
+
+Now let's find out the statistics of the high quality bins vs these arbitrary bins vs the entire dataset for each method. Let's separate them into two categories
+
+```bash
+# Columns: 1. dastools bin, 2. bin length(bp), 3. # contigs, 4. SCG_completeness, 5. SCG_redundancy
+perl -e '$outbase = "pacbio_dastool"; open(HQ, "> $outbase\_high_quality_dasbins.tab"); open(REST, "> $outbase\_analysis_dasbins.tab"); <STDIN>; while(<STDIN>){chomp; @s = split(/\s+/); if($s[6] > 80 && $s[7] < 5){print HQ "$s[1]\t$s[2]\t$s[3]\t$s[6]\t$s[7]\n";} print REST "$s[1]\t$s[2]\t$s[3]\t$s[6]\t$s[7]\n";}' < pacbio_dastool_bins_lt10_redundancy.tab
+wc -l pacbio_dastool_analysis_dasbins.tab pacbio_dastool_high_quality_dasbins.tab
+  90 pacbio_dastool_analysis_dasbins.tab
+  22 pacbio_dastool_high_quality_dasbins.tab
+ 112 total
+
+perl -e '$outbase = "illumina_dastool"; open(HQ, "> $outbase\_high_quality_dasbins.tab"); open(REST, "> $outbase\_analysis_dasbins.tab"); <STDIN>; while(<STDIN>){chomp; @s = split(/\s+/); if($s[6] > 80 && $s[7] < 5){print HQ "$s[1]\t$s[2]\t$s[3]\t$s[6]\t$s[7]\n";} print REST "$s[1]\t$s[2]\t$s[3]\t$s[6]\t$s[7]\n";}' < illumina_dastool_bins_lt10_redundancy.tab
+wc -l illumina_dastool_high_quality_dasbins.tab illumina_dastool_analysis_dasbins.tab
+   47 illumina_dastool_high_quality_dasbins.tab
+  179 illumina_dastool_analysis_dasbins.tab
+  226 total
+
+source activate python3
+perl -lane 'print $F[0];' < illumina_dastool_analysis_dasbins.tab > illumina_dastool_analysis_dasbins.list
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f ../illumina_usda_accumulated/illumina_megahit_dastool_DASTool_scaffolds2bin.txt -c 1 -l illumina_dastool_analysis_dasbins.list > illumina_dastool_analysis_dasbins.contigs
+
+perl -lane 'print $F[0];' < illumina_dastool_high_quality_dasbins.tab > illumina_dastool_high_quality_dasbins.list
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f ../illumina_usda_accumulated/illumina_megahit_dastool_DASTool_scaffolds2bin.txt -c 1 -l illumina_dastool_high_quality_dasbins.list > illumina_dastool_high_quality_dasbins.contigs
+
+perl -lane 'print $F[0];' < pacbio_dastool_analysis_dasbins.tab > pacbio_dastool_analysis_dasbins.list
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_dastool_DASTool_scaffolds2bin.txt -c 1 -l pacbio_dastool_analysis_dasbins.list > pacbio_dastool_analysis_dasbins.contigs
+
+perl -lane 'print $F[0];' < pacbio_dastool_high_quality_dasbins.tab > pacbio_dastool_high_quality_dasbins.list
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_dastool_DASTool_scaffolds2bin.txt -c 1 -l pacbio_dastool_high_quality_dasbins.list > pacbio_dastool_high_quality_dasbins.contigs
+```
+
+Alternative strategy: use DAS_tools SCG redundancy to filter the best sets of bins from each method.
+
+```R
+ilmetabat <- read.delim("../illumina_usda_accumulated/illumina_megahit_dastool_metabat.eval")
+pbhic <- read.delim("pacbio_final_dastool_HiC.eval")
+
+pbhic.filt <- mutate(pbhic[, c("contigs", "SCG_completeness", "SCG_redundancy")], Tech = "PacBio")
+ilmetabat.filt <- mutate(ilmetabat[, c("contigs", "SCG_completeness", "SCG_redundancy")], Tech = "Illumina")
+bin.filt <- bind_rows(pbhic.filt, ilmetabat.filt)
+
+pdf(file="full_dastool_bin_SCG_stats.pdf", useDingbats=FALSE)
+
 ```
