@@ -1378,6 +1378,15 @@ python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/metagenomics/desma
 
 # OK, my test worked. let's try processing all of the Hi-c bins with my strain inference script
 for i in hic_bins/*.list; do name=`basename $i | cut -d'.' -f1`; echo $name; python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/usda_pacbio_second_pilon_indelsonly.fa -c /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/$i -b /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/USDA.sorted.merged.bam -o $name -d /mnt/nfs/nfs2/bickhart-users/binaries/DESMAN ; done
+
+# Allot of the bins worked. If there wasn't enough information or the number of contigs per bin were small, the program failed to run.
+# The PDF files are a good means of assessing program success though:
+cp ./*/*.pdf ./strain_pdfs/
+
+# I wrote a strain prediction script to automate the process. Let's see how it performs
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/usda_pacbio_second_pilon_indelsonly.fa -c /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/$i -b /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/pacbio_usda_round2pilon/USDA.sorted.merged.bam -o hic_bin_4 -d /mnt/nfs/nfs2/bickhart-users/binaries/DESMAN
+
+# ACK! It looks like the core genes I'm using to train the model are Ecoli centric! I've got the core of the model working, but I need to refine the gene selection and variant calling
 ```
 
 
