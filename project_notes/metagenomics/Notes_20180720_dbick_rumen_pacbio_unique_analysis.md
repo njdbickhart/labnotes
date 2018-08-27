@@ -1389,6 +1389,66 @@ python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/metagenomics/desma
 # ACK! It looks like the core genes I'm using to train the model are Ecoli centric! I've got the core of the model working, but I need to refine the gene selection and variant calling
 ```
 
+I have an idea: let's use the DAS_tool output and the rest of the pipeline from DESMAN to calculate SCG frequency from there. I need to grep out ALL bins that have more than 0% completion. Just to flesh things out, I also want to add more samples to the analysis. Let's add all of Micks' samples and the high quality stuff (> 20 Gigbaytes total bam) to this list:
+
+* PRJEB10338
+* PRJEB21624
+* PRJEB8939
+* PRJNA214227
+* PRJNA291523
+* PRJNA60251
+* USDA	<- ours
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics/pilot_project/pacbio_final_pilon
+
+```bash
+/mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i pacbio_final_public_hic.unsorted.bins,pacbio_final_public_metabat.unsorted.bins -c usda_pacbio_second_pilon_indelsonly.fa -o pacbio_final_dastool -l HiC,metabat --search_engine diamond -t 10 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db --write_bins 1 --proteins pacbio_final_prodigal_proteins.faa --score_threshold 0
+
+# Converting them into the "analysis" bin set
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] > 10){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< pacbio_final_dastool_DASTool_bins/$s[0].contigs.fa"); while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; print "$l\t$bsegs[-2].$bsegs[-1]\n";}} close IN;}}' < pacbio_final_dastool_DASTool_summary.txt > pacbio_dastool_analysis_binset_lt10redund.bins
+
+# and the high quality bins for strain discovery
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] > 5 || $s[-2] < 50){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< pacbio_final_dastool_DASTool_bins/$s[0].contigs.fa"); while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; print "$l\t$bsegs[-2].$bsegs[-1]\n";}} close IN;}}' < pacbio_final_dastool_DASTool_summary.txt > pacbio_dastool_hq_binset_lt5redun_gt50comp.bins
+
+wc -l *.bins
+  55002 pacbio_dastool_analysis_binset_lt10redund.bins
+   4929 pacbio_dastool_hq_binset_lt5redun_gt50comp.bins
+
+cat pacbio_dastool_hq_binset_lt5redun_gt50comp.bins | cut -f2 | sort | uniq | wc -l
+78  <- that's a healthy start
+
+# Now to get the SCG gene locations that DAS_tool used
+cat pacbio_final_prodigal_proteins.faa.bacteria.scg pacbio_final_prodigal_proteins.faa.archaea.scg | perl -lane 'print $F[0];' > pacbio_final_prodigal_proteins.scg.cat.list
+source activate python3
+
+# Printing them to BED format
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_prodigal_proteins.shortform.tab -c 0 -l pacbio_final_prodigal_proteins.scg.cat.list | perl -lane '$F[0] =~ s/_\d{1,3}//; print "$F[0]\t$F[1]\t$F[2]";' > pacbio_final_prodigal_proteins.scg.loc.bed
+```
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/desman/pacbio
+
+```bash
+export RUMEN=/scinet01/gov/usda/ars/scinet/project/rumen_longread_metagenome_assembly
+module load gcc/8.1.0 prodigalorffinder/2.6.3 samtools/1.9 r/3.4.3
+
+# I need to generate "list" files of all of the contigs belonging to das-tool bins that I will analyze
+perl -lane 'open(OUT, ">> $F[1].hqdas.bin.list"); print OUT "$F[0]"; close OUT;' < ../../dastool/pacbio_dastool_hq_binset_lt5redun_gt50comp.bins
+
+mkdir bin_lists
+mv *.list ./bin_lists/
+
+mkdir bed_lists
+# Getting gene locations from the bin lists
+for i in bin_lists/*.list; do name=`basename $i | cut -d'.' -f1,2`; echo $name; python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnGrep.py -f ../../dastool/pacbio_final_prodigal_proteins.scg.loc.bed -c 0 -l $i > bed_lists/${name}.scg.bed; done
+
+sbatch -p debug $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio/bin_lists/pacbio_final_public_hic.110.hqdas.bin.list -g $RUMEN/analysis/desman/pacbio/bed_lists/pacbio_final_public_hic.110.scg.bed -d $RUMEN/binaries/DESMAN -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/USDA/USDA.sorted.merged.bam -o pacbio_hic_110
+
+# My test worked out well enough. Let's queue the entire shebang
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "pacbio_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio/$i -g $RUMEN/analysis/desman/pacbio/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/USDA/USDA.sorted.merged.bam -o $name; done
+```
+
+
+
 
 And using Hansel and Gretel
 
