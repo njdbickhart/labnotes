@@ -1423,6 +1423,10 @@ source activate python3
 
 # Printing them to BED format
 python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_prodigal_proteins.shortform.tab -c 0 -l pacbio_final_prodigal_proteins.scg.cat.list | perl -lane '$F[0] =~ s/_\d{1,3}//; print "$F[0]\t$F[1]\t$F[2]";' > pacbio_final_prodigal_proteins.scg.loc.bed
+
+# Creating the coglists that desman needs
+cat pacbio_final_dastool_proteins.faa.archaea.scg pacbio_final_dastool_proteins.faa.bacteria.scg > pacbio_final_dastool_proteins.faa.combined.scg
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$r = $s[0]; $r =~ s/_\d{1,3}//; print "$h{$s[0]},$r,$s[1],$s[2],$s[3]\n";}} close IN;' pacbio_final_dastool_proteins.faa.combined.scg pacbio_final_prodigal_proteins.shortform.tab > pacbio_final_prodigal_master_cogs.csv
 ```
 
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/desman/pacbio
@@ -1445,9 +1449,42 @@ sbatch -p debug $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainInfere
 
 # My test worked out well enough. Let's queue the entire shebang
 for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "pacbio_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio/$i -g $RUMEN/analysis/desman/pacbio/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/USDA/USDA.sorted.merged.bam -o $name; done
+
+# Since the desman R plot script needs a ~/.Rlibs directory, it failed in each case
+for i in */desman_dic.fits; do name=`echo $i | cut -d'/' -f1`; echo $name; /scinet01/gov/usda/ars/scinet/project/rumen_longread_metagenome_assembly/binaries/DESMAN/scripts/PlotDev.R -l $i -o ${name}.pdf; done
+
+mkdir fit_pdfs
+mv *.pdf ./fit_pdfs/
+
+# Generating cog tables
+for i in bin_lists/*.list; do num=`basename $i | cut -d '.' -f1,2`; echo $num; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = 1;} close IN; open(OUT, "> $ARGV[2]"); open(IN, "< $ARGV[1]"); while($l = <IN>){chomp($l); @s = split(/,/, $l); if(exists($h{$s[1]})){print OUT "$l\n";}} close OUT; close IN;' $i pacbio_final_prodigal_master_cogs.csv $num.scg.cogs.csv; done
+
+mkdir cog_lists
+mv *.cogs.csv ./cog_lists/
+
+# Testing the strain prediction script
+sbatch -p debug $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio/bin_lists/pacbio_final_public_hic.110.hqdas.bin.list -g $RUMEN/analysis/desman/pacbio/bed_lists/pacbio_final_public_hic.110.scg.bed -t $RUMEN/analysis/desman/pacbio/cog_lists/pacbio_final_public_hic.110.scg.cogs.csv -d $RUMEN/binaries/DESMAN -o pacbio_hic_110
+
+# Queueing them all up
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "pacbio_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio/$i -g $RUMEN/analysis/desman/pacbio/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -o $name; done
 ```
 
 
+#### And the Illumina data
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina_usda_accumulated
+
+```bash
+export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/bin:$PATH; /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c mick_megahit_final_full.rfmt.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 10 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db --write_bins 1 --proteins illumina_megahit_prodigal_proteins.faa --score_threshold 0
+
+
+# Generating the cog scg bins and ancillary files for desman
+source activate python3
+cat illumina_megahit_prodigal_proteins.faa.archaea.scg illumina_megahit_prodigal_proteins.faa.bacteria.scg > illumina_megahit_prodigal_proteins.faa.combined.scg
+cat illumina_megahit_prodigal_proteins.faa.archaea.scg illumina_megahit_prodigal_proteins.faa.bacteria.scg | perl -lane 'print $F[0];' > illumina_megahit_prodigal_proteins.scg.cat.list
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f illumina_megahit_prodigal_proteins.shortform.tab -c 0 -l illumina_megahit_prodigal_proteins.scg.cat.list | perl -lane '$F[0] =~ s/_\d{1,3}//; print "$F[0]\t$F[1]\t$F[2]";' > illumina_megahit_prodigal_proteins.scg.loc.bed
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$r = $s[0]; $r =~ s/_\d{1,3}//; print "$h{$s[0]},$r,$s[1],$s[2],$s[3]\n";}} close IN;' illumina_megahit_prodigal_proteins.faa.combined.scg illumina_megahit_prodigal_proteins.shortform.tab > illumina_megahit_prodigal_master_cogs.csv
+```
 
 
 And using Hansel and Gretel
