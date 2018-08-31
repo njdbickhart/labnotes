@@ -245,6 +245,22 @@ sbatch --nodes=1 --mem=500000 --ntasks-per-node=40 -p assemble1 --wrap="/mnt/nfs
 ## TODO: Compute rand index for bins and check bin fidelity for pacbio-unique contigs with no illumina mappings
 ## TODO: look into viral genomes to estimate size, frequency and bias in pacbio and illumina datasets 
 
+## Kmer complexity analysis
+
+I want to demonstrate the complexity of our dataset once and for all. Let's compare to the Stewart et al. data, PRJEB21624. I'll use a bloom filter to remove the single frequency kmers.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/kmer
+
+```bash
+module load jellyfish2/2.2.9
+grep 'PRJEB21624' $RUMEN/sequence_data/public_datasets/cattle_rumen_illumina_data_spreadsheet.revised.tab | perl -lane 'print "gunzip -c $F[0]\ngunzip -c $F[1]";' > PRJEB21624.generators
+
+sbatch --nodes=1 --mem=350000 --ntasks-per-node=20 -p mem --wrap="jellyfish count -m 21 -s 100M -t 20 --bf-size 100G -C -g PRJEB21624.generators -o PRJEB21624_21mer_high"
+
+
+```
+
+
 ## Viral genomes
 
 I want to fully characterize the viruses and see how they pan out with respect to host specificity and kmer composition.
@@ -1417,16 +1433,19 @@ wc -l *.bins
 cat pacbio_dastool_hq_binset_lt5redun_gt50comp.bins | cut -f2 | sort | uniq | wc -l
 78  <- that's a healthy start
 
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] > 10){next;}else{ print "$s[7]\n";}}' < pacbio_final_dastool_DASTool_summary.txt | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+Sum:    798,163,918
+
 # Now to get the SCG gene locations that DAS_tool used
 cat pacbio_final_prodigal_proteins.faa.bacteria.scg pacbio_final_prodigal_proteins.faa.archaea.scg | perl -lane 'print $F[0];' > pacbio_final_prodigal_proteins.scg.cat.list
 source activate python3
 
 # Printing them to BED format
-python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_prodigal_proteins.shortform.tab -c 0 -l pacbio_final_prodigal_proteins.scg.cat.list | perl -lane '$F[0] =~ s/_\d{1,3}//; print "$F[0]\t$F[1]\t$F[2]";' > pacbio_final_prodigal_proteins.scg.loc.bed
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_prodigal_proteins.shortform.tab -c 0 -l pacbio_final_prodigal_proteins.scg.cat.list | perl -lane '$r = $F[0]; $r =~ s/_\d{1,3}//; print "$r\t$F[1]\t$F[2]\t$F[0]";' > pacbio_final_prodigal_proteins.scg.loc.bed
 
 # Creating the coglists that desman needs
 cat pacbio_final_dastool_proteins.faa.archaea.scg pacbio_final_dastool_proteins.faa.bacteria.scg > pacbio_final_dastool_proteins.faa.combined.scg
-perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$r = $s[0]; $r =~ s/_\d{1,3}//; print "$h{$s[0]},$r,$s[1],$s[2],$s[3]\n";}} close IN;' pacbio_final_dastool_proteins.faa.combined.scg pacbio_final_prodigal_proteins.shortform.tab > pacbio_final_prodigal_master_cogs.csv
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$r = $s[0]; $r =~ s/_\d{1,3}//; print "$h{$s[0]},$r,$s[1],$s[2],$s[0],$s[3]\n";}} close IN;' pacbio_final_dastool_proteins.faa.combined.scg pacbio_final_prodigal_proteins.shortform.tab > pacbio_final_prodigal_master_cogs.csv
 ```
 
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/desman/pacbio
@@ -1466,7 +1485,31 @@ mv *.cogs.csv ./cog_lists/
 sbatch -p debug $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio/bin_lists/pacbio_final_public_hic.110.hqdas.bin.list -g $RUMEN/analysis/desman/pacbio/bed_lists/pacbio_final_public_hic.110.scg.bed -t $RUMEN/analysis/desman/pacbio/cog_lists/pacbio_final_public_hic.110.scg.cogs.csv -d $RUMEN/binaries/DESMAN -o pacbio_hic_110
 
 # Queueing them all up
-for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "pacbio_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio/$i -g $RUMEN/analysis/desman/pacbio/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -o $name; done
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "pacbio_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio/$i -g $RUMEN/analysis/desman/pacbio/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -o $name -t $RUMEN/analysis/desman/pacbio/cog_lists/${bed}.scg.cogs.csv; done
+```
+
+I'm a little concerned that the strain selection results are a bit too monomorphic. I mean, the haplotypes are always around a 3 or 4 in the dataset. Let's try to rerun with only the USDA sequence data to see how that parses out.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/desman/pacbio_sole
+
+```bash
+cp -r ../pacbio/bed_lists ./
+cp -r ../pacbio/bin_lists ./
+cp -r ../pacbio/cog_lists ./
+
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "pacbio_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a $RUMEN/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa -c $RUMEN/analysis/desman/pacbio_sole/$i -g $RUMEN/analysis/desman/pacbio_sole/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -b $RUMEN/assemblies/pilot_project/pacbio_final_pilon/publicdb/USDA/USDA.sorted.merged.bam -o $name; done
+
+# Queuing things up with my script:
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "pacbio_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch run_desman_pipeline_pacbio_sole.sh $name $bed; done
+```
+
+I also want to see how bin strain assignment varies if I exclude the USDA dataset and only use the other datasets.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/desman/pacbio_rest
+
+```bash
+# Just to keep things moving along, I've generated a queuing script for both sections of the pipeline
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "pacbio_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch run_desman_pipeline_pacbio_rest.sh $name $bed; done
 ```
 
 
@@ -1477,13 +1520,51 @@ for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); 
 ```bash
 export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/bin:$PATH; /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i illumina_megahit_hic.unsorted.bins,illumina_megahit_public_metabat.unsorted.bins -c mick_megahit_final_full.rfmt.fa -o illumina_megahit_dastool -l HiC,metabat --search_engine diamond -t 10 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db --write_bins 1 --proteins illumina_megahit_prodigal_proteins.faa --score_threshold 0
 
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] > 10){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< illumina_megahit_dastool_DASTool_bins/$s[0].contigs.fa");while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; print "$l\t$bsegs[-2].$bsegs[-1]\n";}} close IN;}}' < illumina_megahit_dastool_DASTool_summary.txt > illumina_dastool_analysis_binset_lt10redund.bins
+
+cat illumina_dastool_analysis_binset_lt10redund.bins | cut -f2 | sort | uniq | wc -l
+1630 <- more bins than the pacbio data!
+
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] > 5 || $s[-2] < 50){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< illumina_megahit_dastool_DASTool_bins/$s[0].contigs.fa"); while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; print "$l\t$bsegs[-2].$bsegs[-1]\n";}} close IN;}}' < illumina_megahit_dastool_DASTool_summary.txt > illumina_dastool_analysis_binset_lt5redun_gt50comp.bins
+
+cat illumina_dastool_analysis_binset_lt5redun_gt50comp.bins | cut -f2 | sort | uniq | wc -l
+119 <- OK, this is fair. More bins than pacbio but far less than expected given the coverage differential
+
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] > 10){next;}else{ print "$s[7]\n";}}' < illumina_megahit_dastool_DASTool_summary.txt | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+Sum:    1,475,288,770
 
 # Generating the cog scg bins and ancillary files for desman
 source activate python3
 cat illumina_megahit_prodigal_proteins.faa.archaea.scg illumina_megahit_prodigal_proteins.faa.bacteria.scg > illumina_megahit_prodigal_proteins.faa.combined.scg
 cat illumina_megahit_prodigal_proteins.faa.archaea.scg illumina_megahit_prodigal_proteins.faa.bacteria.scg | perl -lane 'print $F[0];' > illumina_megahit_prodigal_proteins.scg.cat.list
-python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f illumina_megahit_prodigal_proteins.shortform.tab -c 0 -l illumina_megahit_prodigal_proteins.scg.cat.list | perl -lane '$F[0] =~ s/_\d{1,3}//; print "$F[0]\t$F[1]\t$F[2]";' > illumina_megahit_prodigal_proteins.scg.loc.bed
-perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$r = $s[0]; $r =~ s/_\d{1,3}//; print "$h{$s[0]},$r,$s[1],$s[2],$s[3]\n";}} close IN;' illumina_megahit_prodigal_proteins.faa.combined.scg illumina_megahit_prodigal_proteins.shortform.tab > illumina_megahit_prodigal_master_cogs.csv
+python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/utils/tabFileColumnGrep.py -f illumina_megahit_prodigal_proteins.shortform.tab -c 0 -l illumina_megahit_prodigal_proteins.scg.cat.list | perl -lane '$r = $F[0]; $r  =~ s/_\d{1,3}$//; print "$r\t$F[1]\t$F[2]\t$F[0]";' > illumina_megahit_prodigal_proteins.scg.loc.bed
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$r = $s[0]; $r =~ s/_\d{1,3}$//; print "$h{$s[0]},$r,$s[1],$s[2],$s[0],$s[3]\n";}} close IN;' illumina_megahit_prodigal_proteins.faa.combined.scg illumina_megahit_prodigal_proteins.shortform.tab > illumina_megahit_prodigal_master_cogs.csv
+```
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/desman/illumina
+
+```bash
+export RUMEN=/scinet01/gov/usda/ars/scinet/project/rumen_longread_metagenome_assembly
+module load gcc/8.1.0 prodigalorffinder/2.6.3 samtools/1.9 r/3.4.3
+
+perl -lane 'open(OUT, ">> $F[1].hqdas.bin.list"); print OUT "$F[0]"; close OUT;' < ../../dastool/illumina_dastool_analysis_binset_lt5redun_gt50comp.bins
+
+mkdir bin_lists
+mv *.list ./bin_lists/
+
+mkdir bed_lists
+for i in bin_lists/*.list; do name=`basename $i | cut -d'.' -f1,2`; echo $name; python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnGrep.py -f ../../dastool/illumina_megahit_prodigal_proteins.scg.loc.bed -c 0 -l $i > bed_lists/${name}.scg.bed; done
+
+# Queuing up the major jobs
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "illumina_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a $RUMEN/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa -c $RUMEN/analysis/desman/illumina/$i -g $RUMEN/analysis/desman/illumina/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -b $RUMEN/assemblies/pilot_project/illumina_megahit/publicdb/PRJEB10338/PRJEB10338.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/illumina_megahit/publicdb/PRJEB21624/PRJEB21624.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/illumina_megahit/publicdb/PRJEB8939/PRJEB8939.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/illumina_megahit/publicdb/PRJNA214227/PRJNA214227.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/illumina_megahit/publicdb/PRJNA291523/PRJNA291523.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/illumina_megahit/publicdb/PRJNA60251/PRJNA60251.sorted.merged.bam -b $RUMEN/assemblies/pilot_project/illumina_megahit/publicdb/USDA/USDA.sorted.merged.bam -o $name; done
+
+mkdir cog_lists
+for i in bin_lists/*.list; do num=`basename $i | cut -d '.' -f1,2`; echo $num; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = 1;} close IN; open(OUT, "> $ARGV[2]"); open(IN, "< $ARGV[1]"); while($l = <IN>){chomp($l); @s = split(/,/, $l); if(exists($h{$s[1]})){print OUT "$l\n";}} close OUT; close IN;' $i illumina_megahit_prodigal_master_cogs.csv $num.scg.cogs.csv; done
+
+mkdir fit_pdfs
+cp ./*/*.pdf ./fit_pdfs/
+
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "illumina_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $RUMEN/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa -c $RUMEN/analysis/desman/illumina/$i -g $RUMEN/analysis/desman/illumina/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -t $RUMEN/analysis/desman/illumina/cog_lists/${bed}.scg.cogs.csv -o $name; done
 ```
 
 
