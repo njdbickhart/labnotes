@@ -256,7 +256,8 @@ module load jellyfish2/2.2.9
 grep 'PRJEB21624' $RUMEN/sequence_data/public_datasets/cattle_rumen_illumina_data_spreadsheet.revised.tab | perl -lane 'print "gunzip -c $F[0]\ngunzip -c $F[1]";' > PRJEB21624.generators
 
 sbatch --nodes=1 --mem=350000 --ntasks-per-node=20 -p mem --wrap="jellyfish count -m 21 -s 100M -t 20 --bf-size 100G -C -g PRJEB21624.generators -o PRJEB21624_21mer_high"
-
+# That failed! Trying higher mem
+sbatch --nodes=1 --mem=650000 --ntasks-per-node=20 -p mem --wrap="jellyfish count -m 21 -s 100M -t 20 --bf-size 100G -C -g PRJEB21624.generators -o PRJEB21624_21mer_high"
 
 ```
 
@@ -1565,6 +1566,18 @@ mkdir fit_pdfs
 cp ./*/*.pdf ./fit_pdfs/
 
 for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "illumina_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch -p short $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $RUMEN/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa -c $RUMEN/analysis/desman/illumina/$i -g $RUMEN/analysis/desman/illumina/bed_lists/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -t $RUMEN/analysis/desman/illumina/cog_lists/${bed}.scg.cogs.csv -o $name; done
+
+
+#### And the limited sources of data ####
+mkdir illumina_sole
+mkdir illumina_rest
+for i in bed_lists bin_lists cog_lists; do echo $i; cp -r illumina/$i illumina_sole; cp -r illumina/$i illumina_rest/; done
+
+cd illumina_sole
+export RUMEN=/scinet01/gov/usda/ars/scinet/project/rumen_longread_metagenome_assembly; module load gcc/8.1.0 prodigalorffinder/2.6.3 samtools/1.9 r/3.4.3; for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "illumina_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch run_desman_pipeline_illumina_sole.sh $name $bed; done
+
+cd ../illumina_rest/
+for i in bin_lists/*.list; do name=`echo $i | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "illumina_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $i | cut -d'.' -f1,2`; echo $bed; sbatch run_desman_pipeline_illumina_rest.sh $name $bed; done
 ```
 
 
