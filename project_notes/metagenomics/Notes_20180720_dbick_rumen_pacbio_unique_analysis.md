@@ -258,6 +258,7 @@ grep 'PRJEB21624' $RUMEN/sequence_data/public_datasets/cattle_rumen_illumina_dat
 sbatch --nodes=1 --mem=350000 --ntasks-per-node=20 -p mem --wrap="jellyfish count -m 21 -s 100M -t 20 --bf-size 100G -C -g PRJEB21624.generators -o PRJEB21624_21mer_high"
 # That failed! Trying higher mem
 sbatch --nodes=1 --mem=650000 --ntasks-per-node=20 -p mem --wrap="jellyfish count -m 21 -s 100M -t 20 --bf-size 100G -C -g PRJEB21624.generators -o PRJEB21624_21mer_high"
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p short --wrap="jellyfish stats -o PRJEB21624_21mer_high.stats PRJEB21624_21mer_high"
 
 ```
 
@@ -417,6 +418,15 @@ perl -lane 'if($F[11] > 0 && $F[10] > 100){print "$F[0]\t$F[5]";}' < mick_vs_pb_
 # Concatenating the multiplehit entries by semi-colon
 perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]);} foreach my $k (keys(%h)){print "$k\t" . join(";", @{$h{$k}}) . "\n";}' < mick_vs_pb_pilon.assoc.tab > mick_vs_pb_pilon.assoc.condensed.tab
 perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[0]}}, $s[1]);} foreach my $k (keys(%h)){print "$k\t" . join(";", @{$h{$k}}) . "\n";}' < mick_vs_ilmn_megahit.assoc.tab > mick_vs_ilmn_megahit.assoc.condensed.tab
+
+### Redoing binning ###
+# Because my previous bin assignments were confusing and inconsistent, I'm going to update the master tables with new bin assignments from my list
+
+perl -lane '@b = split(/[_\.]/, $F[1]); print "$F[0]\t$b[-2]\_$b[-1]";' < illumina_dastool_analysis_binset_lt10redund.bins > illumina_dastool_analysis_binset_lt10redund.tab
+perl -lane '@b = split(/[_\.]/, $F[1]); print "$F[0]\t$b[-2]\_$b[-1]";' < illumina_dastool_high_quality_dasbins.contigs > illumina_dastool_high_quality_dasbins.contigs.tab
+
+perl -lane '@b = split(/[_\.]/, $F[1]); print "$F[0]\t$b[-2]\_$b[-1]";' < pacbio_dastool_analysis_binset_lt10redund.bins > pacbio_dastool_analysis_binset_lt10redund.tab
+perl -lane '@b = split(/[_\.]/, $F[1]); print "$F[0]\t$b[-2]\_$b[-1]";' < pacbio_dastool_high_quality_dasbins.contigs > pacbio_dastool_high_quality_dasbins.contigs.tab
 ```
 
 
@@ -442,9 +452,12 @@ My goal is to generate "master tables" of all known data about each contig. For 
 	* Hi-C
 		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/illumina_megahit_hic.unsorted.bins*
 		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/pacbio_final_public_hic.unsorted.bins*
-	* DAS_tool concatenation
-		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/illumina_megahit_dastool_DASTool_bins.tab*
-		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/pacbio_final_dastool_DASTool_bins.tab*
+	* DAS_tool less than 10 SCG redundancy
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/illumina_dastool_analysis_binset_lt10redund.tab*
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/pacbio_dastool_analysis_binset_lt10redund.tab*
+	* DAS_tool high quality draft (< 5 redundancy; > 80 completeness)
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/illumina_dastool_high_quality_dasbins.contigs.tab*
+		* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool/pacbio_dastool_high_quality_dasbins.contigs.tab*
 * Number of predicted ORFs
 	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/prodigal/illumina_megahit_prodigal_proteins.count.tab*
 	* */home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/prodigal/pacbio_final_prodigal_proteins.count.tab*
@@ -597,6 +610,13 @@ cp ../blobtools/pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.tab
 python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j pacbio_data_files.json -t pacbio_preliminary_blobtools_table.tab -o pacbio_final_pilon_master_table_2018_07_31.tab
 
 python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j illumina_data_files.json -t illumina_preliminary_blobtools_table.tab -o illumina_megahit_master_table_2018_07_31.tab
+
+# Redoing master tables to get better DAS_tool bins incorporated
+cp illumina_data_files.json illumina_data_files_9_2018.json
+cp pacbio_data_files.json pacbio_data_files_9_2018.json
+
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j pacbio_data_files_9_2018.json -t pacbio_preliminary_blobtools_table.tab -o pacbio_final_pilon_master_table_2018_09_07.tab
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j illumina_data_files_9_2018.json -t illumina_preliminary_blobtools_table.tab -o illumina_megahit_master_table_2018_09_07.tab
 ```
 
 
