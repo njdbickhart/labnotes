@@ -299,4 +299,41 @@ sum(pb[pb$MICKRMGAligns == "-" & pb$Hungate1000Aligns == "-", 2])
 [1] 1703508 <- length of contigs with no alignments to either dataset
 sum(ilmn[ilmn$MICKRMGAligns == "-" & ilmn$Hungate1000Aligns == "-", 2])
 [1] 23553844
+
+icount <- read.delim("illumina_megahit_master_table_2018_09_07.HQbins.taxcount", header=FALSE)
+summary(icount)
+           V1           V2              V3           V4               V5
+ 1          : 1   Min.   :1.000   Min.   : 1   Min.   : 1.000   Min.   : 1.00
+ DASBin_HQ  : 1   1st Qu.:2.000   1st Qu.: 3   1st Qu.: 5.000   1st Qu.: 5.00
+ hic_047    : 1   Median :2.000   Median : 4   Median : 7.000   Median : 9.00
+ hic_397    : 1   Mean   :2.327   Mean   : 5   Mean   : 7.959   Mean   :10.21
+ metabat_018: 1   3rd Qu.:3.000   3rd Qu.: 6   3rd Qu.:11.000   3rd Qu.:15.00
+ metabat_020: 1   Max.   :4.000   Max.   :26   Max.   :20.000   Max.   :27.00
+ (Other)    :43                                                 NA's   :1
+       V6              V7       
+ Min.   : 1.00   Min.   : 1.000 
+ 1st Qu.: 5.75   1st Qu.: 5.000  
+ Median :13.50   Median : 8.500  
+ Mean   :13.50   Mean   : 9.271  
+ 3rd Qu.:21.00   3rd Qu.:12.000  
+ Max.   :42.00   Max.   :43.000  
+ NA's   :1       NA's   :1      
+
+summary(pcount)
+         V1           V2             V3              V4
+ 7        : 1   Min.   :1.00   Min.   :1.000   Min.   : 1.000
+ 8        : 1   1st Qu.:1.00   1st Qu.:1.000   1st Qu.: 1.000
+ DASBin_HQ: 1   Median :1.00   Median :2.500   Median : 3.000
+ hic_110  : 1   Mean   :1.75   Mean   :2.667   Mean   : 3.333
+ hic_195  : 1   3rd Qu.:2.00   3rd Qu.:3.000   3rd Qu.: 4.000
+ hic_217  : 1   Max.   :9.00   Max.   :8.000   Max.   :11.000
+ (Other)  :19   NA's   :1      NA's   :1       NA's   :1
+       V5               V6               V7
+ Min.   : 1.000   Min.   : 1.000   Min.   : 1.000
+ 1st Qu.: 3.750   1st Qu.: 4.000   1st Qu.: 5.000
+ Median : 5.000   Median : 7.000   Median : 6.500
+ Mean   : 5.583   Mean   : 7.333   Mean   : 6.458
+ 3rd Qu.: 8.000   3rd Qu.:10.000   3rd Qu.: 8.000
+ Max.   :15.000   Max.   :17.000   Max.   :13.000
+ NA's   :1        NA's   :1        NA's   :1
 ```
