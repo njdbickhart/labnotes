@@ -190,3 +190,113 @@ table(illumina$Location, illumina$CompCat)
   Mid   959925        0       0         0
   Start  12188    23458    1395    248553
 ```
+
+## Grabbing only the high quality bins
+
+I need to pull out the high quality bins from both datasets and characterize the contents.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+# Illumina first 
+perl -lane 'print $F[1];' < ../dastool/illumina_dastool_high_quality_dasbins.contigs.tab | sort | uniq | perl -ne 'chomp; @s = split(/_/); print "$s[1]\n";' > illumina_dastool_high_quality_dasbins.nums.list
+
+python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnGrep.py -f illumina_megahit_master_table_2018_09_07.tab -c 51 -l illumina_dastool_high_quality_dasbins.nums.list > illumina_megahit_master_table_2018_09_07.HQbins.only.tab
+
+# OK, that didn't work out because of the bin naming conventions I used.
+perl -ne 'chomp; @F = split(/\t/); if($F[51] ne "NOBIN"){print "$_\n";}' < illumina_megahit_master_table_2018_09_07.tab > illumina_megahit_master_table_2018_09_07.HQbins.only.tab
+
+perl -ne 'chomp; @F = split(/\t/); print join("\t", @F[0,1,2,22,23,27,31,35,39,47,48,49,51,52,53,57,58]) . "\n";' < illumina_megahit_master_table_2018_09_07.HQbins.only.tab > illumina_megahit_master_table_2018_09_07.HQbins.only.short.tab
+
+# Pacbio next
+perl -ne 'chomp; @F = split(/\t/); if($F[51] ne "NOBIN"){print "$_\n";}' < pacbio_final_pilon_master_table_2018_09_07.tab > pacbio_final_pilon_master_table_2018_09_07.HQbins.only.tab
+
+perl -ne 'chomp; @F = split(/\t/); print join("\t", @F[0,1,2,22,23,27,31,35,39,47,48,49,51,52,53,57,58]) . "\n";' < pacbio_final_pilon_master_table_2018_09_07.HQbins.only.tab > pacbio_final_pilon_master_table_2018_09_07.HQbins.only.short.tab
+
+perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[12]}}, [$s[4], $s[5], $s[6], $s[7], $s[8], $s[9]]);} foreach my $bin (keys(%h)){%t = (); foreach my $row (@{$h{$bin}}){for($x = 0; $x < scalar(@{$row}); $x++){push(@{$t{$x}}, $row->[$x]);}} @j = (); foreach $idx (sort {$a <=> $b}keys(%t)){push(@j, join(";", @{$t{$idx}}));} print "$bin\t" . join("\t", @j) . "\n";}' < illumina_megahit_master_table_2018_09_07.HQbins.only.short.tab | perl -lane 'my @d; for($x = 1; $x < scalar(@F); $x++){my %h; @jsegs = split(/;/, $F[$x]); foreach $k (@jsegs){$h{$k} += 1;} my @tmp; foreach $k (sort{$a cmp $b}keys(%h)){push(@tmp,"$k:$h{$k}");} push(@d, join(";", @tmp));} print "$F[0]\t" . join("\t", @d);' > illumina_megahit_master_table_2018_09_07.HQbins.taxtable.tab
+
+perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[12]}}, [$s[4], $s[5], $s[6], $s[7], $s[8], $s[9]]);} foreach my $bin (keys(%h)){%t = (); foreach my $row (@{$h{$bin}}){for($x = 0; $x < scalar(@{$row}); $x++){push(@{$t{$x}}, $row->[$x]);}} @j = (); foreach $idx (sort {$a <=> $b}keys(%t)){push(@j, join(";", @{$t{$idx}}));} print "$bin\t" . join("\t", @j) . "\n";}' < pacbio_final_pilon_master_table_2018_09_07.HQbins.only.short.tab | perl -lane 'my @d; for($x = 1; $x < scalar(@F); $x++){my %h; @jsegs = split(/;/, $F[$x]); foreach $k (@jsegs){$h{$k} += 1;} my @tmp; foreach $k (sort{$a cmp $b}keys(%h)){push(@tmp,"$k:$h{$k}");} push(@d, join(";", @tmp));} print "$F[0]\t" . join("\t", @d);' > pacbio_final_pilon_master_table_2018_09_07.HQbins.taxtable.tab
+
+perl -lane 'my @counts; for($x = 1; $x < scalar(@F); $x++){@j = split(/;/, $F[$x]); push(@counts, scalar(@j));} print "$F[0]\t" . join("\t", @counts);' < pacbio_final_pilon_master_table_2018_09_07.HQbins.taxtable.tab > pacbio_final_pilon_master_table_2018_09_07.HQbins.taxcounts
+perl -lane 'my @counts; for($x = 1; $x < scalar(@F); $x++){@j = split(/;/, $F[$x]); push(@counts, scalar(@j));} print "$F[0]\t" . join("\t", @counts);' < illumina_megahit_master_table_2018_09_07.HQbins.taxtable.tab > illumina_megahit_master_table_2018_09_07.HQbins.taxcount
+```
+
+Getting brief summaries of the data for the manuscript.
+
+```R
+ilmn <- read.delim("illumina_megahit_master_table_2018_09_07.HQbins.only.short.tab",header=TRUE)
+           name          length             GC            cov_sum
+ k127_1000532:   1   Min.   :  1000   Min.   :0.1815   Min.   :   8.208
+ k127_1001057:   1   1st Qu.:  3445   1st Qu.:0.4155   1st Qu.:  45.613
+ k127_1002355:   1   Median :  5361   Median :0.4837   Median :  90.898
+ k127_1003354:   1   Mean   :  8793   Mean   :0.4758   Mean   : 173.495
+ k127_1003632:   1   3rd Qu.:  9485   3rd Qu.:0.5412   3rd Qu.: 240.206
+ k127_1003884:   1   Max.   :320393   Max.   :0.6813   Max.   :3425.903
+ (Other)     :9227
+ superkingdom.t.24         phylum.t.28                 order.t.32
+ Archaea  : 199    Bacteroidetes :4360   Bacteroidales      :3860
+ Bacteria :8748    Firmicutes    :3017   Clostridiales      :2485
+ Eukaryota:  26    Bacteria-undef: 423   Bacteria-undef     : 423
+ no-hit   : 258    Spirochaetes  : 390   Spirochaetales     : 370
+ Viruses  :   2    no-hit        : 258   Bacteroidetes-undef: 307
+                   Synergistetes : 245   Firmicutes-undef   : 288
+                   (Other)       : 540   (Other)            :1500
+   MetabatBin       HiCBin      CompleteORFs      PartialORFs
+ NOBIN  : 570   NOBIN  :7382   Min.   :  0.000   Min.   :0.000
+ 82     : 393   25     : 471   1st Qu.:  2.000   1st Qu.:1.000
+ 752    : 362   114    : 437   Median :  4.000   Median :2.000
+ 1302   : 346   238    : 179   Mean   :  6.835   Mean   :1.485
+ 601    : 337   253    : 141   3rd Qu.:  8.000   3rd Qu.:2.000
+ 121    : 319   1389   :  83   Max.   :238.000   Max.   :2.000
+ (Other):6906   (Other): 540
+      MICKRMGAligns              Hungate1000Aligns
+ -           :4263   -                    :7019
+ scaffold_93 :  27   3960633.scaffold00002:  54
+ scaffold_15 :  23   3960633.scaffold00001:  53
+ scaffold_60 :  23   3960793.scaffold00003:  34
+ scaffold_211:  22   3960633.scaffold00004:  30
+ scaffold_53 :  21   3960793.scaffold00001:  30
+ (Other)     :4854   (Other)              :2013
+
+
+# Now for the pacbio
+pb <- read.delim("pacbio_final_pilon_master_table_2018_09_07.HQbins.only.short.tab", header=TRUE)
+          name          length             GC            cov_sum
+ tig00002456:   1   Min.   :  1759   Min.   :0.2743   Min.   :  18.74
+ tig00002711:   1   1st Qu.: 11038   1st Qu.:0.4526   1st Qu.: 155.46
+ tig00002903:   1   Median : 22108   Median :0.4855   Median : 300.64
+ tig00002934:   1   Mean   : 38997   Mean   :0.4693   Mean   : 562.54
+ tig00003179:   1   3rd Qu.: 48016   3rd Qu.:0.5051   3rd Qu.: 691.33
+ tig00003214:   1   Max.   :710205   Max.   :0.6193   Max.   :4648.39
+ (Other)    :1216
+ superkingdom.t.24         phylum.t.28                order.t.32
+ Archaea  :  20    Bacteroidetes :946   Bacteroidales      :893
+ Bacteria :1188    Firmicutes    :180   Veillonellales     : 82
+ Eukaryota:   8    Bacteria-undef: 41   Clostridiales      : 81
+ no-hit   :   6    Euryarchaeota : 20   Bacteroidetes-undef: 46
+                   Proteobacteria: 13   Bacteria-undef     : 41
+                   no-hit        :  6   Methanobacteriales : 19
+                   (Other)       : 16   (Other)            : 60
+
+   MetabatBin      HiCBin     CompleteORFs     PartialORFs
+ 410    :185   55     :125   Min.   :  0.00   Min.   :0.000
+ NOBIN  :116   10     : 96   1st Qu.: 11.00   1st Qu.:1.000
+ 246    :113   18     : 92   Median : 21.00   Median :1.000
+ 619    : 94   NOBIN  : 61   Mean   : 36.08   Mean   :1.164
+ 633    : 79   20     : 48   3rd Qu.: 43.75   3rd Qu.:2.000
+ 491    : 76   3      : 48   Max.   :663.00   Max.   :2.000
+ (Other):559   (Other):752
+     MICKRMGAligns                        Hungate1000Aligns
+ -          : 125   -                              :425
+ scaffold_55:  11   3960801.scaffold00001          :  9
+ scaffold_22:   8   3960801.scaffold00004          :  9
+ scaffold_36:   8   4304392.scaffold00001          :  7
+ scaffold_59:   8   3960633.scaffold00002          :  5
+ scaffold_23:   6   3353505.scf7180000000012|quiver:  4
+ (Other)    :1056   (Other)                        :763
+
+sum(pb[pb$MICKRMGAligns == "-" & pb$Hungate1000Aligns == "-", 2])
+[1] 1703508 <- length of contigs with no alignments to either dataset
+sum(ilmn[ilmn$MICKRMGAligns == "-" & ilmn$Hungate1000Aligns == "-", 2])
+[1] 23553844
+```
