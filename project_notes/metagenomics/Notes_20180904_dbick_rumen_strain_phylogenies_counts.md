@@ -219,6 +219,17 @@ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[12]}}, [$s[4], $s[5
 
 perl -lane 'my @counts; for($x = 1; $x < scalar(@F); $x++){@j = split(/;/, $F[$x]); push(@counts, scalar(@j));} print "$F[0]\t" . join("\t", @counts);' < pacbio_final_pilon_master_table_2018_09_07.HQbins.taxtable.tab > pacbio_final_pilon_master_table_2018_09_07.HQbins.taxcounts
 perl -lane 'my @counts; for($x = 1; $x < scalar(@F); $x++){@j = split(/;/, $F[$x]); push(@counts, scalar(@j));} print "$F[0]\t" . join("\t", @counts);' < illumina_megahit_master_table_2018_09_07.HQbins.taxtable.tab > illumina_megahit_master_table_2018_09_07.HQbins.taxcount
+
+### the AN bin datasets ###
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN"){print "$_\n";}' < illumina_megahit_master_table_2018_09_07.tab > illumina_megahit_master_table_2018_09_07.ANbins.tab
+perl -ne 'chomp; @F = split(/\t/); print join("\t", @F[0,1,2,22,23,27,31,35,39,47,48,49,50, 51, 52,53,57,58]) . "\n";' < illumina_megahit_master_table_2018_09_07.ANbins.tab > illumina_megahit_master_table_2018_09_07.ANbins.short.tab
+perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[12]}}, [$s[4], $s[5], $s[6], $s[7], $s[8], $s[9]]);} foreach my $bin (keys(%h)){%t = (); foreach my $row (@{$h{$bin}}){for($x = 0; $x < scalar(@{$row}); $x++){push(@{$t{$x}}, $row->[$x]);}} @j = (); foreach $idx (sort {$a <=> $b}keys(%t)){push(@j, join(";", @{$t{$idx}}));} print "$bin\t" . join("\t", @j) . "\n";}' < illumina_megahit_master_table_2018_09_07.ANbins.short.tab |perl -lane 'my @d; for($x = 1; $x < scalar(@F); $x++){my %h; @jsegs = split(/;/, $F[$x]); foreach $k (@jsegs){$h{$k} += 1;} my @tmp; foreach $k (sort{$a cmp $b}keys(%h)){push(@tmp,"$k:$h{$k}");} push(@d, join(";", @tmp));} print "$F[0]\t" . join("\t", @d);' > illumina_megahit_master_table_2018_09_07.ANbins.taxtable.tab
+perl -lane 'my @counts; for($x = 1; $x < scalar(@F); $x++){@j = split(/;/, $F[$x]); push(@counts, scalar(@j));} print "$F[0]\t" . join("\t", @counts);' < illumina_megahit_master_table_2018_09_07.ANbins.taxtable.tab > illumina_megahit_master_table_2018_09_07.ANbins.taxcounts
+
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN"){print "$_\n";}' < pacbio_final_pilon_master_table_2018_09_07.tab > pacbio_final_pilon_master_table_2018_09_07.ANbins.tab
+perl -ne 'chomp; @F = split(/\t/); print join("\t", @F[0,1,2,22,23,27,31,35,39,47,48,49,50, 51, 52,53,57,58]) . "\n";' < pacbio_final_pilon_master_table_2018_09_07.ANbins.tab > pacbio_final_pilon_master_table_2018_09_07.ANbins.short.tab
+perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[12]}}, [$s[4], $s[5], $s[6], $s[7], $s[8], $s[9]]);} foreach my $bin (keys(%h)){%t = (); foreach my $row (@{$h{$bin}}){for($x = 0; $x < scalar(@{$row}); $x++){push(@{$t{$x}}, $row->[$x]);}} @j = (); foreach $idx (sort {$a <=> $b}keys(%t)){push(@j, join(";", @{$t{$idx}}));} print "$bin\t" . join("\t", @j) . "\n";}' < pacbio_final_pilon_master_table_2018_09_07.ANbins.short.tab |perl -lane 'my @d; for($x = 1; $x < scalar(@F); $x++){my %h; @jsegs = split(/;/, $F[$x]); foreach $k (@jsegs){$h{$k} += 1;} my @tmp; foreach $k (sort{$a cmp $b}keys(%h)){push(@tmp,"$k:$h{$k}");} push(@d, join(";", @tmp));} print "$F[0]\t" . join("\t", @d);' > pacbio_final_pilon_master_table_2018_09_07.ANbins.taxtable.tab
+perl -lane 'my @counts; for($x = 1; $x < scalar(@F); $x++){@j = split(/;/, $F[$x]); push(@counts, scalar(@j));} print "$F[0]\t" . join("\t", @counts);' < pacbio_final_pilon_master_table_2018_09_07.ANbins.taxtable.tab > pacbio_final_pilon_master_table_2018_09_07.ANbins.taxcounts
 ```
 
 Getting brief summaries of the data for the manuscript.
@@ -258,6 +269,7 @@ ilmn <- read.delim("illumina_megahit_master_table_2018_09_07.HQbins.only.short.t
  scaffold_53 :  21   3960793.scaffold00001:  30
  (Other)     :4854   (Other)              :2013
 
+ilan <- read.delim("illumina_megahit_master_table_2018_09_07.ANbins.short.tab", header=TRUE)
 
 # Now for the pacbio
 pb <- read.delim("pacbio_final_pilon_master_table_2018_09_07.HQbins.only.short.tab", header=TRUE)
@@ -295,10 +307,56 @@ pb <- read.delim("pacbio_final_pilon_master_table_2018_09_07.HQbins.only.short.t
  scaffold_23:   6   3353505.scf7180000000012|quiver:  4
  (Other)    :1056   (Other)                        :763
 
+pban <- read.delim("pacbio_final_pilon_master_table_2018_09_07.ANbins.short.tab", header=TRUE)
+
 sum(pb[pb$MICKRMGAligns == "-" & pb$Hungate1000Aligns == "-", 2])
 [1] 1703508 <- length of contigs with no alignments to either dataset
 sum(ilmn[ilmn$MICKRMGAligns == "-" & ilmn$Hungate1000Aligns == "-", 2])
 [1] 23553844
+
+# Now for the ANbin counts
+sum(ilan[ilan$MICKRMGAligns == "-" & ilan$Hungate1000Aligns == "-", 2])
+[1] 669890409
+sum(pban[pban$MICKRMGAligns == "-" & pban$Hungate1000Aligns == "-", 2])
+[1] 137209071
+
+nrow(ilan[ilan$MICKRMGAligns == "-" & ilan$Hungate1000Aligns == "-",])
+[1] 207599
+nrow(pban[pban$MICKRMGAligns == "-" & pban$Hungate1000Aligns == "-",])
+[1] 12421
+
+# Calculating data novel to each dataset from the AN bins
+ilall <- read.delim("illumina_megahit_master_table_2018_09_07.ANbins.tab", header=TRUE)
+pball <- read.delim('pacbio_final_pilon_master_table_2018_09_07.tab', header=TRUE)
+
+nrow(ilall[ilall$MICKRMGAligns == "-" & ilall$Hungate1000Aligns == "-" & ilall$PacBioCtgAligns == "-" & ilall$DASBin_AN != "NOBIN",])
+[1] 152793
+sum(ilall[ilall$MICKRMGAligns == "-" & ilall$Hungate1000Aligns == "-" & ilall$PacBioCtgAligns == "-" & ilall$DASBin_AN != "NOBIN",2])
+[1] 435645025
+
+nrow(pball[pball$IlluminaCtgAligns == "-" & pball$MICKRMGAligns == "-" & pball$Hungate1000Aligns == "-" & pball$DASBin_AN != "NOBIN",])
+[1] 186
+sum(pball[pball$IlluminaCtgAligns == "-" & pball$MICKRMGAligns == "-" & pball$Hungate1000Aligns == "-" & pball$DASBin_AN != "NOBIN",2])
+[1] 1186026
+
+
+# Testing GC
+summary(pball[pball$IlluminaCtgAligns == "-" & pball$MICKRMGAligns == "-" & pball$Hungate1000Aligns == "-" & pball$DASBin_AN != "NOBIN",])
+Mean   :0.5010
+Median :0.5074
+
+summary(pball$GC)
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+ 0.1544  0.4313  0.4898  0.4795  0.5363  0.9799
+
+ks.test(pball$GC, pball[pball$IlluminaCtgAligns == "-" & pball$MICKRMGAligns == "-" & pball$Hungate1000Aligns == "-" & pball$DASBin_AN != "NOBIN",3], alternative="greater")
+        Two-sample Kolmogorov-Smirnov test
+
+data:  pball$GC and pball[pball$IlluminaCtgAligns == "-" & pball$MICKRMGAligns == pball$GC and     "-" & pball$Hungate1000Aligns == "-" & pball$DASBin_AN != pball$GC and     "NOBIN", 3]
+D^+ = 0.16495, p-value = 4.12e-05
+alternative hypothesis: the CDF of x lies above that of y
+
+
 
 icount <- read.delim("illumina_megahit_master_table_2018_09_07.HQbins.taxcount", header=FALSE)
 summary(icount)
@@ -336,4 +394,127 @@ summary(pcount)
  3rd Qu.: 8.000   3rd Qu.:10.000   3rd Qu.: 8.000
  Max.   :15.000   Max.   :17.000   Max.   :13.000
  NA's   :1        NA's   :1        NA's   :1
+```
+
+## Coverage metrics to indicate difference in sample composition
+
+Let's use coverage averages/information to try to distinguish our samples from previously sequenced datasets
+
+> Ceres:/home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+perl -ne 'chomp; @F = split(/\t/); print join("\t", @F[0,1,2,8,9,14,15,16,17,21,23,39,47,50,57,58]) . "\n";' < illumina_megahit_master_table_2018_09_07.ANbins.tab > illumina_megahit_master_table_2018_09_07.ANbins.rd.tab
+perl -ne 'chomp; @F = split(/\t/); print join("\t", @F[0,1,2,8,9,14,15,16,17,21,23,39,47,50,57,58]) . "\n";' < pacbio_final_pilon_master_table_2018_09_07.ANbins.tab > pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.tab
+```
+
+```R
+library(dplyr)
+library(vegan)
+
+ilmn <- read.delim("illumina_megahit_master_table_2018_09_07.ANbins.rd.tab", header=TRUE)
+rddat <- ilmn[,c(4,5,6,7,8,9,10)]
+rownames(rddat) <- ilmn$name
+rddat <- t(rddat)
+
+zscores <- t(scale(rddat, center = TRUE, scale = TRUE))
+summary(zscores)
+     cov16             cov17              cov0              cov1
+ Min.   :-1.5398   Min.   :-0.9301   Min.   :-1.7249   Min.   :-0.7967
+ 1st Qu.:-0.5592   1st Qu.:-0.1705   1st Qu.:-0.5753   1st Qu.: 0.6235
+ Median :-0.4520   Median : 0.4655   Median :-0.4790   Median : 1.6736
+ Mean   :-0.2732   Mean   : 0.7223   Mean   :-0.4016   Mean   : 1.3755
+ 3rd Qu.:-0.2525   3rd Qu.: 1.7243   3rd Qu.:-0.3525   3rd Qu.: 2.1579
+ Max.   : 2.2678   Max.   : 2.2678   Max.   : 2.2670   Max.   : 2.2678
+      cov2              cov3              cov7
+ Min.   :-1.5211   Min.   :-1.3831   Min.   :-1.8757
+ 1st Qu.:-0.6422   1st Qu.:-0.5932   1st Qu.:-0.7615
+ Median :-0.5396   Median :-0.4551   Median :-0.6384
+ Mean   :-0.5185   Mean   :-0.2646   Mean   :-0.6399
+ 3rd Qu.:-0.4429   3rd Qu.:-0.2357   3rd Qu.:-0.5373
+ Max.   : 2.2526   Max.   : 2.2676   Max.   : 2.2677
+
+zscores.rda <- rda(zscores)
+pdf(file="test_total_zscore_pca.pdf", useDingbats=FALSE)
+biplot(zscores.rda, display = c("sites", "species"), type= c("text", "points"))
+dev.off()
+
+rddat <- ilmn[,c(4,5,6,7,8,9,10)]
+rddat.norm <- wisconsin(rddat)
+rddat.norm.rda
+pdf(file="test_total_zscore_pca.pdf", useDingbats=FALSE)
+biplot(rddat.norm.rda, display = c("sites", "species"), type= c("text", "points"))
+ordihull(rddat.norm.rda, group=ilmn$superkingdom.t.24)
+dev.off()
+
+```
+
+Let's try a python approach, because the data manipulation in R is incredibly tedious and nonintuitive. I am using the hypergeomtric test to assess enrichment of specific taxonomic groupings in each dataset.
+
+```bash
+# Genus illumina associations
+python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/metagenomics/readdepthHyperGeomEnrichmentTest.py -f illumina_megahit_master_table_2018_09_07.ANbins.rd.tab -c 3,5,6,7,8,9 -s 4 -g 11 -o illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo
+wc -l illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo
+1942 illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo
+
+# Since there were 1942 tests, and I want to use an alpha of 0.05, the Benjamini correction cutoff is 2.57 x 10-5
+perl -ne 'chomp; @F=split(/\t/); if($F[4] < 0.000026){print "$_\n";}' < illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo | wc -l
+205
+
+# Genus pacbio associations
+python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/metagenomics/readdepthHyperGeomEnrichmentTest.py -f pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.tab -c 3,5,6,7,8,9 -s 4 -g 11 -o pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo
+
+wc -l pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo
+958 pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo
+
+# So the Benjamini correction is 5 x 10-5
+perl -ne 'chomp; @F=split(/\t/); if($F[4] < 0.000052){print "$_\n";}' < pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo | wc -l
+44
+
+# Let's see how many geni are common between the two datasets
+perl -ne 'chomp; @F=split(/\t/); if($F[4] < 0.000052 && $F[0] ne "Group"){print "$F[0]\n";}' < pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo > pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
+perl -ne 'chomp; @F=split(/\t/); if($F[4] < 0.000026 && $F[0] ne "Group"){print "$F[0]\n";}' < illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo > illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
+File Number 1: illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list
+File Number 2: pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
+Set     Count
+1       171
+1;2     33
+2       10
+
+# 33! Impressive! Let's see what they are
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1_2 illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
+Phi29virus
+Candidatus Izimaplasma
+no-hit
+Microscilla
+Stentor
+Acinetobacter
+Tolumonas
+Candidatus Pelagibacter
+Bacteria-undef
+Treponema
+Anaerostipes
+Clostridium
+Candidatus Melainabacteria-undef
+Fusobacterium
+Helicobacter
+Eubacterium
+Bacillus
+Subdoligranulum
+Acetobacter
+Azospirillum
+Veillonella
+Neocallimastix
+Proteobacteria-undef
+Gossypium
+Stylonychia
+Dysgonomonas
+Oxytricha
+Trichuris
+Phikzvirus
+Thermoplasmatales-undef
+Euryarchaeota-undef
+Brachyspira
+Lutibacter
 ```

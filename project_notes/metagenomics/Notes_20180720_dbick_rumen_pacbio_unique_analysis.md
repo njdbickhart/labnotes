@@ -1428,13 +1428,13 @@ python /mnt/nfs/nfs2/bickhart-users/binaries/python_toolchain/metagenomics/desma
 
 I have an idea: let's use the DAS_tool output and the rest of the pipeline from DESMAN to calculate SCG frequency from there. I need to grep out ALL bins that have more than 0% completion. Just to flesh things out, I also want to add more samples to the analysis. Let's add all of Micks' samples and the high quality stuff (> 20 Gigbaytes total bam) to this list:
 
-* PRJEB10338
-* PRJEB21624
-* PRJEB8939
-* PRJNA214227
-* PRJNA291523
-* PRJNA60251
-* USDA	<- ours
+* PRJEB10338	cov0
+* PRJEB21624	cov1
+* PRJEB8939		cov2
+* PRJNA214227	cov3
+* PRJNA291523	cov7
+* PRJNA60251	cov16
+* USDA	<- ours	cov17
 
 > Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics/pilot_project/pacbio_final_pilon
 
