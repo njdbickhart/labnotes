@@ -452,7 +452,7 @@ Let's try a python approach, because the data manipulation in R is incredibly te
 
 ```bash
 # Genus illumina associations
-python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/metagenomics/readdepthHyperGeomEnrichmentTest.py -f illumina_megahit_master_table_2018_09_07.ANbins.rd.tab -c 3,5,6,7,8,9 -s 4 -g 11 -o illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo
+python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/metagenomics/readdepthHyperGeomEnrichmentTest.py -f illumina_megahit_master_table_2018_09_07.ANbins.rd.tab -c 3,5,6,7,8,9 -s 4 -g 11 -o illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo -m 10,12,13,14
 wc -l illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo
 1942 illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo
 
@@ -461,7 +461,7 @@ perl -ne 'chomp; @F=split(/\t/); if($F[4] < 0.000026){print "$_\n";}' < illumina
 205
 
 # Genus pacbio associations
-python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/metagenomics/readdepthHyperGeomEnrichmentTest.py -f pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.tab -c 3,5,6,7,8,9 -s 4 -g 11 -o pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo
+python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/metagenomics/readdepthHyperGeomEnrichmentTest.py -f pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.tab -c 3,5,6,7,8,9 -s 4 -g 11 -o pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo -m 10,12,13,14
 
 wc -l pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo
 958 pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo
@@ -471,18 +471,18 @@ perl -ne 'chomp; @F=split(/\t/); if($F[4] < 0.000052){print "$_\n";}' < pacbio_f
 44
 
 # Let's see how many geni are common between the two datasets
-perl -ne 'chomp; @F=split(/\t/); if($F[4] < 0.000052 && $F[0] ne "Group"){print "$F[0]\n";}' < pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo > pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
-perl -ne 'chomp; @F=split(/\t/); if($F[4] < 0.000026 && $F[0] ne "Group"){print "$F[0]\n";}' < illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo > illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list
+perl -ne 'chomp; @F=split(/\t/); if($F[10] eq "True" && $F[4] ne "Group"){print "$F[4]\n";}' < pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo > pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
+perl -ne 'chomp; @F=split(/\t/); if($F[10] eq "True" && $F[4] ne "Group"){print "$F[4]\n";}' < illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo > illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list
 
 perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
 File Number 1: illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list
 File Number 2: pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
 Set     Count
-1       171
-1;2     33
-2       10
+1       68
+1;2     46
+2       3
 
-# 33! Impressive! Let's see what they are
+# 46! Impressive! Let's see what they are
 perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1_2 illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
 Phi29virus
 Candidatus Izimaplasma
@@ -517,4 +517,38 @@ Thermoplasmatales-undef
 Euryarchaeota-undef
 Brachyspira
 Lutibacter
+```
+
+## Generating supplementary tables
+
+I want to subsection the master tables to generate our draft supplementary info. 
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+#### Supplementary tables 2 and 3
+
+```bash
+perl -ne 'chomp; @F = split(/\t/); if($F[50] eq "NOBIN"){next;} print join("\t", @F[0,1,2,48,49,50,51]) . "\n";' < illumina_megahit_master_table_2018_09_07.tab > supplementary_table_2_shortread_bins.tab
+perl -ne 'chomp; @F = split(/\t/); if($F[50] eq "NOBIN"){next;} print join("\t", @F[0,1,2,48,49,50,51]) . "\n";' < pacbio_final_pilon_master_table_2018_09_07.tab > supplementary_table_3_longread_bins.tab
+```
+
+#### Supplementary tables 4 and 5
+
+```bash
+perl -ne 'chomp; @F = split(/\t/); if($F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-" && $F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51]) . "\n";}' < illumina_megahit_master_table_2018_09_07.tab > supplementary_table_4_short_read_unique.tab
+perl -ne 'chomp; @F = split(/\t/); if($F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-" && $F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51]) . "\n";}' < pacbio_final_pilon_master_table_2018_09_07.tab > supplementary_table_5_long_read_unique.tab
+```
+
+#### Supplementary tables 6 and 7
+
+```bash
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51,56,57,58]) . "\n";}' < illumina_megahit_master_table_2018_09_07.tab > supplementary_table_6_short_read_taxonomy.tab
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51,56,57,58]) . "\n";}' < pacbio_final_pilon_master_table_2018_09_07.tab > supplementary_table_7_long_read_taxonomy.tab
+```
+
+#### Supplementary tables 8 and 9
+
+```bash
+cat ../prodigal/illumina_megahit_prodigal_proteins.shortform.tab > supplementary_table_8_short_read_prodigal.tab
+cat ../prodigal/pacbio_final_prodigal_proteins.shortform.tab > supplementary_table_9_long_read_prodigal.tab
 ```
