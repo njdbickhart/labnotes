@@ -519,6 +519,31 @@ Brachyspira
 Lutibacter
 ```
 
+## Generating ARG figure
+
+I want to summarize the ARG genes in a way that shows the different classes of genes present, while shows the quality of the PacBio calls.
+
+> pwd: F:/SharedFolders/metagenomics/pilot_manuscript/figure_drafts/amr_genes
+
+```R
+library(ggplot2)
+library(gridExtra)
+library(scales)
+data <- read.delim("amr_gene_columns.txt")
+
+# The following plot was too dense
+ggplot(data, aes(x=qcoverage, color=ARG, fill=ARG)) + geom_histogram(position="identity", alpha=0.5) + scale_color_brewer(palette = "dark2") + theme_bw() + facet_grid(~Tech)
+
+# This created a servicable but boring plot
+ggplot(data, aes(x=ARGClass, color=ARGClass, fill=ARGClass)) + geom_bar(position="stack") + scale_color_brewer(palette = "Dark2") + theme_bw() + theme(axis.text.x = element_text(angle=45, hjust = 1)) + facet_grid(~Tech)
+
+# OK, I think that this is the only way to show this data in a reasonable way
+upper <- ggplot(data, aes(x=ARGClass, fill=ARGClass)) + geom_bar(position="stack") + scale_color_brewer(palette = "Dark2") + theme_bw() + theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x=element_blank()) + scale_y_continuous(limits=c(20,175), oob=rescale_none) + facet_grid(~Tech)
+lower <- ggplot(data, aes(x=ARGClass, fill=ARGClass)) + geom_bar(position="stack") + scale_color_brewer(palette = "Dark2") + theme_bw() + theme(axis.text.x = element_text(angle=45, hjust = 1)) + scale_y_continuous(limits=c(0,15), oob= rescale_none) + facet_grid(~Tech)
+pdf(file="arg_gene_class_counts.pdf", useDingbats = FALSE)
+grid.arrange(upper, lower, ncol=1)
+```
+
 ## Generating supplementary tables
 
 I want to subsection the master tables to generate our draft supplementary info. 
