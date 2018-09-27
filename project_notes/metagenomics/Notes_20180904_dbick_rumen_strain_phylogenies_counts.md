@@ -544,6 +544,33 @@ pdf(file="arg_gene_class_counts.pdf", useDingbats = FALSE)
 grid.arrange(upper, lower, ncol=1)
 ```
 
+## Generating a hive plot
+
+This may be the death of me, but I want to convey the relatedness of our datasets to Mick's and the Hungate1000's datasets. I had a crazy (crazy!) idea to use a hive plot instead of a network to demonstrate this. I plan on making two hives, one for each assembly, and plotting the proportional counts of bases onto each.
+
+First, I need to condense the data into a non-overlapping set of edges and nodes with weights that correspond to a proportional count.
+
+OK, there are no good tools for modifying edge weight scale to make the sort of "proportional" graph that I saw in the hiveplot promotional webpage. I may have to generate a "hack" to make this work. Basically, I divide the plot into nodes of 100 for each super-set and use those as proxies for the proportions. I would then have to sort the nodes by numerical order to create the illusion of a propotional comparison.
+
+Thankfully, the data is only going to be a "does it align?" or a "it aligns" binary comparison, and I will use the filtered PAF files from my previous alignments to make things easier.
+
+Let's start by queueing the Hungate vs Mick alignment and proceed from there.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+# Hungate vs Mick
+module load minimap2/2.6
+module load bedtools
+
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_combined_unordered_reference.fasta /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug.fa > hungate_vs_mick.paf"
+
+# Now, how to process the PAF files? Keep it simple?
+# Let's use my previous threshold. > 100 bp alignment length and >0 mapping quality
+sbatch -p short convert_paf_to_beds.pl -p /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_vs_ilmn_megahit.paf -t hungate_ilmn_paf_filt.bed -q ilmn_hungate_paf_filt.bed
+
+```
+
 ## Generating supplementary tables
 
 I want to subsection the master tables to generate our draft supplementary info. 
