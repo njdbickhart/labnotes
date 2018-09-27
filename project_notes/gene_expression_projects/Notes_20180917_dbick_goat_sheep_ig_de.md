@@ -149,3 +149,71 @@ runRUVseqPipe("bone", ctrls, "goat_bone_data.tab", "sheep_bone_data.tab")
 runRUVseqPipe("spleen", ctrls, "goat_spleen_data.tab", "sheep_spleen_data.tab")
 runRUVseqPipe("thymus", ctrls, "goat_thymus_data.tab", "sheep_thymus_data.tab")
 ```
+
+## Generating a full dataset heatmap with relative abundance estimates
+
+> pwd: F:/SharedFolders/side_projects/hammond_goat_sheep_ig/
+
+```R
+library(reshape2)
+load(file=".RData")
+
+
+# Goat first
+gtables <- lapply(list.files(pattern="goat.*\\.tab"), read.delim, header=TRUE)
+gtables <- lapply(gtables, function(x){rownames(x) <- x$Run; x["Run"] <- NULL; x})
+gdataframe <- do.call(cbind, gtables)
+
+gfull <- newSeqExpressionSet(as.matrix(gdataframe))
+gfull1 <- RUVg(gfull, ctrls, k=1)
+# There were some genes that had very, very little expression post normalization
+drops <- c("TARM1", "OSCAR", "KIR group 2", "KIR group 6", "GP6")
+gfull1.m <- melt(normCounts(gfull1)[!(rownames(normCounts(gfull1)) %in% c(ctrls, drops)), ])
+
+# Now I need to change the goat ids into their tissue type so that I can format the image easier
+gtables <- lapply(list.files(pattern="goat.*\\.tab"), read.delim, header=TRUE)
+names(gtables) <- sapply(list.files(pattern="goat.*\\.tab"), function(x) strsplit(x, split="\\_", perl=TRUE)[[1]][2])
+gtissues <- Map(function(x, i){x["Run"] <- NULL; data.frame(tissue=i, sample=colnames(x))}, gtables, names(gtables))
+gtissues <- do.call(rbind, gtissues)
+
+pdf(file="goat_draft_heatmap_norm.pdf", useDingbats = FALSE)
+ggplot(gfull1.m, aes(Var2, Var1)) + geom_tile(aes(fill=value), colour = "white") + scale_fill_gradient(low="white", high="steelblue", limits=c(0,500)) + scale_x_discrete(labels=gtissues$tissue) + theme_bw() + theme(axis.text.x=element_text(angle=45, hjust=1))
+
+# Now Sheep
+stables <- lapply(list.files(pattern="sheep.*\\.tab"), read.delim, header=TRUE)
+names(stables) <- sapply(list.files(pattern="sheep.*\\.tab"), function(x) strsplit(x, split="\\_", perl=TRUE)[[1]][2])
+stissues <- Map(function(x, i){x["Run"] <- NULL; data.frame(tissue=i, sample=colnames(x))}, stables, names(stables))
+stissues <- do.call(rbind, stissues)
+stables <- lapply(stables, function(x){rownames(x) <- x$Run; x["Run"] <- NULL; x})
+sdataframe <- do.call(cbind, stables)
+
+sfull <- newSeqExpressionSet(as.matrix(sdataframe))
+sfull1 <- RUVg(sfull, ctrls, k=1)
+drops <- c("TARM1", "OSCAR", "NCR1", "GP6")
+sfull1.m <- melt(normCounts(sfull1)[!(rownames(normCounts(sfull1)) %in% c(ctrls, drops)), ])
+
+pdf(file="sheep_draft_heatmap_norm.pdf", useDingbats=FALSE)
+ggplot(sfull1.m, aes(Var2, Var1)) + geom_tile(aes(fill=value), colour = "white") + scale_fill_gradient(low="white", high="steelblue", limits=c(0,500)) + scale_x_discrete(labels=stissues$tissue) + theme_bw() + theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+So, I've created a common scale for the heatmap that peaks at about 500+ normalized, expressed transcripts. I will need to edit the image pdfs in inkscape to adjust the colors of those tiles (only because ggplot apparently colors them dark grey by default!). I will then need to replace the x axis names with bars for tissues. Finally, the plots should be ready for John's review.
+
+## Preparing the last data files
+
+```R
+# Writing the normalized counts
+write.table(normCounts(sfull1), file="sheep_normcounts_full.tab", sep = "\t", quote=FALSE)
+write.table(normCounts(gfull1), file="goat_normcounts_full.tab", sep="\t", quote=FALSE)
+
+# Testing something for John
+library(dplyr)
+
+sfull1.fm <- melt(normCounts(sfull1))
+sdataframe <- mutate(sdataframe, ids = rownames(sdataframe))
+sraw.fm <- melt(sdataframe, id.vars = "ids")
+sfull1.fm$Raw <- sraw.fm$value
+sfull1.fm <- mutate(sfull1.fm, tissue=str_extract(Var2, "^[^\\.$]"))
+ggplot(sfull1.fm, aes(x=Raw, y=value, col=tissue, label=Var1)) + geom_point() + ylab(label = "Normalized value") + xlab(label="Raw Read Count") + geom_text(aes(label=ifelse(Var1 %in% ctrls, as.character(Var1),'')), hjust=0, vjust=-1)
+
+dev.copy2pdf(file="sheep_example_normalization_effects.pdf", useDingbats=FALSE)
+```
