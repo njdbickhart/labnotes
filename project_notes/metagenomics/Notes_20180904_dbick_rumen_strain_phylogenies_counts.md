@@ -563,12 +563,133 @@ Let's start by queueing the Hungate vs Mick alignment and proceed from there.
 module load minimap2/2.6
 module load bedtools
 
-sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_combined_unordered_reference.fasta /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug.fa > hungate_vs_mick.paf"
+# Because of the way that the fasta headers were named, I need to add unique IDs to each file
+for i in /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/genomes/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; perl -e 'chomp @ARGV; open(IN, "< $ARGV[0]"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; $_ = ">" . $ARGV[1] . "_$_\n"; print $_;}else{print $_;}}' $i $name >> /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug_reformat.fasta; done
+
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_combined_unordered_reference.fasta /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug_reformat.fasta > hungate_vs_mick.paf"
+sbatch --nodes=1 --ntasks-per-node=5 --mem=20000 -p short --wrap="minimap2 -x asm5 -t 5 /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug_reformat.fasta /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa > mickreformat_vs_ilmn.paf"
 
 # Now, how to process the PAF files? Keep it simple?
 # Let's use my previous threshold. > 100 bp alignment length and >0 mapping quality
-sbatch -p short convert_paf_to_beds.pl -p /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_vs_ilmn_megahit.paf -t hungate_ilmn_paf_filt.bed -q ilmn_hungate_paf_filt.bed
+# Actually, let's incorporate the AN bin filter as well
+sbatch -p short convert_paf_to_beds.pl -p /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_vs_ilmn_megahit.paf -t hungate_ilmn_paf_filt.bed -q ilmn_hungate_paf_filt.bed -f ../dastool/illumina_dastool_analysis_binset_lt10redund.bins
+sbatch -p short convert_paf_to_beds.pl -p mickreformat_vs_ilmn.paf -t mick_ilmn_paf_filt.bed -q ilmn_mick_paf_filt.bed -f ../dastool/illumina_dastool_analysis_binset_lt10redund.bins
 
+bedtools sort -i ilmn_hungate_paf_filt.bed | bedtools merge -i stdin > ilmn_hungate_paf_filt.sort.merge.bed
+bedtools sort -i hungate_ilmn_paf_filt.bed | bedtools merge -i stdin > hungate_ilmn_paf_filt.sort.merge.bed
+
+cat hungate_ilmn_paf_filt.sort.merge.bed | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+Total Length:           118637195	# Hungate asm in ilmn AN bins
+cat ilmn_hungate_paf_filt.sort.merge.bed | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+Total Length:           172100230	# Ilmn AN bins in Hungate asm
+
+bedtools sort -i ilmn_mick_paf_filt.bed | bedtools merge -i stdin > ilmn_mick_paf_filt.sort.merge.bed
+bedtools sort -i mick_ilmn_paf_filt.bed | bedtools merge -i stdin > mick_ilmn_paf_filt.sort.merge.bed
+
+cat ilmn_mick_paf_filt.sort.merge.bed | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+Total Length:           411825315	# Ilmn AN bins in Mick asm
+cat mick_ilmn_paf_filt.sort.merge.bed | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+Total Length:           342782266	# Mick asm in Ilmn AN bins
+
+# Now to calculate the universal hungate vs mick data
+sbatch -p short convert_paf_to_beds.pl -p hungate_vs_mick.paf -t hungate_vs_mick_paf_filt.bed -q mick_vs_hungate_paf_filt.bed
+
+bedtools sort -i hungate_vs_mick_paf_filt.bed | bedtools merge -i stdin > hungate_vs_mick_paf_filt.sort.merge.bed
+bedtools sort -i mick_vs_hungate_paf_filt.bed | bedtools merge -i stdin > mick_vs_hungate_paf_filt.sort.merge.bed
+
+cat hungate_vs_mick_paf_filt.sort.merge.bed | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+Total Length:           143129710	# hungate asm on mick's bins
+cat mick_vs_hungate_paf_filt.sort.merge.bed | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/bed_length_sum.pl
+Total Length:           357991392	# micks bins on hungate asm
+
+# Now to calculate total asm size for each one
+perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";' < ~/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_combined_unordered_reference.fasta.fai
+1317539873	# Hungate total asm size
+for i in /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/genomes/*.fa; do echo $i; sbatch --nodes=1 --ntasks-per-node=1 --mem=1000 -p short --wrap="samtools faidx $i"; done
+cat /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/mick_rug/genomes/*.fai | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+2176657067	# Mick total asm size
+perl -e '$c = 0; while(<>){chomp; @F = split(/\t/); if($F[0] =~ /bin/){next;} if($F[-1] < 10){$c += $F[7];}} print "$c\n";' < ../dastool/illumina_megahit_dastool_DASTool_summary.txt
+1475288770	# Illumina AN bin total asm size
+
+# And my script to calculate the proportions for the network analysis:
+perl calculate_network_for_hive.pl -f 1475288770 -s 2176657067 -t 1317539873 -j 411825315 -k 172100230 -l 342782266 -h 118637195 -y 357991392 -b 143129710 -o test.network.tab
+```
+
+```R
+library("HiveR")
+network <- read.delim("test.network.tab", header=FALSE)
+colnames(network) <- c("source", "target", "weight")
+network$weight <- as.numeric(network$weight)
+hpd <- edge2HPD(network, axis.cols = c("red", "green", "blue"))
+hpd$nodes[grep("first", hpd$nodes$lab), "axis"] = as.integer(1)
+hpd$nodes[grep("second", hpd$nodes$lab), "axis"] = as.integer(2
+hpd$nodes[grep("third", hpd$nodes$lab), "axis"] = as.integer(3)
+hpd$edges$color[hpd$edges$weight == 2] <- "green"
+hpd$edges$color[hpd$edges$weight == 1] <- "red"
+hpd$nodes$radius <- as.numeric(sapply(str_split(hpd$nodes$lab, "_"), '[', 2))
+
+# Inverting the nodes so that the matching proportion is on the outside:
+hpd$nodes$radius <- 100 - as.numeric(sapply(str_split(hpd$nodes$lab, "_"), '[', 2)) + 1
+
+plotHive(hpd, axLabs = c("Illumina", "Stewart et al.", "Hungate"), bkgnd = "black", dr.nodes = FALSE, ch = 0)
+dev.copy2pdf(file="First_hive_plot_illumina.pdf", useDingbats=FALSE)
+```
+
+**OK, This didn't work out as well as I had hoped! Let's recalculate based on my master tables and generate an association matrix instead for a chord diagram**
+
+## Chord diagram
+
+The Chord diagram is going to be a bit messy, but let's see if we can calculate the proportions of the assembly better this way.
+
+```bash
+perl -e '<>; $m = 0; $h = 0; $j = 0; $t = 0; $a = 0; open(MI, "> illumina_ANbins_mickaligns.list"); open(HU, "> illumina_ANbins_hunaligns.list"); open(BO, "> illumina_ANbins_both.list"); while(<>){chomp; @s = split(/\t/); if($s[-2] eq "-" && $s[-1] eq "-"){$a += $s[1];} if($s[-2] ne "-" && $s[-1] ne "-"){$j += $s[1]; @b = split(/;/, $s[-2]); push(@b, split(/;/, $s[-1])); print BO join("\n", @b) . "\n";}elsif($s[-2] ne "-"){$m += $s[1]; @b = split(/;/, $s[-2]); print MI join("\n", @b) . "\n";}elsif($s[-1] ne "-"){$h += $s[1]; @b = split(/;/, $s[-1]); print HU join("\n", @b) . "\n";} $t += $s[1];} close MI; close HU; print "mick\thun\tboth\tsole\ttot\n"; print "$m\t$h\t$j\t$a\t$t\n";' < illumina_megahit_master_table_2018_09_07.ANbins.short.tab
+mick    hun     both    sole    tot
+392273034       84158897        328966430       669890409       1475288770
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug.fa.fai -c 0 -l illumina_ANbins_mickaligns.list | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+305642558	# Aligns only to MICK	Remaining: 1871014509 -  248619611 (both) =  1622394898
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_combined_unordered_reference.fasta.fai -c 0 -l illumina_ANbins_hunaligns.list | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+665055395	# Aligns only to Hungate Remaining: 454890449
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_combined_unordered_reference.fasta.fai -c 0 -l illumina_ANbins_both.list | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+759461029	# Both from Hungate
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug.fa.fai -c 0 -l illumina_ANbins_both.list | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+248619611	# Both from Mick
+
+
+# Now for Pacbio
+perl -e '<>; $m = 0; $h = 0; $j = 0; $t = 0; $a = 0; open(MI, "> pacbio_ANbins_mickaligns.list"); open(HU, "> pacbio_ANbins_hunaligns.list"); open(BO, "> pacbio_ANbins_both.list"); while(<>){chomp; @s = split(/\t/); if($s[-2] eq "-" && $s[-1] eq "-"){$a += $s[1];} if($s[-2] ne "-" && $s[-1] ne "-"){$j += $s[1]; @b = split(/;/, $s[-2]); push(@b, split(/;/, $s[-1])); print BO join("\n", @b) . "\n";}elsif($s[-2] ne "-"){$m += $s[1]; @b = split(/;/, $s[-2]); print MI join("\n", @b) . "\n";}elsif($s[-1] ne "-"){$h += $s[1]; @b = split(/;/, $s[-1]); print HU join("\n", @b) . "\n";} $t += $s[1];} close MI; close HU; print "mick\thun\tboth\tsole\ttot\n"; print "$m\t$h\t$j\t$a\t$t\n";' < pacbio_final_pilon_master_table_2018_09_07.ANbins.short.tab
+mick    hun     both    sole    tot
+208361045       28424376        424169426       137209071       798163918
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug.fa.fai -c 0 -l pacbio_ANbins_mickaligns.list | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+188401211	# Aligns only to MICK	Remaining: 1988255856 - (both) = 1766328688
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_combined_unordered_reference.fasta.fai -c 0 -l pacbio_ANbins_hunaligns.list | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+357677323	# Aligns only to Hungate	Remaining: (after greping all nonredundant scaffolds): 594380222
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/hungate/hungate_combined_unordered_reference.fasta.fai -c 0 -l pacbio_ANbins_both.list | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+669683165	#Both from hungate
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ~/rumen_longread_metagenome_assembly/assemblies/mick_rug/mick_combined_900_rug.fa.fai -c 0 -l pacbio_ANbins_both.list | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+221927168	# both from MICK	
+```
+
+```R
+library(chorddiag)
+# Illumina chord graph
+m <- matrix(c(669890409, 392273034, 84158897, 328966430, 305642558, 1622394898, 0, 248619611, 665055395, 0, 454890449, 197594029, 100000000, 100000000, 100000000, 0), byrow = TRUE, nrow=4, ncol=4)
+assemblies <- c("Illumina", "Stewart et. al", "Hungate1000", "Both")
+dimnames(m) <- list(origin = assemblies, destination = assemblies)
+colors <- brewer.pal(4, "Dark2")
+chorddiag(m, groupColors=colors, groupnamePadding = 20)
+# I then opened in chrome, saved as a pdf and used Inkscape to grep out the diagram and modify it
+
+
+#PacBio chord graph
+m <- matrix(c(137209071, 208361045, 28424376, 424169426, 188401211, 1766328688, 0, 221927168, 357677323, 0, 594380222, 365482328, 100000000, 100000000, 100000000, 0), byrow=TRUE, nrow=4, ncol=4)
+assemblies <- c("PacBio", "Stewart et. al", "Hungate1000", "Both")
+dimnames(m) <- list(origin=assemblies, destination=assemblies)
+colors <- brewer.pal(4, "Dark2")
+chorddiag(m, groupColors=colors, groupnamePadding = 20)
 ```
 
 ## Generating supplementary tables
