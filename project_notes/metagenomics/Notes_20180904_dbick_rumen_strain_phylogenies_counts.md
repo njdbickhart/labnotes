@@ -448,7 +448,7 @@ dev.off()
 
 ```
 
-Let's try a python approach, because the data manipulation in R is incredibly tedious and nonintuitive. I am using the hypergeomtric test to assess enrichment of specific taxonomic groupings in each dataset.
+Let's try a python approach, because the data manipulation in R is incredibly tedious and unintuitive. I am using the hypergeomtric test to assess enrichment of specific taxonomic groupings in each dataset.
 
 ```bash
 # Genus illumina associations
@@ -478,50 +478,46 @@ perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_ta
 File Number 1: illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list
 File Number 2: pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
 Set     Count
-1       68
-1;2     46
-2       3
+1       120
+1;2     29
+2       27
 
-# 46! Impressive! Let's see what they are
+# 29! Impressive! And 27 unique to pacbio! Let's see what they are
 perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1_2 illumina_megahit_master_table_2018_09_07.ANbins.rd.hypgeo.list pacbio_final_pilon_master_table_2018_09_07.ANbins.rd.hypgeo.list
 Phi29virus
+Anaeromyces
+Ichthyophthirius
 Candidatus Izimaplasma
 no-hit
+Elusimicrobium
 Microscilla
 Stentor
-Acinetobacter
-Tolumonas
+Enterococcus
 Candidatus Pelagibacter
-Bacteria-undef
-Treponema
-Anaerostipes
 Clostridium
-Candidatus Melainabacteria-undef
-Fusobacterium
-Helicobacter
+Tetrahymena
 Eubacterium
 Bacillus
-Subdoligranulum
 Acetobacter
+Paramecium
+Coprobacillus
 Azospirillum
-Veillonella
 Neocallimastix
+Bacteroidetes-undef
 Proteobacteria-undef
 Gossypium
 Stylonychia
 Dysgonomonas
 Oxytricha
-Trichuris
 Phikzvirus
 Thermoplasmatales-undef
 Euryarchaeota-undef
-Brachyspira
-Lutibacter
+Pseudocohnilembus
 ```
 
 ## Generating ARG figure
 
-I want to summarize the ARG genes in a way that shows the different classes of genes present, while shows the quality of the PacBio calls.
+I want to summarize the ARG genes in a way that shows the different classes of genes present, while showing the quality of the PacBio calls.
 
 > pwd: F:/SharedFolders/metagenomics/pilot_manuscript/figure_drafts/amr_genes
 
