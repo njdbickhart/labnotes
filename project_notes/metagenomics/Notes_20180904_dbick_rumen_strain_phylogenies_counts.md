@@ -721,3 +721,152 @@ perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN"){print join("\t", @F[0,1
 cat ../prodigal/illumina_megahit_prodigal_proteins.shortform.tab > supplementary_table_8_short_read_prodigal.tab
 cat ../prodigal/pacbio_final_prodigal_proteins.shortform.tab > supplementary_table_9_long_read_prodigal.tab
 ```
+
+## Testing hypotheses: partial proteins and assembled contigs
+
+I want to test a few final hypotheses and generate a few more talking points for the manuscript.
+
+#### Partial ORF dataset.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/prodigal
+
+```bash
+module load samtools
+cp grep_out_fasta_sequence.pl grep_out_partial_sequence.pl
+sbatch grep_out_partial_sequence.pl illumina_megahit_prodigal_proteins.shortform.tab ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa illumina_megahit_prodigal_partial_proteins.fna
+sbatch grep_out_partial_sequence.pl pacbio_final_prodigal_proteins.shortform.tab ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa pacbio_final_prodigal_partial_proteins.fna
+
+perl -lane 'print $F[0];' < ../dastool/illumina_dastool_analysis_binset_lt10redund.bins > illumina_an_bin_contigs.list
+sbatch grep_partial_prodigal_aaseq.pl illumina_megahit_prodigal_proteins.faa illumina_an_bin_contigs.list illumina_megahit_prodigal_partial_proteins.faa
+
+perl -lane 'print $F[0];' < ../dastool/pacbio_dastool_analysis_binset_lt10redund.bins > pacbio_an_bin_contigs.list
+sbatch grep_partial_prodigal_aaseq.pl pacbio_final_prodigal_proteins.faa pacbio_an_bin_contigs.list pacbio_final_prodigal_partial_proteins.faa
+
+# Lets calculate the overall length stats for the dataset
+perl -lane 'if($F[0] =~ /ContigID/){next;} $len = $F[2] - $F[1]; print "$F[5]\t$len";' < pacbio_final_prodigal_proteins.shortform.tab > pacbio_final_prodigal_proteins.lenXpart.tab
+perl -lane 'if($F[0] =~ /ContigID/){next;} $len = $F[2] - $F[1]; print "$F[5]\t$len";' < illumina_megahit_prodigal_proteins.shortform.tab > illumina_megahit_prodigal_proteins.lenXpart.tab
+```
+
+```R
+library(dplyr)
+library(ggplot2)
+
+pb <- read.delim("pacbio_final_prodigal_proteins.lenXpart.tab", header=FALSE)
+il <- read.delim("illumina_megahit_prodigal_proteins.lenXpart.tab", header=FALSE)
+
+colnames(pb) <- c("Partial", "Len")
+colnames(il) <- c("Partial", "Len")
+pb <- pb %>% mutate(Tech = c("PacBio"))
+il <- il %>% mutate(Tech = c("Illumina"))
+total <- bind_rows(pb, il)
+total$Partial <- as.factor(total$Partial)
+total <- total %>% mutate(outlier = Len > 10000)
+
+pdf(file="partial_by_len_plots.pdf", useDingbats=FALSE)
+ggplot(total, aes(x=Partial, y=Len, color=Partial)) + geom_violin(trim=FALSE) + geom_point(data = function(x) dplyr::filter_(x, ~ outlier), position = 'jitter') + theme_bw() + scale_color_brewer(palette="Dark2") + facet_grid(. ~ Tech)
+
+```
+
+#### Read overlaps vs GC percent
+
+This is a test of the read depth bias. Basically, is there a huge tranche of low GC reads from the PacBio end that are just not getting assembled?
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/pacbio_aligns
+
+```bash
+module load minimap2
+sbatch --nodes=1 --ntasks-per-node=5 --mem=16000 -p short --wrap="minimap2 -t 5 -x map-pb ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa ~/rumen_longread_metagenome_assembly/sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta > pacbioasm_vs_errcorrected_reads.paf"
+
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=3 -p short --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnCounter.py -f pacbioasm_vs_errcorrected_reads.paf -d '\t' -c 0 > pacbioasm_vs_errcorrected_reads.align.counts"
+
+perl -lane 'print "$F[0]\t$F[2]";' < rumen_pacbio_corrected.gc.tab > rumen_pacbio_corrected.gc.corrected.tab
+perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); <IN>; print "overlaps\tgc\n"; %d; while(<IN>){chomp; @s = split(/\t/); $d{$s[0]} = 1; if(exists($h{$s[0]})){ print "$s[1]\t$h{$s[0]}\n";}} close IN; foreach my $k (keys(%h)){if(!exists($d{$k})){print "0\t$h{$k}\n";}}' rumen_pacbio_corrected.gc.corrected.tab pacbioasm_vs_errcorrected_reads.align.counts > pacbio_ovlp_by_gc.tab
+
+wc -l pacbioasm_vs_errcorrected_reads.align.counts
+4405455 pacbioasm_vs_errcorrected_reads.align.counts
+wc -l pacbio_ovlp_by_gc.tab
+5931683 pacbio_ovlp_by_gc.tab
+# There are allot of missing reads with no alignment overlap!
+
+# I'm curious: how does it look when I align pacbio reads to Illumina contigs?
+sbatch --nodes=1 --ntasks-per-node=5 --mem=16000 -p short --wrap="minimap2 -t 5 -x map-pb ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa ~/rumen_longread_metagenome_assembly/sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta > illuminaasm_vs_errcorrected_reads.paf"
+```
+
+Now to try to plot it all out in R
+
+```R
+library(dplyr)
+library(ggplot2)
+library(MASS)
+library(viridis)
+
+data <- read.delim("pacbio_ovlp_by_gc.tab")
+get_density <- function(x, y, n = 100) {
+  dens <- MASS::kde2d(x = x, y = y, n = n)
+  ix <- findInterval(x, dens$x)
+  iy <- findInterval(y, dens$y)
+  ii <- cbind(ix, iy)
+  return(dens$z[ii])
+}
+
+data$density <- get_density(data$overlaps, data$gc)
+
+pdf(file="pacbio_gc_by_aln_overlaps.pdf", useDingbats=FALSE)
+ggplot(data) + geom_point(aes(gc, overlaps, color=density)) + scale_color_viridis()
+dev.off()
+
+bitmap(file = "pacbio_gc_by_aln_overlaps.png", res=300, type="jpeg")
+
+# Now for a violin plot
+data$ovcat <- ifelse(data$overlaps > 0, "Overlaps", "NoOverlap")
+pdf(file="pacbio_overlaps_gc_violin.pdf", useDingbats=FALSE)
+ggplot(data, aes(x=ovcat, y=gc, color=ovcat)) + geom_violin(trim=FALSE) + theme_bw() + scale_colour_brewer(palette="Dark2")
+dev.off()
+
+# Now to generate tables
+data %>% group_by(ovcat) %>% summarize('25%'= quantile(gc, probs=0.25), '50%' = quantile(gc, probs=0.50), '75%' = quantile(gc, probs=0.75), avg=# A tibble: 2 x 7= median(gc), n=n())
+      ovcat     `25%`     `50%`     `75%`       avg    median       n
+      <chr>     <dbl>     <dbl>     <dbl>     <dbl>     <dbl>   <int>
+1 NoOverlap 0.2927553 0.4047442 0.4960352 0.4013871 0.4047442 1526228
+2  Overlaps 0.4100586 0.4850455 0.5349027 0.4623783 0.4850455 4405454
+```
+
+
+#### Validation of bins pre- and post-DAS_Tool
+
+I just want to run checkm on the pre-and post-DAS_Tool bins to estimate stats using a second tool. Then we compare the rankings to see which binning method was best, overall.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool
+
+```bash
+module load checkm
+module load prodigalorffinder
+
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fa illumina_megahit_dastool_DASTool_bins illumina_megahit_dastool_checkm"
+
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fa pacbio_final_dastool_DASTool_bins pacbio_final_dastool_checkm"
+```
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
+
+```bash
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fa public_metabat illumina_megahit_checkm"
+```
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon
+
+```bash
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fa metabat2 pacbio_megahit_checkm"
+```
+
+#### Counting the effects of DAS_Tool dereplication
+
+I wrote a brute-force association script to try to determine how frequently the DASbins break up the original bins after dereplication.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool
+
+```bash
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p short --wrap="perl backtrace_bin_affiliation.pl illumina_megahit_public_metabat.unsorted.bins illumina_megahit_hic.unsorted.bins illumina_dastool_analysis_binset_lt10redund.bins illumina_dastool_backtrace"
+
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p short --wrap="perl backtrace_bin_affiliation.pl pacbio_final_public_metabat.unsorted.bins pacbio_final_public_hic.unsorted.bins pacbio_dastool_analysis_binset_lt10redund.bins pacbio_dastool_backtrace"
+```
