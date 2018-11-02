@@ -870,3 +870,41 @@ sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p short --wrap="perl backtrace
 
 sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p short --wrap="perl backtrace_bin_affiliation.pl pacbio_final_public_metabat.unsorted.bins pacbio_final_public_hic.unsorted.bins pacbio_dastool_analysis_binset_lt10redund.bins pacbio_dastool_backtrace"
 ```
+
+#### Plotting taxonomic information based on VIR and AMR gene hi-c links
+
+I want to try to replot Max's heatmaps but with the superkingdom affiliation of each bin.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/amr_vir_heatmaps
+
+```bash
+# Creating tax tables for the association
+for i in *.tsv; do dos2unix $i; done
+perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[10]}}, [$s[4], $s[5], $s[6], $s[7], $s[8], $s[9]]);} foreach my $bin (keys(%h)){%t = (); foreach my $row (@{$h{$bin}}){for($x = 0; $x < scalar(@{$row}); $x++){push(@{$t{$x}}, $row->[$x]);}} @j = (); foreach $idx (sort {$a <=> $b}keys(%t)){push(@j, join(";", @{$t{$idx}}));} print "$bin\t" . join("\t", @j) . "\n";}' < ../master_tables/illumina_megahit_master_table_2018_09_07.ANbins.short.tab |perl -ne 'chomp; @F = split(/\t/); my @d; for($x = 1; $x < scalar(@F); $x++){my %h; @jsegs = split(/;/, $F[$x]); foreach $k (@jsegs){$h{$k} += 1;} my @tmp; foreach $k (sort{$a cmp $b}keys(%h)){push(@tmp,"$k:$h{$k}");} push(@d, join(";", @tmp));} print "$F[0]\t" . join("\t", @d) . "\n";' > illumina_megahit_master_table_09_07.hicbin.taxtable.tab
+
+perl -ne 'chomp; @F = split(/\t/); my @values; push(@values, $F[0]); for($x = 1; $x < scalar(@F); $x++){my %h; @bsegs = split(/;/, $F[$x]); foreach my $row (@bsegs){@hsegs = split(/:/, $row); $h{$hsegs[0]} = $hsegs[1];} @sorted = sort{$h{$b} <=> $h{$a}} keys(%h); push(@values, $sorted[0] . "");} print join("\t", @values); print "\n";' < illumina_megahit_master_table_09_07.hicbin.taxtable.tab > illumina_megahit_master_table_09_07.hicbin.taxconsensus.tab 
+
+
+perl -e '$h = <>; print "bin\t$h"; while(<>){chomp; @s = split(/\t/); @csegs = split(/\./, $s[0]); $csegs[1] = $csegs[1] * 1; $s[0] = $csegs[1]; print join("\t", @s); print "\n";}' < ilmn_arg_hic_links_filt.tsv > ilmn_arg_hic_links_filt.mod.tsv
+```
+
+First let's try the AMR genes.
+
+```R
+library(dplyr)
+library(RColorBrewer)
+arg.ilhic <- read.delim("ilmn_arg_hic_links_filt.mod.tsv", header=TRUE)
+tax.ilhic <- read.delim("illumina_megahit_master_table_09_07.hicbin.taxconsensus.tab", header=FALSE)
+colnames(tax.ilhic) <- c("bin", "Kingdom", "Phylum", "Class", "Family", "Genus", "FAPRO")
+arg.ilhic$bin <- as.factor(arg.ilhic$bin)
+
+comp.ilhic <- inner_join(arg.ilhic, tax.ilhic, by="bin")
+comp.ilhic <- mutate(comp.ilhic, Name = paste0(bin, "_", Kingdom, "_", Genus))
+rownames(comp.ilhic) <- comp.ilhic$Name
+my.col <- brewer.pal(3, "Set1")[comp.ilhic$Kingdom]
+
+pdf(file="ilmn_hic_arg_heatmap.pdf", useDingbats=FALSE)
+heatmap(as.matrix(comp.ilhic[,2:12]), cexRow=1.5, labRow=paste(comp.ilhic$Kingdom, comp.ilhic$Genus, sep=" "), Colv = NA, Rowv = NA, RowSideColors =my.col)
+dev.off()
+
+```
