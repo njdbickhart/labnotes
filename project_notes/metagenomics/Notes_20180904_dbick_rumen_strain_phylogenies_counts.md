@@ -790,6 +790,8 @@ wc -l pacbio_ovlp_by_gc.tab
 
 # I'm curious: how does it look when I align pacbio reads to Illumina contigs?
 sbatch --nodes=1 --ntasks-per-node=5 --mem=16000 -p short --wrap="minimap2 -t 5 -x map-pb ~/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa ~/rumen_longread_metagenome_assembly/sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta > illuminaasm_vs_errcorrected_reads.paf"
+
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=3 -p short --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnCounter.py -f illuminaasm_vs_errcorrected_reads.paf -c 0 -d '\t' > illuminaasm_vs_errcorrected_reads.align.counts"
 ```
 
 Now to try to plot it all out in R
@@ -842,21 +844,27 @@ I just want to run checkm on the pre-and post-DAS_Tool bins to estimate stats us
 module load checkm
 module load prodigalorffinder
 
-sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fa illumina_megahit_dastool_DASTool_bins illumina_megahit_dastool_checkm"
+sbatch --nodes=1 --mem=240000 --ntasks-per-node=40 -p mem --wrap="checkm lineage_wf -t 20 -x fa illumina_megahit_dastool_DASTool_bins illumina_megahit_dastool_checkm"
 
 sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fa pacbio_final_dastool_DASTool_bins pacbio_final_dastool_checkm"
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=2 -p short --wrap="checkm qa --tab_table -o 1 -f pacbio_final_dastool_checkm.results.tab pacbio_final_dastool_checkm/lineage.ms pacbio_final_dastool_checkm"
 ```
 
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit
 
 ```bash
 sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fa public_metabat illumina_megahit_checkm"
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=2 -p short --wrap="checkm qa --tab_table -o 1 -f illumina_megahit_checkm.results.tab illumina_megahit_checkm/lineage.ms illumina_megahit_checkm"
 ```
 
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon
 
 ```bash
 sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fa metabat2 pacbio_megahit_checkm"
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=2 -p short --wrap="checkm qa --tab_table -o 1 -f pacbio_megahit_checkm.results.tab pacbio_megahit_checkm/lineage.ms pacbio_megahit_checkm"
+
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=20 -p short --wrap="checkm lineage_wf -t 20 -x fasta hic_clusters/best_genome_clusters pacbio_hic_checkm"
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=2 -p short --wrap="checkm qa --tab_table -o 1 -f pacbio_hic_checkm.results.tab pacbio_hic_checkm/lineage.ms pacbio_hic_checkm"
 ```
 
 #### Counting the effects of DAS_Tool dereplication
@@ -869,8 +877,44 @@ I wrote a brute-force association script to try to determine how frequently the 
 sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p short --wrap="perl backtrace_bin_affiliation.pl illumina_megahit_public_metabat.unsorted.bins illumina_megahit_hic.unsorted.bins illumina_dastool_analysis_binset_lt10redund.bins illumina_dastool_backtrace"
 
 sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p short --wrap="perl backtrace_bin_affiliation.pl pacbio_final_public_metabat.unsorted.bins pacbio_final_public_hic.unsorted.bins pacbio_dastool_analysis_binset_lt10redund.bins pacbio_dastool_backtrace"
+
+# And now a test to see just how frequently the bins change stats
+perl compare_bin_stats.pl pacbio_dastool_backtrace.key ../../assemblies/pilot_project/pacbio_final_pilon/pacbio_hic_checkm.results.tab ../../assemblies/pilot_project/pacbio_final_pilon/pacbio_megahit_checkm.results.tab pacbio_final_dastool_checkm.results.tab pacbio_final_dastool_checkm.hic_mega_comp.tab
 ```
 
+```R
+library(dplyr)
+library(ggplot2)
+
+data <- read.delim("pacbio_final_dastool_checkm.hic_mega_comp.tab")
+
+cor(as.matrix(data[,c(4:9)]))
+            DasComp   PreComp    DasCon    PreCon DasStrain PreStrain
+DasComp   1.0000000 0.7977572 0.5420134 0.2479558 1.0000000 0.3322989
+PreComp   0.7977572 1.0000000 0.4458649 0.4269740 0.7977572 0.4307700
+DasCon    0.5420134 0.4458649 1.0000000 0.5183714 0.5420134 0.3356574
+PreCon    0.2479558 0.4269740 0.5183714 1.0000000 0.2479558 0.2802857
+DasStrain 1.0000000 0.7977572 0.5420134 0.2479558 1.0000000 0.3322989
+PreStrain 0.3322989 0.4307700 0.3356574 0.2802857 0.3322989 1.0000000
+
+pdf(file="dastool_pre_post_completion.pdf", useDingbats=FALSE)
+ggplot(data, aes(x = DasComp, y =PreComp, fill = Tech)) + geom_point(size=3) + geom_smooth(method="lm") + theme_bw() + xlab(label="Das_Tool bin completeness") + ylab(label="Pre-Das bin completeness") + facet_wrap( ~ Tech)
+
+pdf(file="dastool_pre_post_contamination.pdf", useDingbats=FALSE)
+ggplot(data, aes(x = DasCon, y =PreCon, fill = Tech)) + geom_point(size=3) + geom_smooth(method="lm") + theme_bw() + xlab(label="Das_Tool bin contamination") + ylab(label="Pre-Das bin contamination") + facet_wrap( ~ Tech)
+
+# Now for the counts of changed bins
+count <- read.delim("pacbio_dastool_backtrace.count")
+pdf(file="dastool_contig_counts_per_bin.pdf", useDingbats=FALSE)
+ggplot(count, aes(x = DasBinCtgNum, y =OrigBinCtgNum, fill = Tech)) + geom_point(size=3) + geom_smooth(method="lm") + theme_bw() + xlab(label="Das_Tool contigs per bin") + ylab(label="Pre-Das contigs per bin") + facet_wrap( ~ Tech)
+
+pdf(file="dastool_contig_counts_violon.pdf", useDingbats=FALSE)
+ggplot(count, aes(x = Tech, y = Diff, color=Tech)) + geom_violin(trim=FALSE) + ylab(label="Difference in Orig contigs DAS_Tool")
+
+
+data <- data %>% mutate(DiffCon = PreCon - DasCon)
+
+```
 #### Plotting taxonomic information based on VIR and AMR gene hi-c links
 
 I want to try to replot Max's heatmaps but with the superkingdom affiliation of each bin.
