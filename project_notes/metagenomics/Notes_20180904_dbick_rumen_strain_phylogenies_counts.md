@@ -929,6 +929,11 @@ perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[10]}}, [$s[4], $s[5
 perl -ne 'chomp; @F = split(/\t/); my @values; push(@values, $F[0]); for($x = 1; $x < scalar(@F); $x++){my %h; @bsegs = split(/;/, $F[$x]); foreach my $row (@bsegs){@hsegs = split(/:/, $row); $h{$hsegs[0]} = $hsegs[1];} @sorted = sort{$h{$b} <=> $h{$a}} keys(%h); push(@values, $sorted[0] . "");} print join("\t", @values); print "\n";' < illumina_megahit_master_table_09_07.hicbin.taxtable.tab > illumina_megahit_master_table_09_07.hicbin.taxconsensus.tab 
 
 
+# Pacbio
+perl -e '%h; while(<>){chomp; @s = split(/\t/); push(@{$h{$s[10]}}, [$s[4], $s[5], $s[6], $s[7], $s[8], $s[9]]);} foreach my $bin (keys(%h)){%t = (); foreach my $row (@{$h{$bin}}){for($x = 0; $x < scalar(@{$row}); $x++){push(@{$t{$x}}, $row->[$x]);}} @j = (); foreach $idx (sort {$a <=> $b}keys(%t)){push(@j, join(";", @{$t{$idx}}));} print "$bin\t" . join("\t", @j) . "\n";}' < ../master_tables/pacbio_final_pilon_master_table_2018_09_07.ANbins.short.tab | perl -ne 'chomp; @F = split(/\t/); my @d; for($x = 1; $x < scalar(@F); $x++){my %h; @jsegs = split(/;/, $F[$x]); foreach $k (@jsegs){$h{$k} += 1;} my @tmp; foreach $k (sort{$a cmp $b}keys(%h)){push(@tmp,"$k:$h{$k}");} push(@d, join(";", @tmp));} print "$F[0]\t" . join("\t", @d) . "\n";' > pacbio_final_pilon_master_table_2018_09_07.hicbin.taxtable.tab
+perl -ne 'chomp; @F = split(/\t/); my @values; push(@values, $F[0]); for($x = 1; $x < scalar(@F); $x++){my %h; @bsegs = split(/;/, $F[$x]); foreach my $row (@bsegs){@hsegs = split(/:/, $row); $h{$hsegs[0]} = $hsegs[1];} @sorted = sort{$h{$b} <=> $h{$a}} keys(%h); push(@values, $sorted[0] . "");} print join("\t", @values); print "\n";' < pacbio_final_pilon_master_table_2018_09_07.hicbin.taxtable.tab > pacbio_final_pilon_master_table_2018_09_07.hicbin.taxconsensus.tab
+
+
 perl -e '$h = <>; print "bin\t$h"; while(<>){chomp; @s = split(/\t/); @csegs = split(/\./, $s[0]); $csegs[1] = $csegs[1] * 1; $s[0] = $csegs[1]; print join("\t", @s); print "\n";}' < ilmn_arg_hic_links_filt.tsv > ilmn_arg_hic_links_filt.mod.tsv
 ```
 
@@ -950,5 +955,29 @@ my.col <- brewer.pal(3, "Set1")[comp.ilhic$Kingdom]
 pdf(file="ilmn_hic_arg_heatmap.pdf", useDingbats=FALSE)
 heatmap(as.matrix(comp.ilhic[,2:12]), cexRow=1.5, labRow=paste(comp.ilhic$Kingdom, comp.ilhic$Genus, sep=" "), Colv = NA, Rowv = NA, RowSideColors =my.col)
 dev.off()
+
+```
+
+#### Full length 16S
+
+I need to pull out the 16S (> 1500 bp) that are full length from the pacbio dataset and then see if their categorization fits what the general consensus of the bin is from Blobtools annotation.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/prodigal
+
+```bash
+perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); if($s[6] < 1500){next;}else{$s[1] =~ s/\_pilon.*$//; print join("\t", @s); print "\n";}}' < mick_16s_pacbio_summary.tsv > mick_16s_pacbio_summary.reformat.tab
+
+perl -lane 'print $F[1]' < mick_16s_pacbio_summary.reformat.tab > mick_16s_pacbio_summary.contig.list
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ../master_tables/pacbio_final_pilon_master_table_2018_09_07.ANbins.short.tab -c 0 -l mick_16s_pacbio_summary.contig.list | perl -ne 'chomp; @F = split(/\t/); print "$F[11]\t$F[0]\t$F[4]\t$F[10]\t$F[12]\n";' > mick_16s_pacbio_summary.reformat.mastertable.tab
+
+python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -f mick_16s_pacbio_summary.reformat.mastertable.tab -f ../amr_vir_heatmaps/pacbio_final_pilon_master_table_2018_09_07.hicbin.taxconsensus.tab -c 0 -o test
+perl -lane '$F[2] = lc($F[2]); $F[4] = lc($F[4]); print "$F[0]\t$F[2]\t$F[4]\t$F[9]";' < merged_mick_ssu_collection.tab > merged_mick_ssu_collection.tax.tab
+
+perl -lane 'if($F[3] eq $F[2] || $F[3] eq $F[1]){print "Match";}else{print "Nope";}' < merged_mick_ssu_collection.tax.tab | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0
+Entry   Value
+Match   176
+Nope    5
+
 
 ```
