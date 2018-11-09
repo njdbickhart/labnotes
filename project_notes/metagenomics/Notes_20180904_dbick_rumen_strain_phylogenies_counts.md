@@ -935,6 +935,26 @@ perl -ne 'chomp; @F = split(/\t/); my @values; push(@values, $F[0]); for($x = 1;
 
 
 perl -e '$h = <>; print "bin\t$h"; while(<>){chomp; @s = split(/\t/); @csegs = split(/\./, $s[0]); $csegs[1] = $csegs[1] * 1; $s[0] = $csegs[1]; print join("\t", @s); print "\n";}' < ilmn_arg_hic_links_filt.tsv > ilmn_arg_hic_links_filt.mod.tsv
+perl -e '$h = <>; print "bin\t$h"; while(<>){chomp; @s = split(/\t/); @csegs = split(/\./, $s[0]); $csegs[1] = $csegs[1] * 1; $s[0] = $csegs[1]; print join("\t", @s); print "\n";}' < pb_vir_hic_links_filt.tsv > pb_vir_hic_links_filt.mod.tsv
+perl -e '$h = <>; print "bin\t$h"; while(<>){chomp; @s = split(/\t/); @csegs = split(/\./, $s[0]); $csegs[1] = $csegs[1] * 1; $s[0] = $csegs[1]; print join("\t", @s); print "\n";}' < pb_arg_hic_links_filt.tsv > pb_arg_hic_links_filt.mod.tsv
+
+
+# Now for the virus stats
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f ../blobtools/pacbio_pilon_viruses.host.assoc.tab -c 2 -d "\t"
+Entry   Value
+Phikzvirus      49
+N4virus 32
+Bpp1virus       23
+Cp8virus        8
+C5virus 4
+T5virus 3
+Cjw1virus       2
+Schizot4virus   1
+Spbetavirus     1
+Sk1virus        1
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); <IN>; %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[1]} = "NA";} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$h{$s[0]} = $s[1];}} close IN; foreach my $k (keys(%h)){print "$k\t$h{$k}\n";}' ../blobtools/pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab ../dastool/pacbio_final_public_hic.unsorted.bins > pacbio_hostcontig_assoc.tab
+grep -v NA pacbio_hostcontig_assoc.tab | grep -v NOBIN > pacbio_hostcontig_assoc.filt.tab
 ```
 
 First let's try the AMR genes.
@@ -956,6 +976,54 @@ pdf(file="ilmn_hic_arg_heatmap.pdf", useDingbats=FALSE)
 heatmap(as.matrix(comp.ilhic[,2:12]), cexRow=1.5, labRow=paste(comp.ilhic$Kingdom, comp.ilhic$Genus, sep=" "), Colv = NA, Rowv = NA, RowSideColors =my.col)
 dev.off()
 
+
+# Now for the Pacbio data
+arg.pbhic <- read.delim("pb_arg_hic_links_filt.mod.tsv", header=TRUE)
+tax.pbhic <- read.delim("pacbio_final_pilon_master_table_2018_09_07.hicbin.taxconsensus.tab", header=FALSE)
+colnames(tax.pbhic) <- c("bin", "Kingdom", "Phylum", "Class", "Family", "Genus", "FAPRO")
+arg.pbhic$bin <- as.factor(arg.pbhic$bin)
+tax.pbhic$bin <- as.factor(tax.pbhic$bin)
+
+comp.pbhic <- inner_join(arg.pbhic, tax.pbhic, by="bin")
+my.col <- brewer.pal(3, "Set1")[comp.pbhic$Kingdom]
+
+pdf(file="pb_hic_arg_heatmap.pdf", useDingbats=FALSE)
+heatmap(as.matrix(comp.pbhic[,2:139]), cexRow=1.5, labRow=paste(comp.pbhic$Kingdom, comp.pbhic$Genus, sep=" "), Colv=NA, Rowv=NA, RowSideColors=my.col)
+dev.off()
+
+# It was pretty ugly and needs some clustering to look ok. I'm going to do a hierarchical clustering first and reorder the data
+rownames(comp.pbhic) <- comp.pbhic$bin
+pbhic.arg.clust <- hclust(dist(comp.pbhic[2:139]))
+pbhic.arg.clust.r <- hclust(dist(t(comp.pbhic[2:139])))
+
+comp.pbhic.order <- comp.pbhic[pbhic.arg.clust$order, ]
+my.col <- brewer.pal(3, "Set1")[comp.pbhic.order$Kingdom]
+
+pdf(file="pb_hic_arg_heatmap.pdf", useDingbats=FALSE)
+heatmap(as.matrix(comp.pbhic.order[,2:139]), cexRow=1.5, labRow=paste(comp.pbhic.order$Kingdom, comp.pbhic.order$Genus, sep=" "), Colv=NA, Rowv=NA, RowSideColors=my.col)
+dev.off()
+```
+
+Now the viruses
+
+```R
+library(RColorBrewer)
+library(dplyr)
+library(gplots)
+
+pbvir.names <- read.delim("../blobtools/pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab", header=TRUE)
+pbvir.names.f <- unique(pbvir.names[,c(1,4)])
+
+pbvir.links <- read.delim("pb_vir_hic_links_filt.mod.tsv", header=TRUE)
+hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100)
+pbvir.aligns <- read.delim("pacbio_hostcontig_assoc.filt.tab", header=FALSE)
+
+pbvir.names.sort <- pbvir.names.f[pbvir.names.f$VirusCtg %in% colnames(pbvir.links),]
+cols <- palette(brewer.pal(8, "Dark2"))[pbvir.names.sort$VirusGenus]
+
+pdf("pacbio_virus_hic_assoc_heatmap.pdf", useDingbats=FALSE)
+heatmap.2(as.matrix(pbvir.links[,2:48]), labCol=pbvir.names.sort$VirusGenus, labRow=pbvir.links$bin, trace="none", ColSideColors=cols, col=hmcol)
+dev.off()
 ```
 
 #### Full length 16S
@@ -978,6 +1046,5 @@ perl -lane 'if($F[3] eq $F[2] || $F[3] eq $F[1]){print "Match";}else{print "Nope
 Entry   Value
 Match   176
 Nope    5
-
 
 ```
