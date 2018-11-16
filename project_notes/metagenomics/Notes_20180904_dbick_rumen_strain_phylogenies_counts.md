@@ -1048,3 +1048,186 @@ Match   176
 Nope    5
 
 ```
+
+## Rerunning cluster analysis
+
+Now that I have the full set of proximeta, Illumina bins. I need to rerun das_tool and regenerate the statistics for publication.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina_usda_accumulated/
+
+```bash
+export PATH=/mnt/nfs/nfs2/bickhart-users/binaries/bin/:$PATH
+
+# First, generate the bin assignments using the fasta files from Max
+perl -e '@f = `ls ../final_clusters/*.fasta`; chomp(@f); foreach $h (@f){@hsegs = split(/\./, $h); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-2]\n";}} close IN;}' > illumina_megahit_hic.final.bins
+
+# now to run DAS_tool
+# I'm going to run it with protein prediction just to see if it changes anything
+/mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/DAS_Tool -i illumina_megahit_hic.final.bins,illumina_megahit_public_metabat.unsorted.bins -c mick_megahit_final_full.rfmt.fa -o illumina_final_dastool -l HiC,metabat --search_engine diamond -t 20 --db_directory /mnt/nfs/nfs2/bickhart-users/binaries/DAS_Tool/db --write_bins 1 --score_threshold 0
+
+tar -czvf illumina_final_dastool_DASTool_bins.tar.gz illumina_final_dastool_DASTool_bins
+
+perl -e 'use File::Basename; @f = `ls illumina_megahit_dastool_DASTool_bins/*.fa`; chomp(@f); foreach $h (@f){@hsegs = split(/[\.\_]/, basename($h)); open(IN, "< $h"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; print "$_\t$hsegs[-4]\_$hsegs[-3]\n";}} close IN;}' > illumina_final_dastool_DASTool_bins.tab
+
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] > 10){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< illumina_final_dastool_DASTool_bins/$s[0].contigs.fa"); while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; print "$l\t$bsegs[-2].$bsegs[-1]\n";}} close IN;}}' < illumina_final_dastool_DASTool_summary.txt > illumina_final_dastool_analysis_binset_lt10redund.bins
+
+perl -lane '@b = split(/[_\.]/, $F[1]); print "$F[0]\t$b[-2]\_$b[-1]";' < illumina_final_dastool_analysis_binset_lt10redund.bins > illumina_final_dastool_analysis_binset_lt10redund.tab
+
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] > 5 || $s[-2] < 80){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< illumina_final_dastool_DASTool_bins/$s[0].contigs.fa"); while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; print "$l\t$bsegs[-2].$bsegs[-1]\n";}} close IN;}}' < illumina_final_dastool_DASTool_summary.txt > illumina_final_dastool_HQbins.bins
+
+
+```
+
+Running checkm to generate summary stats independent of DAS_Tool. Also generating the appropriate master tables and other stats that I need for the manuscript.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool
+
+```bash
+module load checkm prodigalorffinder
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=20 -p mem --wrap="checkm lineage_wf -t 20 -x fa illumina_final_dastool_DASTool_bins illumina_final_dastool_checkm"
+```
+
+
+
+## Bin testing for significance
+
+```R
+library(dplyr)
+library(ggplot2)
+library(MASS)
+ctgtabs <- read.delim("illumina_megahit_master_table_2018_11.contig.bin.stats.tab")
+
+ctgtabs <- mutate(ctgtabs, MetabatBin = ifelse(Metabat == "NOBIN", "NONE", "BIN"), HiCBin = ifelse(HiC == "NOBIN", "NONE", "BIN"))
+ctgtabs$MetabatBin <- as.factor(ctgtabs$MetabatBin)
+ctgtabs$HiCBin <- as.factor(ctgtabs$HiCBin)
+table(ctgtabs$len, ctgtabs$MetabatBin)
+
+ctgtabs <- mutate(ctgtabs, Length = ifelse(len <= 2500, "Small", "Large"), GCProp = ifelse(GC < 0.42, "Low", "High"))
+ctgtabs$Length <- as.factor(ctgtabs$Length)
+ctgtabs$GCProp <- as.factor(ctgtabs$GCProp)
+
+ctgtabs <- mutate(ctgtabs, BinStatus = ifelse(MetabatBin == "BIN" | HiCBin == "BIN", ifelse(MetabatBin == "BIN" & HiCBin == "BIN", "Both", ifelse(MetabatBin == "BIN", "META", "HIC")), "NONE"))
+ctgtabs$BinStatus <- as.factor(ctgtabs$BinStatus)
+
+bitmap("illumina_gc_vs_len_binning.png", res=300)
+ggplot(ctgtabs, aes(x=len, y=GC, color=BinStatus)) + geom_point() + theme_bw() + stat_ellipse() + scale_x_log10() + xlab("Log10 Contig Length (bp)") + ylab("Contig GC proportion")
+dev.off()
+
+pdf("illumina_gc_vs_len_binning.pdf", useDingbats=FALSE)
+ggplot(ctgtabs, aes(x=len, y=GC, color=BinStatus)) + stat_ellipse() + theme_bw() + xlab("Contig Length (bp)") + ylab("Contig GC proportion")
+dev.off()
+
+as.matrix(table(ctgtabs$BinStatus, ctgtabs$Length))
+
+        Large  Small
+  Both 185960  46064
+  HIC  163840 685213
+  META  91295  63848
+  NONE  73273 872770
+
+as.matrix(table(ctgtabs$BinStatus, ctgtabs$GCProp))
+
+         High    Low
+  Both 142407  89617
+  HIC  598866 250187
+  META  29891 125252
+  NONE 320646 625397
+
+```
+
+## Solden Viral contigs and resurrecting my network plot
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/amr_vir_heatmaps
+
+```bash
+cat */*.fna > solden_viral_contigs.fa
+
+grep '>' solden_viral_contigs.fa | wc -l
+1497
+
+sbatch --nodes=1 --ntasks-per-node=6 --mem=40000 -p short --wrap="minimap2 -x asm5 -t 6 solden_viral_contigs.fa /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa > solden_vs_pacbio_asm5_align.paf"
+sbatch --nodes=1 --ntasks-per-node=6 --mem=40000 -p short --wrap="minimap2 -x asm5 -t 6 solden_viral_contigs.fa /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.fa > solden_vs_illumina_asm5_align.paf"
+
+#OK let's filter the paf file
+cat solden_vs_pacbio_asm5_align.paf | cut -f11 | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   11843
+Sum:    16275828
+Minimum 40
+Maximum 62031
+Average 1374.299417
+Median  714
+Standard Deviation      2063.410233
+Mode(Highest Distributed Value) 49
+
+# Looks like 1kb would be a good cutoff
+perl -lane 'if($F[10] > 1000 && $F[11] > 0){print $_;}' < solden_vs_pacbio_asm5_align.paf | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 5 -d '\t' | wc -l
+200 <- viruses from their data that match ours
+
+perl -lane 'if($F[10] > 1000 && $F[11] > 0){print "$F[0]";}' < solden_vs_pacbio_asm5_align.paf | sort | uniq > solden_vs_pacbio_asm5_align.pbuniqmaps.list
+wc -l solden_vs_pacbio_asm5_align.pbuniqmaps.list
+1600 solden_vs_pacbio_asm5_align.pbuniqmaps.list 	<- perhaps there are prophage contaminants or other ORFs in these contigs that are found in their viruses?
+
+cat solden_vs_illumina_asm5_align.paf | cut -f11 | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   31430
+Sum:    27030078
+Minimum 40
+Maximum 31453
+Average 860.008845
+Median  476
+Standard Deviation      1272.475682
+Mode(Highest Distributed Value) 40
+
+# Again 1kb and no zero mapq maps
+perl -lane 'if($F[10] > 1000 && $F[11] > 0){print $_;}' < solden_vs_illumina_asm5_align.paf | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 5 -d '\t' | wc -l
+381	<- viruses from their dataset that match the illumina data
+perl -lane 'if($F[10] > 1000 && $F[11] > 0){print $F[0];}' < solden_vs_illumina_asm5_align.paf > iluniqmaps.list
+wc -l iluniqmaps.list
+3915 iluniqmaps.list	<- again, prophage contaminants?
+
+# getting the hic links
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f new_rumen_pacbio.counts -l pacbio_pilon_viruses.list -c 0 > pacbio_pilon_viruses.hiclinks.tab
+perl -lane 'if($F[2] > 20){print $_;}' < pacbio_pilon_viruses.hiclinks.tab > pacbio_pilon_viruses.hiclinks.filt.tab
+
+perl -lane 'print "$F[0]";' < ../blobtools/pacbio_pilon_viruses.fa.fai > pacbio_pilon_viruses.list
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl solden_vs_pacbio_asm5_align.pbuniqmaps.list pacbio_pilon_viruses.list
+File Number 1: solden_vs_pacbio_asm5_align.pbuniqmaps.list
+File Number 2: pacbio_pilon_viruses.list
+Set     Count
+1       1600
+2       116
+
+# No overlap??
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ../master_tables/pacbio_final_pilon_master_table_2018_09_07.ANbins.short.tab -l solden_vs_pacbio_asm5_align.pbuniqmaps.list -c 0 > solden_vs_pacbio_asm5_align.pbuniqmaps.master.tab
+
+
+# I'm really confused -- there's little overlap between their contigs and ours. The overlaps that I do find tend to map to contigs in HQ bins and the genes in the contigs are defined in eggnogmapper
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f new_rumen_pacbio.counts -l solden_vs_pacbio_asm5_align.pbuniqmaps.list -c 0 > solden_pacbio_hiclinks.tab
+perl -lane 'if($F[2] > 20){print $_;}' < solden_pacbio_hiclinks.tab > solden_pacbio_hiclinks.filt.tab
+
+# I'm giving up on this crap. Our methods aren't compatible at all
+perl generateViralAssociationGraph.test.pl ../blobtools/pacbio_secpilon_blobplot_all.pacbio_secpilon_blobplot.blobDB.table.txt pacbio_pilon_viruses.hiclinks.filt.tab pacbio_pilon_viruses.hiclinks.filt.cyto.tab
+
+perl -lane 'if($F[2] > 1){print $_;}' < ../blobtools/pacbio_pilon_viruses_ecpbreads.assoc.filt.stringent.cyto.tab > pacbio_pilon_viruses_ecpbreads.precombine.cyto.tab
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; <IN>; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]}->{$s[1]} = [$s[3], $s[4], $s[5]];} close IN; print "VirusCtg\tHostCtg\tCategory\tVirusGenus\tHostKingdom\tHostGenus\n"; open(IN, "< $ARGV[1]"); %seen; while(<IN>){chomp; @s = split(/\t/); if(exists($data{$s[0]}->{$s[1]})){print "$s[0]\t$s[1]\tBOTH\t$s[3]\t$s[4]\t$s[5]\n";}else{print "$s[0]\t$s[1]\tPACB\t$s[3]\t$s[4]\t$s[5]\n";} $seen{$s[0]}->{$s[1]} = 1;} foreach my $v (keys(%data)){foreach my $c (keys(%{$data{$v}})){ if(!exists($seen{$v}->{$c})){print "$v\t$c\tHIC\t" . join("\t", @{$data{$v}->{$c}}) . "\n";}}}' pacbio_pilon_viruses.hiclinks.filt.cyto.tab pacbio_pilon_viruses_ecpbreads.precombine.cyto.tab > pacbio_pilon_viruses.combined.cyto.tab
+
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f pacbio_pilon_viruses.combined.cyto.tab -c 2 -d '\t'
+Entry   Value
+PACB    105
+HIC     64
+BOTH    19
+
+
+## Now to repeat the same thing for the Illumina data
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f new_rumen_illumina.counts -l illumina_megahit_viruses.list -c 0 > illumina_viruses.hiclinks.tab
+perl -lane 'if($F[0] ne $F[1] && $F[2] > 10){print $_;}' < illumina_viruses.hiclinks.tab > illumina_viruses.hiclinks.filt.tab
+perl -lane 'if($F[2] > 1){print $_;}' < ../blobtools/illumina_megahit_viruses_ecpbreads.assoc.filt.stringent.cyto.tab > illumina_megahit_viruses_ecpbreads.precombine.cyto.tab
+
+perl generateViralAssociationGraph.test.pl ../blobtools/illumina_blobplot_all.illumina_megahit_blobplot.blobDB.table.txt illumina_viruses.hiclinks.filt.tab illumina_viruses.hiclinks.filt.cyto.tab
+
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f illumina_megahit_viruses.combined.cyto.tab -c 2 -d '\t'
+Entry   Value
+PACB    67
+HIC     36
+BOTH    6
+```

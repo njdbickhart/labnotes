@@ -870,3 +870,52 @@ samtools faidx ../../cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fa
 # Adding the cigar string to the paf file:
 /mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2 -x asm5 -c -L -t 10 ../../cattle_asms/ars_ucd_114/ARS-UCD1.0.14.clean.fasta alt_haplotype_segments.fa > alt_haplotype_segments.cigar.paf
 ```
+
+
+## Second round Neogen results
+
+Now to run the gamut of analyses on the neogen results again! First, I need to convert the coordinates of the file and the stats calculation script.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/neogen_results
+
+```bash
+# First, let's format the marker names into something that my script can use
+perl -lane '$F[0] =~ s/ARS_PIRBRIGHT_//; my ($j) = $F[1] =~ /.+\[(.)\/.\]/; print "\"$F[0]\" \=\> \"$j\",";' < marker_probe_sequence.tab
+cp calculate_summary_stats.pl calculate_summary_stats_newresults.pl
+perl calculate_summary_stats_newresults.pl
+```
+
+Now to tabulate the results in R and see how the data stacks up against the first run.
+
+> pwd: F:\SharedFolders\grants\immune_gene_cluster_grant\variant_selection\neogen_second_round_results
+
+```bash
+library(ggplot2)
+library(dplyr)
+
+samples <- read.delim("neogen_second_results_sampsummary.tab", header=TRUE)
+samples <- mutate(samples, CallRate=Genotyped / TotMarkers, HetRate = Hets / (HomRef + HomAlt + Hets))
+
+summary(samples[,c(3,6,7,10,11)])
+   Genotyped         HomAlt          HomRef         CallRate         HetRate       
+ Min.   :10.00   Min.   : 1.00   Min.   : 4.00   Min.   :0.1961   Min.   :0.05556  
+ 1st Qu.:54.00   1st Qu.: 9.00   1st Qu.:25.00   1st Qu.:0.9474   1st Qu.:0.22222  
+ Median :54.00   Median :11.00   Median :28.00   Median :0.9474   Median :0.27778  
+ Mean   :53.45   Mean   :11.18   Mean   :27.54   Mean   :0.9381   Mean   :0.27401  
+ 3rd Qu.:55.00   3rd Qu.:13.00   3rd Qu.:30.00   3rd Qu.:0.9649   3rd Qu.:0.32075  
+ Max.   :57.00   Max.   :23.00   Max.   :40.00   Max.   :1.0000   Max.   :0.53704
+
+cor(samples[,c(3,4,5,6,7,10,11)])
+           Genotyped    Missing       Hets      HomAlt      HomRef   CallRate    HetRate
+Genotyped  1.0000000 -0.9989810  0.4565098  0.26332032  0.60522769  0.9997803  0.2436129
+Missing   -0.9989810  1.0000000 -0.4558141 -0.26535479 -0.60331014 -0.9995732 -0.2404992
+Hets       0.4565098 -0.4558141  1.0000000 -0.28139457 -0.22341747  0.4559379  0.9668845
+HomAlt     0.2633203 -0.2653548 -0.2813946  1.00000000 -0.06809171  0.2645547 -0.3799905
+HomRef     0.6052277 -0.6033101 -0.2234175 -0.06809171  1.00000000  0.6046957 -0.3860804
+CallRate   0.9997803 -0.9995732  0.4559379  0.26455466  0.60469575  1.0000000  0.2421091
+HetRate    0.2436129 -0.2404992  0.9668845 -0.37999051 -0.38608037  0.2421091  1.0000000
+
+ggcorrplot(cor(samples[,c(3,6,7,10,11)]), hc.order=TRUE, type="upper", outline.color="white")
+
+
+```

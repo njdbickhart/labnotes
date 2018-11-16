@@ -617,6 +617,9 @@ cp pacbio_data_files.json pacbio_data_files_9_2018.json
 
 python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j pacbio_data_files_9_2018.json -t pacbio_preliminary_blobtools_table.tab -o pacbio_final_pilon_master_table_2018_09_07.tab
 python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j illumina_data_files_9_2018.json -t illumina_preliminary_blobtools_table.tab -o illumina_megahit_master_table_2018_09_07.tab
+
+# And adding the final hic bins to the list
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j illumina_data_files_11_2018.json -t illumina_preliminary_blobtools_table.tab -o illumina_megahit_master_table_2018_11_15.tab
 ```
 
 
