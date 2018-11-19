@@ -1231,3 +1231,66 @@ PACB    67
 HIC     36
 BOTH    6
 ```
+
+## Plotting the CheckM stats
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool
+
+
+```R
+library(doMC)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+
+pbmethods <- list(HiC=read.delim("../../assemblies/pilot_project/pacbio_final_pilon/pacbio_hic_checkm.results.tab", sep="\
+t", header=TRUE), MetaBat=read.delim("../../assemblies/pilot_project/pacbio_final_pilon/pacbio_megahit_checkm.results.tab"
+, sep="\t", header=TRUE), DASTool=read.delim("pacbio_final_dastool_checkm.results.tab", sep="\t", header=TRUE))
+
+methods <- names(pbmethods)
+for(i in 1:length(pbmethods)){
+pbmethods[[i]]$Method <- methods[i]
+}
+result_table <- do.call(rbind.data.frame, pbmethods)
+tmp_wide <- result_table %>% group_by(Method) %>% filter(Contamination < 10) %>% summarize(`>90%` = sum(Completeness>90), `>80%` = sum(Completeness>80 & Completeness<=90), `>70%` = sum(Completeness>70 & Completeness<=80), `>60%` = sum(Completeness>60 & Completeness<=70))
+
+melt(tmp_wide,id.vars = 'Method', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
+plot_table <- melt(tmp_wide,id.vars = 'Method', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
+plot_table$title <- "CheckM Bin Statistics (< 10% Contamination)"
+packageVersion("ggplot2")
+plot_table$Completeness <- factor(plot_table$Completeness,levels = rev(c('>90%','>80%','>70%', '>60%')))
+colors <- rev(c("#08306B","#1664AB","#4A97C9","#93C4DE"))
+pdf("check_dastool_stats_pacbio_plot.pdf", useDingbats=FALSE)
+ggplot(plot_table, aes(Method, Bins, fill=Completeness)) + geom_bar(stat="identity", position="stack")  +
+    facet_grid( ~ title)  + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_manual(values = colors) +  scale_x_discrete(limits = methods)
+dev.off()
+
+
+ilmethods <- list(HiC=read.delim("illumina_final_hic_checkm.tab", sep="\t", header=TRUE), MetaBat=read.delim("../../assemblies/pilot_project/illumina_megahit/illumina_megahit_checkm.results.tab", sep="\t", header=TRUE), DASTool=read.delim("illumina_final_dastool_checkm.results.tab", sep="\t", header=TRUE))
+
+ilhicshift <- ilmethods$HiC[,c("cluster_id", "Completeness", "Contamination")]
+colnames(ilhicshift) <- c("Bin.Id", "Completeness", "Contamination")
+ilmetashift <- ilmethods$MetaBat[,c("Bin.Id", "Completeness", "Contamination")]
+ildasshift <- ilmethods$DASTool[,c("Bin.Id", "Completeness", "Contamination")]
+ilmethods <- list(HiC=ilhicshift, MetaBat=ilmetashift, DASTool=ildasshift)
+
+methods <- names(ilmethods)
+for(i in 1:length(ilmethods)){
+ilmethods[[i]]$Method <- methods[i]
+}
+result_table <- do.call(rbind.data.frame, ilmethods)
+tmp_wide <- result_table %>% group_by(Method) %>% filter(Contamination < 10) %>% summarize(`>90%` = sum(Completeness>90), `>80%` = sum(Completeness>80 & Completeness<=90), `>70%` = sum(Completeness>70 & Completeness<=80), `>60%` = sum(Completeness>60 & Completeness<=70))
+
+melt(tmp_wide,id.vars = 'Method', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
+plot_table <- melt(tmp_wide,id.vars = 'Method', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
+plot_table$title <- "CheckM Bin Statistics (< 10% Contamination)"
+
+plot_table$Completeness <- factor(plot_table$Completeness,levels = rev(c('>90%','>80%','>70%', '>60%')))
+colors <- rev(c("#08306B","#1664AB","#4A97C9","#93C4DE"))
+pdf("check_dastool_stats_illumina_plot.pdf", useDingbats=FALSE)
+ggplot(plot_table, aes(Method, Bins, fill=Completeness)) + geom_bar(stat="identity", position="stack")  +
+    facet_grid( ~ title)  + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_manual(values = colors) +  scale_x_discrete(limits = methods)
+dev.off()
+```
