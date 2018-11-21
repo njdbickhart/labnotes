@@ -1133,6 +1133,34 @@ as.matrix(table(ctgtabs$BinStatus, ctgtabs$GCProp))
   META  29891 125252
   NONE 320646 625397
 
+
+ctgtabs.pb <- read.delim("pacbio_final_pilon_master_table_2018_09.contig.bin.stats.tab")
+ctgtabs.pb <- mutate(ctgtabs.pb, MetabatBin = ifelse(Metabat == "NOBIN", "NONE", "BIN"), HiCBin = ifelse(HiC == "NOBIN", "NONE", "BIN"))
+ctgtabs.pb$MetabatBin <- as.factor(ctgtabs.pb$MetabatBin)
+ctgtabs.pb$HiCBin <- as.factor(ctgtabs.pb$HiCBin)
+
+ctgtabs.pb <- mutate(ctgtabs.pb, Length = ifelse(len <= 10000, "Small", "Large"), GCProp = ifelse(GC < 0.48, "Low", "High"))
+ctgtabs.pb$Length <- as.factor(ctgtabs.pb$Length)
+ctgtabs.pb$GCProp <- as.factor(ctgtabs.pb$GCProp)
+
+ctgtabs.pb <- mutate(ctgtabs.pb, BinStatus = ifelse(MetabatBin == "BIN" | HiCBin == "BIN", ifelse(MetabatBin == "BIN" & HiCBin == "BIN", "Both", ifelse(MetabatBin == "BIN", "META", "HIC")), "NONE"))
+ctgtabs.pb$BinStatus <- as.factor(ctgtabs.pb$BinStatus)
+
+table(ctgtabs.pb$BinStatus, ctgtabs.pb$Length)
+
+       Large Small
+  Both 23601 13942
+  HIC  10530 14998
+  META  1960  3671
+  NONE  2328  6640
+
+table(ctgtabs.pb$BinStatus, ctgtabs.pb$GCProp)
+
+        High   Low
+  Both 23622 13921
+  HIC  14496 11032
+  META  1997  3634
+  NONE  2916  6052
 ```
 
 ## Solden Viral contigs and resurrecting my network plot
@@ -1234,6 +1262,8 @@ BOTH    6
 
 ## Plotting the CheckM stats
 
+This is for **Fig 2c + d**. 
+
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool
 
 
@@ -1243,24 +1273,22 @@ library(data.table)
 library(ggplot2)
 library(dplyr)
 
-pbmethods <- list(HiC=read.delim("../../assemblies/pilot_project/pacbio_final_pilon/pacbio_hic_checkm.results.tab", sep="\
-t", header=TRUE), MetaBat=read.delim("../../assemblies/pilot_project/pacbio_final_pilon/pacbio_megahit_checkm.results.tab"
-, sep="\t", header=TRUE), DASTool=read.delim("pacbio_final_dastool_checkm.results.tab", sep="\t", header=TRUE))
+pbmethods <- list(HiC=read.delim("../../assemblies/pilot_project/pacbio_final_pilon/pacbio_hic_checkm.results.tab", sep="\t", header=TRUE), MetaBat=read.delim("../../assemblies/pilot_project/pacbio_final_pilon/pacbio_megahit_checkm.results.tab", sep="\t", header=TRUE), DASTool=read.delim("pacbio_final_dastool_checkm.results.tab", sep="\t", header=TRUE))
 
 methods <- names(pbmethods)
 for(i in 1:length(pbmethods)){
 pbmethods[[i]]$Method <- methods[i]
 }
 result_table <- do.call(rbind.data.frame, pbmethods)
-tmp_wide <- result_table %>% group_by(Method) %>% filter(Contamination < 10) %>% summarize(`>90%` = sum(Completeness>90), `>80%` = sum(Completeness>80 & Completeness<=90), `>70%` = sum(Completeness>70 & Completeness<=80), `>60%` = sum(Completeness>60 & Completeness<=70))
+tmp_wide <- result_table %>% group_by(Method) %>% filter(Contamination < 5) %>% summarize(`>90%` = sum(Completeness>90), `>80%` = sum(Completeness>80 & Completeness<=90), `>70%` = sum(Completeness>70 & Completeness<=80), `>60%` = sum(Completeness>60 & Completeness<=70))
 
 melt(tmp_wide,id.vars = 'Method', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
 plot_table <- melt(tmp_wide,id.vars = 'Method', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
-plot_table$title <- "CheckM Bin Statistics (< 10% Contamination)"
+plot_table$title <- "CheckM Bin Statistics (< 5% Contamination)"
 packageVersion("ggplot2")
 plot_table$Completeness <- factor(plot_table$Completeness,levels = rev(c('>90%','>80%','>70%', '>60%')))
 colors <- rev(c("#08306B","#1664AB","#4A97C9","#93C4DE"))
-pdf("check_dastool_stats_pacbio_plot.pdf", useDingbats=FALSE)
+pdf("check_dastool_stats_pacbio_plot_cont5.pdf", useDingbats=FALSE)
 ggplot(plot_table, aes(Method, Bins, fill=Completeness)) + geom_bar(stat="identity", position="stack")  +
     facet_grid( ~ title)  + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     scale_fill_manual(values = colors) +  scale_x_discrete(limits = methods)
@@ -1280,17 +1308,135 @@ for(i in 1:length(ilmethods)){
 ilmethods[[i]]$Method <- methods[i]
 }
 result_table <- do.call(rbind.data.frame, ilmethods)
-tmp_wide <- result_table %>% group_by(Method) %>% filter(Contamination < 10) %>% summarize(`>90%` = sum(Completeness>90), `>80%` = sum(Completeness>80 & Completeness<=90), `>70%` = sum(Completeness>70 & Completeness<=80), `>60%` = sum(Completeness>60 & Completeness<=70))
+tmp_wide <- result_table %>% group_by(Method) %>% filter(Contamination < 5) %>% summarize(`>90%` = sum(Completeness>90), `>80%` = sum(Completeness>80 & Completeness<=90), `>70%` = sum(Completeness>70 & Completeness<=80), `>60%` = sum(Completeness>60 & Completeness<=70))
 
 melt(tmp_wide,id.vars = 'Method', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
 plot_table <- melt(tmp_wide,id.vars = 'Method', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
-plot_table$title <- "CheckM Bin Statistics (< 10% Contamination)"
+plot_table$title <- "CheckM Bin Statistics (< 5% Contamination)"
 
 plot_table$Completeness <- factor(plot_table$Completeness,levels = rev(c('>90%','>80%','>70%', '>60%')))
 colors <- rev(c("#08306B","#1664AB","#4A97C9","#93C4DE"))
-pdf("check_dastool_stats_illumina_plot.pdf", useDingbats=FALSE)
+pdf("check_dastool_stats_illumina_plot_cont5.pdf", useDingbats=FALSE)
 ggplot(plot_table, aes(Method, Bins, fill=Completeness)) + geom_bar(stat="identity", position="stack")  +
     facet_grid( ~ title)  + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
     scale_fill_manual(values = colors) +  scale_x_discrete(limits = methods)
 dev.off()
+```
+
+## Replotting the DAS_tool eval stats
+
+This is for **Fig 2e**
+
+> pwd: F:/SharedFolders/metagenomics/pilot_manuscript/figure_drafts/das_tool/
+
+```R
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+blankPlot <- ggplot()+geom_blank(aes(1,1))+
+   theme(
+     plot.background = element_blank(), 
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(), 
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(), 
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.line = element_blank())
+
+illumina.hic <- read.delim("illumina_final_dastool_HiC.eval")
+illumina.metabat <- read.delim("illumina_final_dastool_metabat.eval")
+pacbio.hic <- read.delim("pacbio_final_dastool_HiC.eval")
+pacbio.metabat <- read.delim("pacbio_final_dastool_metabat.eval")
+
+pacbio.hic <- mutate(pacbio.hic, Tech = c("PacBio"), Bin = c("HiC"))
+illumina.hic <- mutate(illumina.hic, Tech = c("Illumina"), Bin = c("HiC"))
+illumina.metabat <- mutate(illumina.metabat, Tech = c("Illumina"), Bin = c("MetaBat"))
+pacbio.metabat <- mutate(pacbio.metabat, Tech = c("PacBio"), Bin = c("MetaBat"))
+
+keep <- c(1,12,13,14,15)
+combined <- bind_rows(illumina.hic[,keep], illumina.metabat[,keep], pacbio.hic[,keep], pacbio.metabat[,keep])
+combined$Tech <- as.factor(combined$Tech)
+combined$Bin <- as.factor(combined$Bin)
+
+scatterPlot <- ggplot(combined, aes(x=SCG_completeness, y=SCG_redundancy, color=Bin)) + geom_point(aes(shape=Tech), position="jitter") + scale_color_brewer(palette="Paired") + theme(legend.position=c(0,1), legend.justification=c(0,1))
+xdensity <- ggplot(combined, aes(x=SCG_completeness, fill=Bin)) + geom_density(alpha=0.5) + scale_fill_brewer(palette="Paired") + theme(legend.position = "none", axis.title.x=element_blank(), axis.text.x=element_blank())
+ydensity <- ggplot(combined, aes(x=SCG_redundancy, fill=Bin)) + geom_density(alpha=0.5) + scale_fill_brewer(palette="Paired") + theme(legend.position = "none", axis.title.y=element_blank(), axis.text.y=element_blank()) + coord_flip()
+grid.arrange(xdensity, blankPlot, scatterPlot, ydensity, ncol=2, nrow=2, widths=c(4,1.4), heights = c(1.4,4))
+```
+
+## ARG allele hic analysis
+
+I just want to glean the important features of the Hi-C ARG analysis that Max prepared.
+
+> pwd: /cygdrive/f/SharedFolders/metagenomics/pilot_manuscript/figure_drafts/amr_genes
+
+```bash
+head -n 1 pb_arg_hic_links_filt.tsv | perl -lane 'for($x = 0; $x < scalar(@F); $x++){print "$x\t$F[$x]";}' | grep '20805'  <- the contig with a big smear in the middle of the plot
+
+# Identifying the clusters associated with this contig
+perl -lane 'if($F[82] > 4){print "$F[0]\t$F[82]";}' < pb_arg_hic_links_filt.tsv
+
+```
+
+| Hi-C Bin | MarkerGene tax | Mash profile |
+| :--- | :--- | :--- |
+| pacbio_final_public_hic.194.contigs.fa*(original bin)| p__Bacteroidetes |	Bacteroidales_bacterium_ph8.fna |
+| pacbio_final_public_hic.217.contigs.fa | k__Bacteria	| Francisella_tularensis_subsp._tularensis_TI0902.fna |
+| pacbio_final_public_hic.588.contigs.fa | k__Bacteria  |	Prevotella_ruminicola_23.fna |
+| pacbio_final_public_hic.617.contigs.fa | k__Bacteria	| Ruminobacter_sp._RM87.fna |
+| pacbio_final_public_hic.907.contigs.fa | k__Bacteria	| Methanothermobacter_thermautotrophicus_str._Delta_H.fna |
+| pacbio_final_public_hic.1061.contigs.fa | root	| Clostridiales_bacterium_oral_taxon_876_str._F0540.fna
+
+```bash
+head -n 1 pb_arg_hic_links_filt.tsv | perl -lane 'for($x = 0; $x < scalar(@F); $x++){print "$x\t$F[$x]";}' | grep '28353' <- the first contig in the list
+
+perl -lane 'if($F[111] > 4){print "$F[0]\t$F[111]";}' < pb_arg_hic_links_filt.tsv
+# I found allot of associations with fibrolytic strains here
+```
+
+
+## Checking DAS_tool dereplication for binning comparison
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/pilot_project/illumina_usda_accumulated
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); %hic; while(<IN>){chomp; @s = split(/\t/); $hic{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[2]"); %meta; while(<IN>){chomp; @s = split(/\t/); $meta{$s[0]} = $s[1];} close IN; my %total; foreach my $k (keys(%data), keys(%hic), keys(%meta)){$total{$k} = 1;} foreach my $k (sort {$a cmp $b} keys(%total)){$dbin = (exists($data{$k}))? $data{$k} : "NONE"; $hbin = (exists($hic{$k}))? $hic{$k} : "NONE"; $mbin = (exists($meta{$k}))? $meta{$k} : "NONE"; print "$k\t$dbin\t$hbin\t$mbin\n";}' illumina_final_dastool_DASTool_scaffolds2bin.txt illumina_megahit_hic.final.bins illumina_megahit_public_metabat.unsorted.bins > illumina_final_dastool_DASTool_scaffolds2bin.table.tab
+
+perl -e '%data; while(<>){chomp; @s = split(/\t/); if($s[1] eq "NONE" || $s[3] eq "NONE"){next;} $data{$s[1]}->{$s[3]} += 1;} foreach my $d (keys(%data)){print "$d"; foreach my $m (sort{$data{$d}->{$b} <=> $data{$d}->{$a}} keys(%{$data{$d}})){ print "\t$m\t" . $data{$d}->{$m} . "\n"; last;}}' < illumina_final_dastool_DASTool_scaffolds2bin.table.tab > illumina_final_dastool_DASTool_scaffolds2bin.metabat.best.count
+grep -v 'hic' illumina_final_dastool_DASTool_scaffolds2bin.metabat.best.count > illumina_final_dastool_DASTool_scaffolds2bin.metabat.best.count.filt
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f illumina_megahit_public_metabat.unsorted.bins -c 1 | grep -v 'Entry' > illumina_final_dastool_DASTool_scaffolds2bin.metabat.prederep.count
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); push(@s, $data{$s[1]}, $data{$s[1]} - $s[2]); print join("\t", @s) . "\n";} close IN;' illumina_final_dastool_DASTool_scaffolds2bin.metabat.prederep.count illumina_final_dastool_DASTool_scaffolds2bin.metabat.best.count.filt > illumina_final_dastool_DASTool_scaffolds2bin.metabat.best.count.comp
+cat illumina_final_dastool_DASTool_scaffolds2bin.metabat.best.count.comp | cut -f5 | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+Sum:    64485
+total   928
+Minimum 0
+Maximum 3781
+Average 69.488147
+Median  28
+Standard Deviation      204.996319
+Mode(Highest Distributed Value) 0
+
+
+perl -e '%data; while(<>){chomp; @s = split(/\t/); if($s[1] eq "NONE" || $s[2] eq "NONE"){next;} $data{$s[1]}->{$s[2]} += 1;} foreach my $d (keys(%data)){print "$d"; foreach my $m (sort{$data{$d}->{$b} <=> $data{$d}->{$a}} keys(%{$data{$d}})){ print "\t$m\t" . $data{$d}->{$m} . "\n"; last;}}' < illumina_final_dastool_DASTool_scaffolds2bin.table.tab > illumina_final_dastool_DASTool_scaffolds2bin.hic.best.count
+grep -v metabat illumina_final_dastool_DASTool_scaffolds2bin.hic.best.count > illumina_final_dastool_DASTool_scaffolds2bin.hic.best.count.filt
+
+perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f illumina_megahit_hic.final.bins -c 1 | grep -v 'Entry' > illumina_final_dastool_DASTool_scaffolds2bin.hic.prederep.count
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); push(@s, $data{$s[1]}, $data{$s[1]} - $s[2]); print join("\t", @s) . "\n";} close IN;' illumina_final_dastool_DASTool_scaffolds2bin.hic.prederep.count illumina_final_dastool_DASTool_scaffolds2bin.hic.best.count.filt > illumina_final_dastool_DASTool_scaffolds2bin.hic.best.count.comp
+
+cat illumina_final_dastool_DASTool_scaffolds2bin.hic.best.count.comp | cut -f5 | perl ~/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+Sum:    72306
+total   3056
+Minimum 0
+Maximum 356
+Average 23.660340
+Median  14
+Standard Deviation      30.951519
+Mode(Highest Distributed Value) 0
 ```
