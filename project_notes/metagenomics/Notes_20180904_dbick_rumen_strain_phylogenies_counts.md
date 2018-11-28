@@ -538,6 +538,13 @@ upper <- ggplot(data, aes(x=ARGClass, fill=ARGClass)) + geom_bar(position="stack
 lower <- ggplot(data, aes(x=ARGClass, fill=ARGClass)) + geom_bar(position="stack") + scale_color_brewer(palette = "Dark2") + theme_bw() + theme(axis.text.x = element_text(angle=45, hjust = 1)) + scale_y_continuous(limits=c(0,15), oob= rescale_none) + facet_grid(~Tech)
 pdf(file="arg_gene_class_counts.pdf", useDingbats = FALSE)
 grid.arrange(upper, lower, ncol=1)
+
+### Bradd asked me to change the plot so that it displays the high confidence AMR genes
+data <- read.delim("ResultsGreaterThan90QC.txt")
+upper <- ggplot(data, aes(x=Class, fill=Class)) + geom_bar(position="stack") + scale_color_brewer(palette = "Dark2") + theme_bw() + theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x=element_blank()) + scale_y_continuous(limits=c(20,90), oob=rescale_none) + facet_grid(~Tech)
+lower <- ggplot(data, aes(x=Class, fill=Class)) + geom_bar(position="stack") + scale_color_brewer(palette = "Dark2") + theme_bw() + theme(axis.text.x = element_text(angle=45, hjust = 1)) + scale_y_continuous(limits=c(0,15), oob= rescale_none) + facet_grid(~Tech)
+pdf(file="arg_gene_class_counts_revised.pdf", useDingbats = FALSE)
+grid.arrange(upper, lower, ncol=1)
 ```
 
 ## Generating a hive plot
@@ -698,6 +705,8 @@ I want to subsection the master tables to generate our draft supplementary info.
 
 ```bash
 perl -ne 'chomp; @F = split(/\t/); if($F[50] eq "NOBIN"){next;} print join("\t", @F[0,1,2,48,49,50,51]) . "\n";' < illumina_megahit_master_table_2018_09_07.tab > supplementary_table_2_shortread_bins.tab
+# REDO:
+perl -ne 'chomp; @F = split(/\t/); if($F[50] eq "NOBIN"){next;} print join("\t", @F[0,1,2,48,49,50,51]) . "\n";' < illumina_megahit_master_table_2018_11_28.tab > supplementary_table_1_shortread_bins.tab
 perl -ne 'chomp; @F = split(/\t/); if($F[50] eq "NOBIN"){next;} print join("\t", @F[0,1,2,48,49,50,51]) . "\n";' < pacbio_final_pilon_master_table_2018_09_07.tab > supplementary_table_3_longread_bins.tab
 ```
 
@@ -705,6 +714,8 @@ perl -ne 'chomp; @F = split(/\t/); if($F[50] eq "NOBIN"){next;} print join("\t",
 
 ```bash
 perl -ne 'chomp; @F = split(/\t/); if($F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-" && $F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51]) . "\n";}' < illumina_megahit_master_table_2018_09_07.tab > supplementary_table_4_short_read_unique.tab
+# REDO:
+perl -ne 'chomp; @F = split(/\t/); if($F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-" && $F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51]) . "\n";}' < illumina_megahit_master_table_2018_11_28.tab > supplementary_table_6_short_read_unique.tab
 perl -ne 'chomp; @F = split(/\t/); if($F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-" && $F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51]) . "\n";}' < pacbio_final_pilon_master_table_2018_09_07.tab > supplementary_table_5_long_read_unique.tab
 ```
 
@@ -712,6 +723,8 @@ perl -ne 'chomp; @F = split(/\t/); if($F[56] eq "-" && $F[57] eq "-" && $F[58] e
 
 ```bash
 perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51,56,57,58]) . "\n";}' < illumina_megahit_master_table_2018_09_07.tab > supplementary_table_6_short_read_taxonomy.tab
+# REDO:
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51,56,57,58]) . "\n";}' < illumina_megahit_master_table_2018_11_28.tab > supplementary_table_3_short_read_taxonomy.tab
 perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN"){print join("\t", @F[0,1,2,8,9,14,15,16,17,21,52,53,23,27,31,35,39,43,48,49,50,51,56,57,58]) . "\n";}' < pacbio_final_pilon_master_table_2018_09_07.tab > supplementary_table_7_long_read_taxonomy.tab
 ```
 
