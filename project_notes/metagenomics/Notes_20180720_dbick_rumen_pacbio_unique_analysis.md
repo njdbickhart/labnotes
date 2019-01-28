@@ -892,6 +892,7 @@ sbatch --nodes=1 --ntasks-per-node=15 --mem=100000 -p mem --wrap="python ~/rumen
 sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p mem --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d bact -i pacbio_final.Bacteria.split.faa --output pacbio_final.Bacteria.eggnog --usemem --cpu 14"
 sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p short --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d euk -i pacbio_final.Eukaryota.split.faa --output pacbio_final.Eukaryota.eggnog --usemem --cpu 14"
 sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p short --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d arch -i pacbio_final.Archaea.split.faa --output pacbio_final.Archaea.eggnog --usemem --cpu 14"
+sbatch --nodes=1 --ntasks-per-node=15 --mem=120000 -p short --wrap="python ~/rumen_longread_metagenome_assembly/binaries/eggnog-mapper/emapper.py -m diamond -d arch -i pacbio_final.Viruses.split.faa --output pacbio_final.Viruses.eggnog --usemem --cpu 14"
 
 # Now to generate the tables I need for further analysis
 for i in Eukaryota Archaea Bacteria; do echo $i; python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f pacbio_final.${i}.eggnog.emapper.annotations -c 11 -i '#' -d '\t' -m -o pacbio_final.${i}.full.cog.counts.md; done
@@ -1766,4 +1767,22 @@ bin.filt <- bind_rows(pbhic.filt, ilmetabat.filt)
 
 pdf(file="full_dastool_bin_SCG_stats.pdf", useDingbats=FALSE)
 
+```
+
+## Virus Auxillary metabolic genes
+
+I'm just checking to see if there are any interesting auxillary metabolic genes in the viral contigs.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/amr_vir_heatmaps
+
+```bash
+perl -lane 'if($F[5] eq "Sutterella" || $F[5] eq "Desulfovibrio"){print $F[0];}' < pacbio_pilon_viruses.combined.cyto.tab | sort | uniq > sulfur_virus_unique_contigs_PB.list
+
+sbatch --nodes=1 --ntasks-per-node=1 --mem=2000 -p short get_annotation_list.pl sulfur_virus_unique_contigs_PB.list ../eggnog/pacbio_final.Bacteria.eggnog.emapper.annotations pacbio_final.Bacteria.eggnog.viral.annos.tab
+
+# Wait... did I ever eggnog map the viruses?
+sbatch --nodes=1 --ntasks-per-node=1 --mem=2000 -p short get_annotation_list.pl sulfur_virus_unique_contigs_PB.list ../eggnog/pacbio_final.Viruses.eggnog.emapper.annotations pacbio_final.Viruses.eggnog.viruses.anno.tab
+
+perl -lane 'if($F[5] eq "Sulfurovum" || $F[5] eq "Desulfovibrio"){print $F[0];}' < pacbio_pilon_viruses.combined.cyto.tab | sort | uniq > sulfur_virus_unique_contigs_PB.take2.list
+sbatch --nodes=1 --ntasks-per-node=1 --mem=2000 -p short get_annotation_list.pl sulfur_virus_unique_contigs_PB.take2.list ../eggnog/pacbio_final.Viruses.eggnog.emapper.annotations pacbio_final.Viruses.eggnog.viruses.anno.take2.tab
 ```
