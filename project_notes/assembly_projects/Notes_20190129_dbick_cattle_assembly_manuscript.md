@@ -71,3 +71,51 @@ sample estimates:
 ```
 
 These are atrocious for both assemblies! I could determine ref chromosome consensus order, but I'm not sure if that would even help at this point! I need to see how disjointed the alignments are between optical maps first. 
+
+Here's the consensus approach:
+
+```bash
+sbatch sortAndRankOMDataCons.pl OM-ARS-UCD1.2.full.aln OM-ARS-UCD1.2.cons.ranks OM-ARS-UCD1.2.cons.om.consensus
+sbatch sortAndRankOMDataCons.pl OM-UMD3.1.1.full.aln OM-UMD3.1.1.cons.ranks OM-UMD3.1.1.cons.om.consensus
+```
+
+```R
+data <- read.delim("OM-ARS-UCD1.2.cons.ranks", header=TRUE)
+cor.test(data$RefRank, data$OMRank, alternative="two.sided", method="spearman", exact = TRUE)
+
+        Spearman's rank correlation rho
+
+data:  data$RefRank and data$OMRank
+S = 2.1526e+10, p-value < 2.2e-16
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+      rho
+0.9801629
+
+data <- read.delim("OM-UMD3.1.1.cons.ranks", header=TRUE)
+cor.test(data$RefRank, data$OMRank, alternative="two.sided", method="spearman", exact = TRUE)
+
+        Spearman's rank correlation rho
+
+data:  data$RefRank and data$OMRank
+S = 4.1647e+10, p-value < 2.2e-16
+alternative hypothesis: true rho is not equal to 0
+sample estimates:
+      rho
+0.9613426
+```
+
+OK, so that was a huge improvement. The magnitude of misalignments was higher than expected, so that threw off my ranking of the OM windows. 
+
+## RepeatMasker analysis
+
+I am going to try to run RepeatMasker on the cattle reference using the default CERES module (no special libraries). I know that this will upset allot of people, but this is exploratory for now.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/dominette/repeatmasker
+
+```bash
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=10 -p medium --wrap="RepeatMasker -pa 10 -q -species cow -no_is -gff ../ARS-UCD1.2/GCF_002263795.1_ARS-UCD1.2_genomic.fna"
+# Building species libraries in: /home/derek.bickharhth/.RepeatMaskerCache/dc20170127/bos_taurus
+#   - 175 ancestral and ubiquitous sequence(s) for bos taurus   <- ruh-roh! That ain't good!
+#   - 0 lineage specific sequence(s) for bos taurus
+```
