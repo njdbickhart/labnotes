@@ -46,3 +46,26 @@ sbatch --nodes=1 --ntasks-per-node=20 --mem=64G -p medium --wrap="canu -correct 
 
 sbatch --nodes=1 --ntasks-per-node=20 --mem=64G -p medium --wrap="canu -p clover_hen_postcor -d clover_hen_postcor genomeSize=420m correctedErrorRate=0.120 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p medium' -nanopore-raw clover_hen_retry/clover_hen_retry.correctedReads.fasta.gz"
 ```
+
+
+# KAT analysis of Diagnostic assembly
+
+I am using the "clover_hen_postcor" assembly version in this analysis, as it had the most assembled bases and the largest average contig lengths. 
+
+I will be downloading several SRA datasets for future analysis, but I will be using the one with the highest mapping rate for kmer-based analysis of assembly completion. If the assembly is fairly complete, then we just need more coverage to increase the contiguity. If we're missing big chunks, then there's a heterozygosity problem or a bias in the sequencing. 
+
+Here are the SRA accessions I will be downloading (all Aberystwyth University, UK):
+* ERR3063534
+* ERR3063535
+* ERR3063536
+* ERR3063537
+* ERR3063538
+* ERR3063539
+* ERR3063540
+* ERR3063541
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/red_clover_public
+
+```bash
+sbatch ~/bin/download_sra_dataset.sh clover_uk_sra_list.txt
+```

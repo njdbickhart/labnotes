@@ -626,3 +626,49 @@ There is some ambiguity as to the sex chromosome PAR locations. I want to run a 
 ```bash
 for i in SRX3666413 SRX3666412  SRX3666411  SRX3666410  SRX3666409  SRX3666408  SRX3666407  SRX3666403  SRX3666451  SRX3666450  SRX3666449; do sbatch download_sra_align.sh $i; done
 ```
+
+## QV and other summary statistics
+
+I had set this up a while back. Here are the commands I used to process the data.
+
+```bash
+module load java/1.8.0_121
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p short --wrap="bwa index bostaurus_angus.reformat.fasta"
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p short --wrap="bwa index bostaurus_brahma.reformat.fasta"
+ls /scinet01/gov/usda/ars/scinet/project/cattle_genome_assemblies/angusxbrahman/illumina/*.gz > illumina_angusxbrahman.fastqs.tab
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b angus -t illumina_angusxbrahman.fastqs.tab -f bostaurus_angus.reformat.fasta -m -p short
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b brahman -t illumina_angusxbrahman.fastqs.tab -f bostaurus_brahma.reformat.fasta -m -p short
+sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --wrap="java -Xmx19g -jar ~/rumen_longread_metagenome_assembly/binaries/JaRMS/store/JaRMS.jar call -i angus/angusxbrahman/angusxbrahman.sorted.merged.bam -f bostaurus_angus.reformat.fasta -o bostaurus_angus.jarms -t 4"
+sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --wrap="java -Xmx19g -jar ~/rumen_longread_metagenome_assembly/binaries/JaRMS/store/JaRMS.jar call -i brahman/angusxbrahman/angusxbrahman.sorted.merged.bam -f bostaurus_brahma.reformat.fasta -o bostaurus_brahman.jarms -t 4"
+
+# Restarting with the final, NCBI versions
+
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p short --wrap="bwa index bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta"
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p short --wrap="bwa index bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta"
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b f_angus -t illumina_angusxbrahman.fastqs.tab -f bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta -m -p short
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b f_brahman -t illumina_angusxbrahman.fastqs.tab -f bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta -m -p short
+
+sbatch freebayes -C 2 -0 -O -q 20 -z 0.10 -E 0 -X -u -p 2 -F 0.75 -f bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta -v bostaurus_brahman_bionano_NCBI_full_corrected.freebayes.vcf f_brahman/angusxbrahman/angusxbrahman.sorted.merged.bam
+sbatch freebayes -C 2 -0 -O -q 20 -z 0.10 -E 0 -X -u -p 2 -F 0.75 -f bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta -v bostaurus_angus_bionano_NCBI_full_corrected.freebayes.vcf f_angus/angusxbrahman/angusxbrahman.sorted.merged.bam
+
+sbatch calculate_qv.sh bostaurus_brahman_bionano_NCBI_full_corrected.freebayes.vcf f_brahman/angusxbrahman/angusxbrahman.sorted.merged.bam bostaurus_brahman_bionano_NCBI_full_corrected.QV
+sbatch calculate_qv.sh bostaurus_angus_bionano_NCBI_full_corrected.freebayes.vcf f_angus/angusxbrahman/angusxbrahman.sorted.merged.bam bostaurus_angus_bionano_NCBI_full_corrected.QV
+
+sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --wrap="java -Xmx19g -jar ~/rumen_longread_metagenome_assembly/binaries/JaRMS/store/JaRMS.jar call -i f_angus/angusxbrahman/angusxbrahman.sorted.merged.bam -f bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta -o angus_bionano_NCBI.recall -t 4 -m 10000000"
+sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --wrap="java -Xmx19g -jar ~/rumen_longread_metagenome_assembly/binaries/JaRMS/store/JaRMS.jar call -i f_brahman/angusxbrahman/angusxbrahman.sorted.merged.bam -f bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta -o brahman_bionano_NCBI.recall -t 4 -m 10000000"
+
+# Running the reads on the ARS_UCDv1.2 reference
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b ars_ucd -t illumina_angusxbrahman.fastqs.tab -f ../../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa -m -p short
+```
+
+Now I need to download the SRA datasets for CNV calling. I'll queue them up as sequential, simultaneous, tasks.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/angusxbrahman/public
+
+```bash
+perl -lane '@bsegs = split(/_/, $F[2]); print join("\t", @bsegs);' < lloyd_master_pe > beef_panel_simple_accession.tab
+module load sratoolkit/2.9.0
+
+cat beef_panel_simple_accession.tab | cut -f1 | xargs -I {} sbatch --nodes=1 --mem=2000 --ntasks-per-node=1 -p short --wrap="fastq-dump.2 -I --gzip --split-files {}"
+```
+
