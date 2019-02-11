@@ -670,5 +670,23 @@ perl -lane '@bsegs = split(/_/, $F[2]); print join("\t", @bsegs);' < lloyd_maste
 module load sratoolkit/2.9.0
 
 cat beef_panel_simple_accession.tab | cut -f1 | xargs -I {} sbatch --nodes=1 --mem=2000 --ntasks-per-node=1 -p short --wrap="fastq-dump.2 -I --gzip --split-files {}"
+
+# Generating the spreadsheet I need for my script
+perl -lane '@f = `ls $F[0]*.gz`; chomp(@f); print join("\t", @f) . "\t$F[0]\t$F[1]";' < beef_panel_simple_accession.tab > beef_panel_pipeline_spreadsheet.tab
+
+# Grrr! The SRA read splitting doesn't work with BWA because of non-unique pair names! Fixing...
+perl -lane 'print $F[2];' < beef_panel_pipeline_spreadsheet.tab | xargs -I {} sbatch --nodes=1 --mem=3000 --ntasks-per-node=1 -p short --wrap="python3 ~/python_toolchain/sequenceData/fixSRAFastqFiles.py -f {}_1.fastq.gz -r {}_2.fastq.gz -o {}.fmt -l {}.log"
+
+perl -lane 'for($x = 0; $x < 2; $x++){$F[$x] =~ s/\_([12])/\.fmt\.$1/; $F[$x] =~ s/fastq/fq/;} print join("\t", @F);' < beef_panel_pipeline_spreadsheet.fullp.tab > beef_panel_pipeline_spreadsheet.fullp.rfmt.tab
 ```
 
+Now I can do the alignments. I'm using these assembly fastas on the cluster:
+
+* /home/derek.bickharhth/bostauruscnv/assembly/ARS-UCD1.2_Btau5.0.1Y.fa
+* /home/derek.bickharhth/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta
+* /home/derek.bickharhth/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta
+
+```bash
+# Angus
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b angus_asm -t beef_panel_pipeline_spreadsheet.fullp.rfmt.tab -f /project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta -m -p short
+```

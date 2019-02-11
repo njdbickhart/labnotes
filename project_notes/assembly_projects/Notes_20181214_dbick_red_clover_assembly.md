@@ -48,7 +48,7 @@ sbatch --nodes=1 --ntasks-per-node=20 --mem=64G -p medium --wrap="canu -p clover
 ```
 
 
-# KAT analysis of Diagnostic assembly
+## KAT analysis of Diagnostic assembly
 
 I am using the "clover_hen_postcor" assembly version in this analysis, as it had the most assembled bases and the largest average contig lengths. 
 
@@ -68,4 +68,24 @@ Here are the SRA accessions I will be downloading (all Aberystwyth University, U
 
 ```bash
 sbatch ~/bin/download_sra_dataset.sh clover_uk_sra_list.txt
+```
+
+Preparing assembly fasta for alignment.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_hen_postcor
+
+```bash
+module load bwa
+sbatch --nodes=1 --ntasks-per-node=1 --mem=12000 -p short --wrap="bwa index clover_hen_postcor.contigs.fasta"
+```
+
+Now to align the fastqs to the assembly, separately:
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/red_clover_public
+
+```bash
+module load samtools
+ls *.fastq.gz | xargs -I {} sbatch --nodes=1 --ntasks-per-node=10 --mem=25000 -p short --wrap="bwa mem -t 8 -M ../clover_hen_postcor/clover_hen_postcor.contigs.fasta {} | samtools sort -m 2G -o {}.sorted.bam -T {}.temp -"
+
+ls *.bam | xargs -I {} sbatch --nodes=1 --ntasks-per-node=1 --mem=10000 -p short --wrap="samtools index {}"
 ```
