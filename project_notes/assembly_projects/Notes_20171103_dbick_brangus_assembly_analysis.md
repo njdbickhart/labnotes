@@ -659,6 +659,12 @@ sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --wrap="java -Xmx19g -
 
 # Running the reads on the ARS_UCDv1.2 reference
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b ars_ucd -t illumina_angusxbrahman.fastqs.tab -f ../../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa -m -p short
+
+
+#### FRC align ####
+module load frc_align
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p short --wrap="FRC --pe-sam f_angus/angusxbrahman/angusxbrahman.sorted.merged.bam --output f_angus_frc_stats"
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p short --wrap="FRC --pe-sam f_brahman/angusxbrahman/angusxbrahman.sorted.merged.bam --output f_brahman_frc_stats"
 ```
 
 Now I need to download the SRA datasets for CNV calling. I'll queue them up as sequential, simultaneous, tasks.
