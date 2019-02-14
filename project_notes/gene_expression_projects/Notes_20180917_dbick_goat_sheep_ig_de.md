@@ -217,3 +217,35 @@ ggplot(sfull1.fm, aes(x=Raw, y=value, col=tissue, label=Var1)) + geom_point() + 
 
 dev.copy2pdf(file="sheep_example_normalization_effects.pdf", useDingbats=FALSE)
 ```
+
+## Reviewer responses
+
+One of the reviewers wanted to see expression patterns in CD4 and CD8 cells, so I will expand the goat heatmap with expression data taken from FAANG resources that John provided.
+
+```R
+library(reshape2)
+library(RUVSeq)
+library(ggplot2)
+load(file=".RData")
+
+gtables <- lapply(list.files(pattern="^goat.*\\.tab"), read.delim, header=TRUE)
+gtables <- lapply(gtables, function(x){rownames(x) <- x$Run; x["Run"] <- NULL; x})
+gdataframe <- do.call(cbind, gtables)
+
+gfull <- newSeqExpressionSet(as.matrix(gdataframe))
+gfull1 <- RUVg(gfull, ctrls, k=1)
+
+
+drops <- c("TARM1", "OSCAR", "KIR group 2", "KIR group 6", "GP6")
+gfull1.m <- melt(normCounts(gfull1)[!(rownames(normCounts(gfull1)) %in% c(ctrls, drops)), ])
+
+names(gtables) <- sapply(list.files(pattern="^goat.*\\.tab"), function(x) strsplit(x, split="\\_", perl=TRUE)[[1]][2])
+gtissues <- Map(function(x, i){x["Run"] <- NULL; data.frame(tissue=i, sample=colnames(x))}, gtables, names(gtables))
+gtissues <- do.call(rbind, gtissues)
+
+pdf(file="goat_second_heatmap_norm.pdf", useDingbats = FALSE)
+ggplot(gfull1.m, aes(Var2, Var1)) + geom_tile(aes(fill=value), colour = "white") + scale_fill_gradient(low="white", high="steelblue", limits=c(0,500)) + scale_x_discrete(labels=gtissues$tissue) + theme_bw() + theme(axis.text.x=element_text(angle=45, hjust=1))
+dev.off()
+
+write.table(normCounts(gfull1), file="tot_goat_normcounts_cdcells.tab", sep="\t", quote=FALSE)
+```
