@@ -119,3 +119,7 @@ sbatch --nodes=1 --mem=30000 --ntasks-per-node=10 -p medium --wrap="RepeatMasker
 #   - 175 ancestral and ubiquitous sequence(s) for bos taurus   <- ruh-roh! That ain't good!
 #   - 0 lineage specific sequence(s) for bos taurus
 ```
+
+## Unique sequence in the cattle assembly
+
+OK, now I'm going to start scraping the reads from the cattle assembly. 

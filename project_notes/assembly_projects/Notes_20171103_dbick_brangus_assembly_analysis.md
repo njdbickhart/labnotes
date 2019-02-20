@@ -665,6 +665,7 @@ python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b ars_ucd -t ill
 module load frc_align
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p short --wrap="FRC --pe-sam f_angus/angusxbrahman/angusxbrahman.sorted.merged.bam --output f_angus_frc_stats"
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p short --wrap="FRC --pe-sam f_brahman/angusxbrahman/angusxbrahman.sorted.merged.bam --output f_brahman_frc_stats"
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p short --wrap="FRC --pe-sam ars_ucd/angusxbrahman/angusxbrahman.sorted.merged.bam --output ars_ucd_frc_stats"
 ```
 
 Now I need to download the SRA datasets for CNV calling. I'll queue them up as sequential, simultaneous, tasks.
