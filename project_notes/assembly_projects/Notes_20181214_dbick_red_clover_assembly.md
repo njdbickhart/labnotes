@@ -88,4 +88,49 @@ module load samtools
 ls *.fastq.gz | xargs -I {} sbatch --nodes=1 --ntasks-per-node=10 --mem=25000 -p short --wrap="bwa mem -t 8 -M ../clover_hen_postcor/clover_hen_postcor.contigs.fasta {} | samtools sort -m 2G -o {}.sorted.bam -T {}.temp -"
 
 ls *.bam | xargs -I {} sbatch --nodes=1 --ntasks-per-node=1 --mem=10000 -p short --wrap="samtools index {}"
+
+# Checking the mapping percentages:
+for i in *.sorted.bam; do echo -ne "$i\t"; samtools idxstats $i | perl -e '$un = 0; $m = 0; while(<STDIN>){chomp; @s = split(/\t/); $m += $s[2]; $un += $s[3];} $perc = $m / ($m + $un); $perc *= 100; print "$m\t$un\t$perc\n";' ; done
+ERR3063534_1.fastq.gz.sorted.bam        159503126       25574908        86.1815541005801
+ERR3063535_1.fastq.gz.sorted.bam        199324740       26029001        88.4497142650053
+ERR3063536_1.fastq.gz.sorted.bam        169998247       31918785        84.1921284777997
+ERR3063537_1.fastq.gz.sorted.bam        190936056       32079594        85.6155413308438
+ERR3063538_1.fastq.gz.sorted.bam        198148738       32623653        85.863277292993
+ERR3063539_1.fastq.gz.sorted.bam        189012804       28185700        87.0230689986705
+ERR3063540_1.fastq.gz.sorted.bam        201118225       29134382        87.3467743190417
+ERR3063541_1.fastq.gz.sorted.bam        197161358       37262635        84.1045984572066
+
+# Now checking for contig coverage using bedtools
+for i in red_clover_public/*.sorted.bam; do echo $i; sbatch --nodes=1 --ntasks-per-node=2 --mem=16000 -p short --wrap="bedtools genomecov -ibam $i -g clover_hen_postcor/clover_hen_postcor.contigs.fasta > $i.cov"; done
+
+# I'm noticing a high degree of zero coverage bases on contigs. Like so:
+for i in red_clover_public/*.cov; do echo -ne "$i\t"; avg=`perl -lane 'if($F[1] == 0){print $F[4];}' < $i | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl | grep 'Average'`; echo $avg; done
+red_clover_public/ERR3063534_1.fastq.gz.sorted.bam.cov  Average 0.854841
+red_clover_public/ERR3063535_1.fastq.gz.sorted.bam.cov  Average 0.835845
+red_clover_public/ERR3063536_1.fastq.gz.sorted.bam.cov  Average 0.840202
+red_clover_public/ERR3063537_1.fastq.gz.sorted.bam.cov  Average 0.849392
+red_clover_public/ERR3063538_1.fastq.gz.sorted.bam.cov  Average 0.892309
+red_clover_public/ERR3063539_1.fastq.gz.sorted.bam.cov  Average 0.853269
+red_clover_public/ERR3063540_1.fastq.gz.sorted.bam.cov  Average 0.882853
+red_clover_public/ERR3063541_1.fastq.gz.sorted.bam.cov  Average 0.853424
+
+# I think that the sequence data may be really bonkers...
+for i in red_clover_public/*.cov; do echo -ne "$i\t"; max=`cat $i | cut -f2 | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl | grep 'Maximum'`; echo $max; done
+red_clover_public/ERR3063534_1.fastq.gz.sorted.bam.cov  Maximum 1253838
+red_clover_public/ERR3063535_1.fastq.gz.sorted.bam.cov  Maximum 1498571
+red_clover_public/ERR3063536_1.fastq.gz.sorted.bam.cov  Maximum 1294225
+red_clover_public/ERR3063537_1.fastq.gz.sorted.bam.cov  Maximum 2098104
+red_clover_public/ERR3063538_1.fastq.gz.sorted.bam.cov  Maximum 1704903
+red_clover_public/ERR3063539_1.fastq.gz.sorted.bam.cov  Maximum 1787357
+red_clover_public/ERR3063540_1.fastq.gz.sorted.bam.cov  Maximum 1525081
+red_clover_public/ERR3063541_1.fastq.gz.sorted.bam.cov  Maximum 1365049
+
+# I'm going to map the short-read ENA red clover assembly (2015) onto the new assembly to see just how different things are here.
+sbatch --nodes=1 --ntasks-per-node=3 --mem=20000 -p short --wrap="minimap2 -x asm10 clover_hen_postcor/clover_hen_postcor.contigs.fasta short_read_red_clover_ena.fasta > clover_hen_postcor.vs.short_read.paf"
+sbatch --nodes=1 --ntasks-per-node=3 --mem=20000 -p short --wrap="minimap2 -x asm10 short_read_red_clover_ena.fasta clover_hen_postcor/clover_hen_postcor.contigs.fasta > short_read.vs.clover_hen_postcor.paf"
+
+perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if($s[11] > 0){ $c += $s[9];}} print "$c\n";' < clover_hen_postcor.vs.short_read.paf
+88,982,406
+perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if($s[11] > 0){ $c += $s[9];}} print "$c\n";' < short_read.vs.clover_hen_postcor.paf
+156,057,180
 ```

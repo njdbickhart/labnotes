@@ -114,10 +114,22 @@ I am going to try to run RepeatMasker on the cattle reference using the default 
 > Ceres: /home/derek.bickharhth/cattle_genome_assemblies/dominette/repeatmasker
 
 ```bash
+module load repeatmasker/4.0.7
 sbatch --nodes=1 --mem=30000 --ntasks-per-node=10 -p medium --wrap="RepeatMasker -pa 10 -q -species cow -no_is -gff ../ARS-UCD1.2/GCF_002263795.1_ARS-UCD1.2_genomic.fna"
 # Building species libraries in: /home/derek.bickharhth/.RepeatMaskerCache/dc20170127/bos_taurus
 #   - 175 ancestral and ubiquitous sequence(s) for bos taurus   <- ruh-roh! That ain't good!
 #   - 0 lineage specific sequence(s) for bos taurus
+
+# OK, the process terminated without finding repeats! I think there are two reasons why:
+# The Scinet team have an outdated repeat library installed
+# Also, the fasta I used was soft-masked by NCBI
+
+# First, let's get the repeat library updated
+wget http://www.repeatmasker.org/libraries/RepeatMaskerMetaData-20181026.tar.gz
+# Hmm, it's not so simple to install this as a local library. I could try hacking @INC to point to this directory, but it's going to screw up a bunch of things
+# Let's try the run again but with the proper assembly fasta this time.
+
+sbatch --nodes=1 --mem=35000 --ntasks-per-node=20 -p medium --wrap="RepeatMasker -pa 20 -q -species cow -no_is -gff ../ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa"
 ```
 
 ## Unique sequence in the cattle assembly
@@ -237,4 +249,42 @@ ls ../bam/*.bam | cut -d'/' -f3 | cut -d'.' -f1 > bam_id_nums.list
 
 # Scraping the unmapped reads
 for i in `cat bam_id_nums.list`; do echo $i; sbatch scrap_unmapped_reads.sh ../bam $i scrap; done
+
+# Checking the output from the slurm STDOUT reports:
+echo -e "Animal\tUnmapReads\tR1UnmapReads\tR2UnmapReads"; for i in slurm-*.out; do perl -e '@d; $n; while(<>){chomp; if($_ =~ /^mkdir/){next;}elsif($_ =~ /^\[/){@b = split(/\s+/); push(@d, $b[2]);}elsif($_ =~ /^Done/){@b = split(/\s+/); $n = $b[3];}} print "$n\t$d[1]\t$d[3]\t$d[5]\n";' < $i; done
+
+# Crap! there are no completely unmapped read pairs! I think it's part of Bob's processing pipeline
+
+# Let's calculate the number of links per chromosome to see how often the one-end anchors could be expected.
+# Setting up 10 mb windows across the genome.
+perl -lane 'for($x = 1; $x < $F[1]; $x += 10000000){$e = $x + 10000000; if($x + 10000000 > $F[1]){$e = $F[1];} print "$F[0]\t$x\t$e";}' < ../assembly/ARS-UCD1.2_Btau5.0.1Y.fa.fai > ARSUCD1.2.links.bed
+
+module load bedtools; for i in scrap/*; do name=`echo $i | cut -d'/' -f2`; echo $name; perl -lane '$e = $F[3] + 1; print "$F[2]\t$F[3]\t$e";' < $i/$name.links.bam | bedtools intersect -a ARSUCD1.2.links.bed -b stdin -c > $name.wins.intersect.bed; done
+
+# I'm going to go out on a limb and try to intersect these
+python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -c 0 -c 1 -c 2 -m 3 -o left_join_total.wins.intersect.bed -f 1289.wins.intersect.bed -f 1315.wins.intersect.bed -f 1510.wins.intersect.bed -f 18394.wins.intersect.bed -f 18395.wins.intersect.bed -f 18474.wins.intersect.bed -f 18476.wins.intersect.bed -f 18557.wins.intersect.bed -f 185615.wins.intersect.bed -f 185616.wins.intersect.bed -f 185617.wins.intersect.bed -f 185618.wins.intersect.bed -f 185619.wins.intersect.bed -f 185620.wins.intersect.bed -f 185621.wins.intersect.bed -f 185622.wins.intersect.bed -f 185623.wins.intersect.bed -f 185624.wins.intersect.bed -f 185625.wins.intersect.bed -f 185626.wins.intersect.bed -f 185627.wins.intersect.bed -f 185628.wins.intersect.bed -f 185629.wins.intersect.bed -f 185630.wins.intersect.bed -f 185631.wins.intersect.bed -f 185632.wins.intersect.bed -f 185633.wins.intersect.bed -f 185634.wins.intersect.bed -f 185635.wins.intersect.bed -f 185636.wins.intersect.bed -f 185637.wins.intersect.bed -f 185639.wins.intersect.bed -f 185641.wins.intersect.bed -f 185643.wins.intersect.bed -f 185644.wins.intersect.bed -f 185646.wins.intersect.bed -f 185647.wins.intersect.bed -f 185648.wins.intersect.bed -f 185649.wins.intersect.bed -f 185650.wins.intersect.bed -f 185651.wins.intersect.bed -f 185652.wins.intersect.bed -f 185653.wins.intersect.bed -f 185654.wins.intersect.bed -f 185655.wins.intersect.bed -f 185656.wins.intersect.bed -f 185657.wins.intersect.bed -f 185658.wins.intersect.bed -f 185659.wins.intersect.bed -f 185660.wins.intersect.bed -f 185661.wins.intersect.bed -f 185662.wins.intersect.bed -f 185663.wins.intersect.bed -f 185664.wins.intersect.bed -f 185665.wins.intersect.bed -f 185666.wins.intersect.bed -f 185667.wins.intersect.bed -f 185668.wins.intersect.bed -f 185669.wins.intersect.bed -f 185670.wins.intersect.bed -f 185671.wins.intersect.bed -f 185672.wins.intersect.bed -f 185673.wins.intersect.bed -f 185674.wins.intersect.bed -f 185675.wins.intersect.bed -f 185676.wins.intersect.bed -f 185677.wins.intersect.bed -f 185678.wins.intersect.bed -f 185679.wins.intersect.bed -f 185680.wins.intersect.bed -f 185681.wins.intersect.bed -f 185682.wins.intersect.bed -f 185683.wins.intersect.bed -f 185684.wins.intersect.bed -f 185685.wins.intersect.bed -f 185686.wins.intersect.bed -f 185687.wins.intersect.bed -f 185688.wins.intersect.bed -f 185689.wins.intersect.bed -f 185690.wins.intersect.bed -f 185691.wins.intersect.bed -f 185692.wins.intersect.bed -f 185693.wins.intersect.bed -f 185694.wins.intersect.bed -f 185695.wins.intersect.bed -f 185696.wins.intersect.bed -f 185697.wins.intersect.bed -f 185698.wins.intersect.bed -f 185699.wins.intersect.bed -f 185700.wins.intersect.bed -f 185701.wins.intersect.bed -f 185702.wins.intersect.bed -f 185703.wins.intersect.bed -f 185704.wins.intersect.bed -f 18682.wins.intersect.bed -f 19020.wins.intersect.bed -f 19225.wins.intersect.bed -f 193865.wins.intersect.bed -f 193866.wins.intersect.bed -f 193867.wins.intersect.bed -f 193868.wins.intersect.bed -f 193869.wins.intersect.bed -f 193870.wins.intersect.bed -f 193871.wins.intersect.bed -f 193872.wins.intersect.bed -f 193873.wins.intersect.bed -f 193874.wins.intersect.bed -f 193875.wins.intersect.bed -f 193876.wins.intersect.bed -f 193877.wins.intersect.bed -f 193878.wins.intersect.bed -f 193879.wins.intersect.bed -f 193880.wins.intersect.bed -f 193881.wins.intersect.bed -f 193882.wins.intersect.bed -f 193883.wins.intersect.bed -f 193884.wins.intersect.bed -f 193885.wins.intersect.bed -f 193886.wins.intersect.bed -f 193887.wins.intersect.bed -f 193888.wins.intersect.bed -f 193889.wins.intersect.bed -f 193890.wins.intersect.bed -f 193891.wins.intersect.bed -f 193892.wins.intersect.bed -f 193893.wins.intersect.bed -f 193894.wins.intersect.bed -f 193895.wins.intersect.bed -f 193896.wins.intersect.bed -f 193897.wins.intersect.bed -f 193898.wins.intersect.bed -f 193899.wins.intersect.bed -f 193900.wins.intersect.bed -f 193901.wins.intersect.bed -f 193902.wins.intersect.bed -f 193903.wins.intersect.bed -f 193904.wins.intersect.bed -f 193905.wins.intersect.bed -f 193906.wins.intersect.bed -f 193907.wins.intersect.bed -f 193908.wins.intersect.bed -f 193909.wins.intersect.bed -f 193910.wins.intersect.bed -f 193911.wins.intersect.bed -f 193912.wins.intersect.bed -f 193913.wins.intersect.bed -f 193914.wins.intersect.bed -f 193915.wins.intersect.bed -f 193916.wins.intersect.bed -f 193917.wins.intersect.bed -f 193918.wins.intersect.bed -f 193919.wins.intersect.bed -f 193920.wins.intersect.bed -f 193921.wins.intersect.bed -f 193922.wins.intersect.bed -f 193923.wins.intersect.bed -f 193924.wins.intersect.bed -f 193925.wins.intersect.bed -f 193926.wins.intersect.bed -f 193927.wins.intersect.bed -f 193928.wins.intersect.bed -f 193929.wins.intersect.bed -f 193930.wins.intersect.bed -f 193931.wins.intersect.bed -f 193932.wins.intersect.bed -f 193933.wins.intersect.bed -f 193934.wins.intersect.bed -f 193935.wins.intersect.bed -f 193936.wins.intersect.bed -f 193937.wins.intersect.bed -f 193938.wins.intersect.bed -f 193939.wins.intersect.bed -f 193940.wins.intersect.bed -f 193941.wins.intersect.bed -f 193942.wins.intersect.bed -f 193943.wins.intersect.bed -f 193944.wins.intersect.bed -f 193945.wins.intersect.bed -f 193946.wins.intersect.bed -f 193947.wins.intersect.bed -f 193948.wins.intersect.bed -f 193949.wins.intersect.bed -f 193950.wins.intersect.bed -f 193951.wins.intersect.bed -f 193952.wins.intersect.bed -f 193953.wins.intersect.bed -f 193954.wins.intersect.bed -f 193955.wins.intersect.bed -f 193956.wins.intersect.bed -f 193957.wins.intersect.bed -f 193958.wins.intersect.bed -f 193959.wins.intersect.bed -f 193960.wins.intersect.bed -f 193961.wins.intersect.bed -f 193962.wins.intersect.bed -f 193963.wins.intersect.bed -f 193964.wins.intersect.bed -f 193965.wins.intersect.bed -f 193966.wins.intersect.bed -f 193967.wins.intersect.bed -f 193968.wins.intersect.bed -f 193969.wins.intersect.bed -f 193970.wins.intersect.bed -f 193971.wins.intersect.bed -f 193972.wins.intersect.bed -f 193973.wins.intersect.bed -f 193974.wins.intersect.bed -f 193975.wins.intersect.bed -f 193976.wins.intersect.bed -f 193977.wins.intersect.bed -f 193978.wins.intersect.bed -f 193979.wins.intersect.bed -f 193980.wins.intersect.bed -f 193981.wins.intersect.bed -f 193982.wins.intersect.bed -f 193983.wins.intersect.bed -f 193984.wins.intersect.bed -f 193985.wins.intersect.bed -f 193986.wins.intersect.bed -f 193987.wins.intersect.bed -f 193988.wins.intersect.bed -f 193989.wins.intersect.bed -f 193990.wins.intersect.bed -f 193991.wins.intersect.bed -f 193992.wins.intersect.bed -f 193993.wins.intersect.bed -f 193994.wins.intersect.bed -f 193995.wins.intersect.bed -f 193996.wins.intersect.bed -f 193997.wins.intersect.bed -f 193998.wins.intersect.bed -f 193999.wins.intersect.bed -f 194000.wins.intersect.bed -f 194001.wins.intersect.bed -f 194002.wins.intersect.bed -f 19423.wins.intersect.bed -f 19599.wins.intersect.bed -f 19628.wins.intersect.bed -f 2089.wins.intersect.bed -f 2133.wins.intersect.bed -f 22009.wins.intersect.bed -f 22049.wins.intersect.bed -f 22111.wins.intersect.bed -f 22168.wins.intersect.bed -f 22224.wins.intersect.bed -f 22448.wins.intersect.bed -f 22640.wins.intersect.bed -f 22641.wins.intersect.bed -f 22726.wins.intersect.bed -f 22856.wins.intersect.bed -f 23085.wins.intersect.bed -f 23150.wins.intersect.bed -f 23307.wins.intersect.bed -f 23574.wins.intersect.bed -f 23737.wins.intersect.bed -f 24004.wins.intersect.bed -f 24031.wins.intersect.bed -f 24045.wins.intersect.bed -f 24612.wins.intersect.bed -f 27164.wins.intersect.bed -f 27249.wins.intersect.bed -f 35808.wins.intersect.bed -f 47325.wins.intersect.bed -f 47332.wins.intersect.bed -f 47381.wins.intersect.bed -f 6606.wins.intersect.bed -f 6980.wins.intersect.bed -f 88651.wins.intersect.bed -f 88653.wins.intersect.bed -f 88655.wins.intersect.bed -f 986.wins.intersect.bed
+
+# Wow! It worked the first try!!!! I just need to make a header
+echo -ne "chr\tstart\tend" > left_join_header; for i in *.intersect.bed; do name=`echo $i | cut -d'.' -f1`; echo -ne "\t$name"; done >> left_join_header; echo >> left_join_header
+cat left_join_header left_join_total.wins.intersect.bed > left_join_header.wins.intersect.bed
+
+mkdir oea_link_counts
+mv *.intersect.bed ./oea_link_counts/
+```
+
+Amateur attempts to try to find interesting outliers by scaling:
+
+```R
+library(dplyr)
+links <- read.delim("oea_link_counts/left_join_header.wins.intersect.bed", header=TRUE)
+links.trim <- head(links, n=267)
+
+# Outliers by column
+links.trim %>% filter_all(any_vars(. >= quantile(., 0.99, na.rm = TRUE)))
+
+# The scale function has several attributes that I can grab. I'm going to take the scale factor here from the outliers
+scale_factors <- attributes(scale(links.trim %>% filter_all(any_vars(. >= quantile(., 0.99, na.rm = TRUE)))))$`scaled:scale`
+
+# Visual inspection of the top 5%
+scale_factors[scale_factors >= quantile(scale_factors, 0.95)]
 ```
