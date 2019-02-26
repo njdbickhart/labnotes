@@ -43,4 +43,50 @@ perl -lane 'print "$F[0]\tcombined_fastqs/$F[1]\tcombined_fastqs/$F[2]";' < comb
 mv temp combined_fq_total.files
 
 sbatch mother_combined_run.sh
+
+# Good and bad news
+# The good news: the script ran with only one error!
+# The bad news: the output files are in the working directory folder(really???), and I mispelled "label" 
+# Cleaning up for a new run
+
+rm combined_fq_total.contigs.* combined_fq_total.scrap.contigs.* combined_fq_total.trim.contigs.* combined_fq_total.filter
+rm tax_files/*.8mer tax_files/*.numNonZero tax_files/*.prob tax_files/*.tree*
+
+sbatch mother_combined_run.sh
+
+# OK, that worked! Lots of warnings though from sequences that couldn't be classified.
+mv *.rabund ./combined_output/
+mv *.map ./combined_output/
+
+# Cleaning up a few things and reducing file name lengths
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.dist combined_fq_total..final.dist
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.fasta combined_fq_total..final.fasta
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.gg.wang.taxonomy combined_fq_total.gg.wang.taxonomy
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.gg.wang.tax.summary combined_fq_total.gg.wang.tax.summary
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.groups.summary combined_fq_total.goods.coverage.summary
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.groups.rarefaction combined_fq_total.rarefaction
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.shared combined_fq_total.final.prenorm.shared
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.0.10.subsample.shared combined_fq_total.final.subsample.shared
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.0.10.cons.taxonomy combined_fq_total.final.subsample.taxonomy
+mv combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.0.10.cons.tax.summary combined_fq_total.final.subsample.tax.summary
+
+# moving the rest of the files
+mv combined_fq_total.trim.contigs.good.* ./combined_output/
+```
+
+Taking the rarefaction data to R first.
+
+```R
+library(tidyr)
+library(dplyr)
+library(readr)
+library(stringr)
+library(ggplot2)
+
+rare <- read_tsv(file="combined_fq_total.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.groups.rarefaction") %>% seleParsed with column specification:hci-")) %>% gather(-numsampled, key=sample, value=sobs) %>% mutate(sample=str_replace_all(sample, pattern="0.10-"cols(lacement="")) %>% drop_na()
+pdf(file="combined_fq_rarefaction_plot.pdf", useDingbats=FALSE)
+ggplot(rare, aes(x=numsampled, y=sobs, group=sample)) + geom_line() + theme_bw()
+dev.off()
+
+# The plot showed some samples were far more dense than expected and that we had not reached saturation
 ```

@@ -134,3 +134,20 @@ perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if($s[11] > 0){ $c += $s[9];
 perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); if($s[11] > 0){ $c += $s[9];}} print "$c\n";' < short_read.vs.clover_hen_postcor.paf
 156,057,180
 ```
+
+#### Aligning SSR markers to the Red clover assembly
+
+I just want to see how many of Heathcliffe/John's SSR markers align to the current iteration of red clover. Let's see...
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano
+
+```bash
+dos2unix ssr_marker_est.fasta
+
+# Don't try this at home kids! I queued up an interactive shell prior to running this short command
+module load bwa
+bwa mem clover_hen_postcor/clover_hen_postcor.contigs.fasta ssr_marker_est.fasta > ssr_marker_est.clover_hen_postcor.sam
+
+# Now to turn this into a human-readable format using one of my scripts
+echo -e "Marker\tSamFlag\tContig\tStart\tAlignEnd\tAlignLen\tMappingQual" > ssr_marker_est.clover_hen_postcor.tab; perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/sequence_data_scripts/BriefSamOutFormat.pl -s ssr_marker_est.clover_hen_postcor.sam >> ssr_marker_est.clover_hen_postcor.tab
+```

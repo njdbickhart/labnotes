@@ -130,6 +130,9 @@ wget http://www.repeatmasker.org/libraries/RepeatMaskerMetaData-20181026.tar.gz
 # Let's try the run again but with the proper assembly fasta this time.
 
 sbatch --nodes=1 --mem=35000 --ntasks-per-node=20 -p medium --wrap="RepeatMasker -pa 20 -q -species cow -no_is -gff ../ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa"
+
+# The repeatmasker module was improperly installed! No wonder why I was getting nothing!
+sbatch --nodes=1 --mem=45000 --ntasks-per-node=50 -p msn --wrap="/beegfs/project/rumen_longread_metagenome_assembly/binaries/RepeatMasker/RepeatMasker -pa 50 -q -species cow -no_is -gff ../ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa"
 ```
 
 ## Unique sequence in the cattle assembly
