@@ -133,6 +133,15 @@ sbatch --nodes=1 --mem=35000 --ntasks-per-node=20 -p medium --wrap="RepeatMasker
 
 # The repeatmasker module was improperly installed! No wonder why I was getting nothing!
 sbatch --nodes=1 --mem=45000 --ntasks-per-node=50 -p msn --wrap="/beegfs/project/rumen_longread_metagenome_assembly/binaries/RepeatMasker/RepeatMasker -pa 50 -q -species cow -no_is -gff ../ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa"
+
+# OK, now I need the UMD3 reference genome
+for i in `seq 1 29` X Y U; do echo $i; wget /pub/data/assembly/Bos_taurus/Bos_taurus_UMD_3.1/Chr${i}.fa.gz; done
+for i in `seq 1 29` X Y U; do echo $i; gunzip Chr${i}.fa.gz; cat Chr${i}.fa >> umd3_reference_genome.fasta; done
+
+module load bwa samtools
+module load java/64/1.8.0_121
+
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index umd3_reference_genome.fasta"
 ```
 
 ## Unique sequence in the cattle assembly

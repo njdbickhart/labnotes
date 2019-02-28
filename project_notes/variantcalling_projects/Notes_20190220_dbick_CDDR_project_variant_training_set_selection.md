@@ -67,7 +67,7 @@ Recently, work by [Hubert Pausch's group](https://www.biorxiv.org/content/10.110
 	* Check model performance in original dataset vs original calls without breed-specific data. (already done)
 	* Check model performance (with breed-specific data vs non-breed-specific data) in SRA datasets aligned to ARS-UCDv1.2 ("leave-one-out" bootstrapping with VQSR model training (?)) (**Kiranmayee**)
 	* Check variant calls against those made by graphtyper using the consensus SNPs fed into the index from the original consensus calls (see first bullet point above in the "SNP calls for model training" section). (**Derek**)
-
+* FORGE analysis to detect regions that are depleted in graph-variant sites. 
 
 ## SNP calling for consensus
 
