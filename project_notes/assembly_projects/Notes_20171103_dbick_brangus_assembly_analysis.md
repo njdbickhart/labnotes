@@ -695,5 +695,6 @@ Now I can do the alignments. I'm using these assembly fastas on the cluster:
 
 ```bash
 # Angus
-python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b angus_asm -t beef_panel_pipeline_spreadsheet.fullp.rfmt.tab -f /project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta -m -p short
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b angus_asm -t beef_panel_pipeline_spreadsheet.fullp.rfmt.tab -f /project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta -m -p msn
+
 ```

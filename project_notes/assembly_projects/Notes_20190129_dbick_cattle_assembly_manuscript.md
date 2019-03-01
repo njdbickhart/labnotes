@@ -142,6 +142,10 @@ module load bwa samtools
 module load java/64/1.8.0_121
 
 sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index umd3_reference_genome.fasta"
+
+# Identifying gaps
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p msn --wrap="perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o umd3_reference_genome.fasta -s ../ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa -g ~/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -j /software/7/apps/java/1.8.0_121/bin/java -d umd3_gaps_on_arsucd.tab"
+
 ```
 
 ## Unique sequence in the cattle assembly

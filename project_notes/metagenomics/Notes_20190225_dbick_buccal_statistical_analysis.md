@@ -90,3 +90,79 @@ dev.off()
 
 # The plot showed some samples were far more dense than expected and that we had not reached saturation
 ```
+
+
+Now I'm going to dabble in Python for a random forest classifier experiment. I expect this to be very basic and not very informative. Consider this an exploration of the data.
+
+Preparing files for input:
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/buccal
+
+```bash
+perl -lane 'print "$F[0]\t$F[3]";' < buccal_samples/evergreen_view/sample_list_categories.tab > combined_fq_list_categories_simple.tab
+```
+
+And reading data into Python3 for random forest analysis.
+
+
+```python
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn import metrics
+
+data = pd.read_table('combined_fq_total.final.prenorm.shared', delim_whitespace=True, header=0)
+info = pd.read_table('combined_fq_list_categories_simple.tab', delim_whitespace=True, header=0)
+
+# Map the categories to the data groups
+data['class'] = data['Group'].map(info.set_index('Entry')['Type'])
+
+# drop unnecessary columns
+data = data.iloc[:,3:]
+
+X = data.iloc[:,:-1]
+Y = data.iloc[:,-1]
+
+# Test set of 30% of the original input
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3)
+
+# I am going to need to look at the API for this more closely. I'm going to just test this out first using the 
+# default parameters that I saw in the tutorial online.
+clf = RandomForestClassifier(n_estimators=100)
+clf.fit(X_train, Y_train)
+
+Y_pred = clf.predict(X_test)
+print(f'Accuracy:\t{metrics.accuracy_score(Y_test, Y_pred)}')
+
+# OK, not bad, but still I'm skeptical of the results
+f_importance = pd.Series(clf.feature_importances_, index=X.columns).sort_values(ascending=False)
+f_importance.head(n=25)
+Otu00009    0.021439
+Otu00004    0.019115
+Otu00066    0.018132
+Otu00071    0.014613
+Otu00069    0.013296
+Otu00239    0.012755
+Otu00001    0.012001
+Otu00024    0.011650
+Otu00242    0.010593
+Otu00032    0.010217
+Otu00140    0.009774
+Otu00030    0.009761
+Otu00010    0.009684
+Otu00002    0.009593
+Otu00012    0.009104
+Otu00044    0.008123
+Otu00060    0.007742
+Otu00035    0.007671
+Otu00011    0.007460
+Otu00034    0.007114
+Otu00075    0.006972
+Otu00087    0.006930
+Otu00064    0.006913
+Otu00021    0.006794
+Otu00105    0.006343
+...
+
+# It looks like there are no huge influencers, but OTU00009 looks like the top candidate
+```
