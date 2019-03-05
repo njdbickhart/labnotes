@@ -697,4 +697,9 @@ Now I can do the alignments. I'm using these assembly fastas on the cluster:
 # Angus
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b angus_asm -t beef_panel_pipeline_spreadsheet.fullp.rfmt.tab -f /project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta -m -p msn
 
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b brahman_asm -t beef_panel_pipeline_spreadsheet.fullp.rfmt.tab -f /project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta -m -p msn
+
+
+
+mkdir angus_jarms; for i in angus_asm/*/*.merged.bam; do name=`echo $i | cut -d'/' -f2`; echo $name; sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --wrap="java -Xmx19g -jar ~/rumen_longread_metagenome_assembly/binaries/JaRMS/store/JaRMS.jar call -i $i -f /project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta -o $name.JaRMs -t 4 -m 10000000"; done
 ```
