@@ -79,3 +79,6 @@ Let's start by generating SNP calls for the three callers.
 # Generate the windows for the samtools mpileup segment calling
 perl -lane 'for($x = 1; $x < $F[1] + 10000000; $x += 10000000){$e = $x + 10000000; if($x > $F[1]){$e = $F[1];} print "$F[0]\:$x\-$e";}' < ARSUCD1.2.current_ref.fa.fai > ARSUCD1.2.current_ref.fa.samtools.mpileup.wins
 ```
+
+## Freebayes SNP calling
+
