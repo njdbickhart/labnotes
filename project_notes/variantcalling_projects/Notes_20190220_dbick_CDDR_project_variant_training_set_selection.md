@@ -82,3 +82,36 @@ perl -lane 'for($x = 1; $x < $F[1] + 10000000; $x += 10000000){$e = $x + 1000000
 
 ## Freebayes SNP calling
 
+I'm going to use the same window philosophy as above with the Freebayes caller. I'm going to (a) use all of the input bams and (b) call in 10 megabase windows using multiple processor cores at a time. Hopefully things all work out!
+
+> Ceres:/home/derek.bickharhth/rumen_longread_metagenome_assembly/kiranmayee/CDDR
+
+```bash
+module load freebayes parallel
+# First, make the windows
+/software/7/apps/freebayes/1.1.0/scripts/fasta_generate_regions.py ARSUCD1.2.current_ref.fa.fai 10000000 > freebayes_ars_ucd_segments.wins
+mkdir freebayes
+
+# Now I want to divy up half the tasks and submit both to separate MSN nodes
+head -n 141 freebayes_ars_ucd_segments.wins > freebayes_ars_ucd_segments.wins.seg1
+tail -n 141 freebayes_ars_ucd_segments.wins > freebayes_ars_ucd_segments.wins.seg2
+
+# And finally, I need to queue up all of the bams
+for i in iwf_prioritized_bulls_arsucdv14_bams/*_v1.2/*/*.merged.bam; do echo -n "$i "; done > ars_ucd_v12_realigned_bams.list
+
+# OK, now queueing up the tasks
+sbatch run_freebayes_parallel.sh freebayes_ars_ucd_segments.wins.seg1 ARSUCD1.2.current_ref.fa ars_ucd_v12_realigned_bams.list freebayes/ars_ucd_v1.2_seg1.vcf
+sbatch run_freebayes_parallel.sh freebayes_ars_ucd_segments.wins.seg2 ARSUCD1.2.current_ref.fa ars_ucd_v12_realigned_bams.list freebayes/ars_ucd_v1.2_seg2.vcf
+
+# Both tasks failed at first, because the Ceres admins did not properly install freebayes. I installed the binaries in my folder and copied a modified version of freebayes-parallel to the current folder
+# Hmm, still failing. Likely due to bam standard input submission
+ls iwf_prioritized_bulls_arsucdv14_bams/*_v1.2/*/*.merged.bam > ars_ucd_v12_realigned_bams.list
+# I requeued with the aforementioned script. Things seem to be working now!
+
+
+# One of the jobs terminated with an OOM error and it filled up the scratch space tmp drive. I will need to requeue with fewer segments I believe.
+head -n 70 freebayes_ars_ucd_segments.wins.seg1 > freebayes_ars_ucd_segments.wins.seg1a
+tail -n 71 freebayes_ars_ucd_segments.wins.seg1 > freebayes_ars_ucd_segments.wins.seg1b
+sbatch run_freebayes_parallel.sh freebayes_ars_ucd_segments.wins.seg1a ARSUCD1.2.current_ref.fa ars_ucd_v12_realigned_bams.list freebayes/ars_ucd_v1.2_seg1a.vcf
+sbatch run_freebayes_parallel.sh freebayes_ars_ucd_segments.wins.seg1b ARSUCD1.2.current_ref.fa ars_ucd_v12_realigned_bams.list freebayes/ars_ucd_v1.2_seg1b.vcf
+```

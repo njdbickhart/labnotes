@@ -5,8 +5,25 @@
 These are my notes on the analysis of the haploid Brangus reference assembly. Paternal haplotypes are derived from an Angus and the maternal is from a Brahman.
 
 ## Table of Contents
+* [Assembly download, prep and marker analysis](#prep)
+	* [Identifying consecutive blocks of missing HD markers](#consecutive)
+* [Hi-C scaffolding check, assignment and validation](#scaffcheck)
+* [Repeatmasker analysis and putative active retroviral element](#retroviral)
+* [Creating full assemblies based on scaffold winners](#scaffwinners)
+	* [Changes list for sire](#changes)
+	* [Changes list for dam](#changes)
+	* [Tracking contig alignments and finding missing sequence](#tracking)
+	* [Checking duplication after selective scaffold reduction](#dupcheck)
+* [Generating salsa scaffolds and assessing scaffold contiguity](#salsa)
+	* [Changes list for dam](#schanges)
+	* [Changes list for sire](#schanges)
+	* [Salsa only scaffolding statistics](#sstats)
+	* [3ddna2 sire only assembly changes](#ustats)
+	* [Updated scaffolding statistics](#ustats)
+* [QV and other summary statistics](#qv)
+* [CNV calls and statistics](#cnv)
 
-
+<a name="prep"></a>
 ## Assembly download, prep and marker analysis
 
 I will download the assembly, map the recmap markers to it and then try to estimate the divergence of the assembly from the recmap.
@@ -126,7 +143,7 @@ mv tmp paternal.HDmap.ctxt
 # Had a weird bug where unmapped chromosomes were being placed as incomplete entries
 perl ../binaries/circos-0.69-6/bin/circos -conf paternal.HDmap.conf
 ```
-
+<a name="consecutive"></a>
 #### Identifying consecutive blocks of missing HD markers
 
 ```bash
@@ -163,7 +180,7 @@ for i in *.fasta; do samtools faidx $i; done
 
 ```
 
-
+<a name="scaffcheck"></a>
 ## Hi-C scaffolding check, assignment and validation
 
 I am going to take the scaffold assignments from the Hi-C data, order them and score them based on expected chromosome coverage, errors and (eventually) use a greedy algorithm to assign them into the best haplotype scaffolds.
@@ -196,7 +213,7 @@ for i in *.out; do grep -v 'Scb' $i > $i.filt; perl ~/sperl/assembly_scripts/ali
 
 
 ```
-
+<a name="retroviral"></a>
 ## Repeatmasker analysis and putative active retroviral element
 
 Serge found a poly-A region in the assembly that NCBI was trying to tell us was a Solid adaptor sequence. Here is the region in the Angus (sire) assembly:
@@ -241,6 +258,7 @@ tig00020254     15190319        15207349        tig00020254     15198770        
 
 Bed ops column headers can be found at [this webpage](http://bedops.readthedocs.io/en/latest/content/reference/file-management/conversion/rmsk2bed.html). I think that the identification of poly-As or poly-As with some hamming distance cutoff may be a good criterion to identify recent transposition events in the genome. 
 
+<a name="scaffwinners"></a>
 ## Creating full assemblies based on scaffold winners
 
 This will get a bit more complex, however, I need to generate separate full references for each haplotype-resolved assembly. Most of the "winner" chromosomes are easy as they are single scaffolds.
@@ -280,7 +298,7 @@ perl prepare_master_fasta.pl sire_scaffs_consensus.retry2.pagp sire_scaffold_fas
 # Now to do the same with the dam agp file
 perl prepare_master_fasta.pl dam_scaffs_consensus.retry2.pagp dam_scaffold_fastas.tab dam_scaffold_remake
 ```
-
+<a name="changes"></a>
 #### Changes list for sire
 	* PAR changes listed above
 	* Removed 3ddna2 scaffold 3 from chr1 (small alignment
@@ -326,7 +344,7 @@ samtools faidx dam_scaffold_remake.fasta
 # OK, this is the dam fasta generation
 java -Xmx100g -jar CombineFasta.jar agp2fasta -f dam_scaffold_remake.fasta -a dam_scaffold_remake.agp -o dam_best_scaffold_reference.fa
 ```
-
+<a name="tracking"></a>
 #### Tracking contig alignments and finding missing sequence
 
 I am going to align the original sire and dam scaffolds to the "best scaffold" fasta and track their locations. I will use minimap to try to keep track of everything.
@@ -386,7 +404,7 @@ perl -e '<>; $sum = 0; while($f =<>){$s = <>; chomp $f, $s; @j = split(/\t/, $f)
 # The main issue was 3ddna. Let's see how the scaffolds perform in terms of duplication when one of the 3ddna scaffolds is removed.
 
 ```
-
+<a name="dupcheck"></a>
 #### Checking duplication after selective scaffold reduction
 
 I am going to remove a scaffolding technology to see how much duplication that removes.
@@ -491,7 +509,7 @@ bedtools subtract -a dam_assembly_contig_lengths.bed -b dam_scaffold_sans3ddna.c
 
 bedtools merge -i dam_scaffold_sans3ddna.contigmap.bed -c 4 -o distinct | grep ',' | perl -lane 'system("grep $F[0] dam_scaffold_no3ddna.contigmap.bed");' > dam_scaffold_sans3d_mash.duptable.bed
 ```
-
+<a name="salsa"></a>
 ## Generating salsa scaffolds and assessing scaffold contiguity
 
 I am going to hijack my pipeline to create chromosome scaffolds from the Salsa scaffold list with minimal modifications.
@@ -513,7 +531,7 @@ mv temp.agp dam_scaffold_salsa.agp
 samtools faidx dam_scaffold_salsa.fasta
 java -Xmx100g -jar CombineFasta.jar agp2fasta -f dam_scaffold_salsa.fasta -a dam_scaffold_salsa.agp -o dam_scaffold_salsa_only.ref.fasta
 ```
-
+<a name="schanges"></a>
 #### Changes list for dam
 * Remove salsa scaffolds 556 and 608 from chr1 (small alignment)
 * Remove salsa scaffold 815 from chr7 (small alignment)
@@ -575,7 +593,7 @@ mv temp sire_scaffold_3ddna2.agp
 
 
 ```
-
+<a name="sstats"></a>
 ##### Salsa only scaffolding statistics
 
 |Assembly | OriginalCtgs | UnscaffoldedCtgs | UnscaffoldCtgLen | ScaffoldCtgLen |
@@ -603,7 +621,7 @@ bedtools intersect -a sire_assembly_contig_lengths.bed -b sire_scaffold_3ddna2.c
 
 cat sire_scaffold_3ddna2_only.ref.fasta sire_scaffold_3ddna2_only.missingctg.fasta > angus_3ddna2_v1.complete.fasta
 ```
-
+<a name="ustats"></a>
 #### 3ddna2 sire only assembly changes
 * Removed HiC_scaffold_3 from the end of chr1 (small alignment)
 * Removed HiC_scaffold_49 from the end of chr24 (small alignment)
@@ -626,7 +644,7 @@ There is some ambiguity as to the sex chromosome PAR locations. I want to run a 
 ```bash
 for i in SRX3666413 SRX3666412  SRX3666411  SRX3666410  SRX3666409  SRX3666408  SRX3666407  SRX3666403  SRX3666451  SRX3666450  SRX3666449; do sbatch download_sra_align.sh $i; done
 ```
-
+<a name="qv"></a>
 ## QV and other summary statistics
 
 I had set this up a while back. Here are the commands I used to process the data.
@@ -667,6 +685,8 @@ sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p short --wrap="FRC --pe-sam f
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p short --wrap="FRC --pe-sam f_brahman/angusxbrahman/angusxbrahman.sorted.merged.bam --output f_brahman_frc_stats"
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p short --wrap="FRC --pe-sam ars_ucd/angusxbrahman/angusxbrahman.sorted.merged.bam --output ars_ucd_frc_stats"
 ```
+<a name="cnv"></a>
+## CNV calls and statistics
 
 Now I need to download the SRA datasets for CNV calling. I'll queue them up as sequential, simultaneous, tasks.
 
@@ -706,4 +726,101 @@ mkdir angus_lumpy; module load bwa samtools; for i in angus_asm/*/*.merged.bam; 
 
 mkdir brahman_jarms; module load java/1.8.0_121; for i in brahman_asm/*/*.merged.bam; do name=`echo $i | cut -d'/' -f2`; echo $name; sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --wrap="java -Xmx19g -jar ~/rumen_longread_metagenome_assembly/binaries/JaRMS/store/JaRMS.jar call -i $i -f /project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta -o $name.JaRMs -t 4 -m 10000000; mv $name.JaRMs* ./brahman_jarms/"; done
 mkdir brahman_lumpy; module load bwa samtools; for i in brahman_asm/*/*.merged.bam; do name=`echo $i | cut -d'/' -f2`; echo $name; sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 -p short --wrap="lumpyexpress -B $i -o $name.vcf; mv $name.vcf ./brahman_lumpy/;"; done
+
+mkdir arsucd_jarms; module load java/1.8.0_121; for i in arsucd_asm/*/*.merged.bam; do name=`echo $i | cut -d'/' -f2`; echo $name; sbatch --nodes=1 --ntasks-per-node=4 --mem=20000 -p short --wrap="java -Xmx19g -jar ~/rumen_longread_metagenome_assembly/binaries/JaRMS/store/JaRMS.jar call -i $i -f /beegfs/project/bostauruscnv/assembly/ARS-UCD1.2_Btau5.0.1Y.fa -o $name.JaRMs -t 4 -m 10000000; mv $name.JaRMs* ./arsucd_jarms/"; done
+mkdir arsucd_lumpy; module load bwa samtools; for i in arsucd_asm/*/*.merged.bam; do name=`echo $i | cut -d'/' -f2`; echo $name; sbatch --nodes=1 --ntasks-per-node=1 --mem=15000 -p short --wrap="lumpyexpress -B $i -o $name.vcf; mv $name.vcf ./arsucd_lumpy/;"; done
+
+# OK, now to convert to BEDPE
+for i in *_lumpy/*.vcf; do echo $i; sbatch --nodes=1 --ntasks-per-node=1 --mem=5000 -p msn --wrap="/home/derek.bickharhth/lumpy-sv/scripts/vcfToBedpe -i $i -o $i.bedpe"; done
+
+# First, let's try to generate counts for each event just to see if raw counts are less on the "native" assembly for each breed.
+# I  need to generate a list for each file, but then I think that I can push the data through my tabfile column counter script
+module load perl/5.24.1
+for i in Angus Brahman Gelbvieh Hereford RedAngus Shorthorn Simmental; do for j in `seq 1 6`; do echo "$i$j"; done; done > combinations.list
+
+mkdir raw_counts
+for i in `cat combinations.list`; do echo $i; perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/tabFileColumnCounter.pl -f angus_lumpy/$i.vcf.bedpe,brahman_lumpy/$i.vcf.bedpe,arsucd_lumpy/$i.vcf.bedpe -c 10 -e '#' -o raw_counts/$i.lumpy.counts.table; done
+
+# I wrote a quick compilation script to generate raw counts for Lloyd
+cd raw_counts/
+perl calculate_averages.pl Angus
+```
+
+And here is the short script I used to tabulate the count information:
+
+```perl
+#!/usr/bin/perl
+# This is a one-off script designed to process tabFileColumnCounter output from the CNV files
+
+use strict;
+my $usage = "perl $0 <prefix of file>\n";
+chomp(@ARGV);
+unless(scalar(@ARGV) == 1){
+        print $usage;
+        exit;
+}
+
+my @files = `ls $ARGV[0]*`;
+chomp(@files);
+
+my %data; # {SVtype}->{asm}->{file} = count
+foreach my $f (@files){
+        open(my $IN, "< $f");
+        for(my $x = 0; $x < 5; $x++){
+                <$IN>;
+        }
+        while(my $line = <$IN>){
+                chomp $line;
+                my @segs = split(/\t/, $line);
+                for(my $x = 0; $x < scalar(@segs); $x += 2){
+                        $data{$segs[$x]}->{"asm$x"}->{$f} = $segs[$x + 1] * 1;
+                }
+        }
+        close $IN;
+}
+
+print "Asm\tSV\tsum\tavgnum\tstdev\n";
+foreach my $svs (sort {$a cmp $b} keys(%data)){
+        if($svs eq "" || length($svs) == 0){next;}
+        foreach my $asm (sort {$a cmp $b} keys(%{$data{$svs}})){
+                my $count = 0;
+                my $sum = 0;
+                foreach my $file (sort {$a cmp $b} keys(%{$data{$svs}->{$asm}})){
+                        $count += 1;
+                        $sum += $data{$svs}->{$asm}->{$file};
+                }
+                if($count == 0){
+                        print "$asm\t$svs\t0\t0\t0\n";
+                }else{
+                        my $avg = $sum / $count;
+                        if($count == 1){
+                                $avg = sprintf("%.3f", $avg);
+                                print "$asm\t$svs\t$sum\t$avg\t0\n";
+                                next;
+                        }
+                        my $ss = 0;
+                        foreach my $file (sort {$a cmp $b} keys(%{$data{$svs}->{$asm}})){
+                                $ss += ($data{$svs}->{$asm}->{$file} - $avg)**2;
+                        }
+                        $avg = sprintf("%.3f", $avg);
+                        my $stdev = sprintf("%.3f", sqrt($ss / ($count - 1)));
+                        print "$asm\t$svs\t$sum\t$avg\t$stdev\n";
+                }
+        }
+}
+```
+
+Now to package things up to send to Lloyd.
+
+```bash
+mkdir angus_cnvdata
+mkdir brahman_cnvdata
+mkdir arsucd_cnvdata
+
+cp angus_lumpy/*.bedpe ./angus_cnvdata/
+for i in brahman arsucd; do cp $i"_lumpy"/*.bedpe ./$i"_cnvdata"/; done
+
+for i in angus brahman arsucd; do cp $i"_jarms"/*.levels ./$i"_cnvdata"/; done
+
+for i in angus brahman arsucd; do tar -czvf $i"_cnvdata.tar.gz" $i"_cnvdata"; done
 ```
