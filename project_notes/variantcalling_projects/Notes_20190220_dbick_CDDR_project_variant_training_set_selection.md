@@ -114,4 +114,7 @@ head -n 70 freebayes_ars_ucd_segments.wins.seg1 > freebayes_ars_ucd_segments.win
 tail -n 71 freebayes_ars_ucd_segments.wins.seg1 > freebayes_ars_ucd_segments.wins.seg1b
 sbatch run_freebayes_parallel.sh freebayes_ars_ucd_segments.wins.seg1a ARSUCD1.2.current_ref.fa ars_ucd_v12_realigned_bams.list freebayes/ars_ucd_v1.2_seg1a.vcf
 sbatch run_freebayes_parallel.sh freebayes_ars_ucd_segments.wins.seg1b ARSUCD1.2.current_ref.fa ars_ucd_v12_realigned_bams.list freebayes/ars_ucd_v1.2_seg1b.vcf
+
+# OK, this is not working. The jobs are chewing up memory and headspace because parallel operations are queued into pipes. Let's queue up the tasks and the merger separately
+module load freebayes; for i in `cat freebayes_ars_ucd_segments.wins.seg1`; do name=`echo $i | perl -ne 'chomp; $_ =~ s/[:-]/_/g; print $_;'`; echo $name; sbatch --nodes=1 --mem=6000 --ntasks-per-node=1 -p msn --wrap="freebayes -f ARSUCD1.2.current_ref.fa --bam-list ars_ucd_v12_realigned_bams.list --region $i --use-best-n-alleles 4 > freebayes/$name.vcf"; done
 ```

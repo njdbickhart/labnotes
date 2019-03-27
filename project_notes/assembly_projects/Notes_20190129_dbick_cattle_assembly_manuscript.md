@@ -137,9 +137,107 @@ sbatch --nodes=1 --mem=45000 --ntasks-per-node=50 -p msn --wrap="/beegfs/project
 # OK, now I need the UMD3 reference genome
 for i in `seq 1 29` X Y U; do echo $i; wget /pub/data/assembly/Bos_taurus/Bos_taurus_UMD_3.1/Chr${i}.fa.gz; done
 for i in `seq 1 29` X Y U; do echo $i; gunzip Chr${i}.fa.gz; cat Chr${i}.fa >> umd3_reference_genome.fasta; done
+sbatch --nodes=1 --mem=45000 --ntasks-per-node=50 -p msn --wrap="/beegfs/project/rumen_longread_metagenome_assembly/binaries/RepeatMasker/RepeatMasker -pa 50 -q -species cow -no_is -gff umd3_reference_genome.fasta"
 
+# Here is my one-liner for greping out the repeats in bed format
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < ARS-UCD1.2_Btau5.0.1Y.fa.out > ARS-UCD1.2_Btau5.0.1Y.fa.out.bed
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < umd3_reference_genome.fasta.out > umd3_reference_genome.fasta.out.bed
+
+# Generating some simple counts prior to plotting.
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f ARS-UCD1.2_Btau5.0.1Y.fa.out.bed -c 5 -d '\t' -m
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f umd3_reference_genome.fasta.out.bed -c 5 -d '\t' -m | head -n 15
+```
+##### Repeat length counts for ARS-UCDv1.2
+
+|Entry              |   Value|
+|:------------------|-------:|
+|SINE/tRNA-Core-RTE | 1038027|
+|LINE/L1            |  871279|
+|LINE/RTE-BovB      |  725681|
+|Simple_repeat      |  554807|
+|SINE/Core-RTE      |  385459|
+|SINE/MIR           |  364104|
+|LINE/L2            |  283129|
+|SINE/tRNA          |  253760|
+|DNA/hAT-Charlie    |  156168|
+|LTR/ERVL-MaLR      |  145590|
+|...				|	...	 |
+
+##### Repeat length counts for UMD3.1
+
+|Entry              |   Value|
+|:------------------|-------:|
+|SINE/tRNA-Core-RTE | 1021303|
+|LINE/L1            |  855253|
+|LINE/RTE-BovB      |  711565|
+|Simple_repeat      |  536148|
+|SINE/Core-RTE      |  378746|
+|SINE/MIR           |  360973|
+|LINE/L2            |  280337|
+|SINE/tRNA          |  250346|
+|DNA/hAT-Charlie    |  154515|
+|LTR/ERVL-MaLR      |  143831|
+|LTR/ERV1           |  115270|
+|LTR/ERVK           |  113223|
+|LTR/ERVL           |   89815|
+|...				|	...	 |
+
+```bash
+# Now to generate vectors of repeat lengths for R so I can plot this.
+perl -lane '$F[5] =~ s/\?//g; $F[5] =~ tr/\//_/; print "$F[5]\t$F[6]\tARSUCD";' < ARS-UCD1.2_Btau5.0.1Y.fa.out.bed > ARS-UCD1.2_Btau5.0.1Y.fa.out.rep.lens
+perl -lane '$F[5] =~ s/\?//g; $F[5] =~ tr/\//_/; print "$F[5]\t$F[6]\tUMD3";' < umd3_reference_genome.fasta.out.bed > umd3_reference_genome.fasta.out.rep.lens
+cat umd3_reference_genome.fasta.out.rep.lens ARS-UCD1.2_Btau5.0.1Y.fa.out.rep.lens > combined.rep.lens
+```
+
+Let's do some cursory R plots to compare repeat class lengths as I've done in the past.
+
+> F:/SharedFolders/cattle_assembly_paper/repeat_and_gap/
+
+```R
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggridges)
+data <- read.delim("combined.rep.lens", header=FALSE)
+colnames(data) <- c("Class", "Len", "ASM")
+
+# I need to check why, but it looks like some of the reported lengths of repeats are 0!
+data.filt <- data[data$Len > 0,]
+
+data.summary <- group_by(data.filt, Class, ASM)%>% summarize(avg = mean(Len), stdev = sd(Len), med = median(Len))
+
+# printing t-tests for each Repeat class
+print(group_by(data.filt, ASM, Class) %>% summarize(Len = list(Len)) %>% spread(ASM, Len) %>% group_by(Class) %>% mutate(p_value = t.test(unlist(ARSUCD), unlist(UMD3))$p.value, t_value = t.test(unlist(ARSUCD), unlist(UMD3))$statistic), n=Inf)
+ttest_table <- group_by(data.filt, ASM, Class) %>% summarize(Len = list(Len)) %>% spread(ASM, Len) %>% group_by(Class) %>% mutate(p_value = t.test(unlist(ARSUCD), unlist(UMD3))$p.value, t_value = t.test(unlist(ARSUCD), unlist(UMD3))$statistic)
+
+ttest_table[ttest_table$p_value < 0.05,]
+# A tibble: 7 x 5
+# Groups:   Class [7]
+  Class              ARSUCD            UMD3               p_value t_value
+  <fct>              <list>            <list>               <dbl>   <dbl>
+1 Low_complexity     <int [85,909]>    <int [82,791]>    3.31e- 2    2.13
+2 LTR_ERVK           <int [122,890]>   <int [113,223]>   6.00e-29   11.2 
+3 LTR_ERVL-MaLR      <int [145,583]>   <int [143,825]>   4.08e- 2    2.05
+4 Satellite_centr    <int [11,988]>    <int [6,574]>     2.15e-87   20.0 
+5 Simple_repeat      <int [554,807]>   <int [536,148]>   3.78e-28   11.0 
+6 SINE_Core-RTE      <int [385,457]>   <int [378,743]>   1.51e- 7    5.25
+7 SINE_tRNA-Core-RTE <int [1,038,025]> <int [1,021,302]> 4.87e- 3    2.82
+
+data.divergent <- data.filt[data.filt$Class %in% c("Low_complexity", "LTR_ERVK", "LTR_ERVL-MaLR", "Satellite_centr", "Simple_repeat", "SINE_Core-RTE", "SINE_tRNA-Core-RTE"),]
+
+pdf(file="most_divergent_repeat_lengths.pdf", useDingbats = FALSE)
+ggplot(data.divergent, aes(y=Class, x=Len, fill=ASM)) + geom_density_ridges(scale=2) + scale_fill_brewer(palette="Dark2") + theme_bw() + scale_x_log10()
+dev.off()
+```
+
+#### Gap analysis 
+
+I am going to run this in parallel because the gaps and repeats will be complementary
+
+```
 module load bwa samtools
 module load java/64/1.8.0_121
+module load perl/5.24.1
 
 sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index umd3_reference_genome.fasta"
 
@@ -152,6 +250,36 @@ python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f umd3_gaps_on_arsucd.
 |Closed   | 58110|
 |Trans    |  8508|
 |Unmapped |  5570|
+
+# OK I've modified my script to avoid pitching most of the extensively soft-clipped reads into the "unmapped" category
+# Let's run it again.
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p medium --wrap="perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/identifyFilledGaps.pl -o umd3_reference_genome.fasta -s ../ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa -g ~/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -j /software/7/apps/java/1.8.0_121/bin/java -d umd3_gaps_onarsucd.newlogic.tab"
+
+# Now to print out a table for plotting in R
+perl -lane 'if($F[0] =~ /Trans/){next;} print "$F[0]\t$F[4]\t$F[10]";' < umd3_gaps_onarsucd.newlogic.tab > umd3_gaps_onarsucd.newlogic.lens
+```
+
+Now to just quickly plot the gap length discrepancies
+
+```R
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggridges)
+
+colnames(gaps) <- c("Type", "Estimate", "Actual")
+# Removing the unmapped from the plot -- I can add them back in later if we want to show them
+gaps.filt <- gaps[!(gaps$Type %in% c("Unmapped")), ]
+gaps.filt$Type <- as.factor(as.character(gaps.filt$Type))
+
+pdf(file="gap_sizes_estimate_actual.pdf", useDingbats = FALSE)
+ggplot(gaps.filt, aes(x=Estimate, y=Actual, color=Type)) + geom_point() + geom_rug() + scale_y_log10(breaks = c(1,10,100,10000,1000000, 100000000), labels=c("1", "10", "100", "10,000", "1,000,000", "100,000,000")) + scale_x_log10(breaks=c(1,10,100,10000,1000000), labels=c("1", "10", "100", "10,000", "1,000,000")) + facet_wrap(~Type)
+dev.off()
+
+# Hmm, the PDF is too big! Let's plot in a png first
+png("gap_sizes_estimate_actual.png", width = 6000, height=4000)
+ggplot(gaps.filt, aes(x=Estimate, y=Actual, color=Type)) + geom_point() + geom_rug() + scale_y_log10(breaks = c(1,10,100,10000,1000000, 100000000), labels=c("1", "10", "100", "10,000", "1,000,000", "100,000,000")) + scale_x_log10(breaks=c(1,10,100,10000,1000000), labels=c("1", "10", "100", "10,000", "1,000,000")) + facet_wrap(~Type)
+dev.off()
 ```
 
 ## Unique sequence in the cattle assembly
