@@ -1453,3 +1453,195 @@ Median  14
 Standard Deviation      30.951519
 Mode(Highest Distributed Value) 0
 ```
+
+
+## Reviewer responses
+
+Here are my notes for generating statistics and data to respond to the reviewer comments on our manuscript.
+
+> Ceres:/home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/dastool
+
+```bash
+# Getting the Bowers standard counts:
+# High-quality draft (HQ)
+perl -lane 'if($F[-2] > 90 && $F[-1] < 5){print $F_;}' < pacbio_final_dastool_DASTool_summary.txt | wc -l
+10
+# Medium-quality draft (MQ)
+perl -lane 'if($F[-2] > 50 && $F[-1] < 10){print $F_;}' < pacbio_final_dastool_DASTool_summary.txt | wc -l
+103
+
+# High-quality (HQ)
+perl -lane 'if($F[-2] > 90 && $F[-1] < 5){print $F_;}' < illumina_final_dastool_DASTool_summary.txt | wc -l
+42
+# Medium-quality (MQ)
+perl -lane 'if($F[-2] > 50 && $F[-1] < 10){print $F_;}' < illumina_final_dastool_DASTool_summary.txt | wc -l
+325
+
+# Now, printing them out so that I can generate new master tables
+# Illumina
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] >= 5 || $s[-2] < 90){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< illumina_final_dastool_DASTool_bins/$s[0].contigs.fa");while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; @jsegs = split(/[_\.]/, $bsegs[-2]); print "$l\t$jsegs[-1]\_$bsegs[-1]\n";}} close IN;}}' < illumina_final_dastool_DASTool_summary.txt > illumina_final_dastool_DASTool_HQD.tab
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] >= 10 || $s[-2] < 50){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< illumina_final_dastool_DASTool_bins/$s[0].contigs.fa");while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; @jsegs = split(/[_\.]/, $bsegs[-2]); print "$l\t$jsegs[-1]\_$bsegs[-1]\n";}} close IN;}}' < illumina_final_dastool_DASTool_summary.txt > illumina_final_dastool_DASTool_MQD.tab
+
+# Pacbio
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] >= 5 || $s[-2] < 90){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< pacbio_final_dastool_DASTool_bins/$s[0].contigs.fa"); while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; @jsegs = split(/[_\.]/, $bsegs[-2]); print "$l\t$jsegs[-1]\_$bsegs[-1]\n";}} close IN;}}' < pacbio_final_dastool_DASTool_summary.txt > pacbio_final_dastool_DASTool_HQD.tab
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "bin" || $s[-1] >= 10 || $s[-2] < 50){next;}else{@bsegs = split(/\./, $s[0]); open(IN, "< pacbio_final_dastool_DASTool_bins/$s[0].contigs.fa"); while($l = <IN>){if($l =~ /^>/){chomp $l; $l =~ s/>//g; @jsegs = split(/[_\.]/, $bsegs[-2]); print "$l\t$jsegs[-1]\_$bsegs[-1]\n";}} close IN;}}' < pacbio_final_dastool_DASTool_summary.txt > pacbio_final_dastool_DASTool_MQD.tab
+```
+
+#### Generating new master tables and calculating stats
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+# Editting the json files
+cp illumina_data_files_11_2018.json illumina_data_files_4_2019.json
+cp pacbio_data_files_9_2018.json pacbio_data_files_4_2019.json
+
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j illumina_data_files_4_2019.json -t illumina_preliminary_blobtools_table.tab -o illumina_megahit_master_table_4_1_2019.tab
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j pacbio_data_files_4_2019.json -t pacbio_preliminary_blobtools_table.tab -o pacbio_final_pilon_master_table_4_1_2019.tab
+
+# Subsectioning them for ease of use in my other analysis pipelines
+perl -ne 'chomp; @F = split(/\t/); if($F[50] eq "NOBIN"){next;} print join("\t", @F[0,1,2,22,23,27,31,35,39,47,48,49,50,51,52,53,57,58]) . "\n";' < pacbio_final_pilon_master_table_4_1_2019.tab > pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab
+perl -ne 'chomp; @F = split(/\t/); if($F[51] eq "NOBIN"){next;} print join("\t", @F[0,1,2,22,23,27,31,35,39,47,48,49,50,51,52,53,57,58]) . "\n";' < pacbio_final_pilon_master_table_4_1_2019.tab > pacbio_final_pilon_master_table_4_1_2019.HQbins.short.tab
+perl -ne 'chomp; @F = split(/\t/); if($F[50] eq "NOBIN"){next;} print join("\t", @F[0,1,2,22,23,27,31,35,39,47,48,49,50,51,52,53,57,58]) . "\n";' < illumina_megahit_master_table_4_1_2019.tab > illumina_megahit_master_table_4_1_2019.MQbins.short.tab
+perl -ne 'chomp; @F = split(/\t/); if($F[51] eq "NOBIN"){next;} print join("\t", @F[0,1,2,22,23,27,31,35,39,47,48,49,50,51,52,53,57,58]) . "\n";' < illumina_megahit_master_table_4_1_2019.tab > illumina_megahit_master_table_4_1_2019.HQbins.short.tab
+```
+
+#### Calculating new stats for the manuscript
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/prodigal
+
+```bash
+# 16S stats
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ../master_tables/pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab -c 0 -l mick_16s_pacbio_summary.contig.list | perl -ne 'chomp; @F = split(/\t/); print "$F[11]\t$F[0]\t$F[4]\t$F[10]\t$F[12]\n";' > mick_16s_pacbio_summary.reformat.MQbins.tab
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ../master_tables/pacbio_final_pilon_master_table_4_1_2019.HQbins.short.tab -c 0 -l mick_16s_pacbio_summary.contig.list | perl -ne 'chomp; @F = split(/\t/); print "$F[11]\t$F[0]\t$F[4]\t$F[10]\t$F[12]\n";' > mick_16s_pacbio_summary.reformat.HQbins.tab
+
+wc -l mick_16s_pacbio_summary.reformat.MQbins.tab mick_16s_pacbio_summary.reformat.HQbins.tab               64 mick_16s_pacbio_summary.reformat.MQbins.tab
+  14 mick_16s_pacbio_summary.reformat.HQbins.tab
+  78 total
+
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f mick_16s_pacbio_summary.reformat.MQbins.tab -c 2 -d '\t'
+Entry   Value
+Bacteria        59
+Eukaryota       4
+Archaea 1
+```
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+# Dataset comparison counts
+perl -lane 'if($F[-2] eq "-" && $F[-1] eq "-"){print $F[1];}' < pacbio_final_pilon_master_table_4_1_2019.HQbins.short.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   22
+Sum:    317319
+Minimum 3552
+Maximum 30215
+Average 14423.590909
+Median  13725
+Standard Deviation      7221.517982
+
+perl -lane 'if($F[-2] eq "-" && $F[-1] eq "-"){print $F[1];}' < illumina_megahit_master_table_4_1_2019.HQbins.short.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   3650
+Sum:    25491578
+Minimum 1000
+Maximum 90246
+Average 6983.993973
+Median  4899.5
+Standard Deviation      6453.684480
+
+perl -lane 'if($F[-2] eq "-" && $F[-1] eq "-"){print $F[1];}' < pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   1254
+Sum:    16151563
+Minimum 1508
+Maximum 367662
+Average 12880.034290
+Median  9669
+Standard Deviation      14777.483832
+
+# The "does not align to any other dataset" stats
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN" && $F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-"){print "$F[1]\n";}' < illumina_megahit_master_table_4_1_2019.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   27120
+Sum:    87817564
+Minimum 1000
+Maximum 71737
+Average 3238.110767
+Median  2455
+Standard Deviation      2838.136951
+
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN" && $F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-"){print "$F[1]\n";}' < pacbio_final_pilon_master_table_4_1_2019.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   20
+Sum:    137081
+Minimum 1762
+Maximum 16216
+Average 6854.050000
+Median  7242.5
+Standard Deviation      4053.889237
+
+# Now to find out if we still have firmicutes in the PACBIO dataset
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN" && $F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-"){print "$F[0]\n";}' < pacbio_final_pilon_master_table_4_1_2019.tab > pacbio_final_pilon_MQ_unique_ctgs.list
+perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN" && $F[56] eq "-" && $F[57] eq "-" && $F[58] eq "-"){print "$F[0]\n";}' < pacbio_final_pilon_master_table_4_1_2019.tab > pacbio_final_pilon_MQ_unique_ctgs.list
+
+# Still Firmicutes and the statistic still stands
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab -c 0 -d '\t' -l pacbio_final_pilon_MQ_unique_ctgs.list | perl -lane 'print $F[2];' > pacbio_final_pilon_MQ_unique_ctgs.list.gc
+perl -lane 'if($F[0] eq "name"){next;}else{print $F[2];}' < pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab > pacbio_final_pilon_master_table_4_1_2019.MQbins.short.gc
+```
+
+
+#### Creating read subsamples for Phase team
+
+We're testing the hypothesis that PE links are more informative than Hi-C data in binning metagenome assembly contigs. 
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/pilot_project/illumina
+
+```bash
+# I think that the files need to be unzipped for this, unfortunately!
+for i in YMPrepCannula_S1_*.fastq.gz; do sbatch --nodes=1 --ntasks-per-node=1 --mem=5000 -p msn --wrap="gunzip $i"; done
+
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=5 -p msn --wrap="python3 ~/python_toolchain/sequenceData/randomSubsampleFastqs.py -f YMPrepCannula_S1_L001_R1_001.fastq.gz -s YMPrepCannula_S1_L001_R2_001.fastq.gz -f YMPrepCannula_S1_L002_R1_001.fastq.gz -s YMPrepCannula_S1_L002_R2_001.fastq.gz -f YMPrepCannula_S1_L003_R1_001.fastq.gz -s YMPrepCannula_S1_L003_R2_001.fastq.gz -f YMPrepCannula_S1_L004_R1_001.fastq.gz -s YMPrepCannula_S1_L004_R2_001.fastq.gz -o illumina_pe_reads_m1_subsample -l 22487509"
+
+# Ooops! Looks like gziping doesn't work for file line counts
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=5 -p msn --wrap="python3 ~/python_toolchain/sequenceData/randomSubsampleFastqs.py -f YMPrepCannula_S1_L001_R1_001.fastq -s YMPrepCannula_S1_L001_R2_001.fastq -f YMPrepCannula_S1_L002_R1_001.fastq -s YMPrepCannula_S1_L002_R2_001.fastq -f YMPrepCannula_S1_L003_R1_001.fastq -s YMPrepCannula_S1_L003_R2_001.fastq -f YMPrepCannula_S1_L004_R1_001.fastq -s YMPrepCannula_S1_L004_R2_001.fastq -o illumina_pe_reads_m1_subsample -l 22487509 -i subsample_m1.log -b 2280780244"
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=5 -p msn --wrap="python3 ~/python_toolchain/sequenceData/randomSubsampleFastqs.py -f YMPrepCannula_S1_L001_R1_001.fastq -s YMPrepCannula_S1_L001_R2_001.fastq -f YMPrepCannula_S1_L002_R1_001.fastq -s YMPrepCannula_S1_L002_R2_001.fastq -f YMPrepCannula_S1_L003_R1_001.fastq -s YMPrepCannula_S1_L003_R2_001.fastq -f YMPrepCannula_S1_L004_R1_001.fastq -s YMPrepCannula_S1_L004_R2_001.fastq -o illumina_pe_reads_s3_subsample -l 40889499 -i subsample_s3.log -b 2280780244"
+```
+
+I sent the files off to Max for analysis. We'll see what he finds!
+
+#### Generating log differential coverage plots
+
+The first reviewer wants to see log differential coverage plots. I had generated these with Blobplots, but I think he wants us to use his pipeline. First, let's align the Hi-C reads and error corrected reads to the HQ bins I just prepared.
+
+Given the fact that MMGenome2 can plot a grid of differential coverage, let's see if we can plot ALL datasets (Hi-C, PacbioEC, normal short-read, 
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/diff_cov
+
+```bash
+module load bwa samtools metabat/2.12.1
+# Generating the lists I need
+perl -ne 'chomp; @F = split(/\t/); if($F[51] ne "NOBIN"){print join("\t", @F[(0,1,2,9,14,15,16,17,21,8,23,27,39,51,52,53)]) . "\n";}' < ../master_tables/illumina_megahit_master_table_4_1_2019.tab > illumina_HQBIN_only_shortcov.tab
+perl -ne 'chomp; @F = split(/\t/); if($F[51] ne "NOBIN"){print join("\t", @F[(0,1,2,9,14,15,16,17,21,8,23,27,39,51,52,53)]) . "\n";}' < ../master_tables/pacbio_final_pilon_master_table_4_1_2019.tab > pacbio_HQBIN_only_shortcov.tab
+
+# Generating the HQ bin fastas
+perl -lane 'if($F[0] eq "name"){next;}else{print $F[0];}' < illumina_HQBIN_only_shortcov.tab > illumina_HQBIN_only_shortcov.ctg.list
+samtools faidx -r illumina_HQBIN_only_shortcov.ctg.list ../../assemblies/pilot_project/illumina_megahit/illumina_megahit_final_contigs.perl.fa > illumina_megahit_final_onlyHQBIN.fa
+samtools faidx illumina_megahit_final_onlyHQBIN.fa
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn --wrap="bwa index illumina_megahit_final_onlyHQBIN.fa"
+
+perl -lane 'if($F[0] eq "name"){next;}else{print $F[0];}' < pacbio_HQBIN_only_shortcov.tab > pacbio_HQBIN_only_shortcov.ctg.list
+samtools faidx -r pacbio_HQBIN_only_shortcov.ctg.list ../../assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_second_pilon_indelsonly.fa > pacbio_final_pilon_onlyHQBIN.fa
+samtools faidx pacbio_final_pilon_onlyHQBIN.fa
+sbatch --nodes=1 --ntasks-per-node=1 --mem=10000 -p msn --wrap="bwa index pacbio_final_pilon_onlyHQBIN.fa"
+
+# OK, I've got our illumina coverage down, but I haven't aligned the pacbio EC reads using bwa mem yet. Let's queue that up
+sbatch --nodes=1 --ntasks-per-node=1 --mem=12000 -p msn --wrap="bwa mem illumina_megahit_final_onlyHQBIN.fa ../../sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta | samtools sort -o illumina_megahit_final_onlyHQBIN.pbecreads.sorted.bam -T illumina_pbtemp - ; samtools index illumina_megahit_final_onlyHQBIN.pbecreads.sorted.bam"
+sbatch --nodes=1 --ntasks-per-node=1 --mem=12000 -p msn --wrap="bwa mem pacbio_final_pilon_onlyHQBIN.fa ../../sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta | samtools sort -o pacbio_final_pilon_onlyHQBIN.pbecreads.sorted.bam -T pacbio_pbtemp - ; samtools index pacbio_final_pilon_onlyHQBIN.pbecreads.sorted.bam"
+
+# Let's also queue up the hi-c read pairs
+ls /beegfs/project/rumen_longread_metagenome_assembly/sequence_data/pilot_project/hic/*.fastq > hic_reads_spreadsheet.tab
+# Editted the file to fit my pipeline's preferred format
+vim hic_reads_spreadsheet.tab
+
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b illumina_hic -t hic_reads_spreadsheet.tab -f /beegfs/project/rumen_longread_metagenome_assembly/analysis/diff_cov/illumina_megahit_final_onlyHQBIN.fa -m -p msn
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b pacbio_hic -t hic_reads_spreadsheet.tab -f /beegfs/project/rumen_longread_metagenome_assembly/analysis/diff_cov/pacbio_final_pilon_onlyHQBIN.fa -m -p msn
+
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p msn --wrap="jgi_summarize_bam_contig_depths --outputDepth illumina_hic_jgi_depth.tab illumina_hic/M1HIC/M1HIC.sorted.merged.bam illumina_hic/S3HIC/S3HIC.sorted.merged.bam"
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p msn --wrap="jgi_summarize_bam_contig_depths --outputDepth pacbio_hic_jgi_depth.tab pacbio_hic/M1HIC/M1HIC.sorted.merged.bam pacbio_hic/S3HIC/S3HIC.sorted.merged.bam"
+```

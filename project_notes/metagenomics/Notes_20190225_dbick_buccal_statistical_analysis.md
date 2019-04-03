@@ -284,3 +284,9 @@ I think that I have the basic idea down. There are some hyperparameters I need t
 * Taxonomy of OTUs
 * Top 25 important taxa
 * Sample composition and read counts
+
+### Mash screen OTUs to make this transferrable
+
+### Data may follow zero-inflated poisson. 
+
+### For each OTU try using standard deviation of each OTU in paired rumen - swab samples. Then divide each count by standard deviation (like a z-score). Check distributions of counts first.
