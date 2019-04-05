@@ -290,3 +290,51 @@ I think that I have the basic idea down. There are some hyperparameters I need t
 ### Data may follow zero-inflated poisson. 
 
 ### For each OTU try using standard deviation of each OTU in paired rumen - swab samples. Then divide each count by standard deviation (like a z-score). Check distributions of counts first.
+
+I found some good inspiration in the recently published [CRC manuscript](https://www.nature.com/articles/s41591-019-0405-7#Sec15). I think that several of the figures are appealing and would show quite a bit about the dataset. I need to convert things to a MetaPhyln2 format or rework the plots.
+
+First, let's normalize my data again to relative abundances:
+
+> F:/SharedFolders/metagenomics/buccal_sampling/
+
+```python
+import os
+import pandas as pd
+os.chdir("F:\\SharedFolders\\metagenomics\\buccal_sampling")
+
+otuCounts = pd.read_csv("filtered_otu_table_nocontrol.tab", sep='\t', header=0)
+sampMeans = otuCounts.mean(axis=1)
+
+relOtus = otuCounts.iloc[:, :-1].div(otuCounts.iloc[:,:-1].sum(axis=1), axis=0).mul(100)
+relOtus['class'] = otuCounts['class']
+
+# OK, and lets next try to assign OTUs based on an average relative abundance greater 
+meanTable = relOtus.groupby(['class']).mean().transpose()
+
+# Keeping only Otu counts with greater than 0.1% average relative abundance
+rumen = [i for i in meanTable.index if meanTable.loc[i, 'rumen'] > 0.1]
+swab = [i for i in meanTable.index if meanTable.loc[i, 'swab'] > 0.1]
+
+with open("rumen_relab_gt1_otus.list", 'w') as out: 
+    for i in rumen: t = i[3:]; out.write(f'{int(t)}\n')
+
+with open("swab_relab_gt1_otus.list", 'w') as out: 
+    for i in swab: t = i[3:]; out.write(f'{int(t)}\n')
+```
+
+Making some quick plots in R
+
+```R
+library(UpSetR)
+
+swab <- read.delim("swab_relab_gt1_otus.list", header=FALSE)
+rumen <- read.delim("rumen_relab_gt1_otus.list", header=FALSE)
+
+swab <- as.vector(swab$V1)
+rumen <- as.vector(rumen$V1)
+
+input <- list(swab=swab, rumen=rumen)
+pdf(file="upset_rumen_swab_plot.pdf", useDingbats = FALSE)
+upset(fromList(input), group.by = "sets")
+dev.off()
+```
