@@ -1583,6 +1583,22 @@ perl -ne 'chomp; @F = split(/\t/); if($F[50] ne "NOBIN" && $F[56] eq "-" && $F[5
 # Still Firmicutes and the statistic still stands
 python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab -c 0 -d '\t' -l pacbio_final_pilon_MQ_unique_ctgs.list | perl -lane 'print $F[2];' > pacbio_final_pilon_MQ_unique_ctgs.list.gc
 perl -lane 'if($F[0] eq "name"){next;}else{print $F[2];}' < pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab > pacbio_final_pilon_master_table_4_1_2019.MQbins.short.gc
+
+##### Generating new supplementary table for HQ bins for Reviewer #2
+# First, let's calculate the total coverage for all datasets from the short-reads
+# The coverage values are averages, so I need to multiply by the lengths to get an estimate
+perl -e '$sum = 0; $sa = 0; $n = 0; while(<>){chomp; @F = split(/\t/); if($F[0] eq "name"){next;} $sum += ($F[9] * $F[1]); $sa += $F[9]; $n++}; $avg = $sa / $n; print "$sum\t$sa\t$n\t$avg\n";' < pacbio_final_pilon_master_table_4_1_2019.tab
+66888601387.3526        4652765.74600004        77670   59.9042840993954
+perl -e '$sum = 0; $sa = 0; $n = 0; while(<>){chomp; @F = split(/\t/); if($F[0] eq "name"){next;} $sum += ($F[9] * $F[1]); $sa += $F[9]; $n++}; $avg = $sa / $n; print "$sum\t$sa\t$n\t$avg\n";' < illumina_megahit_master_table_4_1_2019.tab
+129991919911.382        54111883.2900027        2182263 24.7962245109791
+
+# OK, it's a slight overestimate, but still in the ballpark
+# Let's generate a "proportion of aligned reads" statistic per HQ bin
+
+perl consolidate_HQ_bin_table.pl illumina_megahit_master_table_4_1_2019.tab 129991919911 illumina_megahit_HQBIN_supplementary_summary.tab
+perl consolidate_HQ_bin_table.pl pacbio_final_pilon_master_table_4_1_2019.tab 66888601387 pacbio_final_HQBIN_supplementary_summary.tab
+
+#OK so most of the data worked out great, but the proportional coverage is bad. Damn. I'm going to have to calculate this by hand from the bams!
 ```
 
 
@@ -1644,4 +1660,246 @@ python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b pacbio_hic -t 
 
 sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p msn --wrap="jgi_summarize_bam_contig_depths --outputDepth illumina_hic_jgi_depth.tab illumina_hic/M1HIC/M1HIC.sorted.merged.bam illumina_hic/S3HIC/S3HIC.sorted.merged.bam"
 sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p msn --wrap="jgi_summarize_bam_contig_depths --outputDepth pacbio_hic_jgi_depth.tab pacbio_hic/M1HIC/M1HIC.sorted.merged.bam pacbio_hic/S3HIC/S3HIC.sorted.merged.bam"
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p short --wrap="jgi_summarize_bam_contig_depths --outputDepth pacbio_final_pilon_onlyHQBIN.pbecreads.depth.tab pacbio_final_pilon_onlyHQBIN.pbecreads.sorted.bam"
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p short --wrap="jgi_summarize_bam_contig_depths --outputDepth illumina_megahit_final_onlyHQBIN.pbecreads.depth.tab illumina_megahit_final_onlyHQBIN.pbecreads.sorted.bam"
+
+
+# Now to start consolidating everything together
+perl -lane 'print "$F[0]\t$F[3]";' < pacbio_HQBIN_only_shortcov.tab > pacbio_HQBIN_only_shortcov.temp.tab
+perl -lane 'print "$F[0]\t$F[3]\t$F[5]";' < pacbio_hic_jgi_depth.tab > pacbio_hic_jgi_depth.temp
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $name = shift(@s); $data{$name} = [@s];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $name = shift(@s); print "$name\t" . join("\t", @s) . "\t" . join("\t", @{$data{$name}}) . "\n";} close IN;' pacbio_hic_jgi_depth.temp pacbio_HQBIN_only_shortcov.temp.tab > pacbio_HQBIN_shortread_avgcov.tab
+
+perl -lane 'print "$F[0]\t$F[3]";' < illumina_HQBIN_only_shortcov.tab > illumina_HQBIN_only_shortcov.temp.tab
+perl -lane 'print "$F[0]\t$F[3]\t$F[5]";' < illumina_hic_jgi_depth.tab > illumina_hic_jgi_depth.temp.tab
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $name = shift(@s); $data{$name} = [@s];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $name = shift(@s); print "$name\t" . join("\t", @s) . "\t" . join("\t", @{$data{$name}}) . "\n";} close IN;' illumina_hic_jgi_depth.temp.tab illumina_HQBIN_only_shortcov.temp.tab > illumina_HQBIN_shortread_avgcov.tab
+
+# Now for the PB reads vs Illumina reads on both assemblies
+perl -lane 'print "$F[0]\t$F[3]";' < illumina_megahit_final_onlyHQBIN.pbecreads.depth.tab > illumina_megahit_final_onlyHQBIN.pbecreads.depth.temp
+perl -lane 'print "$F[0]\t$F[3]";' < pacbio_final_pilon_onlyHQBIN.pbecreads.depth.tab > pacbio_final_pilon_onlyHQBIN.pbecreads.depth.temp
+
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $name = shift(@s); $data{$name} = [@s];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $name = shift(@s); print "$name\t" . join("\t", @s) . "\t" . join("\t", @{$data{$name}}) . "\n";} close IN;' illumina_megahit_final_onlyHQBIN.pbecreads.depth.temp illumina_HQBIN_only_shortcov.temp.tab > illumina_HQBIN_sr_vs_lr_avgcov.tab
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $name = shift(@s); $data{$name} = [@s];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $name = shift(@s); print "$name\t" . join("\t", @s) . "\t" . join("\t", @{$data{$name}}) . "\n";} close IN;' pacbio_final_pilon_onlyHQBIN.pbecreads.depth.temp pacbio_HQBIN_only_shortcov.temp.tab > pacbio_HQBIN_sr_vs_lr_avgcov.tab
+```
+
+##### New ideas: 
+1. Mapping efficiency plays a big role in Pacbio read alignment, so subsection the reads?
+2. Also check to see if there's a phylum bias in the bins. This will be easier. Not sure if the pacbio alignments will change much, but we can do them to address any questions about alignment bias
+
+
+```bash
+module load bwa samtools metabat/2.12.1
+# Generating new PacBio short read fastqs
+sbatch --nodes=1 --ntasks-per-node=6 --mem=20000 -p msn --wrap="python3 ~/python_toolchain/sequenceData/sampleLongReadToShortRead.py -f /beegfs/project/rumen_longread_metagenome_assembly/sequence_data/pilot_project/pacbio/rumen_pacbio_corrected.fasta -s rumen_pacbio_corrected.sr.R1.fq -r rumen_pacbio_corrected.sr.R2.fq -t 6"
+
+sbatch --nodes=1 --ntasks-per-node=1 --mem=12000 -p msn --wrap="bwa mem illumina_megahit_final_onlyHQBIN.fa rumen_pacbio_corrected.sr.R1.fq rumen_pacbio_corrected.sr.R2.fq | samtools sort -o illumina_HQBIN.pbecreads.leapfrog.sorted.bam -T illumina_pbtemp -; samtools index illumina_HQBIN.pbecreads.leapfrog.sorted.bam; jgi_summarize_bam_contig_depths --outputDepth illumina_pb_ecreads_leapfrog_depth.tab illumina_HQBIN.pbecreads.leapfrog.sorted.bam"
+sbatch --nodes=1 --ntasks-per-node=1 --mem=12000 -p msn --wrap="bwa mem pacbio_final_pilon_onlyHQBIN.fa rumen_pacbio_corrected.sr.R1.fq rumen_pacbio_corrected.sr.R2.fq | samtools sort -o pacbio_HQBIN.pbecreads.leapfrog.sorted.bam -T pacbio_pbtemp -; samtools index pacbio_HQBIN.pbecreads.leapfrog.sorted.bam; jgi_summarize_bam_contig_depths --outputDepth pacbio_pb_ecreads_leapfrog_depth.tab pacbio_HQBIN.pbecreads.leapfrog.sorted.bam"
+
+wc -l rumen_pacbio_corrected.sr.R1.fq
+399818640 rumen_pacbio_corrected.sr.R1.fq
+# That's approximately 99 million read pairs
+```
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+# Generating the tax consensus for the contigs in the HQ bins
+perl generate_tax_table.pl pacbio_final_pilon_master_table_4_1_2019.HQbins.short.tab > pacbio_final_pilon_master_table_4_1_2019.HQbins.taxtable.tab
+perl generate_tax_table.pl illumina_megahit_master_table_4_1_2019.HQbins.short.tab > illumina_megahit_master_table_4_1_2019.HQbins.taxtable.tab
+
+# I am just pulling the BlobTools phyla information (most stable taxonomic category in the bins it appears)
+perl -ne 'chomp; @F = split(/\t/); print "$F[0]\t$F[5]\n";' < pacbio_final_pilon_master_table_4_1_2019.HQbins.short.tab > ../diff_cov/pacbio_HQbins_taxassignment.tab
+perl -ne 'chomp; @F = split(/\t/); print "$F[0]\t$F[5]\n";' < illumina_megahit_master_table_4_1_2019.HQbins.short.tab > ../diff_cov/illumina_HQbins_taxassignment.tab
+```
+
+
+Now to plot the coverage differential plots in mmgenome2.
+
+> F:/SharedFolders/metagenomics/pilot_manuscript/diff_cov/
+
+```R
+# PacbioHIC
+library(mmgenome2)
+covdataframe <- read.delim("pacbio_HQBIN_shortread_avgcov.tab", header=TRUE)
+mm <- mmload("F:/Globus/usda_pacbio_second_pilon_indelsonly.fa", coverage=covdataframe)
+
+pdf(file="pacbio_short_read_M1HIC_covplot.pdf", useDingbats = FALSE)
+mmplot(mm, x = "cov_USDA", y = "cov_M1HIC", color_by = "gc", x_scale= "log10", y_scale = "log10")
+dev.off()
+
+pdf(file="pacbio_short_read_S3HIC_covplot.pdf", useDingbats = FALSE)
+mmplot(mm, x = "cov_USDA", y = "cov_S3HIC", color_by = "gc", x_scale= "log10", y_scale = "log10")
+dev.off()
+
+pdf(file="pacbio_M1HIC_S3HIC_covplot.pdf", useDingbats = FALSE)
+mmplot(mm, x = "cov_M1HIC", y = "cov_S3HIC", color_by = "gc", x_scale= "log10", y_scale = "log10")
+dev.off()
+
+#IlluminaHIC
+covdataframe <- read.delim("illumina_HQBIN_shortread_avgcov.tab", header=TRUE)
+mm <- mmload("F:/Globus/illumina_megahit_final_contigs.perl.fa", coverage=covdataframe)
+
+pdf(file="illumina_short_read_M1HIC_covplot.pdf", useDingbats = FALSE)
+mmplot(mm, x = "cov_USDA", y = "cov_M1HIC", color_by = "gc", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+pdf(file="illumina_short_read_S3HIC_covplot.pdf", useDingbats = FALSE)
+mmplot(mm, x = "cov_USDA", y = "cov_S3HIC", color_by = "gc", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+pdf(file="illumina_M1HIC_S3HIC_covplot.pdf", useDingbats = FALSE)
+mmplot(mm, x = "cov_M1HIC", y = "cov_S3HIC", color_by = "gc", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+
+# Illumina sr vs lr
+covdataframe <- read.delim("illumina_HQBIN_sr_vs_lr_avgcov.tab", header=TRUE)
+mm <- mmload("F:/Globus/illumina_megahit_final_contigs.perl.fa", coverage=covdataframe)
+
+pdf(file="illumina_sr_vs_lr_covplot.pdf", useDingbats = FALSE)
+mmplot(mm, x = "cov_short", y="cov_long", color_by = "gc", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+# Generating coverage by len plots to see if there are biases
+mm.trim <- mm %>% filter(cov_short != "NA")
+pdf(file="illumina_sr_vs_length_binplot.pdf", useDingbats = FALSE)
+ggplot(mm.trim, aes(x=length, y=cov_short)) + geom_bin2d() + theme_bw() + scale_x_log10() + scale_y_log10()
+dev.off()
+pdf(file="illumina_sr_vs_length_binplot.pdf", useDingbats = FALSE)
+ggplot(mm.trim, aes(x=length, y=cov_long)) + geom_bin2d() + theme_bw() + scale_x_log10() + scale_y_log10()
+dev.off()
+
+# I just want to make sure that the short read and long read data doesn't have an obvious bias. Let's get the coefficients from a linear model to make sure
+ilsrlm <- lm(formula = mm.trim$cov_short ~ mm.trim$length + mm.trim$gc)
+summary(ilsrlm)
+
+Call:
+lm(formula = mm.trim$cov_short ~ mm.trim$length + mm.trim$gc)
+
+Residuals:
+   Min     1Q Median     3Q    Max 
+-33.22 -14.55  -7.16   4.38 807.70 
+
+Coefficients:
+                  Estimate  Std. Error t value Pr(>|t|)    
+(Intercept)    45.26095831  1.85465448  24.404  < 2e-16 ***
+mm.trim$length -0.00019230  0.00002624  -7.328 2.61e-13 ***
+mm.trim$gc     -0.28991344  0.03881071  -7.470 9.02e-14 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 28.81 on 6855 degrees of freedom
+Multiple R-squared:  0.01357,	Adjusted R-squared:  0.01328 
+F-statistic: 47.14 on 2 and 6855 DF,  p-value: < 2.2e-16
+
+illrlm <- lm(formula = mm.trim$cov_long ~ mm.trim$length + mm.trim$gc)
+summary(illrlm)
+
+Call:
+lm(formula = mm.trim$cov_long ~ mm.trim$length + mm.trim$gc)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+ -4.246  -2.629  -1.719   1.120 202.217 
+
+Coefficients:
+                   Estimate   Std. Error t value Pr(>|t|)    
+(Intercept)    -0.356198367  0.339818384  -1.048   0.2946    
+mm.trim$length -0.000010549  0.000004808  -2.194   0.0283 *  
+mm.trim$gc      0.067749436  0.007111078   9.527   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 5.278 on 6855 degrees of freedom
+Multiple R-squared:  0.0151,	Adjusted R-squared:  0.01481 
+F-statistic: 52.54 on 2 and 6855 DF,  p-value: < 2.2e-1
+
+
+# Pacbio sr vs lr
+covdataframe <- read.delim("pacbio_HQBIN_sr_vs_lr_avgcov.tab", header=TRUE)
+mm <- mmload("F:/Globus/usda_pacbio_second_pilon_indelsonly.fa", coverage=covdataframe)
+
+pdf(file = "pacbio_sr_vs_lr_covplot.pdf", useDingbats = FALSE)
+mmplot(mm, x = "cov_short", y="cov_long", color_by = "gc", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+mm.trim <- mm %>% filter(cov_short != "NA")
+pdf(file="pacbio_sr_vs_length_binplot.pdf", useDingbats = FALSE)
+ggplot(mm.trim, aes(x=length, y=cov_short)) + geom_bin2d() + theme_bw() + scale_x_log10() + scale_y_log10()
+dev.off()
+pdf(file="pacbio_lr_vs_length_binplot.pdf", useDingbats = FALSE)
+ggplot(mm.trim, aes(x=length, y=cov_long)) + geom_bin2d() + theme_bw() + scale_x_log10() + scale_y_log10()
+dev.off()
+
+pbsrlm <- lm(formula = mm.trim$cov_short ~ mm.trim$length + mm.trim$gc)
+summary(pbsrlm)
+
+Call:
+lm(formula = mm.trim$cov_short ~ mm.trim$length + mm.trim$gc)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-88.386 -18.075  -5.624  11.008 174.108 
+
+Coefficients:
+                   Estimate   Std. Error t value    Pr(>|t|)    
+(Intercept)    109.37309258  11.39537216   9.598     < 2e-16 ***
+mm.trim$length   0.00024681   0.00002309  10.691     < 2e-16 ***
+mm.trim$gc      -1.22724830   0.24173592  -5.077 0.000000573 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 29.84 on 430 degrees of freedom
+Multiple R-squared:  0.2597,	Adjusted R-squared:  0.2562 
+F-statistic: 75.42 on 2 and 430 DF,  p-value: < 2.2e-16
+
+pblrlm <- lm(formula = mm.trim$cov_long ~ mm.trim$length + mm.trim$gc)
+summary(pblrlm)
+
+Call:
+lm(formula = mm.trim$cov_long ~ mm.trim$length + mm.trim$gc)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-13.517  -2.942  -0.721   2.172  41.477 
+
+Coefficients:
+                   Estimate   Std. Error t value Pr(>|t|)    
+(Intercept)    -0.093548111  1.781133609  -0.053  0.95814    
+mm.trim$length  0.000033695  0.000003608   9.338  < 2e-16 ***
+mm.trim$gc      0.110666364  0.037784107   2.929  0.00358 ** 
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 4.664 on 430 degrees of freedom
+Multiple R-squared:  0.1757,	Adjusted R-squared:  0.1719 
+F-statistic: 45.83 on 2 and 430 DF,  p-value: < 2.2e-16
+
+
+# Let's try a plot with the contigs colored by phyla
+# Pacbio by phyla
+covdataframe <- read.delim("pacbio_HQBIN_sr_vs_lr_avgcov.tab", header=TRUE)
+phyladatafram <- read.delim("pacbio_HQbins_taxassignment.tab", header=TRUE)
+colnames(phyladatafram) <- c("scaffold", "phylum")
+mm <- mmload("F:/Globus/usda_pacbio_second_pilon_indelsonly.fa", coverage=covdataframe, taxonomy = phyladatafram)
+
+# One of the contigs was misassigned to the Arthropoda, let's change it to no-hit
+mm.trim <- mm %>% mutate(phylum=replace(phylum, phylum == "Arthropoda", "no-hit"))
+
+pdf(file = "pacbio_sr_vs_lr_covplot.byphylum.pdf", useDingbats = FALSE)
+mmplot(mm.trim, x = "cov_short", y="cov_long", color_by = "phylum", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+# Illumina by phyla
+covdataframe <- read.delim("illumina_HQBIN_sr_vs_lr_avgcov.tab", header =TRUE)
+phyladatafram <- read.delim("illumina_HQbins_taxassignment.tab", header = TRUE)
+colnames(phyladatafram) <- c("scaffold", "phylum")
+mm <- mmload("F:/Globus/illumina_megahit_final_contigs.perl.fa", coverage=covdataframe, taxonomy = phyladatafram)
+
+mm.trim <- mm %>% mutate(phylum=replace(phylum, phylum == "Arthropoda" | phylum == "Chordata" | phylum == "Mollusca" | phylum == "Nematoda", "no-hit"))
+mm.trim <- mm.trim %>% mutate(phylum=replace(phylum, phylum == "Acidobacteria" | phylum == "Candidatus Desantisbacteria" | phylum == "Candidatus Melainabacteria" | phylum == "Candidatus Moranbacteria" | phylum == "Candidatus Nomurabacteria" | phylum == "Candidatus Saccharibacteria" | phylum == "Chlorobi" | phylum == "Chlorophyta" | phylum == "Elusimicrobia" | phylum == "Gemmatimonadetes" | phylum == "Kiritimatiellaeota" | phylum == "Thermotogae", "other"))
+
+pdf(file="illumina_sr_vs_lr_covplot.byphylum.pdf", useDingbats = FALSE)
+mmplot(mm.trim, x = "cov_short", y = "cov_long", color_by = "phylum", x_scale = "log10", y_scale = "log10")
+dev.off()
 ```
