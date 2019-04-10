@@ -1698,6 +1698,13 @@ sbatch --nodes=1 --ntasks-per-node=1 --mem=12000 -p msn --wrap="bwa mem pacbio_f
 wc -l rumen_pacbio_corrected.sr.R1.fq
 399818640 rumen_pacbio_corrected.sr.R1.fq
 # That's approximately 99 million read pairs
+
+# Now to prep them the same way as before and generate the plots for comparison
+perl -lane 'if($F[0] eq "contigName"){next;} print "$F[0]\t$F[3]";' < pacbio_pb_ecreads_leapfrog_depth.tab > pacbio_pb_ecreads_leapfrog_depth.temp
+perl -lane 'if($F[0] eq "contigName"){next;} print "$F[0]\t$F[3]";' < illumina_pb_ecreads_leapfrog_depth.tab > illumina_pb_ecreads_leapfrog_depth.temp
+
+ perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[0] eq "contigName"){print join("\t", @s) . "\n";next;} $long = $h{$s[0]}; print "$s[0]\t$s[1]\t$long\n";} close IN;' illumina_pb_ecreads_leapfrog_depth.temp illumina_HQBIN_sr_vs_lr_avgcov.tab > illumina_HQBIN_sr_vs_lr_avgcov.leapfrog.tab
+perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[0] eq "contigName"){print join("\t", @s) . "\n";next;} if(!exists($h{$s[0]})){print STDERR "Error!\n";} $long = $h{$s[0]}; print "$s[0]\t$s[1]\t$long\n";} close IN;' pacbio_pb_ecreads_leapfrog_depth.temp pacbio_HQBIN_sr_vs_lr_avgcov.tab > pacbio_HQBIN_sr_vs_lr_avgcov.leapfrog.tab
 ```
 
 > Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
@@ -1902,4 +1909,61 @@ mm.trim <- mm.trim %>% mutate(phylum=replace(phylum, phylum == "Acidobacteria" |
 pdf(file="illumina_sr_vs_lr_covplot.byphylum.pdf", useDingbats = FALSE)
 mmplot(mm.trim, x = "cov_short", y = "cov_long", color_by = "phylum", x_scale = "log10", y_scale = "log10")
 dev.off()
+
+# Now trying the Leapfrog read alignments
+covdataframe <- read.delim("illumina_HQBIN_sr_vs_lr_avgcov.leapfrog.tab", header=TRUE)
+phyladatafram <- read.delim("illumina_HQbins_taxassignment.tab", header = TRUE)
+colnames(phyladatafram) <- c("scaffold", "phylum")
+mm <- mmload("F:/Globus/illumina_megahit_final_contigs.perl.fa", coverage=covdataframe, taxonomy = phyladatafram)
+
+mm.trim <- mm %>% mutate(phylum=replace(phylum, phylum == "Arthropoda" | phylum == "Chordata" | phylum == "Mollusca" | phylum == "Nematoda", "no-hit"))
+mm.trim <- mm.trim %>% mutate(phylum=replace(phylum, phylum == "Acidobacteria" | phylum == "Candidatus Desantisbacteria" | phylum == "Candidatus Melainabacteria" | phylum == "Candidatus Moranbacteria" | phylum == "Candidatus Nomurabacteria" | phylum == "Candidatus Saccharibacteria" | phylum == "Chlorobi" | phylum == "Chlorophyta" | phylum == "Elusimicrobia" | phylum == "Gemmatimonadetes" | phylum == "Kiritimatiellaeota" | phylum == "Thermotogae", "other"))
+
+pdf(file="illumina_sr_vs_lr_covplot.bygc.leap.pdf", useDingbats = FALSE)
+mmplot(mm.trim, x = "cov_short", y = "cov_long", color_by = "gc", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+pdf(file="illumina_sr_vs_lr_covplot.byphylum.leap.pdf", useDingbats = FALSE)
+mmplot(mm.trim, x = "cov_short", y = "cov_long", color_by = "phylum", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+# Testing zero coverage contigs based on mapping bias
+prevcovdata <- read.delim("illumina_HQBIN_sr_vs_lr_avgcov.tab", header=TRUE)
+count(prevcovdata[prevcovdata$long == 0,])
+1  2836
+count(covdataframe[covdataframe$long == 0,])
+1   178  <- less mapping bias, but it's still there!
+
+# pacbio
+covdataframe <- read.delim("pacbio_HQBIN_sr_vs_lr_avgcov.leapfrog.tab", header = TRUE)
+phyladatafram <- read.delim("pacbio_HQbins_taxassignment.tab", header=TRUE)
+colnames(phyladatafram) <- c("scaffold", "phylum")
+mm <- mmload("F:/Globus/usda_pacbio_second_pilon_indelsonly.fa", coverage=covdataframe, taxonomy = phyladatafram)
+
+pdf(file = "pacbio_sr_vs_lr_covplot.bygc.leap.pdf", useDingbats = FALSE)
+mmplot(mm.trim, x = "cov_short", y="cov_long", color_by = "gc", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+pdf(file = "pacbio_sr_vs_lr_covplot.byphylum.leap.pdf", useDingbats = FALSE)
+mmplot(mm.trim, x = "cov_short", y="cov_long", color_by = "phylum", x_scale = "log10", y_scale = "log10")
+dev.off()
+
+prevcovdata <- read.delim("pacbio_HQBIN_sr_vs_lr_avgcov.tab", header=TRUE)
+cor.test(covdataframe$short, covdataframe$long)
+
+	Pearson's product-moment correlation
+
+data:  covdataframe$short and covdataframe$long
+t = 20.767, df = 431, p-value < 2.2e-16
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ 0.6567436 0.7513733
+sample estimates:
+      cor 
+0.7072118
+
+count(prevcovdata[prevcovdata$long == 0,])
+1     8
+count(covdataframe[covdataframe$long == 0,])
+1     0
 ```
