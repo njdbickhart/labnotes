@@ -1599,6 +1599,59 @@ perl consolidate_HQ_bin_table.pl illumina_megahit_master_table_4_1_2019.tab 1299
 perl consolidate_HQ_bin_table.pl pacbio_final_pilon_master_table_4_1_2019.tab 66888601387 pacbio_final_HQBIN_supplementary_summary.tab
 
 #OK so most of the data worked out great, but the proportional coverage is bad. Damn. I'm going to have to calculate this by hand from the bams!
+
+# Generating prodigal supplementary tables for the MQ bins
+perl -lane 'if($F[0] eq "name"){next;}else{ print $F[0];}' < pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab > pacbio_final_pilon_master_table_4_1_2019.MQbins.ctg.list
+perl -lane 'if($F[0] eq "name"){next;}else{ print $F[0];}' < illumina_megahit_master_table_4_1_2019.MQbins.short.tab > illumina_megahit_master_table_4_1_2019.MQbins.ctg.list
+
+# Generating the tables from the MQ dataset
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = 1;} close IN; print "ContigID\tStart\tEnd\tOrient\tID\tpartial\tstart_type\trbs_motif\trbs_spacer\tgc_cont\n"; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $s[0] =~ s/(\_\d{1,4}$)//; if(exists($h{$s[0]})){$s[0] .= $1; print join("\t", @s) . "\n";}} close IN;' pacbio_final_pilon_master_table_4_1_2019.MQbins.ctg.list supplementary_table_10_long_read_prodigal.tab > supplementary_table_10_long_read_prodigal.revis.tab
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = 1;} close IN; print "ContigID\tStart\tEnd\tOrient\tID\tpartial\tstart_type\trbs_motif\trbs_spacer\tgc_cont\n"; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $s[0] =~ s/(\_\d{1,4}$)//; if(exists($h{$s[0]})){$s[0] .= $1; print join("\t", @s) . "\n";}} close IN;' illumina_megahit_master_table_4_1_2019.MQbins.ctg.list supplementary_table_9_short_read_prodigal.tab > supplementary_table_9_short_read_prodigal.revis.tab
+
+# Now to regenerate the average counts and retest them for significance
+perl -e 'print "Contig\tLength\tComplete\tPartial\tTech\n"; while(<>){chomp; @s = split(/\t/); if($s[0] eq "name"){next;}else{print "$s[0]\t$s[1]\t$s[14]\t$s[15]\tPacBio\n";}}' < pacbio_final_pilon_master_table_4_1_2019.MQbins.short.tab > pacbio_final_pilon_master_table_4_1_2019.MQbins.orfs.tab
+perl -e 'while(<>){chomp; @s = split(/\t/); if($s[0] eq "name"){next;}else{print "$s[0]\t$s[1]\t$s[14]\t$s[15]\tIllumina\n";}}' < illumina_megahit_master_table_4_1_2019.MQbins.short.tab > illumina_megahit_master_table_4_1_2019.MQbins.orfs.tab
+
+cat pacbio_final_pilon_master_table_4_1_2019.MQbins.orfs.tab illumina_megahit_master_table_4_1_2019.MQbins.orfs.tab > combined_4_1_2019_MQbins.orfs.tab
+```
+
+```R
+library(dplyr)
+orfdata <- read.delim("combined_4_1_2019_MQbins.orfs.tab", header=TRUE)
+
+summary(orfdata[orfdata$Tech == "PacBio", "Complete"])
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+   0.00    9.00   15.00   22.35   26.00  663.00
+summary(orfdata[orfdata$Tech == "PacBio", "Partial"])
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+  0.000   1.000   1.000   1.269   2.000   2.000
+summary(orfdata[orfdata$Tech == "Illumina", "Complete"])
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+  0.000   1.000   2.000   3.752   4.000 238.000
+summary(orfdata[orfdata$Tech == "Illumina", "Partial"])
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.
+  0.000   1.000   2.000   1.499   2.000   2.000
+
+# Now I want to test averages within contig length quantiles
+orfdata <- within(orfdata, quantile <- as.integer(cut(Length, quantile(Length, probs=0:5/5), include.lowest = TRUE)))
+for(x in c(1,2,3,4,5)){print(ks.test(orfdata[orfdata$quantile == x & orfdata$Tech == "Illumina","Complete"], orfdata[orfdata$quantile == x & orfdata$Tech == "PacBio","Complete"], alternative="greater"))}
+
+# All except for the smallest contigs passed the test.
+orfdata %>% group_by(quantile, Tech) %>% summarize(mean = mean(Complete), num = n(), sum=sum(Complete))
+# A tibble: 10 x 5
+# Groups:   quantile [5]
+   quantile Tech       mean   num    sum
+      <int> <fct>     <dbl> <int>  <int>
+ 1        1 Illumina  0.465 20555   9556
+ 2        1 PacBio    1.47     17     25
+ 3        2 Illumina  1.19  20434  24318
+ 4        2 PacBio    2.48    137    340
+ 5        3 Illumina  2.29  20243  46261
+ 6        3 PacBio    3.98    337   1342
+ 7        4 Illumina  4.35  19220  83654
+ 8        4 PacBio    7.26   1344   9751
+ 9        5 Illumina 13.2   14568 192679
+10        5 PacBio   27.3    6001 163703
 ```
 
 
@@ -1703,7 +1756,7 @@ wc -l rumen_pacbio_corrected.sr.R1.fq
 perl -lane 'if($F[0] eq "contigName"){next;} print "$F[0]\t$F[3]";' < pacbio_pb_ecreads_leapfrog_depth.tab > pacbio_pb_ecreads_leapfrog_depth.temp
 perl -lane 'if($F[0] eq "contigName"){next;} print "$F[0]\t$F[3]";' < illumina_pb_ecreads_leapfrog_depth.tab > illumina_pb_ecreads_leapfrog_depth.temp
 
- perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[0] eq "contigName"){print join("\t", @s) . "\n";next;} $long = $h{$s[0]}; print "$s[0]\t$s[1]\t$long\n";} close IN;' illumina_pb_ecreads_leapfrog_depth.temp illumina_HQBIN_sr_vs_lr_avgcov.tab > illumina_HQBIN_sr_vs_lr_avgcov.leapfrog.tab
+perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[0] eq "contigName"){print join("\t", @s) . "\n";next;} $long = $h{$s[0]}; print "$s[0]\t$s[1]\t$long\n";} close IN;' illumina_pb_ecreads_leapfrog_depth.temp illumina_HQBIN_sr_vs_lr_avgcov.tab > illumina_HQBIN_sr_vs_lr_avgcov.leapfrog.tab
 perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[0] eq "contigName"){print join("\t", @s) . "\n";next;} if(!exists($h{$s[0]})){print STDERR "Error!\n";} $long = $h{$s[0]}; print "$s[0]\t$s[1]\t$long\n";} close IN;' pacbio_pb_ecreads_leapfrog_depth.temp pacbio_HQBIN_sr_vs_lr_avgcov.tab > pacbio_HQBIN_sr_vs_lr_avgcov.leapfrog.tab
 ```
 
