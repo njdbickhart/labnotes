@@ -1911,6 +1911,7 @@ mmplot(mm.trim, x = "cov_short", y = "cov_long", color_by = "phylum", x_scale = 
 dev.off()
 
 # Now trying the Leapfrog read alignments
+# Illumina first
 covdataframe <- read.delim("illumina_HQBIN_sr_vs_lr_avgcov.leapfrog.tab", header=TRUE)
 phyladatafram <- read.delim("illumina_HQbins_taxassignment.tab", header = TRUE)
 colnames(phyladatafram) <- c("scaffold", "phylum")
@@ -1933,6 +1934,15 @@ count(prevcovdata[prevcovdata$long == 0,])
 1  2836
 count(covdataframe[covdataframe$long == 0,])
 1   178  <- less mapping bias, but it's still there!
+
+# Now Illumina coverage by length plots
+mm.trim <- mm %>% filter(cov_short != "NA")
+pdf(file="illumina_sr_vs_length_binplot.leap.pdf", useDingbats = FALSE)
+ggplot(mm.trim, aes(x=length, y=cov_short)) + geom_bin2d() + theme_bw() + scale_x_log10() + scale_y_log10()
+dev.off()
+pdf(file="illumina_lr_vs_length_binplot.leap.pdf", useDingbats = FALSE)
+ggplot(mm.trim, aes(x=length, y=cov_long)) + geom_bin2d() + theme_bw() + scale_x_log10() + scale_y_log10()
+dev.off()
 
 # pacbio
 covdataframe <- read.delim("pacbio_HQBIN_sr_vs_lr_avgcov.leapfrog.tab", header = TRUE)
@@ -1966,4 +1976,14 @@ count(prevcovdata[prevcovdata$long == 0,])
 1     8
 count(covdataframe[covdataframe$long == 0,])
 1     0
+
+
+# Now for the pacbio leapfrog coverage by length plots
+mm.trim <- mm %>% filter(cov_short != "NA")
+pdf(file="pacbio_sr_vs_length_binplot.leap.pdf", useDingbats = FALSE)
+ggplot(mm.trim, aes(x=length, y=cov_short)) + geom_bin2d() + theme_bw() + scale_x_log10() + scale_y_log10()
+dev.off()
+pdf(file="pacbio_lr_vs_length_binplot.leap.pdf", useDingbats = FALSE)
+ggplot(mm.trim, aes(x=length, y=cov_long)) + geom_bin2d() + theme_bw() + scale_x_log10() + scale_y_log10()
+dev.off()
 ```
