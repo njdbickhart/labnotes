@@ -234,6 +234,43 @@ pacbio %>% mutate(cat = ifelse(DASBin_HQ != "NOBIN", "HQ", ifelse(DASBin_MQ != "
 pacbio %>% mutate(cat = ifelse(DASBin_HQ != "NOBIN", "HQ", ifelse(DASBin_MQ != "NOBIN", "MQ", "UNBIN"))) %>% group_by(cat, superkingdom.t.24) %>% summarize(count = sum(as.numeric(length)))
 ```
 
+## Generating supplementary table for HQ bins
+
+The second reviewer asked us to give a compiled list of stats for each dataset's HQ bins. Let's see if we can tally this up from my master tables. I will revise the consolidate_HQ_bin_table.pl script to gather most of the information. I will need to use my json table consolidation script to finalize the other values that were requested.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+perl consolidate_HQ_bin_table.pl illumina_megahit_master_table_4_1_2019.tab illumina_supplementary_starter_4_1_2019.tab
+perl consolidate_HQ_bin_table.pl pacbio_final_pilon_master_table_4_1_2019.tab pacbio_supplementary_starter_4_1_2019.tab
+
+# Now to add the completeness stats
+perl -lane 'if($F[0] eq "bin"){next;}else{@bsegs = split(/[\_\.]/, $F[0]); print "$bsegs[-2]\_$bsegs[-1]\t$F[-2]\t$F[-1]"}' ../dastool/illumina_final_dastool_DASTool_summary.txt > illumina_dastool_completeness.tab
+perl -lane 'if($F[0] eq "bin"){next;}else{@bsegs = split(/[\_\.]/, $F[0]); print "$bsegs[-2]\_$bsegs[-1]\t$F[-2]\t$F[-1]"}' < ../dastool/pacbio_final_dastool_DASTool_summary.txt > pacbio_dastool_completeness.tab
+
+# Now I need to generate a list of ARG gene contig locations and apply them to the list
+head -n 1 ../amr_vir_heatmaps/pb_arg_hic_links_filt.tsv | perl -lane 'foreach my $f(@F){print $f;}' > pacbio_arg_contigs.list
+head -n 1 ../amr_vir_heatmaps/ilmn_arg_hic_links_filt.tsv | perl -lane 'foreach my $f(@F){print $f;}' > illumina_arg_contigs.list
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f illumina_megahit_master_table_4_1_2019.tab -c 0 -l illumina_arg_contigs.list -d '\t' | perl -e '%h; while(<>){chomp; @s = split(/\t/); if($s[51] ne "NOBIN"){$h{$s[51]} += 1;}} foreach my $k (keys(%h)){print "$k\t$h{$k}\n";}' > illumina_HQ_arg_counts.tab
+# Produced nothing
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_pilon_master_table_4_1_2019.tab -c 0 -l pacbio_arg_contigs.list -d '\t' |  perl -e '%h; while(<>){chomp; @s = split(/\t/); if($s[51] ne "NOBIN"){$h{$s[51]} += 1;}} foreach my $k (keys(%h)){print "$k\t$h{$k}\n";}' > pacbio_HQ_arg_counts.tab
+# Also produced nothing
+
+perl -lane 'if($F[0] eq "VirusCtg"){next;}else{print $F[1];}' < ../amr_vir_heatmaps/pacbio_pilon_viruses.combined.cyto.tab > pacbio_virus_host_contig.list
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f pacbio_final_pilon_master_table_4_1_2019.tab -c 0 -l pacbio_virus_host_contig.list -d '\t' | perl -ne 'chomp; @F = split(/\t/); print "$F[51]\n";' | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -d '\t'
+Entry   Value
+NOBIN   121
+
+# None of the AMR and viral contigs are in ANY of the new bin categories.
+# This would make sense if they are present in mobile elements or are shuttled among lower abundance strains in the  community
+# I guess I'm just going to be adding the completion stats
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j illumina_HQ_table_data_files.json -t illumina_supplementary_starter_4_1_2019.tab -o illumina_HQ_table_supplementary.tab
+python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j pacbio_HQ_table_data_files.json -t pacbio_supplementary_starter_4_1_2019.tab -o pacbio_HQ_table_supplementary.tab
+```
+
 #### Checking partial ORF counts near contig ends
 
 I need to redo the prodigal short form data. Then, I'm going to apply the quantile approach to segregate the datasets as per above. I also want to get the average contig coverage data integrated to see if contig coverage plays a role in the number of completed ORFs.
@@ -680,6 +717,18 @@ phyladatafram <- read.delim("pacbio_HQbins_taxassignment.tab", header=TRUE)
 colnames(phyladatafram) <- c("scaffold", "phylum")
 mm <- mmload("F:/Globus/usda_pacbio_second_pilon_indelsonly.fa", coverage=covdataframe, taxonomy = phyladatafram)
 
+######
+# Archaea bin test
+######
+print(mm %>% group_by(phylum) %>% summarize(means = mean(cov_short), stdevs = sd(cov_short), meanl = mean(cov_long), stdevl = sd(cov_long)), n=40)
+   phylum                       means stdevs meanl stdevl
+...
+Euryarchaeota                122.    18.4  2.61   1.72
+...
+
+# Higher than the short read dataset's coverage. I think it's an assembly problem
+
+
 # One of the contigs was misassigned to the Arthropoda, let's change it to no-hit
 mm.trim <- mm %>% mutate(phylum=replace(phylum, phylum == "Arthropoda", "no-hit"))
 
@@ -692,6 +741,15 @@ covdataframe <- read.delim("illumina_HQBIN_sr_vs_lr_avgcov.tab", header =TRUE)
 phyladatafram <- read.delim("illumina_HQbins_taxassignment.tab", header = TRUE)
 colnames(phyladatafram) <- c("scaffold", "phylum")
 mm <- mmload("F:/Globus/illumina_megahit_final_contigs.perl.fa", coverage=covdataframe, taxonomy = phyladatafram)
+
+#######
+# Archaea bin test
+#######
+
+print(mm %>% group_by(phylum) %>% summarize(means = mean(cov_short), stdevs = sd(cov_short), meanl = mean(cov_long), stdevl = sd(cov_long)), n=40)
+
+   phylum                       means  stdevs    meanl    stdevl
+21 Euryarchaeota                25.3    5.41   1.61      2.49
 
 mm.trim <- mm %>% mutate(phylum=replace(phylum, phylum == "Arthropoda" | phylum == "Chordata" | phylum == "Mollusca" | phylum == "Nematoda", "no-hit"))
 mm.trim <- mm.trim %>% mutate(phylum=replace(phylum, phylum == "Acidobacteria" | phylum == "Candidatus Desantisbacteria" | phylum == "Candidatus Melainabacteria" | phylum == "Candidatus Moranbacteria" | phylum == "Candidatus Nomurabacteria" | phylum == "Candidatus Saccharibacteria" | phylum == "Chlorobi" | phylum == "Chlorophyta" | phylum == "Elusimicrobia" | phylum == "Gemmatimonadetes" | phylum == "Kiritimatiellaeota" | phylum == "Thermotogae", "other"))
@@ -797,6 +855,7 @@ samtools idxstats publicdb/USDA/USDA.sorted.merged.bam | perl -e '$c = 0; while(
 
 samtools idxstats publicdb/USDA/USDA.sorted.merged.bam | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -c 0 -l ~/rumen_longread_metagenome_assembly/analysis/master_tables/pacbio_final_pilon_master_table_4_1_2019.HQbins.ctg.list -d '\t' | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[2] + $s[3];} print "$c\n";'
 14774478 = 1.3% of short reads
+14151564 from covdepth file
 
 gunzip -c usda_pacbio_secpilon.USDA.sorted.merged.bam.cov.gz | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -c 0 -l ~/rumen_longread_metagenome_assembly/analysis/master_tables/pacbio_final_pilon_master_table_4_1_2019.MQbins.ctg.list -d '\t' | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
 85551359 = 7.4% of short reads
@@ -812,3 +871,50 @@ gunzip -c usda_illum_megahit.USDA.sorted.merged.bam.cov.gz | python3 ~/python_to
 gunzip -c usda_illum_megahit.USDA.sorted.merged.bam.cov.gz | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -c 0 -l ~/rumen_longread_metagenome_assembly/analysis/master_tables/illumina_megahit_master_table_4_1_2019.MQbins.ctg.list -d '\t' | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
 111230244 = MQbins accounted for 9.7% of short reads
 ```
+
+Now to make the histograms that the reviewer requested. I will generate a stacked percentage barplot here.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/master_tables
+
+```bash
+# Unbinned
+gunzip -c /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/usda_illum_megahit.USDA.sorted.merged.bam.cov.gz | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -c 0 -l ~/rumen_longread_metagenome_assembly/analysis/master_tables/illumina_megahit_master_table_4_1_2019.MQbins.ctg.list -d '\t' -v | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+858343200  = 74% mapped
+
+gunzip -c /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_secpilon.USDA.sorted.merged.bam.cov.gz | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -c 0 -l ~/rumen_longread_metagenome_assembly/analysis/master_tables/pacbio_final_pilon_master_table_4_1_2019.MQbins.ctg.list -d '\t' -v | perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";'
+441575006  = 38% mapped
+
+# and the unmapped read counts
+gunzip -c /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/illumina_megahit/usda_illum_megahit.USDA.sorted.merged.bam.cov.gz | grep 'Unmapped'
+## Unmapped Reads = 201980193
+
+gunzip -c /home/derek.bickharhth/rumen_longread_metagenome_assembly/assemblies/pilot_project/pacbio_final_pilon/usda_pacbio_secpilon.USDA.sorted.merged.bam.cov.gz | grep 'Unmapped'
+## Unmapped Reads = 621594993
+# It's missing about 30 million reads... it turns out that they were filtered due to indexing and GC%. Let's add that to the unmapped tally
+
+```
+
+```R
+# Illumina MQ only = 111230244  - 14270518 = 96959726
+# Pacbio MQ only = 85551359 - 14151564 = 71399795
+library(ggplot2)
+bins <- c(rep(c("HQ only", "MQ only", "Unbinned", "Unmapped"), 2))
+Tech <- c(rep("Illumina", 4), rep("PacBio", 4))
+reads <- c(14270518, 96959726, 858343200, 201980193, 14151564, 71399795, 441575006, 651594993)
+percs <- c(1.22, 8.28, 73.27, 17.24, 1.20, 6.06, 37.46, 55.28)
+
+data <- data.frame(bins,Tech,reads)
+pdf(file="tech_mapping_histogram.pdf", useDingbats=FALSE)
+ggplot(data, aes(fill=bins, y=percs, x=Tech)) + geom_bar(stat="identity") + theme_bw() + scale_fill_brewer(palette="Accent")
+dev.off()
+```
+
+
+#### Final count of datasets
+
+| Tech | Number of cells | Number of reads | Total Bases | Read N50 |
+| :--- | ---: | ---: | ---: | ---: |
+|Pacbio RSII | 8 | 856,342 | 6.7 Gbp | 7823 |
+|Pacbio Sequel | 21 |7,032,118 | 45.3 Gbp | 6449 |
+|Illumina Nextseq | 1 | 1,140,390,122 | 171 Gbp | 150 |
+|Illumina Hi-C | 2 | 126,754,016 | 10.1 Gbp | 80 |
