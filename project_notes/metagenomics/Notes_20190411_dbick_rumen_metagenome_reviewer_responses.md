@@ -918,3 +918,54 @@ dev.off()
 |Pacbio Sequel | 21 |7,032,118 | 45.3 Gbp | 6449 |
 |Illumina Nextseq | 1 | 1,140,390,122 | 171 Gbp | 150 |
 |Illumina Hi-C | 2 | 126,754,016 | 10.1 Gbp | 80 |
+
+
+## Proximeta results on PacBio assembly
+
+Max generated proximeta results on our Pacbio assembly and compared the assembly statistics using checkm. Let's see what the results look like compared to our previous results. I am pulling the assembly_clusters/new_rumen_pacbio/pb_finals_102218/final_analysis checkm results here from the Phase team.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/hic_doublecheck
+
+```bash
+perl -e '<>; while(<>){chomp; @s = split(/\t/); print "$s[2]\t$s[3]\tHIC\n";}' < proximeta_results_10_2018.tab > hic_link_results.tab
+perl -e '<>; while(<>){chomp; @s = split(/\t/); print "$s[2]\t$s[3]\tWGS_PE\n";}' < final_clusters/final_analysis/ProxiMeta_report_final_clusters.tsv > pe_link_results.tab
+
+cat hic_link_results.tab pe_link_results.tab > combined_link_results.tab
+```
+
+Now to plot this in R. Should hopefully be pretty convincing as a scatterplot.
+
+```R
+library(ggplot2)
+library(dplyr)
+
+data <- read.delim("combined_link_results.tab", header=FALSE)
+colnames(data) <- c("Completeness", "Redundancy", "Tech")
+
+data %>% group_by(Tech) %>% summarize(maxC = max(Completeness), medianC = median(Completeness), meanC = mean(Completeness), maxR = max(Redundanc# A tibble: 2 x 7ian(Redundancy), meanR = mean(Redundancy))
+  Tech    maxC medianC meanC  maxR medianR meanR
+  <fct>  <dbl>   <dbl> <dbl> <dbl>   <dbl> <dbl>
+1 HIC     95.4  12.6   17.1     25       0  1.78
+2 WGS_PE  75.2   0.499  5.94    25       0  1.20
+
+# OK, now to plot the data. Since we want to see two continuous variables at play, we're going to use a scatterplot
+pdf(file="hic_vs_pe_binstat_scatterplot.pdf", useDingbats=FALSE)
+ggplot(data, aes(x=Completeness, y=Redundancy, color=Tech)) + geom_point() + scale_color_brewer(palette="Dark2") + theme_bw()
+dev.off()
+
+# There's some overlap on the lower ends. Let's do a faceted density plot
+pdf(file="hic_vs_pe_density_plot.pdf", useDingbats=FALSE)
+ggplot(data, aes(x=Completeness, y=Redundancy)) + geom_bin2d() + theme_bw() + facet_grid(. ~ Tech)
+dev.off()
+```
+
+## AMR comparison
+
+I just want to see if the AMR from the illumina assembly map to the AMR from pacbio.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/analysis/amr_vir_heatmaps
+
+```bash
+module load minimap2
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=3 -p msn --wrap="minimap2 -cx asm5 ../../Bradd/Illumina_Resfinder_matching.fasta ../../Bradd/Pacbio_Resfinder_matching.fasta > illumina_to_pacbio_resfinder_asm_map.paf"
+```
