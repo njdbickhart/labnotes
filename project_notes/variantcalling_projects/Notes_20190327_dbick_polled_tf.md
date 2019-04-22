@@ -45,3 +45,17 @@ I ran some ContraTF analysis on the entire region and on the Celtic locus. I'm l
 
 The mongolian locus has an enhancer site located in this region: chr1:1974983-1978220 .
 
+More information: This sequence GCCACGCTAGAATTAGATGTCATGAGTGTTTTTATTTAATGACAGTG|CAACTCAATTTAAGAGCAGACTGTGCAGGGCCAAGGGG is conserved in cattle and buffalo but is split by a 1.8 kb insertion. I ran it in [MirBase](http://www.mirbase.org/cgi-bin/blast.pl) and found the following miRNA binding site right on the split site:
+
+```
+Query: 35-57 bta-miR-12020: 1-23 score: 79 evalue: 0.43
+UserSeq             35  uuuaaugacagugcaacucaauu  57  
+                        ||||||  |||||| | ||||||
+bta-miR-12020        1  uuuaauaccagugccaaucaauu  23
+
+
+Query: 38-56 csa-miR-281: 5-23 score: 68 evalue: 3.6
+UserSeq             38  aaugacagugcaacucaau  56  
+                        ||||| || ||||||| ||
+csa-miR-281         23  aaugagagagcaacuccau  5 
+```

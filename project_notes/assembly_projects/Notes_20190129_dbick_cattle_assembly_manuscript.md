@@ -280,6 +280,55 @@ dev.off()
 png("gap_sizes_estimate_actual.png", width = 6000, height=4000)
 ggplot(gaps.filt, aes(x=Estimate, y=Actual, color=Type)) + geom_point() + geom_rug() + scale_y_log10(breaks = c(1,10,100,10000,1000000, 100000000), labels=c("1", "10", "100", "10,000", "1,000,000", "100,000,000")) + scale_x_log10(breaks=c(1,10,100,10000,1000000), labels=c("1", "10", "100", "10,000", "1,000,000")) + facet_wrap(~Type)
 dev.off()
+
+# The clipped_closed is not too different. Let's confirm first
+gaps.filt <- gaps.filt %>% mutate(Diff = Estimate - Actual)
+ks.test(gaps.filt[gaps.filt$Type == "Closed", 4], gaps.filt[gaps.filt$Type == "Clip_Closed", 4], alternative = "less")
+
+	Two-sample Kolmogorov-Smirnov test
+
+data:  gaps.filt[gaps.filt$Type == "Closed", 4] and gaps.filt[gaps.filt$Type == "Clip_Closed", 4]
+D^- = 0.085453, p-value < 2.2e-16
+alternative hypothesis: the CDF of x lies below that of y
+# The CDF of the "closed" category is less than that of the "clip_closed"
+
+# Just doing a summary
+gaps.filt %>% group_by(Type) %>% summarize(mean = mean(Diff), median = median(Diff), stdev = sd(Diff), max = max(Diff), min = min(Diff))
+# A tibble: 2 x 6
+  Type            mean median    stdev   max        min
+  <fct>          <dbl>  <int>    <dbl> <dbl>      <dbl>
+1 Clip_Closed -610412.   -175 5219532.  2940  -95049292
+2 Closed      -330952.   -100 3556711. 45095 -116417792
+
+# so the whole-chromosome gap closures are screwing up the averages. Let's try to remove them
+gaps.filt %>% group_by(Type) %>% summarize(mean = mean(Diff), median = median(Diff), stdev = sd(Diff), max = max(Diff), min = min(Diff), tot = n(), perc_5 = quantile(Diff, 0.05), n_5 = sum(Diff < perc_5))
+# A tibble: 2 x 9
+  Type            mean median    stdev   max        min   tot   perc_5   n_5
+  <fct>          <dbl>  <int>    <dbl> <dbl>      <dbl> <int>    <dbl> <int>
+1 Clip_Closed -610412.   -175 5219532.  2940  -95049292  4759 -122769    238
+2 Closed      -330952.   -100 3556711. 45095 -116417792 55813  -81832.  2791
+
+# What happens if we remove all the 99 bp gaps though?
+gaps.filt %>% filter(Estimate != 99) %>% group_by(Type) %>% summarize(mean = mean(Diff), median = median(Diff), stdev = sd(Diff), max = max(Diff), min = min(Diff), tot = n(), perc_5 = quantile(Diff, 0.05), n_5 = sum(Diff < perc_5))
+# A tibble: 2 x 9
+  Type            mean median    stdev   max       min   tot  perc_5   n_5
+  <fct>          <dbl>  <dbl>    <dbl> <dbl>     <dbl> <int>   <dbl> <int>
+1 Clip_Closed -256810.     54 3212543.  2940 -79785571  1536 -21860     77
+2 Closed       -30412.     71 1187512. 45095 -96150608 23925  -7658.  119
+
+# OK, so most of the problem was in the 99 bp, undefined gaps in UMD3. Let's plot those instead
+gaps.tamed <- gaps.filt %>% filter(Estimate != 99 & Diff > -21860)
+pdf("gap_sizes_filtered_estimate_actual.pdf", useDingbats=FALSE)
+ggplot(gaps.tamed, aes(x=Estimate, y=Actual, color=Type)) + geom_point() + geom_rug() + scale_y_log10(breaks = c(1,10,100,10000,1000000, 100000000), labels=c("1", "10", "100", "10,000", "1,000,000", "100,000,000")) + scale_x_log10(breaks=c(1,10,100,10000,1000000), labels=c("1", "10", "100", "10,000", "1,000,000"))
+dev.off()
+
+# Now for the 99bp gaps
+gaps.unknown <- gaps.filt %>% filter(Estimate == 99 & Actual < 1000000)
+
+library(scales)
+pdf("unknown_gap_fills.pdf", useDingbats=FALSE)
+ggplot(gaps.unknown, aes(x=Actual, fill=Type)) + geom_density(alpha=0.4) + scale_fill_brewer(palette="Dark2") + theme_bw() + scale_x_log10(labels = comma)
+dev.off()
 ```
 
 ## Unique sequence in the cattle assembly
@@ -437,4 +486,38 @@ scale_factors <- attributes(scale(links.trim %>% filter_all(any_vars(. >= quanti
 
 # Visual inspection of the top 5%
 scale_factors[scale_factors >= quantile(scale_factors, 0.95)]
+```
+
+#### Snakemake pipeline
+
+I'm going to try my hand at making this into a fire-and-forget pipeline. My hope is that this can run in the background and generate results as I go.
+
+First, let's make the JSON file that I need for the snakemake
+
+> Ceres: /home/derek.bickharhth/bostauruscnv/novel_seq/cddr_pipeline
+
+```bash
+# Creating the JSON file needed for the snakemake pipeline
+python3 ~/python_toolchain/snakeMake/readScrape/generateJSONForPipeline.py /beegfs/project/rumen_longread_metagenome_assembly/kiranmayee/CDDR/Additional_Holstein/ > partial_ars_ucd_1.2_list.json
+
+# OK, one flaw with snakemake -- if you specify that a config file needs a specific name, you can't override it later!
+mv partial_ars_ucd_1.2_list.json default.json
+
+# Dry run stats:
+snakemake -np -s ~/python_toolchain/snakeMake/readScrape/readScrape
+Job counts:
+        count   jobs
+        1       all
+        37      extract_reads
+        37      gen_masurca_config
+        37      run_masurca
+        112
+
+# OK, looks good! I need to make sure that all of the modules are loaded for the tasks I want to run
+module load masurca/3.3.1 samtools/1.9
+
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p short snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition}" --jobs 1000 -s ~/python_toolchain/snakeMake/readScrape/readScrape
+
+# Aw man! Looks like the masurca version of samtools collides with the newest version. I'll have to recode the snakemake to load the module each time.
+# The script and invocation works, but there are kinks I need to work out on the pipeline
 ```
