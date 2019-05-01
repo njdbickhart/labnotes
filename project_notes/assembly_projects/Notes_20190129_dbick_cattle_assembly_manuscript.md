@@ -325,6 +325,15 @@ dev.off()
 # Now for the 99bp gaps
 gaps.unknown <- gaps.filt %>% filter(Estimate == 99 & Actual < 1000000)
 
+summary(gaps.unknown)
+          Type          Estimate      Actual            Diff        
+ Clip_Closed: 3114   Min.   :99   Min.   :     0   Min.   :-984676  
+ Closed     :30867   1st Qu.:99   1st Qu.:   144   1st Qu.:  -2595  
+                     Median :99   Median :   352   Median :   -253  
+                     Mean   :99   Mean   : 15926   Mean   : -15827  
+                     3rd Qu.:99   3rd Qu.:  2694   3rd Qu.:    -45  
+                     Max.   :99   Max.   :984775   Max.   :     99
+
 library(scales)
 pdf("unknown_gap_fills.pdf", useDingbats=FALSE)
 ggplot(gaps.unknown, aes(x=Actual, fill=Type)) + geom_density(alpha=0.4) + scale_fill_brewer(palette="Dark2") + theme_bw() + scale_x_log10(labels = comma)
@@ -520,4 +529,10 @@ sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p short snakemake --cluster-con
 
 # Aw man! Looks like the masurca version of samtools collides with the newest version. I'll have to recode the snakemake to load the module each time.
 # The script and invocation works, but there are kinks I need to work out on the pipeline
+
+# OK, Masurca has another downside: the files are overwritten in the working directory so you can't run parallel jobs in the same directory
+# SnakeMake has a critical flaw in that it's super difficult to change directories and keep things working
+
+# I made modifications to point towards mash and to screen masurca contigs against the refseq 21mer dataset from the mash docs
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
 ```

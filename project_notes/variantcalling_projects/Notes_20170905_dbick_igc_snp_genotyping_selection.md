@@ -916,6 +916,56 @@ CallRate   0.9997803 -0.9995732  0.4559379  0.26455466  0.60469575  1.0000000  0
 HetRate    0.2436129 -0.2404992  0.9668845 -0.37999051 -0.38608037  0.2421091  1.0000000
 
 ggcorrplot(cor(samples[,c(3,6,7,10,11)]), hc.order=TRUE, type="upper", outline.color="white")
+```
 
+
+## Validating marker variants
+
+> pwd: F:/SharedFolders/grants/immune_gene_cluster_grant/variant_selection/Derek_57_SNP-raw/
+
+```R
+library(dplyr)
+library(ggridges)
+library(ggplot2)
+library(corrplot)
+library(RColorBrewer)
+
+data <- read.delim("Derek_57_SNP-raw.perl.tab", header=FALSE)
+
+colnames(data) <- c("PlateID", "Chip", "Well", "sample", "assay", "Genotype", "Score", "Mass", "Height", "SNR", "Resolution", "Noise")
+head(data)
+summary(data)
+head(data[data$Noise <= 0.07,])
+summary(data[data$assay == "18_62766196",])
+head(data[data$Noise <= 0.07 & data$assay == "18_62766196",])
+head(data[data$Noise >= 0.07 & data$assay == "18_62766196",])
+head(data[data$Noise >= 0.1 & data$assay == "18_62766196",])
+
+ggplot(data[data$assay == "18_62766196",], aes(x=Genotype, y=Noise)) + geom_violin()
+ggplot(data[data$assay == "18_62766196",], aes(x=Genotype, y=Score)) + geom_violin()
+summary(data[data$assay == "18_62766196" & Genotype == "",])
+summary(data[data$assay == "18_62766196" & data$Genotype == "",])
+ggplot(data[data$assay == "18_62766196",], aes(x=Genotype, y=SNR)) + geom_violin()
+summary(data[data$assay == "18_62766196",])
+
+
+print(data %>% group_by(assay) %>% summarize(mean = mean(Mass)), n=57)
+print(data %>% group_by(assay) %>% summarize(mean = mean(Mass), stdev = sd(Mass), median = median(Mass)), n=57)
+print(data %>% group_by(assay) %>% summarize(mean = mean(Noise), stdev = sd(Noise), median = median(Noise)), n=57)
+print(data %>% group_by(assay) %>% summarize(mean = mean(SNR), stdev = sd(SNR), median = median(SNR)), n=57)
+print(data %>% group_by(assay) %>% summarize(mean = mean(Resolution), stdev = sd(Resolution), median = median(Resolution)), n=57)
+
+corrplot(data[,c("Score", "Mass", "Height", "SNR", "Resolution", "Noise")])
+corrplot(cor(data[,c("Score", "Mass", "Height", "SNR", "Resolution", "Noise")]), type="upper", order="hclust", col=brewer.pal(n=8, name="RdYlBu"))
+pdf("test_corr_plot_datacats.pdf", useDingbats = FALSE)
+corrplot(cor(data[,c("Score", "Mass", "Height", "SNR", "Resolution", "Noise")]), type="upper", order="hclust", col=brewer.pal(n=8, name="RdYlBu"))
+dev.off()
+print(data %>% group_by(assay) %>% summarize(mean = mean(Height), stdev = sd(Height), median = median(Height)), n=57)
+data %>% filter(assay %in% c("18_62766196", "18_63141688")) %>% group_by(assay) %>% summarize(Score = mean(Score), Mass = mean(Mass), Height = mean(Height), SNR = mean(SNR), Resolution = mean(Resolution), Noise = mean(Noise))
+data %>% filter(assay %in% c("18_62766196", "18_63141688")) %>% group_by(assay) %>% summarize(Score = mean(Score), Mass = mean(Mass), Height = mean(Height), SNR = mean(SNR), Resolution = mean(Resolution), Noise = mean(Noise), Missing = sum(Genotype == ""))
+data %>% filter(assay %in% c("18_62766196", "18_63141688")) %>% group_by(assay) %>% summarize(Score = mean(Score), Mass = mean(Mass), Height = mean(Height), SNR = mean(SNR), Resolution = mean(Resolution), Noise = mean(Noise), Missing = sum(Genotype == "") / sum(Genotype))
+data %>% filter(assay %in% c("18_62766196", "18_63141688")) %>% group_by(assay) %>% summarize(Score = mean(Score), Mass = mean(Mass), Height = mean(Height), SNR = mean(SNR), Resolution = mean(Resolution), Noise = mean(Noise), Missing = sum(Genotype == "") / n())
+data %>% summarize(Score = mean(Score), Mass = mean(Mass), Height = mean(Height), SNR = mean(SNR), Resolution = mean(Resolution), Noise = mean(Noise), Missing = sum(Genotype == "") / n())
+data %>% filter(assay %in% c("18_62766196", "18_63141688")) %>% group_by(assay, Genotype) %>% summarize(count = n())
 
 ```

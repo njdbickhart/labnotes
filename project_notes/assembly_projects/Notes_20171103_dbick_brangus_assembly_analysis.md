@@ -824,3 +824,22 @@ for i in angus brahman arsucd; do cp $i"_jarms"/*.levels ./$i"_cnvdata"/; done
 
 for i in angus brahman arsucd; do tar -czvf $i"_cnvdata.tar.gz" $i"_cnvdata"; done
 ```
+
+## VST analysis and gene coordinate conversion
+
+I want to estimate the variance of individual copy number of a gene-by-gene basis and send a list of highly variable genes to Lloyd for analysis.
+
+I will use the Angus and Brahman individuals as an outgroup for this comparison, and calculate the Vst on each respective assembly.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/angusxbrahman/public
+
+```bash
+# Converting the gtf and NCBI files into bed files for coordinate intersections
+module load bedtools/2.25.0
+
+perl -e 'while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); @bsegs = split(/\"/, $s[8]); if($s[2] =~ /gene/){print "$s[0]\t$s[3]\t$s[4]\t$bsegs[1]\n";}}' < sire.UOA_angus_1.96.gtf | bedtools sort -i stdin > sire.UOA_angus_1.96.gene.bed
+perl -e 'while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); @bsegs = split(/\"/, $s[8]); if($s[2] =~ /gene/){print "$s[0]\t$s[3]\t$s[4]\t$bsegs[1]\n";}}' < dam.UOA_brahman_1.96.gtf | bedtools sort -i stdin > dam.UOA_brahman_1.96.gene.bed
+
+dos2unix ncbi_ars_ucd_1.2_refseq.txt
+
+```
