@@ -841,5 +841,49 @@ perl -e 'while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); @bsegs = spli
 perl -e 'while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); @bsegs = split(/\"/, $s[8]); if($s[2] =~ /gene/){print "$s[0]\t$s[3]\t$s[4]\t$bsegs[1]\n";}}' < dam.UOA_brahman_1.96.gtf | bedtools sort -i stdin > dam.UOA_brahman_1.96.gene.bed
 
 dos2unix ncbi_ars_ucd_1.2_refseq.txt
+perl -e '<>; while(<>){chomp; @s = split(/\t/); if($s[12] eq "" || $s[13] eq ""){next;} print "$s[10]\t$s[12]\t$s[13]\t$s[5]\n";}' < ncbi_ars_ucd_1.2_refseq.txt | bedtools sort -i stdin > ncbi_ars_ucd_1.2_refseq.bed
 
+module load java/1.8.0_121
+
+```
+
+And here is the script I'm using to call the variants.
+
+```bash
+#!/usr/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=2
+#SBATCH --mem=10000
+#SBATCH -p msn
+# $1 = type
+# $2 = annotation_db file
+# $3 = output basename
+
+lumpy=${1}"_lumpy"
+jarms=${1}"_jarms"
+
+cndata=${1}".cnlist"
+cnvs=${1}".cnvs"
+
+# Process bedpe file
+for i in `ls $lumpy/*.bedpe`
+do
+        grep -v 'BND' $i | perl -e '<>; while(<>){chomp; @s = split(/\t/); print "$s[0]\t$s[1]\t$s[5]\n";' > $i.bed
+        python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f $i -c 10 -d '\t' > $i.stats
+done
+
+# Create cnv and cn lists
+for i in `ls $lumpy/*.bed`
+do
+        sample=`basename $i | cut -d'.' -f1`
+        echo -e "$i\t$sample"
+done > $cnvs
+
+for i in `ls $jarms/*.bed`
+do
+        sample=`basename $i | cut -d'.' -f1`
+        echo -e "$i\t$sample"
+done > $cndata
+
+java -Xmx10g -jar ~/rumen_longread_metagenome_assembly/binaries/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d $2 -i $cnvs -c $cndata -o $3 -t
 ```

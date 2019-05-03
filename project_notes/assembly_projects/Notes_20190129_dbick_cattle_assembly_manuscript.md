@@ -535,4 +535,12 @@ sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p short snakemake --cluster-con
 
 # I made modifications to point towards mash and to screen masurca contigs against the refseq 21mer dataset from the mash docs
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
+
+
+# OK, Masurca crashed and burned primarily because it was a hot mess. I am rewriting to use spades instead
+# I also noticed that the previous json only included single read bams! I'm not sure why Kiranmayee generated these files...
+python3 ~/python_toolchain/snakeMake/readScrape/scripts/generateJSONForPipeline.py /beegfs/project/rumen_longread_metagenome_assembly/kiranmayee/CDDR/iwf_prioritized_bulls_arsucdv14_bams/aligns_v1.2/  > test.json
+mv test.json ./default.json
+
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
 ```
