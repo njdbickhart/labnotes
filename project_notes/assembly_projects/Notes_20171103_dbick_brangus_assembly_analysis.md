@@ -843,8 +843,14 @@ perl -e 'while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); @bsegs = spli
 dos2unix ncbi_ars_ucd_1.2_refseq.txt
 perl -e '<>; while(<>){chomp; @s = split(/\t/); if($s[12] eq "" || $s[13] eq ""){next;} print "$s[10]\t$s[12]\t$s[13]\t$s[5]\n";}' < ncbi_ars_ucd_1.2_refseq.txt | bedtools sort -i stdin > ncbi_ars_ucd_1.2_refseq.bed
 
-module load java/1.8.0_121
+echo -e 'dam.UOA_brahman_1.96.gene.bed\tensembl' > dam.UOA_brahman_1.96.gene.list
+echo -e 'sire.UOA_angus_1.96.gene.bed\tensembl' > sire.UOA_angus_1.96.gene.list
+echo -e 'ncbi_ars_ucd_1.2_refseq.bed\trefseq' > ncbi_ars_ucd_1.2_refseq.list
 
+module load java/1.8.0_121
+sbatch annotateScript.sh angus sire.UOA_angus_1.96.gene.list angus.cnvrs
+sbatch annotateScript.sh brahman dam.UOA_brahman_1.96.gene.list brahman.cnvrs
+sbatch annotateScript.sh arsucd ncbi_ars_ucd_1.2_refseq.list arsucd.cnvrs
 ```
 
 And here is the script I'm using to call the variants.
