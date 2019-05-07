@@ -851,6 +851,15 @@ module load java/1.8.0_121
 sbatch annotateScript.sh angus sire.UOA_angus_1.96.gene.list angus.cnvrs
 sbatch annotateScript.sh brahman dam.UOA_brahman_1.96.gene.list brahman.cnvrs
 sbatch annotateScript.sh arsucd ncbi_ars_ucd_1.2_refseq.list arsucd.cnvrs
+
+head -n 1 brahman.cnvrs_windows_ensembl.tab | perl -lane 'for($x = 6; $x < scalar(@F); $x++){print "$F[$x]\t1";}' > pop_list_base.tab
+
+cp pop_list_base.tab brahman_pop_list.tab
+cp pop_list_base.tab angus_pop_list.tab
+cp pop_list_base.tab arsucd_pop_list.tab
+
+python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p brahman_pop_list.tab -c brahman.cnvrs_windows_ensembl.tab -o brahman.cnvrs_windows_vst_genes.bed
+perl calculate_vst_differences_cn.pl -c brahman.cnvrs_windows_ensembl.tab -p brahman_pop_list.tab -o brahman.vst_test.bed
 ```
 
 And here is the script I'm using to call the variants.
@@ -885,7 +894,7 @@ do
         echo -e "$i\t$sample"
 done > $cnvs
 
-for i in `ls $jarms/*.bed`
+for i in `ls $jarms/*.bed.levels`
 do
         sample=`basename $i | cut -d'.' -f1`
         echo -e "$i\t$sample"
