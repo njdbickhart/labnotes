@@ -543,4 +543,14 @@ python3 ~/python_toolchain/snakeMake/readScrape/scripts/generateJSONForPipeline.
 mv test.json ./default.json
 
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
+
+# The assemblies worked, but Mash screen is too low-grain for this pipeline. I'd have to mash screen each contig and that's too cumbersome.
+# I'm going to use the centrifuge kraken output style for filtering.
+
+# I think I found a workaround for getting cattle into their 'h+b+v' master file
+~/rumen_longread_metagenome_assembly/binaries/centrifuge/centrifuge-download -o taxonomy taxonomy
+~/rumen_longread_metagenome_assembly/binaries/centrifuge/centrifuge-download -o library -d "vertebrate_mammalian" -a "Chromosome" -t 9913 -c 'representative genome' refseq >> seqid2taxid.map
+
+# Damn, I'm going to have to build this from scratch because I don't have the fasta sequence of the reads
+sbatch process_centrifuge_db.sh
 ```

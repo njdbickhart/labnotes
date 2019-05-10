@@ -860,6 +860,32 @@ cp pop_list_base.tab arsucd_pop_list.tab
 
 python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p brahman_pop_list.tab -c brahman.cnvrs_windows_ensembl.tab -o brahman.cnvrs_windows_vst_genes.bed
 perl calculate_vst_differences_cn.pl -c brahman.cnvrs_windows_ensembl.tab -p brahman_pop_list.tab -o brahman.vst_test.bed
+
+# I just updated the script to print out a melted file for plotting VST stats
+# I also added a minimum filter for differences in CN count between averages
+python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p brahman_pop_list.tab -c brahman.cnvrs_windows_ensembl.tab -o brahman.cnvrs_windows_vst_genes.bed -m brahman.cnvrs_windows_vst_genes.melt -g 1.5
+
+python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p angus_pop_list.tab -c angus.cnvrs_windows_ensembl.tab -o angus.cnvrs_windows_vst_genes.bed -m angus.cnvrs_windows_vst_genes.melt -g 1.0
+Melt    ENSBIXG00000012150      0.21302147685415118     2.8504814814814807
+Melt    ENSBIXG00000001131      0.22260541603045392     4.582777777777775
+Dealt with 805 null fields
+
+python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p arsucd_pop_list.tab -c arsucd.cnvrs_windows_refseq.tab -o arsucd.cnvrs_windows_vst_genes.bed -m arsucd.cnvrs_windows_vst_genes.melt -g 1.0
+Melt    LOC112444932    0.25849345715440125     7.64288
+Melt    LOC112444962    0.3087315274489216      10.855250909090909
+Melt    LOC783362       0.4513821996097366      2.614326599326601
+Melt    LOC112445156    0.40810151414518686     3.878969696969696
+Melt    LOC112445196    0.3437332492268294      3.1218956228956225
+Melt    TACR1   0.3711020323483955      1.1097407407407403
+Melt    PPM1B   0.2389241763285037      1.3348316498316501
+Melt    LOC100848847    0.28723153448177546     2.887454545454545
+Melt    LOC781990       0.4349602508760344      1.3241548821548819
+Melt    LOC112441660    0.4062663573458778      1.2487272727272725
+Melt    LOC112442670    0.21099051517668033     1.3915999999999995
+Melt    GALNT3  0.3525093476571583      1.0180290909090908
+Melt    LOC112448013    0.33571454830575703     1.3718145454545456
+Melt    TM2D3   0.3619254154831361      2.2063272727272722
+Dealt with 13 null fields
 ```
 
 And here is the script I'm using to call the variants.
@@ -901,4 +927,105 @@ do
 done > $cndata
 
 java -Xmx10g -jar ~/rumen_longread_metagenome_assembly/binaries/AnnotateUsingGenomicInfo/store/AnnotateUsingGenomicInfo.jar -d $2 -i $cnvs -c $cndata -o $3 -t
+```
+
+Now let's plot some of the VST-melted data.
+
+> F:/SharedFolders/brangus_assembly/vst_analysis
+
+```R
+setwd("F:/SharedFolders/brangus_assembly/vst_analysis/")
+library(ggplot2)
+library(dplyr)
+library(readr)
+angusasm <- read.delim("angus.cnvrs_windows_vst_genes.melt", header=TRUE, sep = "\t")
+angusasm$Pop <- as.factor(angusasm$Pop)
+ggplot(angusasm, aes(y=CN, x=Gene, fill=Pop)) + geom_boxplot() + scale_fill_brewer(palette="Dark2") + theme_bw() + coord_flip() + geom_dotplot(binaxis='y', stackdir='center', position=position_dodge(0.75)) + labs(title="Angus ASM Angus WGS CN differences", x="Gene (Vst)", y="Copy Number")
+dev.copy2pdf(file="angus_asm_top_vst_genes.pdf", useDingbats=FALSE)
+
+brahmanasm <- read.delim("brahman.cnvrs_windows_vst_genes.melt", header=TRUE, sep="\t")
+brahmanasm$Pop <- as.factor(brahmanasm$Pop)
+ggplot(brahmanasm, aes(y=CN, x=Gene, fill=Pop)) + geom_boxplot() + scale_fill_brewer(palette="Dark2") + theme_bw() + coord_flip() + geom_dotplot(binaxis='y', stackdir='center', position=position_dodge(0.75), dotsize=0.25) + labs(title="Brahman ASM Brahman WGS CN differences", x="Gene (Vst)", y="Copy Number"
+dev.copy2pdf(file="brahman_asm_top_vst_genes.pdf", useDingbats=FALSE)
+
+arsucd <- read.delim("arsucd.cnvrs_windows_vst_genes.melt", header=TRUE, sep="\t")
+arsucd$Pop <- as.factor(arsucd$Pop)
+ggplot(arsucd, aes(y=CN, x=Gene, fill=Pop)) + geom_boxplot() + scale_fill_brewer(palette="Dark2") + theme_bw() + coord_flip() + geom_dotplot(binaxis='y', stackdir='center', position=position_dodge(0.75), dotsize=0.25) + labs(title="ARSUCD1.2 ASM Brahman and Angus WGS CN differences", x="Gene (Vst)", y="Copy Number")
+dev.copy2pdf(file="arsucd_asm_top_vst_genes.pdf", useDingbats=FALSE)
+
+# Now to calculate the stats on the larger datasets
+# Angus first
+data <- read.delim("angus.cnvrs_windows_vst_genes.bed", header=FALSE)
+colnames(data) <- c("chr", "start", "end", "Vst", "Gene")
+data <- data %>% mutate(Len = end - start)
+data <- data %>% mutate(Outlier = ifelse(Vst > 0.35, as.character(Gene), ""))
+ggplot(data, aes(x=chr, y=Vst, color=Vst)) + geom_jitter() + scale_color_gradient(low="blue", high="red") + theme_bw() + geom_text(aes(label=Outlier), na.rm = TRUE, hjust = -0.3, size = 1.5) + labs(title="Angus ASM Vst Gene distribution", x="Chromosome", y="Vst")
+dev.copy2pdf(file="angus_chr_vst_plot.pdf", useDingbats=FALSE)
+
+write_tsv(print(data %>% group_by(chr) %>% summarize(numGenes = n(), geneLen10 = quantile(Len, 0.1), geneLenAvg = mean(Len), geneLen90 = quantile(Len, 0.9), VstAvg = mean(Vst), VstStd = sd(Vst), VstMax = max(Vst)), n = Inf), path="angus_vst_summary_stats.tab", quote_escape="none")
+
+# Now Brahman
+data <- read.delim("brahman.cnvrs_windows_vst_genes.bed", header=FALSE)
+colnames(data) <- c("chr", "start", "end", "Vst", "Gene")
+data <- data %>% mutate(Len = end - start, Outlier = ifelse(Vst > 0.5, as.character(Gene), ""))
+ggplot(data, aes(x=chr, y=Vst, color=Vst)) + geom_jitter() + scale_color_gradient(low="blue", high="red") + theme_bw() + geom_text(aes(label=Outlier), na.rm = TRUE, hjust = -0.3, size = 1.5) + labs(title="Brahman ASM Vst Gene distribution", x="Chromosome", y="Vst")
+dev.copy2pdf(file="brahman_chr_vst_plot.pdf", useDingbats=FALSE)
+
+write_tsv(print(data %>% group_by(chr) %>% summarize(numGenes = n(), geneLen10 = quantile(Len, 0.1), geneLenAvg = mean(Len), geneLen90 = quantile(Len, 0.9), VstAvg = mean(Vst), VstStd = sd(Vst), VstMax = max(Vst)), n = Inf), path="brahman_vst_summary_stats.tab", quote_escape="none")
+
+# Finally, ARS-UCD
+data <- read.delim("arsucd.cnvrs_windows_vst_genes.bed", header=FALSE)
+colnames(data) <- c("chr", "start", "end", "Vst", "Gene")
+data <- data %>% mutate(Len = end - start, Outlier = ifelse(Vst > 0.3, as.character(Gene), ""))
+ggplot(data, aes(x=chr, y=Vst, color=Vst)) + geom_jitter() + scale_color_gradient(low="blue", high="red") + theme_bw() + geom_text(aes(label=Outlier), na.rm = TRUE, position = position_dodge(width = 0.5), hjust = -0.2, size = 1.5) + labs(title="ARSUCD ASM Vst Gene distribution", x="Chromosome", y="Vst")
+dev.copy2pdf(file="arsucd_chr_vst_plot.pdf", useDingbats=FALSE)
+
+write_tsv(print(data %>% group_by(chr) %>% summarize(numGenes = n(), geneLen10 = quantile(Len, 0.1), geneLenAvg = mean(Len), geneLen90 = quantile(Len, 0.9), VstAvg = mean(Vst), VstStd = sd(Vst), VstMax = max(Vst)), n = Inf), path="arsucd_vst_summary_stats.tab", quote_escape="none")
+```
+
+For future reference, here are the liftover chain file creation scripts we're going to use for the analysis:
+
+```bash
+#!/usr/bin/sh
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --mem=100000
+
+#$1 = reference fasta
+#$2 = query fasta
+
+
+workdir=/mnt/nfs/nfs2/bickhart-users/cattle_asms/liftovers/
+minimap=/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2
+converter=/mnt/nfs/nfs2/bickhart-users/binaries/fusioncatcher/bin/sam2psl.py
+liftup=/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/liftUp
+
+name1=`basename $1 | cut -d'.' -f1`
+name2=`basename $2 | cut -d'.' -f1`
+lftfile=${workdir}/${name2}.lft
+
+
+$minimap -k 19 -w 19 -d $1.mmi $1
+
+
+echo "aligning ${name2} to ${name1}"
+
+$minimap -ax asm5 $1 $2 > ${workdir}/${name2}_to_${name1}.sam
+
+echo "converting sam to psl"
+
+python $converter -i ${workdir}/${name2}_to_${name1}.sam -o ${workdir}/${name2}_to_${name1}_mmap.psl
+
+
+
+echo "done aligning"
+
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/axtChain -linearGap=medium -psl liftovers/ARS-UCDv14_to_ARS-UCDv1.2.psl /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/ARS-UCD1.2.PlusY.fa.2bit liftovers/ARS-UCDv14_to_ARS-UCDv1.2.chain
+
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/chainSort liftovers/ARS-UCDv14_to_ARS-UCDv1.2.chain liftovers/ARS-UCDv14_to_ARS-UCDv1.2.sorted.chain
+
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/chainNet liftovers/ARS-UCDv14_to_ARS-UCDv1.2.sorted.chain /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit.info /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/ARS-UCD1.2.PlusY.fa.2bit.info liftovers/ARS-UCDv14_to_ARS-UCDv1.2.net /dev/null
+
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/netChainSubset liftovers/ARS-UCDv14_to_ARS-UCDv1.2.net liftovers/ARS-UCDv14_to_ARS-UCDv1.2.sorted.chain liftovers/ARS-UCDv14_to_ARS-UCDv1.2.liftover.chain
+
 ```
