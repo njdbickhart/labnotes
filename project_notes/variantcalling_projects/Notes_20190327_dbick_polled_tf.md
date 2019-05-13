@@ -59,3 +59,6 @@ UserSeq             38  aaugacagugcaacucaau  56
                         ||||| || ||||||| ||
 csa-miR-281         23  aaugagagagcaacuccau  5 
 ```
+
+
+Check lncRNA Cs1-orf62-as1 binding to RXFP2

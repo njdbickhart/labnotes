@@ -151,3 +151,29 @@ bwa mem clover_hen_postcor/clover_hen_postcor.contigs.fasta ssr_marker_est.fasta
 # Now to turn this into a human-readable format using one of my scripts
 echo -e "Marker\tSamFlag\tContig\tStart\tAlignEnd\tAlignLen\tMappingQual" > ssr_marker_est.clover_hen_postcor.tab; perl /home/derek.bickharhth/rumen_longread_metagenome_assembly/binaries/perl_toolchain/sequence_data_scripts/BriefSamOutFormat.pl -s ssr_marker_est.clover_hen_postcor.sam >> ssr_marker_est.clover_hen_postcor.tab
 ```
+
+## Second-round draft assembly
+
+OK, we've generated about 30 Gigabases of more data and I think we're ready to try to polish the assembly again. I'll try two assembly approaches: 1. the normal Canu run and 2. the post-correct Canu run.
+
+#### Unpacking the data and modifying it
+
+> Ceres:
+
+```bash
+tar -xvf Clover.tar.gz
+sbatch --nodes=1 --ntasks-per-node=1 --mem=2000 -p msn --wrap="tar -xvf Clover2.tar.gz"
+sbatch --nodes=1 --mem=2000 --ntasks-per-node=1 -p msn --wrap="tar -xvf CloverB.tar.gz"
+
+mkdir clover12_fastqs
+mv Clover/20190508_2255_GA10000_FAK10494_8301799c/fastq_pass/*.fastq ./clover12_fastqs/
+```
+
+## Nanopolish
+
+I was able to install nanopolish in my home directory on Ceres. It looks like it requires allot of information that wasn't saved from our previous runs (or was a pain to save!), so I will limit my polishing to the three new cells (~30 gigabases) we just produced for Clover. 
+
+```bash
+module load hdf5/1.8.19 eigen/3.2.6
+
+```
