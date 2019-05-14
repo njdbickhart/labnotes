@@ -158,7 +158,7 @@ OK, we've generated about 30 Gigabases of more data and I think we're ready to t
 
 #### Unpacking the data and modifying it
 
-> Ceres:
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano
 
 ```bash
 tar -xvf Clover.tar.gz
@@ -167,7 +167,105 @@ sbatch --nodes=1 --mem=2000 --ntasks-per-node=1 -p msn --wrap="tar -xvf CloverB.
 
 mkdir clover12_fastqs
 mv Clover/20190508_2255_GA10000_FAK10494_8301799c/fastq_pass/*.fastq ./clover12_fastqs/
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn --wrap="mkdir clover13_fastqs; mv Clover2/*/fastq_pass/*.fastq ./clover13_fastqs/"
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn --wrap="mkdir clover14_fastqs; mv CloverB/*/fastq_pass/*.fastq ./clover14_fastqs/"
+
+# Mash sketching
+for i in `seq 1 14`; do name=clover${i}_fastqs; echo $name; cat clover${i}_fastqs/*.fastq > clover${i}_fastqs/clover${i}.combined.fastq; done
+for i in `seq 1 14`; do name=clover${i}_fastqs; echo $name; sbatch --nodes=1 --mem=10000 --ntasks-per-node=4 -p short --wrap="~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash sketch -o clover${i}.msh -p 4 -s 100000 -r -m 4 -g 420M $name/clover${i}.combined.fastq"; done
+~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash paste clover_combined clover10.msh clover11.msh clover12.msh clover13.msh clover14.msh clover1.msh clover2.msh clover3.msh clover4.msh clover5.msh clover6.msh clover7.msh clover8.msh clover9.msh
+~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash dist -t clover_combined.msh clover10.msh clover11.msh clover12.msh clover13.msh clover14.msh clover1.msh clover2.msh clover3.msh clover4.msh clover5.msh clover6.msh clover7.msh clover8.msh clover9.msh > clover_combined.dist
+
+perl -ne '$_ =~ s/(clover\d+)_fastqs\/clover\d+\.combined\.fastq/$1/g; print $_;' < clover_combined.dist > clover_combined.rfmt.dist
+
+for i in 12 13 14; do perl -e 'chomp(@ARGV); open(IN, $ARGV[0]); while(<IN>){$s = <IN>; chomp($s); print "$ARGV[1]\t" . length($s) . "\n"; <IN>; <IN>;} close IN;' clover${i}_fastqs/clover${i}.combined.fastq $i; done > clover_read_lengths.new.tab
+
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f clover_read_lengths.new.tab -c 0 -d '\t' -m
+
+perl -e '$h = <>; @s = split(/\s+/, $h); print join("\t", @s) . "\n"; %d; while($t = <>){chomp($t); @s = split(/\s+/, $t); shift(@s); $d{$s[0]} = [$s[1], $s[2]];} foreach my $f (sort {$a <=> $b} keys(%d)){print "$f\t" . join("\t", @{$d{$f}}) . "\n";}' < read_count_summary.tab > read_count_summary.sorted.tab
 ```
+
+|Entry |   Value|
+|:-----|-------:|
+|14    | 1007247|
+|13    |  781812|
+|12    |  746246|
+
+Now to plot the summary statistics to share with collaborators.
+
+```R
+library(dplyr)
+library(ggplot2)
+library(reshape)
+dist <- read.delim("clover_combined.rfmt.dist", header=TRUE)
+rownames(dist) <- dist$X.query
+dist <- dist[, c(2:15)]
+dist.m <- melt(as.matrix(dist))
+
+pdf(file="clover_dataset_distance_heatmap.pdf", useDingbats=FALSE)
+ggplot(dist.m, aes(X1, X2)) + geom_tile(aes(fill=value), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue") + labs(title = "Clover Dataset Mash Distances")
+dev.off()
+
+reads <- read.delim("clover_read_lengths.tab", header=FALSE)
+colnames(reads) <- c("Flowcell", "ReadLen")
+
+library(gridExtra)
+library(ggridges)
+library(viridis)
+pdf("clover_read_distribution.pdf")
+ggplot(reads, aes(x=ReadLen, y=Flowcell, fill=..x..)) + geom_density_ridges_gradient(scale=3, rel_min_height = 0.01) + scale_fill_viridis(name = "Read Length (bp)", option= "C") + labs(title= "Read Length Density per Flowcell") + xlim(0, 50000)
+dev.off()
+
+cbar <- ggplot(read.counts, aes(x=Flowcell, y=count)) + geom_bar(stat="identity", color="blue", fill="white") + labs(title = "A. Read counts per flowcell", ylab="Number of Reads")
+bbar <- ggplot(read.counts, aes(x=Flowcell, y=bases)) + geom_bar(stat="identity", color="red", fill="white") + labs(title = "B. Base pair counts per flowcell", ylab="Sum of DNA bases (bp)", xlab = "Flowcells (in numerical order)")
+pdf("read_length_bases_barchart.pdf")
+grid.arrange(cbar, bbar, nrow=2)
+dev.off()
+
+new <- read.delim("clover_read_lengths.new.tab", header=FALSE)
+colnames(new) <- c("Flowcell", "ReadLen")
+
+reads <- reads %>% mutate(Tag = "Old")
+new <- new %>% mutate(Tag = "New")
+new$Flowcell <- as.factor(new$Flowcell)
+
+
+rcombine <- bind_rows(reads, new)
+rcombine$Flowcell <- as.factor(rcombine$Flowcell)
+rcombine$Tag <- as.factor(rcombine$Tag)
+
+pdf("clover_read_dist_new.pdf", useDingbats=FALSE)
+ggplot(rcombine, aes(x=ReadLen, y=Flowcell, fill=..x..)) + geom_density_ridges_gradient(scale=3, rel_min_height = 0.01) + scale_fill_viridis(name = "Read Length (bp)", option= "C") + scale_x_log10() + labs(title= "Read Length Density per Flowcell")
+dev.off()
+
+read.counts <- group_by(reads, Flowcell) %>% summarize(count = n(), bases = sum(as.numeric(ReadLen)))
+rcombine.counts <- group_by(reads, Flowcell) %>% summarize(count = n(), bases = sum(as.numeric(ReadLen)))
+
+sorted <- read.delim("read_count_summary.sorted.tab", header=TRUE)
+sorted$Tag <- c(rep("Old", 11), rep("New", 3))
+sorted$Flowcell <- as.factor(sorted$Flowcell)
+sorted$Tag <- as.factor(sorted$Tag)
+
+cbar <- ggplot(sorted, aes(x=Flowcell, y=count, fill=Tag)) + geom_bar(stat="identity", color="blue") + labs(title = "A. Read counts per flowcell", ylab="Number of Reads") + scale_fill_manual(values=c("blue", "white"))
+bbar <- ggplot(sorted, aes(x=Flowcell, y=bases, fill=Tag)) + geom_bar(stat="identity", color="red") + labs(title = "B. Base pair counts per flowcell", ylab="Sum of DNA bases (bp)", xlab = "Flowcells (in numerical order)") + scale_fill_manual(values=c("red", "white"))
+pdf("clover_new_read_distribution.pdf", useDingbats=FALSE)
+
+```
+
+#### The assembly
+
+```bash
+module load canu/1.8 java/64/1.8.0_121
+
+### De novo, no-pre correct
+sbatch --nodes=1 --ntasks-per-node=30 --mem=75G -p msn --wrap="canu -p clover_no_pre -d clover_no_pre genomeSize=420m correctedErrorRate=0.120 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn' -nanopore-raw ./*/*.fastq"
+
+### De novo, pre-correct
+sbatch --nodes=1 --ntasks-per-node=10 --mem=10G -p short --wrap="canu -correct -p clover_pre -d clover_pre genomeSize=420m corMhapSensitivity=high corMinCoverage=0 corOutCoverage=100 saveReadCorrections=true 'gridOptions=-p msn' -nanopore-raw ./*/*combined.fastq"
+
+sbatch --dependency=afterok:651477 --nodes=1 --ntasks-per-node=30 --mem=75G -p msn --wrap="canu -p clover_correct -d clover_correct genomeSize=420m correctedErrorRate=0.120 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn' -nanopore-raw clover_pre/clover_pre.correctedReads.fasta.gz"
+```
+
 
 ## Nanopolish
 
