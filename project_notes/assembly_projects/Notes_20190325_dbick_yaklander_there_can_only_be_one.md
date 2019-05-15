@@ -30,4 +30,8 @@ OK, now that everything is ready, let's queue up RepeatMasker and generate the f
 module unload perl/5.24.1
 sbatch --nodes=1 --mem=40000 --ntasks-per-node=25 -p medium --wrap="/beegfs/project/rumen_longread_metagenome_assembly/binaries/RepeatMasker/RepeatMasker -pa 25 -q -species cow -no_is -gff yaklander.dam.gapfilled.arrow2.fasta"
 sbatch --nodes=1 --mem=40000 --ntasks-per-node=25 -p medium --wrap="/beegfs/project/rumen_longread_metagenome_assembly/binaries/RepeatMasker/RepeatMasker -pa 25 -q -species cow -no_is -gff yaklander.sire.gapfilled.arrow2.fasta"
+
+# I've combined the gap and repeat analysis into one rolling script
+sbatch generate_repeat_counts.sh yaklander.dam.gapfilled.arrow2.fasta yakdam ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
+sbatch generate_repeat_counts.sh yaklander.sire.gapfilled.arrow2.fasta yaksire ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
 ```

@@ -553,4 +553,7 @@ sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake --cluster-confi
 
 # Damn, I'm going to have to build this from scratch because I don't have the fasta sequence of the reads
 sbatch process_centrifuge_db.sh
+rm input-sequences.fna
+
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -o {cluster.stdout}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
 ```
