@@ -62,3 +62,27 @@ csa-miR-281         23  aaugagagagcaacuccau  5
 
 
 Check lncRNA Cs1-orf62-as1 binding to RXFP2
+
+OK, let's convert the coordinates to ARS-UCDv1.2 so that I have a good baseline to start with.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms
+
+```bash
+/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/liftOver polled_loci.bed liftovers/UMD3.11_to_ARS-UCD1.2/umd3_kary_unmask_ngap_to_ARS-UCD1.2.mmap.liftover.chain polled_loci.ars-ucd.bed polled_loci.ars-ucd.unmapped
+
+```
+
+#### Coordinates
+
+| Locus | UMD3 coords | ARS-UCDv1.2 coords|
+| :--- | :--- | :--- |
+| Celtic| chr1:1705834-1706045 | NKLS02000001.1:2429109-2429320|
+| Mongolian | chr1:1974983-1978220 | NKLS02000001.1:2694744-2697981 |
+| RXFP2 | chr12:29234118-29294783 | NKLS02000012.1:29212314-29274747 |
+
+Let's look for lncRNA within the celtic and mongolian regions using the [LGC](http://bigd.big.ac.cn/lgc/calculator) database.
+
+```bash
+module load samtools
+samtools faidx ncbi/ARS-UCD1.2.PlusY.fa NKLS02000001.1:2429109-2697981 > celtic_mongolian_loci.fa
+```
