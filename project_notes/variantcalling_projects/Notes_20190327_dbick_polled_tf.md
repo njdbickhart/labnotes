@@ -86,3 +86,86 @@ Let's look for lncRNA within the celtic and mongolian regions using the [LGC](ht
 module load samtools
 samtools faidx ncbi/ARS-UCD1.2.PlusY.fa NKLS02000001.1:2429109-2697981 > celtic_mongolian_loci.fa
 ```
+
+The LGC database does not output coordinates or sequence. I had to blast through an R package to try to find the sequence.
+
+> pwd: F:/SharedFolders/side_projects/tad_polledTF/
+
+```R
+library("LncFinder")
+library(seqinr)
+
+celtic <- read.fasta("celtic_mongolian_loci.fa")
+result_1 <- LncFinder::lnc_finder(celtic)
+
+result_1
+                                 Pred Coding.Potential ORF.Max.Len ORF.Max.Cov Seq.lnc.Dist Seq.pct.Dist
+NKLS02000001.1:2429109-2697981 Coding        0.8650677        1122 0.004172974    -8.170863    -7.130609
+                               Seq.Dist.Ratio Signal.Peak        SNR Signal.Min Signal.Q1 Signal.Q2 Signal.Max
+NKLS02000001.1:2429109-2697981       1.145886    160.4746 0.04058561   285.6901  322.7192  377.0941   12555.11
+
+# Psh, what is up with these LncRNA predicting programs? Sure, there's something here, but we're not going to tell you where!
+
+# This found the sequence:
+find_orfs(celtic)
+```
+
+OK, now that we have the LncRNA sequence, let's check to see how it aligns to ARS-UCDv1.2
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/dominette
+
+```bash
+module load minimap2
+minimap2 -x asm5 ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa just_testing.fa > just_testing.paf
+
+
+celticLncRNA    1122    7       992     +       1       158534110       2638171 2639156 243     985     36      tp:A:P  cm:i:17 s1:i:243        s2:i:41   dv:f:0.0030     rl:i:968
+flanking        85      36      81      +       12      87216183        29212939        29212984        45      45      5       tp:A:P  cm:i:3  s1:i:45   s2:i:0  dv:f:0.0269     rl:i:0  <- this is the flanking sequence I aligned above
+```
+
+This is unexpected, as I thought the insertion sequence site should have been on chr1 because of the mongolian locus. Let's try to get the exact coordinates again from the UMD3 reference using minimap.
+
+```bash
+minimap2 -x asm5 repeatmasker/umd3_reference_genome.fasta just_testing.fa > just_testing.umd.paf
+celticLncRNA    1122    7       992     +       Chr1    158337067       1918410 1919395 243     985     36      tp:A:P  cm:i:17 s1:i:243        s2:i:41   dv:f:0.0030     rl:i:968
+flanking        85      36      81      +       Chr12   91163125        29234743        29234788        45      45      5       tp:A:P  cm:i:3  s1:i:45   s2:i:0  dv:f:0.0269     rl:i:0
+```
+
+It's the same. Ah, I see now! The flanking sequence that Tad gave me was from the 5' UTR of cattle RXFP2 and that sheep has a 1.8 kb insertion in that region. Let's see if we can "sheepize" the cattle UTR and see if there are any lncRNA binding sites or other anomalies we can find. 
+
+First, align to the **sheep** to see if its there.
+
+```bash
+minimap2 -x asm5 GCA_000298735.2_Oar_v4.0_genomic.fna ../dominette/just_testing.fa > align_to_sheep.paf
+
+cat align_to_sheep.paf
+flanking        85      36      81      +       CM001591.2      86377204        29434912        29434957        45      45      5       tp:A:P  cm:i:3    s1:i:45 s2:i:0  dv:f:0.0269     rl:i:0  <- sheep chr10
+
+samtools faidx GCA_000298735.2_Oar_v4.0_genomic.fna CM001591.2:29433000-29434957
+# This is pretty much the region! 
+
+# finding the location of the mir site:
+perl -e '<>; $s = ""; while(<>){chomp; $s .= uc($_);} $s =~ /AAAACCTTCAGAAGGAAAGGA/; print $-[0] . "\n";' < sheep_region.fa
+1729  <- that means that it is at chr10:29434729-29434749
+```
+
+Running the region through mirbase (piece by piece because of the 1000 bp limit on queries), I found the following miRNA species with very high identities:
+
+```
+Query: 830-850 eca-miR-703: 1-21 score: 105 evalue: 0.013
+UserSeq            830  aaaaccuucagaaggaaagga  850 
+                        |||||||||||||||||||||
+eca-miR-703          1  aaaaccuucagaaggaaagga  21  
+Query: 830-850 mmu-miR-703: 1-21 score: 96 evalue: 0.075
+UserSeq            830  aaaaccuucagaaggaaagga  850 
+                        ||||||||||||||||||| |
+mmu-miR-703          1  aaaaccuucagaaggaaagaa  21  
+
+...
+Query: 984-1001 bta-miR-2325c: 3-20 score: 72 evalue: 7.4
+UserSeq            984  gaaaaaaaaaaaaaaaaa  1001
+                        |||||| |||||||| ||
+bta-miR-2325c       20  gaaaaagaaaaaaaacaa  3   
+
+# A lower hit bos taurus mir gene
+```
