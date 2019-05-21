@@ -886,6 +886,12 @@ Melt    GALNT3  0.3525093476571583      1.0180290909090908
 Melt    LOC112448013    0.33571454830575703     1.3718145454545456
 Melt    TM2D3   0.3619254154831361      2.2063272727272722
 Dealt with 13 null fields
+
+# The ARS-UCD data is misbehaving because of my selection of both brahman and angus as the VST grouping. Let's make things completely consistent and use the same populations in each
+# the Brahman file will remain the same, but the Angus and ARS-UCD files will be replaced
+python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p brahman_pop_list.tab -c angus.cnvrs_windows_ensembl.tab -o angus.cnvrs_windows_vst_genes.tvi.bed -m angus.cnvrs_windows_vst_genes.tvi.melt -g 1.5
+
+python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p brahman_pop_list.tab -c arsucd.cnvrs_windows_refseq.tab -o arsucd.cnvrs_windows_vst_genes.tvi.bed -m arsucd.cnvrs_windows_vst_genes.tvi.melt -g 1.5
 ```
 
 And here is the script I'm using to call the variants.
@@ -945,7 +951,7 @@ dev.copy2pdf(file="angus_asm_top_vst_genes.pdf", useDingbats=FALSE)
 
 brahmanasm <- read.delim("brahman.cnvrs_windows_vst_genes.melt", header=TRUE, sep="\t")
 brahmanasm$Pop <- as.factor(brahmanasm$Pop)
-ggplot(brahmanasm, aes(y=CN, x=Gene, fill=Pop)) + geom_boxplot() + scale_fill_brewer(palette="Dark2") + theme_bw() + coord_flip() + geom_dotplot(binaxis='y', stackdir='center', position=position_dodge(0.75), dotsize=0.25) + labs(title="Brahman ASM Brahman WGS CN differences", x="Gene (Vst)", y="Copy Number"
+ggplot(brahmanasm, aes(y=CN, x=Gene, fill=Pop)) + geom_boxplot() + scale_fill_brewer(palette="Dark2") + theme_bw() + coord_flip() + geom_dotplot(binaxis='y', stackdir='center', position=position_dodge(0.75), dotsize=0.25) + labs(title="Brahman ASM Brahman WGS CN differences", x="Gene (Vst)", y="Copy Number")
 dev.copy2pdf(file="brahman_asm_top_vst_genes.pdf", useDingbats=FALSE)
 
 arsucd <- read.delim("arsucd.cnvrs_windows_vst_genes.melt", header=TRUE, sep="\t")
@@ -981,9 +987,42 @@ ggplot(data, aes(x=chr, y=Vst, color=Vst)) + geom_jitter() + scale_color_gradien
 dev.copy2pdf(file="arsucd_chr_vst_plot.pdf", useDingbats=FALSE)
 
 write_tsv(print(data %>% group_by(chr) %>% summarize(numGenes = n(), geneLen10 = quantile(Len, 0.1), geneLenAvg = mean(Len), geneLen90 = quantile(Len, 0.9), VstAvg = mean(Vst), VstStd = sd(Vst), VstMax = max(Vst)), n = Inf), path="arsucd_vst_summary_stats.tab", quote_escape="none")
+
+# Generating plots for the taurine vs indicine analysis
+data <- read.delim("angus.cnvrs_windows_vst_genes.tvi.bed", header=FALSE)
+colnames(data) <- c("chr", "start", "end", "Vst", "Gene")
+data <- data %>% mutate(Len = end - start, Outlier = ifelse(Vst > 0.5, as.character(Gene), ""))
+ggplot(data, aes(x=chr, y=Vst, color=Vst)) + geom_jitter() + scale_color_gradient(low="blue", high="red") + theme_bw() + geom_text(aes(label=Outlier), na.rm = TRUE, hjust = -0.3, size = 1.5) + labs(title="Angus ASM Vst Gene distribution", x="Chromosome", y="Vst")
+dev.copy2pdf(file="angus_chr_vst_plot_tvi.pdf", useDingbats=FALSE)
+
+write_tsv(print(data %>% group_by(chr) %>% summarize(numGenes = n(), geneLen10 = quantile(Len, 0.1), geneLenAvg = mean(Len), geneLen90 = quantile(Len, 0.9), VstAvg = mean(Vst), VstStd = sd(Vst), VstMax = max(Vst)), n = Inf), path="angus_vst_summary_stats_tvi.tab", quote_escape="none")
+
+
+data <- read.delim("arsucd.cnvrs_windows_vst_genes.tvi.bed", header=FALSE)
+colnames(data) <- c("chr", "start", "end", "Vst", "Gene")
+data <- data %>% mutate(Len = end - start, Outlier = ifelse(Vst > 0.5, as.character(Gene), ""))
+ggplot(data, aes(x=chr, y=Vst, color=Vst)) + geom_jitter() + scale_color_gradient(low="blue", high="red") + theme_bw() + geom_text(aes(label=Outlier), na.rm = TRUE, hjust = -0.3, size = 1.5) + labs(title="ARS-UCDv1.2 ASM Vst Gene distribution", x="Chromosome", y="Vst")
+dev.copy2pdf(file="arsucd_chr_vst_plot_tvi.pdf", useDingbats=FALSE)
+
+write_tsv(print(data %>% group_by(chr) %>% summarize(numGenes = n(), geneLen10 = quantile(Len, 0.1), geneLenAvg = mean(Len), geneLen90 = quantile(Len, 0.9), VstAvg = mean(Vst), VstStd = sd(Vst), VstMax = max(Vst)), n = Inf), path="arsucd_vst_summary_stats_tvi.tab", quote_escape="none")
+
+
+angusasm <- read.delim("angus.cnvrs_windows_vst_genes.tvi.melt", header=TRUE, sep = "\t")
+angusasm$Pop <- as.factor(angusasm$Pop)
+ggplot(angusasm, aes(y=CN, x=Gene, fill=Pop)) + geom_boxplot() + scale_fill_brewer(palette="Dark2") + theme_bw() + coord_flip() + geom_dotplot(binaxis='y', stackdir='center', position=position_dodge(0.75), dotsize=0.25) + labs(title="Angus ASM Angus WGS CN differences", x="Gene (Vst)", y="Copy Number")
+dev.copy2pdf(file="angus_asm_top_vst_genes.tvi.pdf", useDingbats=FALSE)
+
+arsucd <- read.delim("arsucd.cnvrs_windows_vst_genes.tvi.melt", header=TRUE, sep="\t")
+arsucd$Pop <- as.factor(arsucd$Pop)
+ggplot(arsucd, aes(y=CN, x=Gene, fill=Pop)) + geom_boxplot() + scale_fill_brewer(palette="Dark2") + theme_bw() + coord_flip() + geom_dotplot(binaxis='y', stackdir='center', position=position_dodge(0.75), dotsize=0.25) + labs(title="ARSUCD1.2 ASM Brahman and Angus WGS CN differences", x="Gene (Vst)", y="Copy Number")
+dev.copy2pdf(file="arsucd_asm_top_vst_genes.tvi.pdf", useDingbats=FALSE)
 ```
 
+## Coordinate liftover and CNV comparison analysis
+
 For future reference, here are the liftover chain file creation scripts we're going to use for the analysis:
+
+#### generateLiftoverChain.sh
 
 ```bash
 #!/usr/bin/sh
@@ -993,39 +1032,57 @@ For future reference, here are the liftover chain file creation scripts we're go
 
 #$1 = reference fasta
 #$2 = query fasta
+#$3 = work folder
 
+module load minimap2/2.6
 
-workdir=/mnt/nfs/nfs2/bickhart-users/cattle_asms/liftovers/
-minimap=/mnt/nfs/nfs2/bickhart-users/binaries/minimap2/minimap2
-converter=/mnt/nfs/nfs2/bickhart-users/binaries/fusioncatcher/bin/sam2psl.py
-liftup=/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/liftUp
+converter=/beegfs/project/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/sam2psl.py
+kentFolder=/beegfs/project/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/
 
 name1=`basename $1 | cut -d'.' -f1`
 name2=`basename $2 | cut -d'.' -f1`
-lftfile=${workdir}/${name2}.lft
+twoBit1=${3}/${name1}.blat.2bit
+twoBit2=${3}/${name2}.blat.2bit
 
 
-$minimap -k 19 -w 19 -d $1.mmi $1
+minimap2 -k 19 -w 19 -d $1.mmi $1
 
 
 echo "aligning ${name2} to ${name1}"
 
-$minimap -ax asm5 $1 $2 > ${workdir}/${name2}_to_${name1}.sam
+minimap2 -ax asm5 $1.mmi $2 > ${3}/${name2}_to_${name1}.sam
 
 echo "converting sam to psl"
 
-python $converter -i ${workdir}/${name2}_to_${name1}.sam -o ${workdir}/${name2}_to_${name1}_mmap.psl
-
-
+python $converter -i ${3}/${name2}_to_${name1}.sam -o ${3}/${name2}_to_${name1}_mmap.psl
 
 echo "done aligning"
 
-/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/axtChain -linearGap=medium -psl liftovers/ARS-UCDv14_to_ARS-UCDv1.2.psl /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/ARS-UCD1.2.PlusY.fa.2bit liftovers/ARS-UCDv14_to_ARS-UCDv1.2.chain
+# Generate two bit files and info
+echo "Generating TwoBit indicies"
 
-/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/chainSort liftovers/ARS-UCDv14_to_ARS-UCDv1.2.chain liftovers/ARS-UCDv14_to_ARS-UCDv1.2.sorted.chain
+${kentFolder}/faToTwoBit $1 $twoBit1
+${kentFolder}/twoBitInfo $twoBit1 ${twoBit1}.info
+${kentFolder}/faToTwoBit $2 $twoBit2
+${kentFolder}/twoBitInfo $twoBit2 ${twoBit2}.info
 
-/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/chainNet liftovers/ARS-UCDv14_to_ARS-UCDv1.2.sorted.chain /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/ARS-UCD1.0.14.clean.wIGCHaps.fasta.2bit.info /mnt/nfs/nfs2/bickhart-users/cattle_asms/ncbi/ARS-UCD1.2.PlusY.fa.2bit.info liftovers/ARS-UCDv14_to_ARS-UCDv1.2.net /dev/null
+echo "AxtChain file creation"
+${kentFolder}/axtChain -linearGap=medium -psl ${3}/${name2}_to_${name1}_mmap.psl ${twoBit2} ${twoBit1} ${3}/${name2}_to_${name1}.chain
 
-/mnt/nfs/nfs2/bickhart-users/binaries/kentUtils/bin/linux.x86_64/netChainSubset liftovers/ARS-UCDv14_to_ARS-UCDv1.2.net liftovers/ARS-UCDv14_to_ARS-UCDv1.2.sorted.chain liftovers/ARS-UCDv14_to_ARS-UCDv1.2.liftover.chain
+echo "Sorting Chain file"
+${kentFolder}/chainSort ${3}/${name2}_to_${name1}.chain ${3}/${name2}_to_${name1}.sorted.chain
 
+echo "Creating Net file"
+${kentFolder}/chainNet ${3}/${name2}_to_${name1}.sorted.chain ${twoBit2}.info ${twoBit1}.info ${3}/${name2}_to_${name1}.net /dev/null
+
+echo "Creating liftover file ${3}/${name2}_to_${name1}.liftover.chain"
+${kentFolder}/netChainSubset ${3}/${name2}_to_${name1}.net ${3}/${name2}_to_${name1}.sorted.chain ${3}/${name2}_to_${name1}.liftover.chain
+```
+
+Now to start the liftover process by generating the conversion files.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/angusxbrahman/public
+
+```bash
+mkdir liftoverChains; sbatch -p msn ~/bin/generateLiftoverChain.sh /beegfs/project/cattle_genome_assemblies/dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa /beegfs/project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta liftoverChains
 ```

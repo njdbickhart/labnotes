@@ -34,4 +34,17 @@ sbatch --nodes=1 --mem=40000 --ntasks-per-node=25 -p medium --wrap="/beegfs/proj
 # I've combined the gap and repeat analysis into one rolling script
 sbatch generate_repeat_counts.sh yaklander.dam.gapfilled.arrow2.fasta yakdam ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
 sbatch generate_repeat_counts.sh yaklander.sire.gapfilled.arrow2.fasta yaksire ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
+
+# Grrr! The "|arrow" delimiters strike again! I need to remove them 
+module load bwa samtools
+perl -e 'while(<>){if($_ =~ /^>/){$_ =~ s/\|arrow//g;} print $_;}' < yaklander.dam.gapfilled.arrow2.fasta > yaklander.dam.gapfilled.rfmt.fa
+perl -e 'while(<>){if($_ =~ /^>/){$_ =~ s/\|arrow//g;} print $_;}' < yaklander.sire.gapfilled.arrow2.fasta > yaklander.sire.gapfilled.rfmt.fa
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index yaklander.dam.gapfilled.rfmt.fa; samtools faidx yaklander.dam.gapfilled.rfmt.fa"
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index yaklander.sire.gapfilled.rfmt.fa; samtools faidx yaklander.sire.gapfilled.rfmt.fa"
+
+sbatch generate_repeat_counts.sh yaklander.dam.gapfilled.arrow2.fasta yakdam ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
+sbatch generate_repeat_counts.sh yaklander.sire.gapfilled.arrow2.fasta yaksire ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
+
+sbatch generate_repeat_counts.sh yaklander.dam.gapfilled.rfmt.fa yakdam ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
+sbatch --dependency=afterok:659870 generate_repeat_counts.sh yaklander.sire.gapfilled.rfmt.fa yaksire ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
 ```
