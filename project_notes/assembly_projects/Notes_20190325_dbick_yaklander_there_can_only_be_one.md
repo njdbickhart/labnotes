@@ -47,4 +47,14 @@ sbatch generate_repeat_counts.sh yaklander.sire.gapfilled.arrow2.fasta yaksire .
 
 sbatch generate_repeat_counts.sh yaklander.dam.gapfilled.rfmt.fa yakdam ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
 sbatch --dependency=afterok:659870 generate_repeat_counts.sh yaklander.sire.gapfilled.rfmt.fa yaksire ../dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa
+
+
+# Ack! I screwed up my script and read in the fasta file instead of the repeatmasker output!
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; $s[4] =~ s/\|arrow//g; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < yaklander.dam.gapfilled.arrow2.fasta.out > yakdam.repeat.bed
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f yakdam.repeat.bed -c 5 -d '\t' -m > yakdam.rep.count.md
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @F = split(/\t/); $F[5] =~ s/\?//g; $F[5] =~ tr/\//_/; print "$F[5]\t$F[6]\t$ARGV[1]\n";} close IN;' yakdam.repeat.bed yakdam > yakdam.repeat.lens
+
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; $s[4] =~ s/\|arrow//g; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < yaklander.sire.gapfilled.arrow2.fasta.out > yaksire.repeat.bed
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f yaksire.repeat.bed -c 5 -d '\t' -m > yaksire.rep.count.md
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @F = split(/\t/); $F[5] =~ s/\?//g; $F[5] =~ tr/\//_/; print "$F[5]\t$F[6]\t$ARGV[1]\n";} close IN;' yaksire.repeat.bed yaksire > yaksire.repeat.lens
 ```

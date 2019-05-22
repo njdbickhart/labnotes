@@ -1085,4 +1085,11 @@ Now to start the liftover process by generating the conversion files.
 
 ```bash
 mkdir liftoverChains; sbatch -p msn ~/bin/generateLiftoverChain.sh /beegfs/project/cattle_genome_assemblies/dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa /beegfs/project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta liftoverChains
+
+sbatch -p msn ~/bin/generateLiftoverChain.sh /beegfs/project/cattle_genome_assemblies/dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa /beegfs/project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta liftoverChains/
+
+# And reversed
+sbatch -p msn ~/bin/generateLiftoverChain.sh /beegfs/project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta /beegfs/project/cattle_genome_assemblies/dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa liftoverChains
+
+sbatch -p msn ~/bin/generateLiftoverChain.sh /beegfs/project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta /beegfs/project/cattle_genome_assemblies/dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa liftoverChains/
 ```

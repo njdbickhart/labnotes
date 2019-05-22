@@ -255,7 +255,7 @@ pdf("clover_new_read_distribution.pdf", useDingbats=FALSE)
 #### The assembly
 
 ```bash
-module load canu/1.8 java/64/1.8.0_121
+module load canu/1.8 java/1.8.0_121
 
 ### De novo, no-pre correct
 sbatch --nodes=1 --ntasks-per-node=30 --mem=75G -p msn --wrap="canu -p clover_no_pre -d clover_no_pre genomeSize=420m correctedErrorRate=0.120 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn' -nanopore-raw ./*/*.fastq"
@@ -263,7 +263,7 @@ sbatch --nodes=1 --ntasks-per-node=30 --mem=75G -p msn --wrap="canu -p clover_no
 ### De novo, pre-correct
 sbatch --nodes=1 --ntasks-per-node=10 --mem=10G -p short --wrap="canu -correct -p clover_pre -d clover_pre genomeSize=420m corMhapSensitivity=high corMinCoverage=0 corOutCoverage=100 saveReadCorrections=true 'gridOptions=-p msn' -nanopore-raw ./*/*combined.fastq"
 
-sbatch --dependency=afterok:651477 --nodes=1 --ntasks-per-node=30 --mem=75G -p msn --wrap="canu -p clover_correct -d clover_correct genomeSize=420m correctedErrorRate=0.120 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn' -nanopore-raw clover_pre/clover_pre.correctedReads.fasta.gz"
+sbatch --nodes=1 --ntasks-per-node=30 --mem=10G -p msn --wrap="canu -p clover_correct -d clover_correct genomeSize=420m correctedErrorRate=0.120 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn,short' -nanopore-raw clover_pre/clover_pre.correctedReads.fasta.gz"
 ```
 
 
