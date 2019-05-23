@@ -1092,4 +1092,133 @@ sbatch -p msn ~/bin/generateLiftoverChain.sh /beegfs/project/cattle_genome_assem
 sbatch -p msn ~/bin/generateLiftoverChain.sh /beegfs/project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.fasta /beegfs/project/cattle_genome_assemblies/dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa liftoverChains
 
 sbatch -p msn ~/bin/generateLiftoverChain.sh /beegfs/project/cattle_genome_assemblies/angusxbrahman/asms/bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.fasta /beegfs/project/cattle_genome_assemblies/dominette/ARS-UCD1.2_Btau5.0.1Y/ARS-UCD1.2_Btau5.0.1Y.fa liftoverChains/
+
+
+# OK, now to convert my annotation files into bed files
+ls *.cnvrs_regions.tab
+angus.cnvrs_regions.tab  arsucd.cnvrs_regions.tab  brahman.cnvrs_regions.tab
+
+for i in *.cnvrs_regions.tab; do name=`echo $i | cut -d'.' -f1`; echo $name; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); <IN>; while(<IN>){chomp; @s = split(/\t/); if($s[2] < 0 ){$s[2] = 1;} print "$s[1]\t$s[2]\t$s[3]\t$ARGV[1]\t$s[0]\t$s[4]\n";} close IN;' $i $name > $name.cnvrs_regions.bed; done
+
+~/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/liftOver angus.cnvrs_regions.bed liftoverChains/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil_to_ARS-UCD1.liftover.chain angus.cnvrs_regions.arsucd.bed angus.cnvrs_regions.arsucd.unmapped
+~/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/liftOver brahman.cnvrs_regions.bed liftoverChains/bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM_to_ARS-UCD1.liftover.chain brahman.cnvrs_regions.arsucd.bed brahman.cnvrs_regions.arsucd.unmapped
+
+```
+
+#### Results of the liftover
+
+| Assembly | StartingCNVRs | LiftedOver | Unmapped |
+| :------- | ------------: | ---------: | -------: |
+| Angus    |       1416    |    1313    |   103    |
+| Brahman  |       2147    |    2021    |   126    |
+
+Now to try to create upSet plots using the three assemblies. We're going to try a raw overlap first and see which regions are unique only to ARS-UCDv1.2. In our ideal model, homozygous SVs should be present in all three. Hets should be in ARS-UCDV1.2 and the parental assembly. SVs only in the parental genome are likely compression errors, and SVs only in ARS-UCDV1.2 are likely the same (or misassemblies!)
+
+```bash
+module load bedtools/2.25.0
+# Let's convert them all to a format that Bedtools will recognize
+
+for i in angus.cnvrs_regions.arsucd.bed brahman.cnvrs_regions.arsucd.bed arsucd.cnvrs_regions.bed; do name=`echo $i | cut -d'.' -f1`; echo $name;
+
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]";' < angus.cnvrs_regions.arsucd.bed | bedtools sort -i stdin > angus.cnvrs_regions.arsucd.sort.bed
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]";' < brahman.cnvrs_regions.arsucd.bed | bedtools sort -i stdin > brahman.cnvrs_regions.arsucd.sort.bed
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]\t$F[3]";' < arsucd.cnvrs_regions.bed | bedtools sort -i stdin > arsucd.cnvrs_regions.sort.bed
+
+cat angus.cnvrs_regions.arsucd.sort.bed brahman.cnvrs_regions.arsucd.sort.bed arsucd.cnvrs_regions.sort.bed | bedtools sort -i stdin | bedtools merge -c 4 -o collapse -delim ';' -i stdin > combined_merger.merge.bed
+
+# A couple of chromosomes have huge overlap regions. Still, let's count the naieve overlap
+perl -lane '%h = (); foreach $x (split(/\;/, $F[3])){$h{$x} = 1;} $e = join(";", sort{$a cmp $b} keys(%h)); print "$F[0]\t$F[1]\t$F[2]\t$e";' < combined_merger.merge.bed > combined_merger.merge.distinct.bed
+
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f combined_merger.merge.distinct.bed -c 3 -d '\t' -m
+```
+
+|Entry                | Value|
+|:--------------------|-----:|
+|brahman              |  1733|
+|arsucd               |  1183|
+|angus                |  1028|
+|angus;arsucd;brahman |    25|
+|arsucd;brahman       |    24|
+|angus;arsucd         |    16|
+|angus;brahman        |    14|
+
+
+```bash
+# Ah, I see the problem. Some of the regions are lumpy errors reporting megabase sized CNVs
+mkdir cnvoverlap
+cp *.sort.bed ./cnvoverlap/
+cd cnvoverlap/
+
+for i in *.sort.bed; do echo $i; perl -lane 'print ($F[2] - $F[1]);' < $i | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl ; done
+angus.cnvrs_regions.arsucd.sort.bed
+total   1313
+Sum:    181469943
+Minimum 291
+Maximum 88557271
+Average 138210.162224
+Median  1335
+Standard Deviation      2817030.832286
+Mode(Highest Distributed Value) 654
+
+arsucd.cnvrs_regions.sort.bed
+total   1342
+Sum:    454548690
+Minimum 168
+Maximum 86128770
+Average 338709.903130
+Median  1402
+Standard Deviation      4505098.254899
+Mode(Highest Distributed Value) 903
+
+brahman.cnvrs_regions.arsucd.sort.bed
+total   2021
+Sum:    336551683
+Minimum 90
+Maximum 107020199
+Average 166527.304800
+Median  1316
+Standard Deviation      3217020.315354
+Mode(Highest Distributed Value) 1319
+
+# OK, let's remove all CNVRs larger than 1 megabase
+for i in *.sort.bed; do name=`echo $i | cut -d '.' -f1`; perl -lane 'if($F[2] - $F[1] > 1000000){next;}else{print $_;}' < $i > $name.cnvrs_filt.sort.bed; done
+
+cat *.cnvrs_filt.sort.bed | bedtools sort -i stdin | bedtools merge -c 4 -o distinct -delim ';' -i stdin > combined_merger_filt.merge.bed
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f combined_merger_filt.merge.bed -c 3 -d '\t' -m
+```
+
+|Entry                | Value|
+|:--------------------|-----:|
+|brahman              |  1953|
+|arsucd               |  1277|
+|angus                |  1260|
+|arsucd;brahman       |    22|
+|angus;brahman        |    19|
+|angus;arsucd         |    15|
+|angus;arsucd;brahman |     6|
+
+OK, I think that this is more reasonable. Let's plot this for R summary figures
+
+```bash
+perl -e '$cnv =  1; while(<>){chomp; @s = split(/\t/); @bsegs = split(/\;/, $s[3]); foreach my $b (@bsegs){open(OUT, ">> $b.upset.list"); print OUT "$cnv\n"; close OUT;} $cnv++;}' < combined_merger_filt.merge.bed
+```
+
+Now for the upSet plot.
+
+> F:/SharedFolders/brangus_assembly/vst_analysis/
+
+```R
+library(UpSetR)
+
+angus <- read.delim("angus.upset.list", header=FALSE)
+brahman <- read.delim("brahman.upset.list", header=FALSE)
+arsucd <- read.delim("arsucd.upset.list", header=FALSE)
+
+angus <- as.vector(angus$V1)
+brahman <- as.vector(brahman$V1)
+arsucd <- as.vector(arsucd$V1)
+
+input <- list(angus = angus, brahman = brahman, arsucd = arsucd)
+upset(fromList(input), order.by = "freq")
+dev.copy2pdf(file="upset_cnvr_intersection_plot.pdf", useDingbats=FALSE)
 ```
