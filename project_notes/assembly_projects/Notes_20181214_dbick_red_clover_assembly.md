@@ -275,3 +275,46 @@ I was able to install nanopolish in my home directory on Ceres. It looks like it
 module load hdf5/1.8.19 eigen/3.2.6
 
 ```
+
+## Checking the validity of larger assembly sizes. 
+
+So, our two clover assemblies finished, but they're both predicting an assembly size of 700 megabases! That isn't right... Let's test a couple of hypotheses here. 
+
+#### Potential sources for larger assemblies
+1. Contamination
+	* I can test this by using centrifuge on each contig
+	* If any contig is closer to human, then that's a potential source of contamination. 
+	* KAT is also a natural comparison here.
+2. Bias in the libraries
+	* It could be that the earlier data is causing issues due to the different basecalling
+	* What if we left it out of the assembly?
+	* To test, let's see how many contigs are only supported by the earlier data through read alignments
+	* Also, low coverage contigs would be interesting to see
+3. Clover hybrid
+	* This is more difficult, but could be a possibility? 
+	* If all else fails to show significant differences, this could be a cryptic hybrid
+	* How to test?
+
+
+Let's queue up tests for the first two possibilities in the meantime. It should be easy enough to find anomalies for both.
+
+> Ceres:  /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano
+
+```bash
+module load bwa samtools minimap2 jellyfish2/2.2.9
+
+### The read alignment test ###
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index clover_correct/clover_correct.contigs.fasta"
+for i in red_clover_public/*.fastq.gz; do echo $i; sbatch --nodes=1 --mem=12000 --ntasks-per-node=2 -p msn --dependency=afterok:662826 --wrap="bwa mem clover_correct/clover_correct.contigs.fasta $i | samtools sort -T ${i}.tmp -o ${i}.correct.sort.bam -"; done
+
+# Now to align the "new" and "old" reads to the assembly separately
+# I think that I can get away with just aligning the "new" and removing contigs that don't have any coverage
+sbatch --nodes=1 --mem=300 --ntasks-per-node=1 -p msn --wrap="cat ./clover12_fastqs/clover12.combined.fastq ./clover13_fastqs/clover13.combined.fastq ./clover14_fastqs/clover14.combined.fastq > clover_new_combined_fastqs.fastq"
+
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=4 -p msn --wrap="minimap2 -a -x map-ont clover_correct/clover_correct.contigs.fasta clover_new_combined_fastqs.fastq | samtools sort -T clov_combined.temp -o clover_new_combined_fastqs.sort.bam -"
+
+
+### The kmer composition test ###
+# Let's start by making Jellyfish hashes from everything in existence
+for i in clover_new_combined_fastqs.fastq clover_correct/clover_correct.contigs.fasta short_read_red_clover_ena.fasta; do echo $i; sbatch --nodes=1 --mem=100000 --ntasks-per-node=5 --wrap="jellyfish count -m 21 -s 90G -t 5 -o ${i}.jf -C $i"; done
+```

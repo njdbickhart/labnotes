@@ -7,6 +7,15 @@ These are my notes and commands for generating datasets for use in my talk at th
 
 ## Table of Contents
 
+## Lit review and structure
+
+### Genetic and physical mapping
+
+[James Womack](https://genome.cshlp.org/content/15/12/1699.full.html) has a great review on the progress up until the early 00's. The first gene map was by [Heuertz et al](https://www.karger.com/Article/Abstract/131601) but [Womack](https://www.ncbi.nlm.nih.gov/pubmed/3082971) expanded this map greatly by using cattle-hamster hybrid somatic cell lines in 1986. In-situ hybridization was added to cattle-hamster hybrid somatic cell lines to make a comprehensive map of [many cattle genes](https://link.springer.com/article/10.1007/BF00296815) in the early 90's. A [multi-national group](https://www.nature.com/articles/ng0394-227) and [USDA-MARC](https://www.genetics.org/content/136/2/619.abstract?ijkey=c8173747b99141827e87e12dd6281489f54c1196&keytype2=tf_ipsecsha) published a linkage map almost simultaneously in 1994 spanned 2464 centimorgans of the cattle genome. **NOTE: the USDA-MARC map could be fun to plot on ARS-UCDv1.2.** The USMARC map used 280 out of 468 microsatellites to develop linkage maps for cattle. Next, Womack led the development of a [radiation-hybrid map](https://link.springer.com/article/10.1007%2Fs003359900593?LI=true) for cattle. 
+
+### Molecular basis of testing
+
+The earliest markers used by cattle geneticists were probed southern blots and PCR-based markers. Term "satellite" comes from [Saul Kit](https://www.sciencedirect.com/science/article/pii/S0022283661800752?via%3Dihub) who found bands from CsCl gradient centrifugation. Microsatellites are 1 to 10 bp repetitive, low complexity sequence. Useful because they are multi-allelic and are frequently found outside of coding regions (no positive selection). 
 
 ## Assessing relative genome resolution of different technologies
 
