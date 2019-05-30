@@ -1222,3 +1222,72 @@ input <- list(angus = angus, brahman = brahman, arsucd = arsucd)
 upset(fromList(input), order.by = "freq")
 dev.copy2pdf(file="upset_cnvr_intersection_plot.pdf", useDingbats=FALSE)
 ```
+
+Let's narrow down the list to just the variant sites that should be homozygous (present in both Brahman and Angus) but are missing in ARS-UCDv1.2. This should provide the "fodder" for finding key differences that are masked by using that assembly against Angus and Brahman individuals.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/angusxbrahman/public/cnvoverlap/
+
+```bash
+module load bedtools/2.25.0 samtools
+
+grep 'angus;brahman' combined_merger_filt.merge.bed | bedtools sort -i stdin > combined_merger_filt.angbrah.sort.bed
+
+# Now to intersect with the ARS-UCD annotation to see what pops out
+bedtools intersect -a combined_merger_filt.angbrah.sort.bed -b ../ncbi_ars_ucd_1.2_refseq.bed -wa -wb > combined_merger_filt.angbrah.arsucd_genes.tab
+
+# There were quite a few. Let's see if I can convert them back to the native assembly format and see what the copy number values should be in this region.
+bedtools intersect -a combined_merger_filt.angbrah.sort.bed -b ../ncbi_ars_ucd_1.2_refseq.bed -wa | uniq > combined_merger_filt.angbrah.arsucd_regions.bed
+
+# lifting over to the original coordinates
+~/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/liftOver combined_merger_filt.angbrah.sort.bed ../liftoverChains/ARS-UCD1_to_bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil.liftover.chain combined_merger_filt.angbrah.anguslift.bed combined_merger_filt.angbrah.anguslift.unmapped
+~/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/liftOver combined_merger_filt.angbrah.sort.bed ../liftoverChains/ARS-UCD1_to_bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM.liftover.chain combined_merger_filt.angbrah.brahmanlift.bed combined_merger_filt.angbrah.brahmanlift.unmapped
+
+# Now, if the liftover worked as promised, I should be able to grep the regions from the original annotation file
+bedtools intersect -a combined_merger_filt.angbrah.brahmanlift.bed -b ../brahman.cnvrs_regions.bed -wa -wb > angbrah.brahmanized.tab
+bedtools intersect -a combined_merger_filt.angbrah.anguslift.bed -b ../angus.cnvrs_regions.bed -wa -wb > angbrah.angusized.tab
+
+# These tab files should contain the CNV region ID of the original event identified by lumpy
+# Let's grep them out and count the copy number so that I can assign them to deletions/duplications
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[8]} = 1;} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){print join("\t", @s); print "\n";}} close IN;' angbrah.angusized.tab ../angus.cnvrs_regions.tab
+
+# OK, I realize my mistake with this analysis. Basically, I'm identifying specific individuals that are variable in the two haplotig assemblies and not ARS-UCD
+# I could be only assessing CNVs within haplotigs that are part of the two assemblies and not ARS-UCD... Maybe check read depth only in these regions to confirm?
+
+#### Read depth analysis
+mkdir angus_asm_depths
+for i in ../angus_jarms/*.levels; do name=`basename $i`; echo $name; bedtools sort -i $i | bedtools intersect -a stdin -b combined_merger_filt.angbrah.anguslift.bed -wa -wb | perl -e '%h; while(<STDIN>){chomp; @s = split(/\t/); $c = "$s[4];$s[5];$s[6]"; push(@{$h{$c}}, $s[3]);} foreach my $k (sort{$a cmp $b} keys(%h)){ $sum = 0; $u = 0; foreach my $v (@{$h{$k}}){$sum += $v; $u++;} $avg = $sum / $u; @bsegs = split(/;/, $k); print join("\t", @bsegs) . "\t$avg\t\n";}' > angus_asm_depths/${name}.slice; done
+
+mkdir brahman_asm_depths
+for i in ../brahman_jarms/*.levels; do name=`basename $i`; echo $name; bedtools sort -i $i | bedtools intersect -a stdin -b combined_merger_filt.angbrah.brahmanlift.bed -wa -wb | perl -e '%h; while(<STDIN>){chomp; @s = split(/\t/); $c = "$s[4];$s[5];$s[6]"; push(@{$h{$c}}, $s[3]);} foreach my $k (sort{$a cmp $b} keys(%h)){ $sum = 0; $u = 0; foreach my $v (@{$h{$k}}){$sum += $v; $u++;} $avg = $sum / $u; @bsegs = split(/;/, $k); print join("\t", @bsegs) . "\t$avg\t\n";}' > brahman_asm_depths/${name}.slice; done
+
+mkdir arsucd_asm_depths
+for i in ../arsucd_jarms/*.levels; do name=`basename $i`; echo $name; bedtools sort -i $i | bedtools intersect -a stdin -b combined_merger_filt.angbrah.sort.bed -wa -wb | perl -e '%h; while(<STDIN>){chomp; @s = split(/\t/); $c = "$s[4];$s[5];$s[6]"; push(@{$h{$c}}, $s[3]);} foreach my $k (sort{$a cmp $b} keys(%h)){ $sum = 0; $u = 0; foreach my $v (@{$h{$k}}){$sum += $v; $u++;} $avg = $sum / $u; @bsegs = split(/;/, $k); print join("\t", @bsegs) . "\t$avg\t\n";}' > arsucd_asm_depths/${name}.slice; done
+
+# removing the samples that were not called
+rm brahman_asm_depths/Shorthorn1.JaRMscnvs.bed.levels.slice
+rm brahman_asm_depths/RedAngus6.JaRMscnvs.bed.levels.slice
+
+rm arsucd_asm_depths/Shorthorn1.JaRMscnvs.bed.levels.slice
+rm arsucd_asm_depths/RedAngus6.JaRMscnvs.bed.levels.slice
+rm arsucd_asm_depths/Simmental1.JaRMscnvs.bed.levels.slice
+
+# Now to combine all three sets into one melted version
+perl -e '@ang = `ls angus_asm_depths/*.slice`; @bra = `ls brahman_asm_depths/*.slice`; @ars = `ls arsucd_asm_depths/*.slice`; %fhs = ("angus" => \@ang, "brahman" => \@bra, "arsucd" => \@ars); for($x = 0; $x < 19; $x++){for($y = 0; $y < 35; $y++){@vals = (); $ucsc = ""; foreach my $k (sort{$a cmp $b} keys(%fhs)){$f = $fhs{$k}->[$y]; @fsegs = split(/[\/\.]/, $f); open(IN, "< $f"); $v = <IN>; for($j = 0; $j < $x; $j++){$v = <IN>;} chomp $v; @segs = split(/\t/, $v); print ($x + 1); print "\t$k\t$fsegs[1]\t$segs[0]:$segs[1]-$segs[2]\t$segs[3]\n"; close IN;}}}' > read_depth_slices.melt.tab
+```
+
+Let's try a super quick plot.
+
+```R
+library(ggplot2)
+library(dplyr)
+
+data <- read.delim("read_depth_slices.melt.tab", header=FALSE)
+colnames(data) <- c("CNVR", "ASM", "Sample", "UCSC", "CN")
+
+pdf(file="angus_brahman_shared_density.pdf", useDingbats=FALSE)
+ggplot(data, aes(x=CN, fill=ASM)) + geom_density(alpha=0.5) + theme_bw() + scale_fill_brewer(palette="Dark2") + facet_grid(CNVR ~ .)
+dev.off()
+
+
+ggplot(data, aes(x=ASM, y=CN, fill=ASM, colour = ASM)) + geom_boxplot() + theme_bw() + coord_flip() + scale_fill_brewer(palette="Dark2") + facet_grid(CNVR ~ .)
+```

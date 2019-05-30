@@ -303,6 +303,31 @@ Let's queue up tests for the first two possibilities in the meantime. It should 
 ```bash
 module load bwa samtools minimap2 jellyfish2/2.2.9
 
+# Gathering the information from canu on each contig
+grep '>' clover_correct/clover_correct.contigs.fasta | perl -e 'print "Contig\tLen\tReads\tCovStat\tgappedBases\tclass\tsuggestRepeat\tsuggestCircular\n"; while(<STDIN>){chomp; @data = (); @segs = split(/\s+/); $ctg = shift(@segs); $ctg =~ s/\>//; push(@data, $ctg); foreach my $r (@segs){($t) = $r =~ m/.+\=(.+)/; push(@data, $t . "");} print join("\t", @data); print "\n";}' > clover_correct/clover_correct.contig_header.info.tab
+
+# Checking to see if any are circular or repetitive
+perl -lane 'if($F[-1] eq "yes" || $F[-2] eq "yes"){print $_;}' < clover_correct/clover_correct.contig_header.info.tab | wc -l
+483
+
+# Now, just circular
+perl -lane 'if($F[-1] eq "yes"){print $_;}' < clover_correct/clover_correct.contig_header.info.tab | wc -l
+3
+
+# Interesting... let's see what they are
+perl -lane 'if($F[-1] eq "yes"){print $_;}' < clover_correct/clover_correct.contig_header.info.tab
+tig00002968     97363   84      22.22   no      contig  no      yes	<- hits to 18S rRNA and to medicago chloroplast
+tig00004516     108709  35      60.66   no      contig  yes     yes <- medicago chr3, receptor-like protein genes
+tig00072474     98236   22      69.68   no      contig  no      yes <- no significant similarity results
+
+# I wonder what the nr database thinks of these? Ran each one on nucleotide blast with the megablast option
+samtools faidx clover_correct/clover_correct.contigs.fasta
+```
+
+So, we've got a partial chloroplast (should be 200 kb?) and one potential virus? Maybe?
+
+
+```bash
 ### The read alignment test ###
 sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index clover_correct/clover_correct.contigs.fasta"
 for i in red_clover_public/*.fastq.gz; do echo $i; sbatch --nodes=1 --mem=12000 --ntasks-per-node=2 -p msn --dependency=afterok:662826 --wrap="bwa mem clover_correct/clover_correct.contigs.fasta $i | samtools sort -T ${i}.tmp -o ${i}.correct.sort.bam -"; done
@@ -313,8 +338,34 @@ sbatch --nodes=1 --mem=300 --ntasks-per-node=1 -p msn --wrap="cat ./clover12_fas
 
 sbatch --nodes=1 --mem=15000 --ntasks-per-node=4 -p msn --wrap="minimap2 -a -x map-ont clover_correct/clover_correct.contigs.fasta clover_new_combined_fastqs.fastq | samtools sort -T clov_combined.temp -o clover_new_combined_fastqs.sort.bam -"
 
+sbatch --nodes=1 --mem=2000 --ntasks-per-node=1 -p msn --wrap="samtools index clover_new_combined_fastqs.sort.bam"
+
+# Identify contigs with zero mappings
+samtools idxstats clover_new_combined_fastqs.sort.bam | perl -lane 'if($F[2] == 0){print $_;}' | head
+*       0       0       36138  <- Only the unaligned reads
+
+# Now, get a distribution of the count of reads to contig length (not very indicative, but an approximation)
+samtools idxstats clover_new_combined_fastqs.sort.bam | perl -lane 'if($F[1] != 0){print ($F[2] / $F[1]);}' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   3132
+Sum:    142.036951768705
+Minimum 0.000349545590732048
+Maximum 27.8661461238148
+Average 0.045350
+Median  0.00455151813437383
+Standard Deviation      0.726313
+Mode(Highest Distributed Value) 0.00455793719598611
+
+# Number of contigs with read/contig len ratios greater than the average
+samtools idxstats clover_new_combined_fastqs.sort.bam | perl -lane 'if($F[1] != 0){print ($F[2] / $F[1]);}' | perl -lane 'if($F[0] > 0.45){print $_;}' | wc -l
+28
+
 
 ### The kmer composition test ###
 # Let's start by making Jellyfish hashes from everything in existence
 for i in clover_new_combined_fastqs.fastq clover_correct/clover_correct.contigs.fasta short_read_red_clover_ena.fasta; do echo $i; sbatch --nodes=1 --mem=100000 --ntasks-per-node=5 --wrap="jellyfish count -m 21 -s 90G -t 5 -o ${i}.jf -C $i"; done
+
+# Now to load a virtual environment in which I've installed Kat
+source activate /KEEP/rumen_longread_metagenome_assembly/kat
+
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=8 -p msn --wrap="source activate /KEEP/rumen_longread_metagenome_assembly/kat; kat comp -t 8 -o assembly_kmer_comps clover_new_combined_fastqs.fastq.jf short_read_red_clover_ena.fasta.jf clover_correct/clover_correct.contigs.fasta.jf"
 ```

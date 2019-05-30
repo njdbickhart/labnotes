@@ -39,3 +39,13 @@ pdf(file="vetch_distance_heatmap.pdf", useDingbats=FALSE)
 ggplot(vdist.m, aes(X1, X2)) + geom_tile(aes(fill=value), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue") + labs(title = "Vetch Prep Dataset Mash Distances")
 dev.off()
 ```
+
+## Starting the assembly process
+
+I'm going to unpack what I have and run an assembly over the long weekend.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano
+
+```bash
+for i in VetchB6.tar.gz VetchB7.tar.gz VetchB8.tar.gz VetchB9.tar.gz VetchB10.tar.gz; do echo $i; sbatch --nodes=1 --mem=3000 --ntasks-per-node=1 -p msn --wrap="tar -czvf $i"; done
+```
