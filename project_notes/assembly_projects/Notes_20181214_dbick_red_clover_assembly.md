@@ -359,13 +359,37 @@ Mode(Highest Distributed Value) 0.00455793719598611
 samtools idxstats clover_new_combined_fastqs.sort.bam | perl -lane 'if($F[1] != 0){print ($F[2] / $F[1]);}' | perl -lane 'if($F[0] > 0.45){print $_;}' | wc -l
 28
 
+# Let's align the old reads and do the comparison next
+sbatch --nodes=1 --mem=800 --ntasks-per-node=2 -t 1-0 -p msn --wrap="for i in `seq 1 11`; do ls clover${i}_fastqs/clover${i}.combined.fastq; cat clover${i}_fastqs/clover${i}.combined.fastq >> clover_old_combined_fastqs.fastq; done"
+
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=4 -t 1-0 -p msn --wrap="minimap2 -a -x map-ont clover_correct/clover_correct.contigs.fasta clover_old_combined_fastqs.fastq | samtools sort -T clov_combined.old.temp -o clover_old_combined_fastqs.sort.bam -"
 
 ### The kmer composition test ###
 # Let's start by making Jellyfish hashes from everything in existence
+module load miniconda
+
 for i in clover_new_combined_fastqs.fastq clover_correct/clover_correct.contigs.fasta short_read_red_clover_ena.fasta; do echo $i; sbatch --nodes=1 --mem=100000 --ntasks-per-node=5 --wrap="jellyfish count -m 21 -s 90G -t 5 -o ${i}.jf -C $i"; done
 
 # Now to load a virtual environment in which I've installed Kat
 source activate /KEEP/rumen_longread_metagenome_assembly/kat
 
 sbatch --nodes=1 --mem=50000 --ntasks-per-node=8 -p msn --wrap="source activate /KEEP/rumen_longread_metagenome_assembly/kat; kat comp -t 8 -o assembly_kmer_comps clover_new_combined_fastqs.fastq.jf short_read_red_clover_ena.fasta.jf clover_correct/clover_correct.contigs.fasta.jf"
+
+# Now to print out a histogram for each dataset respectively
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=15 -t 1-0 -p msn --wrap="source activate /KEEP/rumen_longread_metagenome_assembly/kat; kat hist -t 15 -o clover_new_kat_hist clover_new_combined_fastqs.fastq.jf"
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=15 -t 1-0 -p msn --wrap="source activate /KEEP/rumen_longread_metagenome_assembly/kat; kat hist -t 15 -o clover_srasm_kat_hist short_read_red_clover_ena.fasta.jf"
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=15 -t 1-0 -p msn --wrap="source activate /KEEP/rumen_longread_metagenome_assembly/kat; kat hist -t 15 -o clover_lrasm_kat_hist clover_correct/clover_correct.contigs.fasta.jf"
+
+
+### The contamination test
+# Let's run this across the read sets and the assemblies and see which is likely to be the source of contamination.
+# I'm guessing that human contamination is the most likely reason, but there could be other plant species.
+for i in clover_new_combined_fastqs.fastq clover_old_combined_fastqs.fastq clover_correct/clover_correct.contigs.fasta short_read_red_clover_ena.fasta; do echo $i; sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -t 1-0 -p msn --wrap="/beegfs/project/rumen_longread_metagenome_assembly/binaries/centrifuge/centrifuge --report-file ${i}.ctfg.reports -x /beegfs/project/bostauruscnv/novel_seq/cddr_pipeline/refseq_abv_hum_mus_bos -k 1 -f $i > ${i}.ctfg.out"; done
+```
+
+
+```bash
+module load canu/latest
+### New assembly New reads only
+sbatch --nodes=1 --ntasks-per-node=30 --mem=10G -t 2-0 -p msn --wrap="canu -p clover_no_old -d clover_no_old genomeSize=420m correctedErrorRate=0.105 overlapper=mhap utgReAlign=true 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn -t 2-0' -nanopore-raw clover_new_combined_fastqs.fastq"
 ```

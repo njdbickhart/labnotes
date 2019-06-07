@@ -169,3 +169,8 @@ bta-miR-2325c       20  gaaaaagaaaaaaaacaa  3
 
 # A lower hit bos taurus mir gene
 ```
+
+
+## RXFP2 upstream TFBS search
+
+Checking to see if there are any obvious regions upstream of RXFP2 that may be involved in its regulation. I'm running a Contra TFBS search again. I'm running the following TFBS from Tad's literature search in the database search:  OLIG1, OLIG2, FOXL2, FOXL1, TWIST1, FOXC2, HAND1, TWIST2, pax3, pax7. The region is chr12:29071785-29074051.

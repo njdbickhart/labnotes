@@ -78,6 +78,9 @@ module load minimap2/2.6 samtools bedtools/2.25.0
 # Getting the chromosome/contig sizes
 for i in ARS-UCD1.2_Btau5.0.1Y.fa Btau20040927-freeze-contigs.fa btau_4.6.karytype.fa; do echo $i; samtools faidx $i; done
 
+# Getting the UMD3 gap sizes
+java -Xmx10g -jar ~/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f umd3_reference_genome.fasta -o umd3_reference_genome.gaps.bed -s umd3_reference_genome.gaps.stats
+
 # ARS-UCD vs Btau1.0
 sbatch --nodes=1 --mem=10000 --ntasks-per-node=3 -p short --wrap="minimap2 -x asm5 ARS-UCD1.2_Btau5.0.1Y.fa Btau20040927-freeze-contigs.fa > btau_1_on_ars-ucd.paf"
 # ARS-UCD vs Btau4.6.1
@@ -142,3 +145,72 @@ chorddiag(m, groupColors = colors, groupnamePadding = 20)
 
 # That did not look good! I'll try a different method like upset plots
 ```
+
+## Generating the assembly comparison histogram plots
+
+OK, I'm going to more simplistic, but hopefully, still illuminating, plots of contiguity and assembly size. Let's start out by gathering the statistics I need for the Histograms.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/dominette/symposium_comparison
+
+```bash
+module load bedtools/2.25.0 samtools
+# Getting gap regions in the scaffolded assemblies
+java -Xmx10g -jar ~/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f ARS-UCD1.2_Btau5.0.1Y.fa -o ARS-UCD1.2_Btau5.0.1Y.gaps.bed -s ARS-UCD1.2_Btau5.0.1Y.gaps.stats
+java -Xmx10g -jar ~/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f btau_4.6.karytype.fa -o btau_4.6.karytype.gaps.bed -s btau_4.6.karytype.gaps.stats
+
+wc -l *.gaps.bed
+    404 ARS-UCD1.2_Btau5.0.1Y.gaps.bed	
+  66293 btau_4.6.karytype.gaps.bed
+  74464 umd3_reference_genome.gaps.bed
+
+# Getting the contig regions
+for i in *.fai; do echo $i; perl -lane 'print "$F[0]\t1\t$F[1]";' < $i > $i.bed; done
+for i in ARS-UCD1.2_Btau5.0.1Y btau_4.6.karytype umd3_reference_genome; do echo $i; bedtools subtract -a $i.fa*.fai.bed -b $i.gaps.bed > $i.ctgs.bed; done
+
+wc -l *.ctgs.bed
+   2614 ARS-UCD1.2_Btau5.0.1Y.ctgs.bed
+  65423 btau_4.6.karytype.ctgs.bed
+  77554 umd3_reference_genome.ctgs.bed
+
+# And calculating the number of contigs per other assemblies (this is easier)
+for i in Btau20040927-freeze-contigs.fa.fai Btau20050310.contigs.fa.fai Btau20060815.contigs.fa.fai; do wc -l $i; done
+795212 Btau20040927-freeze-contigs.fa.fai
+321107 Btau20050310.contigs.fa.fai
+131728 Btau20060815.contigs.fa.fai
+
+# Now to calculate assembly length for everyone (contig/scaffold n50 is the second number)
+for i in *.fai; do echo -ne "$i\t"; perl -e '@j = (); $c = 0; while(<>){chomp; @s = split(/\t/); push(@j, $s[1]); $c += $s[1];} @j = sort{$b <=> $a} @j; $n = $c / 2; $n50 = 0; $csum = 0; foreach $k (@j){$csum += $k; if($csum >= $n){$n50 = $k; last;}} print "$c\t$n50\n";' < $i; done
+ARS-UCD1.2_Btau5.0.1Y.fa.fai    2759153975      103308737
+Btau20040927-freeze-contigs.fa.fai      2262579180      4185
+Btau20050310.contigs.fa.fai     2642506507      18884
+Btau20060815.contigs.fa.fai     3247500072      48721
+btau_4.6.karytype.fa.fai        2673141463      105982576
+umd3_reference_genome.fasta.fai 2670123310      105708250
+```
+
+Now let's plot this in R.
+
+> F:/SharedFolders/side_projects/cattle_symposium/
+
+```R
+library(ggplot2)
+library(scales)
+data <- data.frame(Assembly = c("Btau_1.0", "Btau_2.0", "Btau_4.0", "Btau_4.6.1", "UMD3.1", "ARS-UCDv1.2"), Length = c(2262579180, 2642506507, 3247500072, 2673141463, 2670123310, 2759153975), Contigs = c(795212, 321107, 131728, 65423, 77554, 2614))
+
+data$Assembly <- as.factor(data$Assembly)
+data$Assembly <- factor(data$Assembly, levels(data$Assembly)[c(2:6,1)])
+
+# Assembly lengths
+pdf(file="assembly_lengths_plot.pdf", width = 7, height = 4, useDingbats = FALSE)
+ggplot(data, aes(x=Assembly, y=Length, fill=Assembly)) + geom_bar(stat="identity") + scale_color_brewer(palette="Dark2") + theme_classic() + geom_text(aes(label=Length, fontface="bold"), vjust=1.6, color="white") + theme(legend.position="none", axis.text.x = element_text(angle=40, hjust=1, size=12), axis.text=element_text(size=12), axis.title=element_text(size=14, face="bold")) + scale_y_continuous(label = unit_format(unit = "Gbp", scale = 1e-9)) + xlab("Assemblies") + ylab("Assembly Lengths (Gbp)")
+dev.off()
+
+# Contig counts
+pdf(file="assembly_contig_counts.pdf", width = 7, height = 4, useDingbats=FALSE)
+ggplot(data, aes(x=Assembly, y=Contigs, color=Assembly)) + geom_bar(stat="identity", fill="white") + scale_color_brewer(palette="Dark2") + theme_classic() + geom_text(aes(label=Contigs, fontface="bold"), vjust=1.6, color="black") + theme(legend.position="none", axis.text.x = element_text(angle=40, hjust=1, size=12), axis.text=element_text(size=12), axis.title=element_text(size=14, face="bold")) + scale_y_continuous(label = comma) + xlab("Assemblies") + ylab("Number of Contigs")
+dev.off()
+```
+
+## Bipartite plot generation
+
+OK, here's the idea: the [bipartite](https://cran.r-project.org/web/packages/bipartite/bipartite.pdf) package in R has a "plotweb" function that can be used to plot the order and orientation of SNP probes. Maybe I can take the "segs" output from my alignment perl script, create a matrix that shows the interaction of segments against chromosomes, and then 
