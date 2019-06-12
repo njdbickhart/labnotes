@@ -173,4 +173,42 @@ bta-miR-2325c       20  gaaaaagaaaaaaaacaa  3
 
 ## RXFP2 upstream TFBS search
 
-Checking to see if there are any obvious regions upstream of RXFP2 that may be involved in its regulation. I'm running a Contra TFBS search again. I'm running the following TFBS from Tad's literature search in the database search:  OLIG1, OLIG2, FOXL2, FOXL1, TWIST1, FOXC2, HAND1, TWIST2, pax3, pax7. The region is chr12:29071785-29074051.
+Checking to see if there are any obvious regions upstream of RXFP2 that may be involved in its regulation. I'm running a Contra TFBS search again. I'm running the following TFBS from Tad's literature search in the database search:  OLIG1, OLIG2, FOXL2, FOXL1, TWIST1, FOXC2, HAND1, TWIST2, pax3, pax7. The region is chr12:29071785-29074051(btau4.0) and chr12:29,294,787-29,297,053 (UMD3). We found an interesting site upstream.
+
+## Running comparative ruminant alignment
+
+I need to grep out the upstream region and run a multi-species alignment to identify ruminant-conserved regions. Let's target the following species:
+
+| Species | Family | URL | Comments |
+|:---     |:----   | :--- | :-----  |
+|Cattle   | Bovidae | N/A (using UMD3 sequence) | |
+|Gaur     | Bovidae | N/A (server)  | Member of genus Bos |
+|Buffalo  | Bovidae |  ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/003/121/395/GCA_003121395.1_UOA_WB_1/GCA_003121395.1_UOA_WB_1_genomic.fna.gz | Member of genus Bubalis |
+|Goat     | Bovidae | ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/001/704/415/GCA_001704415.1_ARS1/GCA_001704415.1_ARS1_genomic.fna.gz | Member of genus Capra |
+|Giraffe  | Giraffidae | ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/001/651/235/GCA_001651235.1_ASM165123v1/GCA_001651235.1_ASM165123v1_genomic.fna.gz | Same suborder as cattle |
+| Mule deer | Moschidae | ftp://parrot.genomics.cn/gigadb/pub/10.5524/100001_101000/100411/ls35.final.genome.fa.gz | Same suborder as cattle |
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/dominette/symposium_comparison/ruminants
+
+```bash
+module load minimap2/2.6 samtools
+cp /beegfs/project/gaur_genome_assembly/gaur_contigs.arrow2.fasta gaur_contigs_arrow2.fna
+
+# I need to remove the gaur arrow suffixes first
+perl -ne 'if($_ =~ /^>/){$_ =~ s/\|arrow//g;} print $_;' < gaur_contigs_arrow2.fna > gaur_contigs.temp
+mv gaur_contigs.temp gaur_contigs_arrow2.fna
+
+# I stored the UMD3 sequence in "umd3_segment.fa"
+for i in *.fna; do echo $i; sbatch --nodes=1 --mem=12000 --ntasks-per-node=3 -p short -t 1-0 --wrap="minimap2 -x asm10 $i umd3_segment.fa > $i.umd3.paf"; done
+
+# Now to grep sequence from each one
+for i in *.paf; do fa=`echo $i | cut -d'.' -f1,2`; echo $fa; perl -e 'chomp @ARGV; open(IN, "< $ARGV[0]"); $l = <IN>; chomp $l; @s = split(/\t/, $l); system("samtools faidx $ARGV[1] $s[5]:$s[7]-$s[8] > $ARGV[1].subsection.fa");' $i $fa; done
+
+# Finally, let's concatenate them to a larger file and submit to clustalomega
+cat umd3_segment.fa gaur_contigs_arrow2.fna.subsection.fa giraffe_genomic.fna.subsection.fa goat_genomic.fna.subsection.fa mule_deer_genomic.fna.subsection.fa water_buffalo_genomic.fna.subsection.fa > combined_subsections.fa
+
+# there was a big problem with the alignment -- the three longread assemblies group together
+# I noticed that all three have reverse alignments -- did clustal omega fudge this?
+for i in gaur_contigs_arrow2.fna.subsection.fa goat_genomic.fna.subsection.fa water_buffalo_genomic.fna.subsection.fa; do echo $i; perl -e '$h = <>; chomp $h; $s = ""; while(<>){chomp; $s .= $_;} $s =~ tr/acgtACGT/TGCATGCA/; $s = reverse($s); $s =~ s/(.{1,60})/$1\n/g; print "$h\n$s";' < $i > $i.reversed; done
+cat umd3_segment.fa gaur_contigs_arrow2.fna.subsection.fa.reversed goat_genomic.fna.subsection.fa.reversed water_buffalo_genomic.fna.subsection.fa.reversed mule_deer_genomic.fna.subsection.fa giraffe_genomic.fna.subsection.fa > combined_reversed_subs.fa
+```
