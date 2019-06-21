@@ -338,3 +338,8 @@ pdf(file="upset_rumen_swab_plot.pdf", useDingbats = FALSE)
 upset(fromList(input), group.by = "sets")
 dev.off()
 ```
+
+
+#### Notes
+
+Joe has completed his timecourse study. My thoughts: time appears to be a large contributor to the variance in principal components. If I did a [principal component regression](https://en.wikipedia.org/wiki/Principal_component_regression) using just the first two PCs (or just the first PC!) that would reduce the variance substantially. Additionally, let's see if we can do a random forest regression to compare methods.

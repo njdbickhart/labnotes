@@ -214,3 +214,107 @@ dev.off()
 ## Bipartite plot generation
 
 OK, here's the idea: the [bipartite](https://cran.r-project.org/web/packages/bipartite/bipartite.pdf) package in R has a "plotweb" function that can be used to plot the order and orientation of SNP probes. Maybe I can take the "segs" output from my alignment perl script, create a matrix that shows the interaction of segments against chromosomes, and then 
+
+
+First, let's remap all of the SNP coordinates and then find the best way to present the data.
+
+> Assembler2: /mnt/nfs/nfs2/bickhart-users/cattle_asms/symposium
+
+```bash
+module load samtools bwa
+# First, let's grab the information we need
+mv 5-0108\ Bovine\ Batch\ 1\ 10K\ Panel\ R1_5.txt bovine_10k_panel.txt
+dos2unix bovine_10k_panel.txt
+
+wget http://hgdownload.soe.ucsc.edu/goldenPath/bosTau2/bigZips/bosTau2.softmask.fa.gz
+gunzip bosTau2.softmask.fa.gz
+samtools faidx bosTau2.softmask.fa
+
+perl extract_10k_snps.pl bosTau2.softmask.fa bovine_10k_panel.txt bovine_10k_panel.fa
+grep '>' bovine_10k_panel.fa | wc -l
+5040  <- not quite 10k placed!
+
+# sorting
+perl -e '%d; while($h = <>){chomp $h; $s = <>; @hsegs = split(/\./, $h); $d{$hsegs[1]}->{$hsegs[2]} = [$h, $s];} foreach my $chr (sort {$a <=> $b} keys(%d)){ foreach my $pos (sort {$a <=> $b} keys(%{$d{$chr}})){ $ref = $d{$chr}->{$pos}; print "$ref->[0]\n$ref->[1]";}}' < bovine_10k_panel.fa > bovine_10k_panel.sorted.fa
+
+# And processing
+perl ~/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a ../ncbi/ARSUCD1.2.current_ref.fa -p bovine_10k_panel.sorted.fa -o affy10k_to_arsucd1.2
+
+# baseline counts
+head -n 1 affy10k_to_arsucd1.2.stats
+Mapping probes: 4954    Unmapped probes: 1 <- not too shabby!
+
+# Preparing the BovineSNP50 fasta for remapping
+dos2unix snp50_manifest.tab
+perl -e '$h = <>; while(<>){chomp; @s = split(/\t/); print ">$s[0].$s[2].$s[3]\n$s[1]\n";}' < snp50_manifest.tab > BovineSNP50.v2.probseq.coords.fa
+
+# Let's queue up the rest, then I have an idea on how to plot the interactions
+perl ~/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a ../ncbi/ARSUCD1.2.current_ref.fa -p /mnt/nfs/nfs2/dbickhart/dominette_asm/recombination/BovineHD_B1.probseq.rev1coords.fa -o bovinehd_to_arsucd1.2
+
+perl ~/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a ../ncbi/ARSUCD1.2.current_ref.fa -p BovineSNP50.v2.probseq.coords.fa -o bovinesnp50_to_arsucd1.2
+
+
+# Mapped vs unmapped probe lists
+head -n 1 *.stats
+==> affy10k_to_arsucd1.2.stats <==
+Mapping probes: 5036    Unmapped probes: 2
+
+==> bovinehd_to_arsucd1.2.stats <==
+Mapping probes: 734630  Unmapped probes: 1006
+
+==> bovinesnp50_to_arsucd1.2.stats <==
+Mapping probes: 54022   Unmapped probes: 35
+
+# Still pretty good. This suggests that most of the SNP probe sequence was designed from the unique regions of the genome, and the transferability of that sequence is easy
+# Now to start crafting matrices for bipartite network plotting.
+# The Bipartite library in R allows for "tripartite" plots from two different matricies. We could do a comparison of affy vs UMD3 locations vs ARS-ucd
+perl createChrMappingMatrix.pl -i affy10k_to_arsucd1.2.tab -o affy10k_to_arsucd1.2.matrix
+
+# OK, it works well enough! Let's run it on all three separately and then concatenate
+perl createChrMappingMatrix.pl -i bovinehd_to_arsucd1.2.tab -o bovinehd_to_arsucd1.2.matrix
+perl createChrMappingMatrix.pl -i bovinesnp50_to_arsucd1.2.tab -o bovinesnp50_to_arsucd1.2.matrix
+
+# Now to concatenate for the larger plot
+perl createChrMappingMatrix.pl -i affy10k_to_arsucd1.2.tab,bovinesnp50_to_arsucd1.2.tab,bovinehd_to_arsucd1.2.tab -o combined_to_arsucd1.2.matrix
+```
+
+Let's try to plot the networks as bipartite plots first, and then transition to heatmaps if things get too messy.
+
+```R
+library(bipartite)
+
+data <- read.delim("combined_to_arsucd1.2.matrix", header=TRUE, row.names= 1, check.names = FALSE)
+matrix <- data.matrix(data, rownames.force = TRUE)
+
+pdf(file="combined_plotweb.pdf", useDingbats = FALSE)
+plotweb(matrix, method = "normal")
+dev.off()
+# Unfortunately, it was a huge mess. Onto the heatmap!
+pdf(file="combined_visweb.pdf", useDingbats=FALSE)
+visweb(matrix)
+dev.off()
+
+# OK, let's try with the smaller chips. There are likely to be more recognizable differences
+data <- read.delim("affy10k_to_arsucd1.2.matrix", header=TRUE, row.names= 1, check.names = FALSE)
+matrix <- data.matrix(data, rownames.force = TRUE)
+
+pdf(file="affy10k_plotweb.pdf", useDingbats = FALSE)
+plotweb(matrix, method = "normal")
+dev.off()
+
+pdf(file="affy10k_visweb.pdf", useDingbats = FALSE)
+visweb(matrix, type="none")
+dev.off()
+
+# And the SNP50
+data <- read.delim("bovinesnp50_to_arsucd1.2.matrix", header=TRUE, row.names= 1, check.names = FALSE)
+matrix <- data.matrix(data, rownames.force = TRUE)
+plotweb(matrix, method = "normal")
+pdf("bovinesnp50_plotweb.pdf", useDingbats=FALSE)
+plotweb(matrix, method = "normal")
+dev.off()
+
+pdf("bovinesnp50_visweb.pdf", useDingbats=FALSE)
+visweb(matrix, type="none")
+dev.off()
+```

@@ -391,5 +391,18 @@ for i in clover_new_combined_fastqs.fastq clover_old_combined_fastqs.fastq clove
 ```bash
 module load canu/latest
 ### New assembly New reads only
-sbatch --nodes=1 --ntasks-per-node=30 --mem=10G -t 2-0 -p msn --wrap="canu -p clover_no_old -d clover_no_old genomeSize=420m correctedErrorRate=0.105 overlapper=mhap utgReAlign=true 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn -t 2-0' -nanopore-raw clover_new_combined_fastqs.fastq"
+sbatch --nodes=1 --ntasks-per-node=30 --mem=10G -p msn --wrap="canu -p clover_no_old -d clover_no_old genomeSize=420m correctedErrorRate=0.105 overlapper=mhap utgReAlign=true 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn' -nanopore-raw clover_new_combined_fastqs.fastq"
+```
+
+
+## Red clover WGS alignment and polishing
+
+> Ceres: /home/derek.bickharhth/forage/analysis/clover_assemblies
+
+```bash
+module load bwa samtools
+# Gathering our sequence data
+ls /project/forage_assemblies/sequence_data/CloverGenome-137246120/*/*/*.gz > clover_hen_fastqs.tab
+
+
 ```
