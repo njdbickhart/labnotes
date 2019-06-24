@@ -217,3 +217,13 @@ ttest_table <- group_by(data.filt, ASM, Class) %>% summarize(Len = list(Len)) %>
 
 write.table(ttest_table[,!(names(ttest_table) %in% c("ARSUCD", "UMD3", "yakdam", "yaksire"))], file="RepeatClassSummaries.tab", row.names=FALSE, quote=FALSE, sep="\t")
 ```
+
+## Repeat gap intersection analysis
+
+I want to see just how many gaps intersect with major repeat classes.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/yaklander
+
+```bash
+python3 ~/python_toolchain/sequenceData/intersectGapFlanksWithRepeats.py -g yaksire.gapstatus.tab -r yaksire.repeat.bed -o yaksire.gaprepeat.comp
+```
