@@ -212,3 +212,12 @@ cat umd3_segment.fa gaur_contigs_arrow2.fna.subsection.fa giraffe_genomic.fna.su
 for i in gaur_contigs_arrow2.fna.subsection.fa goat_genomic.fna.subsection.fa water_buffalo_genomic.fna.subsection.fa; do echo $i; perl -e '$h = <>; chomp $h; $s = ""; while(<>){chomp; $s .= $_;} $s =~ tr/acgtACGT/TGCATGCA/; $s = reverse($s); $s =~ s/(.{1,60})/$1\n/g; print "$h\n$s";' < $i > $i.reversed; done
 cat umd3_segment.fa gaur_contigs_arrow2.fna.subsection.fa.reversed goat_genomic.fna.subsection.fa.reversed water_buffalo_genomic.fna.subsection.fa.reversed mule_deer_genomic.fna.subsection.fa giraffe_genomic.fna.subsection.fa > combined_reversed_subs.fa
 ```
+
+## RUNX2 site testing
+
+RUNX2 is a major TF involved in developmental processes. Recent manuscripts suggest a link between RUNX2 and head gear development; however, this may be due to general RUNX2 expression during development.
+
+I want to test the upstream regions of RUNX2 for the HAND1, TWIST1, etc TFBS and then test upstream of RXFP2 for RUNX2 sites.
+
+> Btau4.0 location of upstream RUNX2: chr23:19,330,311-19,332,569
+
