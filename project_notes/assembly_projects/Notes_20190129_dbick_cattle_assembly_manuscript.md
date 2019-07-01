@@ -340,6 +340,19 @@ ggplot(gaps.unknown, aes(x=Actual, fill=Type)) + geom_density(alpha=0.4) + scale
 dev.off()
 ```
 
+There were some questions about how many gaps were caused by repetitive elements. Let's see if I can calculate some statistics for this analysis.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/dominette/repeatmasker
+
+```bash
+module load bedtools
+
+python3 ~/python_toolchain/sequenceData/intersectGapFlanksWithRepeats.py -g umd3_gaps_onarsucd.newlogic.tab -r ARS-UCD1.2_Btau5.0.1Y.fa.out.bed -o umd3_gaps_repeat_intersections
+
+
+```
+
+
 ## Unique sequence in the cattle assembly
 
 OK, now I'm going to start scraping the reads from the cattle assembly. I'm going to be using [this manuscript](https://www.nature.com/articles/s41588-018-0273-y#MOESM1) as a guide for the workflow.

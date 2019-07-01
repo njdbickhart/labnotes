@@ -225,5 +225,14 @@ I want to see just how many gaps intersect with major repeat classes.
 > Ceres: /home/derek.bickharhth/cattle_genome_assemblies/yaklander
 
 ```bash
-python3 ~/python_toolchain/sequenceData/intersectGapFlanksWithRepeats.py -g yaksire.gapstatus.tab -r yaksire.repeat.bed -o yaksire.gaprepeat.comp
+module load bedtools
+python3 ~/python_toolchain/sequenceData/intersectGapFlanksWithRepeats.py -g yaksire.gapstatus.tab -r yaksire.repeat.bed -o yaksire.gaprepeat
 ```
+
+#### Stats
+
+|Class   |RepeatConsistent |RepeatComplex  |None  |
+|:-------|----------------:|--------------:|-----:|
+|Closed  |35               |175            |9     |
+|Trans   |25               |142            |12    |
+|Total   |60               |317            |21    |
