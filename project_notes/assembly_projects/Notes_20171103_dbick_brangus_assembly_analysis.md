@@ -842,10 +842,12 @@ perl -e 'while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); @bsegs = spli
 
 dos2unix ncbi_ars_ucd_1.2_refseq.txt
 perl -e '<>; while(<>){chomp; @s = split(/\t/); if($s[12] eq "" || $s[13] eq ""){next;} print "$s[10]\t$s[12]\t$s[13]\t$s[5]\n";}' < ncbi_ars_ucd_1.2_refseq.txt | bedtools sort -i stdin > ncbi_ars_ucd_1.2_refseq.bed
+perl -e 'while(<>){chomp; if($_ =~ /^\#/){next;} @s = split(/\t/); @bsegs = split(/\"/, $s[8]); if($s[2] =~ /gene/){print "$s[0]\t$s[3]\t$s[4]\t$bsegs[1]\n";}}' < bos_taurus.ars-ucd1.2.96.chr.gtf | bedtools sort -i stdin > bos_taurus.ars-ucd1.2.96.chr.gene.bed
 
 echo -e 'dam.UOA_brahman_1.96.gene.bed\tensembl' > dam.UOA_brahman_1.96.gene.list
 echo -e 'sire.UOA_angus_1.96.gene.bed\tensembl' > sire.UOA_angus_1.96.gene.list
 echo -e 'ncbi_ars_ucd_1.2_refseq.bed\trefseq' > ncbi_ars_ucd_1.2_refseq.list
+# I also added in the ensembl annotation for ARS-UCDv1.2
 
 module load java/1.8.0_121
 sbatch annotateScript.sh angus sire.UOA_angus_1.96.gene.list angus.cnvrs
@@ -892,6 +894,24 @@ Dealt with 13 null fields
 python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p brahman_pop_list.tab -c angus.cnvrs_windows_ensembl.tab -o angus.cnvrs_windows_vst_genes.tvi.bed -m angus.cnvrs_windows_vst_genes.tvi.melt -g 1.5
 
 python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p brahman_pop_list.tab -c arsucd.cnvrs_windows_refseq.tab -o arsucd.cnvrs_windows_vst_genes.tvi.bed -m arsucd.cnvrs_windows_vst_genes.tvi.melt -g 1.5
+
+python3 ~/python_toolchain/sequenceData/calculateVstDifferences.py -p brahman_pop_list.tab -c arsucd.cnvrs_windows_ensembl.tab -o arsucd.cnvrs_windows_vst_ensembl.bed -m arsucd.cnvrs_windows_vst_ensembl.melt -g 1.5
+Melt    ENSBTAG00000023157      0.3742902428652937      1.8323636363636364
+Melt    ENSBTAG00000053555      0.3865116874761947      1.7015151515151512
+Melt    ENSBTAG00000053557      0.3045985843651203      1.5839151515151513
+Melt    ENSBTAG00000033545      0.28134455365978633     1.5851090909090906
+Melt    ENSBTAG00000053028      0.29194067204914553     1.621048484848485
+Melt    ENSBTAG00000052940      0.7684926833817546      1.6270787878787878
+Melt    ENSBTAG00000015575      0.9506884029779913      2.391454545454546
+Melt    ENSBTAG00000037937      0.425415503351496       1.7660545454545453
+Melt    ENSBTAG00000052878      0.5487232336595422      2.7513272727272735
+Melt    ENSBTAG00000048030      0.226623521102344       1.5979272727272724
+Melt    ENSBTAG00000013957      0.2068551932767507      1.647064516129033
+Melt    ENSBTAG00000030838      0.25243450079686874     47.670748387096765
+Melt    ENSBTAG00000001925      0.9079146432602809      1.7279090909090908
+Melt    ENSBTAG00000050853      0.4019145213065941      7.678957575757577
+Melt    ENSBTAG00000007649      0.26534987091180695     2.578490322580645
+Dealt with 37 null fields
 ```
 
 And here is the script I'm using to call the variants.
