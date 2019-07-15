@@ -394,6 +394,24 @@ module load canu/latest
 sbatch --nodes=1 --ntasks-per-node=30 --mem=10G -p msn --wrap="canu -p clover_no_old -d clover_no_old genomeSize=420m correctedErrorRate=0.105 overlapper=mhap utgReAlign=true 'corMhapOptions=--threshold 0.8 --num-hashes 512 --ordered-sketch-size 1000 --ordered-kmer-size 14' 'gridOptions=-p msn' -nanopore-raw clover_new_combined_fastqs.fastq"
 ```
 
+## New test with Flye and more reads
+
+OK, the previous assemblies weren't fantastic and I think it's primarily due to the fact that we had less data  in the new read only version and we had to tweak tons of settings in canu. Let's shake things up with more data (one more flowcell: clover15) and with the flye assembly.
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano
+
+```bash
+module load miniconda
+conda create --prefix /KEEP/rumen_longread_metagenome_assembly/flye
+source activate /KEEP/rumen_longread_metagenome_assembly/flye
+conda install flye
+
+tar -xvf clover15_fastqs.tar.gz
+cat Clover15/20190712_1708_GA10000_FAK17200_f03b9ef2/pass/*.fastq >> clover_new_combined_fastqs.fastq
+
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn flye --nano-raw clover_new_combined_fastqs.fastq -g 420m -t 70 -i 2 -o clover_new_flye
+```
+
 
 ## Red clover WGS alignment and polishing
 
@@ -404,5 +422,9 @@ module load bwa samtools
 # Gathering our sequence data
 ls /project/forage_assemblies/sequence_data/CloverGenome-137246120/*/*/*.gz > clover_hen_fastqs.tab
 
+# Ran it on /project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_correct/clover_correct.contigs.fasta -> cont_check
 
+# Clover_no_old
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index /project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_no_old/clover_no_old.contigs.fasta"
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p msn --dependency=afterany:733572 --wrap="python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b clover_no_old -t clover_hen_fastqs.tab -f /project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_no_old/clover_no_old.contigs.fasta -p msn -m"
 ```
