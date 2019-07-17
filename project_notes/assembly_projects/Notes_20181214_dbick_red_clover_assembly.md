@@ -402,6 +402,7 @@ OK, the previous assemblies weren't fantastic and I think it's primarily due to 
 
 ```bash
 module load miniconda
+module load samtools
 conda create --prefix /KEEP/rumen_longread_metagenome_assembly/flye
 source activate /KEEP/rumen_longread_metagenome_assembly/flye
 conda install flye
@@ -410,6 +411,18 @@ tar -xvf clover15_fastqs.tar.gz
 cat Clover15/20190712_1708_GA10000_FAK17200_f03b9ef2/pass/*.fastq >> clover_new_combined_fastqs.fastq
 
 sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn flye --nano-raw clover_new_combined_fastqs.fastq -g 420m -t 70 -i 2 -o clover_new_flye
+
+# It completed and it looks like there are 3000 scaffolds!
+samtools faidx scaffolds.fasta
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/calculateContigN50.pl -i scaffolds.fasta.fai
+N50 length:     367289526
+N50 value:      555657
+L50 value:      361
+
+perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";' < scaffolds.fasta.fai
+733752078
+
+# So about the same (less contiguous though) than Canu
 ```
 
 
