@@ -227,12 +227,144 @@ I want to see just how many gaps intersect with major repeat classes.
 ```bash
 module load bedtools
 python3 ~/python_toolchain/sequenceData/intersectGapFlanksWithRepeats.py -g yaksire.gapstatus.tab -r yaksire.repeat.bed -o yaksire.gaprepeat
+
+python3 ~/python_toolchain/sequenceData/intersectGapFlanksWithRepeats.py -g yakdam.gapstatus.tab -r yakdam.repeat.bed -o yakdam.gaprepeat
 ```
 
-#### Stats
+#### Sire Stats
 
 |Class   |RepeatConsistent |RepeatComplex  |None  |
 |:-------|----------------:|--------------:|-----:|
 |Closed  |35               |175            |9     |
 |Trans   |25               |142            |12    |
 |Total   |60               |317            |21    |
+
+#### Dam Stats
+
+|Class   |RepeatConsistent |RepeatComplex  |None  |
+|:-------|----------------:|--------------:|-----:|
+|Closed  |29               |172            |12    |
+|Trans   |25               |152            |8     |
+|Total   |54               |324            |20    |
+
+I've noticed that some of the gap regions are different in terms of repeat classification between the assemblies. Let's test this.
+
+```bash
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[2], $s[3], $s[4]];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $other = $data{$s[0]}; $cons = ($other->[0] eq $s[2] && $other->[1] eq $s[3] && $other->[2] eq $s[4])? 1 : 0; print join("\t", @s) . "\t$cons\t" . join("\t", @{$other}) . "\n";} close IN;' yakdam.gaprepeat.comp yaksire.gaprepeat.comp | perl -lane 'print $F[5];' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   398
+Sum:    212
+Minimum 0
+Maximum 1
+Average 0.532663
+Median  1
+Standard Deviation      0.499560
+Mode(Highest Distributed Value) 1
+
+# Just above 50%? Wonder if it's due to gap region though
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %data; while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1], $s[2], $s[3], $s[4]];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $other = $data{$s[0]}; $cons = ($other->[1] eq $s[2] && $other->[2] eq $s[3] && $other->[3] eq $s[4])? 1 : 0; print join("\t", @s) . "\t$cons\t" . join("\t", @{$other}) . "\n";} close IN;' yakdam.gaprepeat.comp yaksire.gaprepeat.comp > yaklander.gaprepeat.comp
+
+perl -lane 'if($F[1] eq $F[6]){print "1\n";}else{print "0\n";}' < yaklander.gaprepeat.comp | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   398
+Sum:    337
+Minimum 0
+Maximum 1
+Average 0.846734
+Median  1
+Standard Deviation      0.360697
+Mode(Highest Distributed Value) 1  # 80% overlap in gap closure status
+
+perl -lane 'if($F[1] eq $F[6]){}else{@j = split(/-/, $F[0]); print $j[0]}' < yaklander.gaprepeat.comp | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -m
+```
+
+#### gap discrepancy counts
+|Entry          | Value|
+|:--------------|-----:|
+|X              |    13|
+|15             |     4|
+|13             |     3|
+|27             |     3|
+|Unplaced       |    19|
+|18             |     2|
+|23             |     2|
+|5              |     2|
+|Y              |     2|
+|10             |     1|
+|12             |     1|
+|14             |     1|
+|16             |     1|
+|1              |     1|
+|28             |     1|
+|29             |     1|
+|2              |     1|
+|3              |     1|
+|8              |     1|
+|9              |     1|
+
+```bash
+# After removing the discrepancy regions...
+perl -lane 'if($F[1] eq $F[6]){print $F[5];}' < yaklander.gaprepeat.comp | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   337
+Sum:    211
+Minimum 0
+Maximum 1
+Average 0.626113					<-- only improved by 10% 
+Median  1
+Standard Deviation      0.484554
+Mode(Highest Distributed Value) 1
+
+# Let's ID how many unique repeat classes are causing the gaps
+perl -lane 'print "$F[2]-$F[3]-$F[4]\n$F[7]-$F[8]-$F[9]";' < yaklander.gaprepeat.comp | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -m
+
+perl -lane 'foreach my $c (2,3,4,7,8,9){print "$F[$c]";}' < yaklander.gaprepeat.comp | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -m
+```
+
+#### Highlight combinations
+
+|Entry                                                    | Value|
+|:--------------------------------------------------------|-----:|
+|None-None-None                                           |    41|
+|LINE/L1-LINE/L1-LINE/L1                                  |    25|
+|LINE/L1-None-LINE/L1                                     |    24|
+|LINE/RTE-BovB-LINE/RTE-BovB-LINE/RTE-BovB                |    15|
+|LINE/RTE-BovB-None-LINE/RTE-BovB                         |    11|
+|None-Simple_repeat-None                                  |    11|
+|Satellite/centr-Satellite/centr-Satellite/centr          |    10|
+|Satellite/centr-None-Satellite/centr                     |    10|
+
+#### Repeat flanking counts
+
+|Entry              | Value|
+|:------------------|-----:|
+|None               |   801|
+|LINE/L1            |   391|
+|LINE/RTE-BovB      |   288|
+|SINE/tRNA-Core-RTE |   167|
+|Simple_repeat      |   118|
+|SINE/MIR           |    77|
+|SINE/tRNA          |    73|
+|SINE/Core-RTE      |    73|
+|LTR/ERV1           |    72|
+|Satellite/centr    |    65|
+|LINE/L2            |    53|
+|LTR/ERVL-MaLR      |    41|
+|LTR/ERVL           |    40|
+|DNA/hAT-Charlie    |    30|
+|LTR/ERVK           |    26|
+|Low_complexity     |    21|
+|LINE/CR1           |    10|
+|DNA/hAT-Tip100     |    10|
+
+
+Now to test this out in R and find other correlations.
+
+```R
+yakgap <- read.delim("yaklander.gaprepeat.comp", header=FALSE)
+
+table(yakgap$V2, yakgap$V6)
+
+           0   1
+  Closed 109 110
+  Trans   77 102
+
+# So, it looks like it's not really biased towards any one phenomenon. Though I do recall that the closed and trans status differs between assemblies.
+```
