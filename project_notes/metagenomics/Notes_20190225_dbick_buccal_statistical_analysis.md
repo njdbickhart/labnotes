@@ -5,7 +5,12 @@
 These are my notes on the statistical analysis of the Buccal swab OTU data with the overall goal of identifying which OTU are most likely part of the "oral-only" microbial community. 
 
 ## Table of Contents
+* [Preparing the data for analysis](#prep)
+* [Preliminary Random Forest Analysis](#prelimrandom)
+* [Manuscript planning](#planning)
+* [Expanding the analysis set to include Joe's new samples](#joesamples)
 
+<a name="prep"></a>
 ## Preparing the data for analysis
 
 I ran into some trouble getting Mothur to consistently analyze the samples I wanted to process. The problem was that the distance matrix I tried to calculate was absolutely huge! I am going to automate this via a script I've written and then use a few metrics to reduce the number of comparisons. 
@@ -91,6 +96,7 @@ dev.off()
 # The plot showed some samples were far more dense than expected and that we had not reached saturation
 ```
 
+<a name="prelimrandom"></a>
 ## Preliminary Random Forest Analysis
 
 Now I'm going to dabble in Python for a random forest classifier experiment. I expect this to be very basic and not very informative. Consider this an exploration of the data.
@@ -266,6 +272,7 @@ filtered.to_csv("filtered_otu_table_nocontrol.tab", sep='\t', index=False)
 
 I think that I have the basic idea down. There are some hyperparameters I need to tweak (i.e. random forest permutation counts), but the pipeline is likely to remain similar. I do think that more samples would be beneficial, even if they are left out of the initial training and used as a test set for prediction accuracy measurement. Still, let's see if I can formulate the elements that I need for a manuscript.
 
+<a name="planning"></a>
 ## Manuscript planning
 
 #### Necessary figures
@@ -343,3 +350,63 @@ dev.off()
 #### Notes
 
 Joe has completed his timecourse study. My thoughts: time appears to be a large contributor to the variance in principal components. If I did a [principal component regression](https://en.wikipedia.org/wiki/Principal_component_regression) using just the first two PCs (or just the first PC!) that would reduce the variance substantially. Additionally, let's see if we can do a random forest regression to compare methods.
+
+<a name="joesamples"></a>
+## Expanding the analysis set to include Joe's new samples
+
+Joe gave us two new samplesets to analyze. One is the rumen timecourse and the other are more swabs from our trial. 
+
+> Ceres: /project/rumen_longread_metagenome_assembly/analysis/buccal
+
+```bash
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn --wrap='for i in Rumen_Timecourse/*.gz; do gunzip $i; done'
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn --wrap='for i in USDA_Swabs_7_12_19/*.gz; do gunzip $i; done'
+
+# Create folders
+mkdir july_2019_fastqs
+mkdir july_2019_output
+mkdir july_2019_tax
+
+# Copy files
+cp combined_fastqs/* ./july_2019_fastqs/
+cp USDA_Swabs_7_12_19/*.fastq ./july_2019_fastqs/
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn --wrap='cp Rumen_Timecourse/*.fastq ./july_2019_fastqs/'
+
+# count the number of fastqs
+ls july_2019_fastqs/*fastq | wc -l
+1272
+
+# Sort and order files into samples
+perl -e '@f = `ls *.fastq`; chomp(@f); %h; foreach my $j (@f){@s = split(/_/, $j); $h{$s[0]}->{$s[3]} = $j;} foreach my $k (sort {$a cmp $b} keys(%h)){$r1 = $h{$k}->{"R1"}; $r2 = $h{$k}->{"R2"}; print "$k\t$r1\t$r2\n";}' > july_2019_fastq_list.tab
+
+# Move tax files
+cp tax_files/gg_13_8_99.fasta july_2019_tax/
+for i in tax_files/gg_13_8_99.gg.tax tax_files/silva.v132.v4.align tax_files/silva.nr_v132.tax; do echo $i; cp $i ./july_2019_tax/; done
+
+# Submit the job
+perl -lane '$s = "/project/rumen_longread_metagenome_assembly/analysis/buccal/july_2019_fastqs/"; $F[1] = $s . $F[1]; $F[2] = $s . $F[2]; print "$F[0]\t$F[1]\t$F[2]";' < july_2019_fastq_list.tab > temp
+perl -lane '$F[0] =~ s/-/_/g; print join("\t", @F);' < july_2019_fastq_list.tab > temp
+
+sbatch mother_combined_run.sh
+
+# Check OTU classification at the end
+perl -lane '@s = split(/;/, $F[2]); if(scalar(@s) < 2){next;} $i = (length($s[-1]) > 1)? -1 : -2; $s[$i] =~ s/__.+//; print $s[$i];' < combined_fq_total.final.subsample.taxonomy | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -m
+```
+
+|Entry                | Value|
+|:--------------------|-----:|
+|g                    |  5127|
+|f                    |  2309|
+|s                    |  1814|
+|o                    |  1118|
+|k                    |   833|
+|p                    |   582|
+|c                    |   215|
+|unknown_unclassified |     1|
+
+
+### Rerunning with a different cutoff:
+
+* Make new july_2019_output and july_2019_tax folders
+* Change the cutoff value
+* Make new mother script files and modify
