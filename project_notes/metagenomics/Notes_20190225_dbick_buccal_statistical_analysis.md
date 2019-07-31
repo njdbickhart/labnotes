@@ -405,6 +405,17 @@ perl -lane '@s = split(/;/, $F[2]); if(scalar(@s) < 2){next;} $i = (length($s[-1
 |unknown_unclassified |     1|
 
 
+```bash
+# Now to copy all of the output files into the right directory:
+mv july_2019_fastq_list.* ./july_2019_output/
+
+# and finally, to copy the files that I need for future analysis
+cp july_2019_output/july_2019_fastq_list.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.groups.summary ./july_2019_derek_10.groups.summary
+cp july_2019_output/july_2019_fastq_list.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.shared ./july_2019_derek_10.shared
+cp july_2019_output/july_2019_fastq_list.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.opti_mcc.0.10.cons.tax.summary ./july_2019_derek_10.tax.summary
+cp july_2019_output/july_2019_fastq_list.trim.contigs.good.unique.good.filter.unique.precluster.pick.pick.gg.wang.taxonomy ./july_2019_derek_10.wang.taxonomy
+```
+
 ### Rerunning with a different cutoff:
 
 * Make new july_2019_output and july_2019_tax folders

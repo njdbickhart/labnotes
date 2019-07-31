@@ -48,4 +48,7 @@ I'm going to unpack what I have and run an assembly over the long weekend.
 
 ```bash
 for i in Vetch*.tar.gz; do echo $i; sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn --wrap="tar -xvf $i"; done
+
+# Now to concatenate the fastqs
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p msn --wrap='for i in Vetch*/*/fastq_pass/*.fastq; do cat $i; done > vetch_combined_reads.fastq'
 ```
