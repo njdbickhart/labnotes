@@ -18,6 +18,34 @@ Kiranmayee has already preformed the logistic regression analysis and identified
 * /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/neogen_results
 * /mnt/nfs/nfs2/bickhart-users/cattle_asms/ars_ucd_114_igc/neogen_results/round_2  <- plink files for association testing and GWAS
 * /mnt/nfs/nfs2/bickhart-users/natdb_sequencing/prelim_gwas/round2/gmmat  <- kiranmayee's gmmat data
-* /beegfs/project/rumen_longread_metagenome_assembly/kiranmayee/IGC/gmmat <- gmmat data on CERES
+* /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/gmmat <- gmmat data on CERES
+* /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/data_files/ <- data files for GWAS
 
 And Kiranmayee's note file for [GMMAT (best model)](https://github.com/bkiranmayee/My_Labnotes/blob/master/IGC/second_round_GMMAT_GWAS.md) and [GEMMA (faulty assumption)](https://github.com/bkiranmayee/My_Labnotes/blob/master/IGC/second_round_GEMMA_gwas.md) are at the links. 
+
+Let's see if I can combine all of the markers from our 1st and second rounds and analyze them using plink. First, the case-control analysis. 
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/kiranmayee/IGC/case_control
+
+```bash
+module load plink/1.9
+
+# Moving and merging files
+cp ../neogen_results/round_1/neogen_updated.map ./
+cp ../neogen_results/round_1/neogen_updated.ped ./
+cp ../prelim_gwas/round2/data_files/pheno_cov_master_file.txt ./
+
+plink --file neogen_updated --merge ../neogen_results/round_2/neogen_2ndRound --out neogen_merged_unfiltered --allow-extra-chr
+
+# Calculating summary statistics
+plink --bfile neogen_merged_unfiltered --missing --out neogen_merged_unfiltered.miss --allow-extra-chr
+
+# Filtering variants
+plink --bfile neogen_merged_unfiltered --allow-extra-chr --geno 0.10 --make-bed --out neogen_merged_genopop_filt
+plink --bfile neogen_merged_genopop_filt --hardy --allow-extra-chr --out neogen_merged_hardy
+plink --bfile neogen_merged_genopop_filt --hwe 1E-10 --make-bed --allow-extra-chr --out neogen_merged_hwe_filt
+plink --bfile neogen_merged_hwe_filt --maf 0.05 --make-bed  --allow-extra-chr --out neogen_merged_hwe_maf_filt
+
+# running the association using logistic regression
+plink --bfile neogen_merged_hwe_maf_filt --logistic --genotypic --allow-extra-chr --covar pheno_cov_master_file.txt --hide-covar --out neogen_merged_logistic
+```
