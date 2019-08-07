@@ -1311,3 +1311,38 @@ dev.off()
 
 ggplot(data, aes(x=ASM, y=CN, fill=ASM, colour = ASM)) + geom_boxplot() + theme_bw() + coord_flip() + scale_fill_brewer(palette="Dark2") + facet_grid(CNVR ~ .)
 ```
+
+Briefly checking for repetitive element overlap:
+
+```bash
+module load bedtools/2.25.0
+
+bedtools intersect -a ../../../dominette/repeatmasker/ARS-UCD1.2_Btau5.0.1Y.fa.out.bed -b combined_merger_filt.merge.bed -wa -wb | perl -lane 'print "$F[7]:$F[8]-$F[9]\t$F[10]";' | sort | uniq | wc -l
+4277
+wc -l combined_merger_filt.merge.bed
+4552 combined_merger_filt.merge.bed
+
+# Intersection with repeats
+bedtools intersect -a ../../../dominette/repeatmasker/ARS-UCD1.2_Btau5.0.1Y.fa.out.bed -b combined_merger_filt.merge.bed -wa -wb | perl -lane 'print "$F[7]:$F[8]-$F[9]\t$F[10]";' | sort | uniq | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 1 -d '\t' -m
+|Entry                | Value|
+|:--------------------|-----:|
+|brahman              |  1813|
+|arsucd               |  1238|
+|angus                |  1164|
+|arsucd;brahman       |    22|
+|angus;brahman        |    19|
+|angus;arsucd         |    15|
+|angus;arsucd;brahman |     6|
+
+# No intersection
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f combined_merger_filt.merge.bed -c 3 -d '\t' -m
+|Entry                | Value|
+|:--------------------|-----:|
+|brahman              |  1953|
+|arsucd               |  1277|
+|angus                |  1260|
+|arsucd;brahman       |    22|
+|angus;brahman        |    19|
+|angus;arsucd         |    15|
+|angus;arsucd;brahman |     6|
+```
