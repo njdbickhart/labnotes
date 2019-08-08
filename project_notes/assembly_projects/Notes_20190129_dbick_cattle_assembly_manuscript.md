@@ -570,3 +570,32 @@ rm input-sequences.fna
 
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -o {cluster.stdout}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
 ```
+
+## Intersection of gap regions with Sniffles
+
+Just checking to see if most of the deletions in UMD3 are due to gaps.
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/dominette
+
+```bash
+module load bedtools/2.25.0
+module load java/1.8.0_121
+
+perl -lane 'if($F[0] =~ /^#/ || $F[4] ne "<DEL>"){next;} @nsegs = split(/\|/, $F[0]); ($len) = $F[7] =~ /SVLEN=(\d{1,7});/; $end = $F[1] + $len; print "$nsegs[3]\t$F[1]\t$end";' < sniffles.umd.vcf | bedtools sort -i stdin > sniffles.umd.dels.bed
+
+wc -l sniffles.umd.dels.bed
+14780 sniffles.umd.dels.bed
+
+# Calling UMD3 gaps
+java -Xmx16G -jar ~/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.fna -o UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed -s UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.stats
+
+# Intersections
+bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed -a sniffles.umd.dels.bed | wc -l
+51032
+# That's quite a bit! Let's see how many unique deletions intersect with gaps
+bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed -a sniffles.umd.dels.bed -wa | perl -lane 'print "$F[0]:$F[1]-$F[2]";' | sort | uniq | wc -l
+13941	<- 94%
+
+bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed -a sniffles.umd.dels.bed -wa -f 0.50 -r | perl -lane 'print "$F[0]:$F[1]-$F[2]";' | sort | uniq | wc -l
+8791	<- 59%
+```

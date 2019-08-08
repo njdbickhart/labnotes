@@ -1346,3 +1346,53 @@ python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f combined_merger_filt
 |angus;arsucd         |    15|
 |angus;arsucd;brahman |     6|
 ```
+
+
+Also, briefly checking for CE event intersection:
+
+```bash
+module load bedtools/2.25.0
+perl -lane 'print "$F[0]\t$F[2]\t$F[3]\t$F[1]";' < ../../asms/f_brahman_frc_stats_Features.txt > brahman_frc_stats_Features.bed
+perl -lane 'print "$F[0]\t$F[2]\t$F[3]\t$F[1]";' < ../../asms/f_angus_frc_stats_Features.txt > angus_frc_stats_Features.bed
+
+# Now to liftover to ARS-UCD1.2
+~/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/liftOver brahman_frc_stats_Features.bed ../liftoverChains/bostaurus_brahma_bionano_NCBI_full_corrected_gapfill_arrow_fil_withM_to_ARS-UCD1.liftover.chain brahman_frc_stats_Features.arsucd.liftover.bed brahman_frc_stats_Features.arsucd.liftover.unmapped
+~/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/liftOver angus_frc_stats_Features.bed ../liftoverChains/bostaurus_angus_bionano_NCBI_full_corrected_gapfill_arrow_fil_to_ARS-UCD1.liftover.chain angus_frc_stats_Features.arsucd.liftover.bed angus_frc_stats_Features.arsucd.liftover.unmapped
+
+# Checking intersection in Brahman
+bedtools intersect -a brahman_frc_stats_Features.arsucd.liftover.bed -b combined_merger_filt.angbrah.sort.bed -wb | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 3 -d '\t' -m
+|Entry           | Value|
+|:---------------|-----:|
+|COMPR_PE        |   263|
+|STRECH_PE       |    87|
+|LOW_COV_PE      |    66|
+|LOW_NORM_COV_PE |    61|
+|HIGH_SPAN_PE    |     2|
+|HIGH_COV_PE     |     1|
+
+# Really, the high-span-pe (mapped to different contig) are the most obvious errors. Let's map them
+bedtools intersect -a brahman_frc_stats_Features.arsucd.liftover.bed -b combined_merger_filt.angbrah.sort.bed -wb | grep 'HIGH_SPAN_PE' | perl -lane 'print "$F[4]:$F[5]-$F[6];$F[7]";' | sort | uniq | wc -l
+2
+
+bedtools intersect -a brahman_frc_stats_Features.arsucd.liftover.bed -b combined_merger_filt.angbrah.sort.bed -wb | grep 'HIGH_SPAN_PE' | perl -lane 'print "$F[4]:$F[5]-$F[6];$F[7]";' | sort | uniq
+15:18343109-18702443;angus;brahman
+4:105452409-105546440;angus;brahman
+
+# Now the Angus
+bedtools intersect -a angus_frc_stats_Features.arsucd.liftover.bed -b combined_merger_filt.angbrah.sort.bed -wb | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 3 -d '\t' -m
+|Entry            | Value|
+|:----------------|-----:|
+|COMPR_PE         |   319|
+|STRECH_PE        |   101|
+|LOW_COV_PE       |    71|
+|LOW_NORM_COV_PE  |    64|
+|HIGH_COV_PE      |    28|
+|HIGH_NORM_COV_PE |    26|
+|HIGH_SPAN_PE     |     2|
+
+bedtools intersect -a angus_frc_stats_Features.arsucd.liftover.bed -b combined_merger_filt.angbrah.sort.bed -wb | grep 'HIGH_SPAN_PE' | perl -lane 'print "$F[4]:$F[5]-$F[6];$F[7]";' | sort | uniq | wc -l
+2
+bedtools intersect -a angus_frc_stats_Features.arsucd.liftover.bed -b combined_merger_filt.angbrah.sort.bed -wb | grep 'HIGH_SPAN_PE' | perl -lane 'print "$F[4]:$F[5]-$F[6];$F[7]";'
+6:5324359-5338398;angus;brahman
+15:51103179-51197961;angus;brahman
+```
