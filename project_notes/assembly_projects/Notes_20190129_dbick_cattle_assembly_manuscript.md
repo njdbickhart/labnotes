@@ -598,4 +598,16 @@ bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed 
 
 bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed -a sniffles.umd.dels.bed -wa -f 0.50 -r | perl -lane 'print "$F[0]:$F[1]-$F[2]";' | sort | uniq | wc -l
 8791	<- 59%
+
+### Ok, Serge filtered the calls based on the Genotype score. Let's see how the stats look after doing that
+perl -lane 'if($F[0] =~ /^#/ || $F[4] ne "<DEL>"){next;} @gsegs = split(/:/, $F[9]); if($gsegs[1] >= 10 || $gsegs[2] < 10){next;} @nsegs = split(/\|/, $F[0]); ($len) = $F[7] =~ /SVLEN=(\d{1,7});/; $end = $F[1] + $len; print "$nsegs[3]\t$F[1]\t$end";' < sniffles.umd.vcf | bedtools sort -i stdin > sniffles.umd.filt.dels.bed
+
+wc -l sniffles.umd.filt.dels.bed
+10504 sniffles.umd.filt.dels.bed
+
+bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed -a sniffles.umd.filt.dels.bed -wa | perl -lane 'print "$F[0]:$F[1]-$F[2]";' | sort | uniq | wc -l
+10137	<- 96.5%
+
+bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed -a sniffles.umd.filt.dels.bed -wa -f 0.50 -r | perl -lane 'print "$F[0]:$F[1]-$F[2]";' | sort | uniq | wc -l
+5649	<- 54%
 ```
