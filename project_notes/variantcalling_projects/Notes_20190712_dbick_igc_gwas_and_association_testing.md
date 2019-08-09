@@ -41,11 +41,18 @@ plink --file neogen_updated --merge ../neogen_results/round_2/neogen_2ndRound --
 plink --bfile neogen_merged_unfiltered --missing --out neogen_merged_unfiltered.miss --allow-extra-chr
 
 # Filtering variants
-plink --bfile neogen_merged_unfiltered --allow-extra-chr --geno 0.10 --make-bed --out neogen_merged_genopop_filt
+plink --bfile neogen_merged_unfiltered --allow-extra-chr --geno 0.20 --make-bed --out neogen_merged_genopop_filt
 plink --bfile neogen_merged_genopop_filt --hardy --allow-extra-chr --out neogen_merged_hardy
 plink --bfile neogen_merged_genopop_filt --hwe 1E-10 --make-bed --allow-extra-chr --out neogen_merged_hwe_filt
-plink --bfile neogen_merged_hwe_filt --maf 0.05 --make-bed  --allow-extra-chr --out neogen_merged_hwe_maf_filt
+#plink --bfile neogen_merged_hwe_filt --maf 0.05 --make-bed  --allow-extra-chr --out neogen_merged_hwe_maf_filt
 
 # running the association using logistic regression
-plink --bfile neogen_merged_hwe_maf_filt --logistic --genotypic --allow-extra-chr --covar pheno_cov_master_file.txt --hide-covar --out neogen_merged_logistic
+plink --bfile neogen_merged_hwe_filt --logistic --genotypic --allow-extra-chr --covar pheno_cov_master_file.txt --hide-covar --out neogen_merged_logistic 
+
+# Didn't work well. Going to reformat the covariate file because I think that was screwed up
+perl -lane 'if($F[0] eq "id"){next;} print "$F[0]\t$F[1]\t$F[5]\t$F[6]\t$F[8]";' < pheno_cov_master_file.txt > pheno_cov_master_file.crop.tab
+
+plink --bfile neogen_merged_hwe_filt --logistic --genotypic --allow-extra-chr --covar pheno_cov_master_file.crop.tab --hide-covar --out neogen_merged_logistic 
 ```
+
+OK, the logistic regression wasn't fantastic and I think that it was primarily due to how the files were formatted. Before I start getting fancy with the data, let's start from the beginning and go back to basics. 
