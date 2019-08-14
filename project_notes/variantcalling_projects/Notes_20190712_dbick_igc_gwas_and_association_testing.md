@@ -56,3 +56,14 @@ plink --bfile neogen_merged_hwe_filt --logistic --genotypic --allow-extra-chr --
 ```
 
 OK, the logistic regression wasn't fantastic and I think that it was primarily due to how the files were formatted. Before I start getting fancy with the data, let's start from the beginning and go back to basics. 
+
+## Replicating the other studies
+
+Let's try to replicate [Bermingham et al 2014](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3998787/) and [Wilkinson et al. 2017](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5483290/) first. I think that Bermingham is far too narrow and does not fit ALL of the data. Instead, the approach by Wilkinson et al using regional heritability estimates may be the best approach. Let's see how it deals with SNPs from our new set that have reasonable heterozygosity and minor allele frequency.
+
+### Generating the new SNPs for use in the model
+
+```bash
+
+```
+
