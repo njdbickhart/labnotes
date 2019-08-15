@@ -441,3 +441,49 @@ ls /project/forage_assemblies/sequence_data/CloverGenome-137246120/*/*/*.gz > cl
 sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn --wrap="bwa index /project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_no_old/clover_no_old.contigs.fasta"
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p msn --dependency=afterany:733572 --wrap="python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b clover_no_old -t clover_hen_fastqs.tab -f /project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_no_old/clover_no_old.contigs.fasta -p msn -m"
 ```
+
+
+## New idea: look at kmers and/or read coverage to resolve highly heterozygous regions
+
+I previously tried to look at KAT plots with little success. Let's try a different kmer based approach with [Smudgeplot](https://github.com/KamilSJaron/smudgeplot)
+
+> Ceres: /home/derek.bickharhth/forage/analysis/clover_kmers
+
+```bash
+export LD_LIBRARY_PATH=/usr/lib64:/lib64:$LD_LIBRARY_PATH
+module load jellyfish2/2.2.9;
+# Creating the Jellyfish DB
+ls /project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/*/*.gz | perl -lane 'print "gunzip -c $F[0]";' > red_clover_reads.generators
+
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=60 -p msn --wrap="jellyfish count -C -m 21 -s 100M -t 60 --bf-size 50G -g red_clover_reads.generators -o red_clover_21mer_illumina"
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p msn --wrap='jellyfish histo red_clover_21mer_illumina > red_clover_21mer_illumina.hist'
+
+# Determining cutoff
+~/forage/binaries/smudgeplot/exec/smudgeplot.py cutoff red_clover_21mer_illumina.hist L
+Running smudgeplot v0.2.1
+Task: cutoff
+11
+Done!
+
+~/forage/binaries/smudgeplot/exec/smudgeplot.py cutoff red_clover_21mer_illumina.hist U
+Running smudgeplot v0.2.1
+Task: cutoff
+1500
+Done!
+
+# Running the script
+jellyfish dump -c -L 11 -U 1500 red_clover_21mer_illumina | ~/forage/binaries/smudgeplot/exec/smudgeplot.py hetkmers -o red_clover_21mer_illumina.kmer_pairs
+
+## It did not complete quickly. I'm going to try KMC instead
+ls /project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/*/*.gz > red_clover_reads.list
+
+mkdir tmp; sbatch --nodes=1 --mem=200000 --ntasks-per-node=60 -p msn --wrap='/project/forage_assemblies/binaries/KMC/bin/kmc -k21 -t60 -m200 -cs10000 @red_clover_reads.list red_clover_kmc tmp'
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=2 -p msn --wrap='/project/forage_assemblies/binaries/KMC/bin/kmc_tools transform red_clover_kmc histogram red_clover_kmc_k21.hist -cx10000'
+
+~/forage/binaries/smudgeplot/exec/smudgeplot.py cutoff red_clover_kmc_k21.hist L
+~/forage/binaries/smudgeplot/exec/smudgeplot.py cutoff red_clover_kmc_k21.hist U
+
+# same as above, so pretty consistent!
+sbatch --nodes=1 --mem=50000 --ntasks-per-node=2 -p msn --wrap='/project/forage_assemblies/binaries/KMC/bin/kmc_tools transform red_clover_kmc -ci11 -cx1500 dump -s red_clover_kmc_k21.dump'
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=2 -p msn --wrap='~/forage/binaries/smudgeplot/exec/smudgeplot.py hetkmers -o red_clover_kmc.kmer_pairs < red_clover_kmc_k21.dump'
+```

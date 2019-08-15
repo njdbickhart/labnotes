@@ -52,3 +52,14 @@ for i in Vetch*.tar.gz; do echo $i; sbatch --nodes=1 --mem=1000 --ntasks-per-nod
 # Now to concatenate the fastqs
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p msn --wrap='for i in Vetch*/*/fastq_pass/*.fastq; do cat $i; done > vetch_combined_reads.fastq'
 ```
+
+Now to run Flye on Vetch to test it out.
+
+> Ceres: /project/forage_assemblies/assemblies/vetch
+
+```bash
+module load miniconda
+source activate /KEEP/rumen_longread_metagenome_assembly/flye
+
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn flye --nano-raw /home/derek.bickharhth/forage_assemblies/sequence_data/vetch_combined_reads.fastq -g 2000m -t 70 -i 2 -o vetch_flye
+```
