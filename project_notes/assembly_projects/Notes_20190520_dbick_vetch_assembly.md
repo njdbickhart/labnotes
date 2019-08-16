@@ -62,4 +62,10 @@ module load miniconda
 source activate /KEEP/rumen_longread_metagenome_assembly/flye
 
 sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn flye --nano-raw /home/derek.bickharhth/forage_assemblies/sequence_data/vetch_combined_reads.fastq -g 2000m -t 70 -i 2 -o vetch_flye
+
+## Ran out of memory! Going to try to increase a slight bit, but if it fails I'll have to try an alternate strategy
+sbatch --nodes=1 --mem=370000 --ntasks-per-node=70 -p msn flye --nano-raw /home/derek.bickharhth/forage_assemblies/sequence_data/vetch_combined_reads.fastq -g 2000m -t 70 -i 2 -o vetch_flye --resume
+
+## That also ran out of memory. Going to queue up on the MEM nodes for the long haul
+sbatch --nodes=1 --mem=900000 --ntasks-per-node=70 -p mem flye --nano-raw /home/derek.bickharhth/forage_assemblies/sequence_data/vetch_combined_reads.fastq -g 2000m -t 70 -i 2 -o vetch_flye --resume
 ```
