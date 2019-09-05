@@ -61,9 +61,141 @@ OK, the logistic regression wasn't fantastic and I think that it was primarily d
 
 Let's try to replicate [Bermingham et al 2014](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3998787/) and [Wilkinson et al. 2017](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5483290/) first. I think that Bermingham is far too narrow and does not fit ALL of the data. Instead, the approach by Wilkinson et al using regional heritability estimates may be the best approach. Let's see how it deals with SNPs from our new set that have reasonable heterozygosity and minor allele frequency.
 
-### Generating the new SNPs for use in the model
+Actually, Wilkinson used a proprietary program that isn't easy to install. At all. Very few directions and hard-coded makefile instructions based on system ID names. I'll try to replicate Kiranmayee's data instead using different filtered variant sites.
+
+I am going to re-filter the custom markers to remove those with excessive heterozygosity, low MAF, and keep the remainder. 
 
 ```bash
+module load plink/1.9
+module load r
 
+plink --bfile neogen_merged_genopop_filt --freqx --allow-extra-chr --out neogen_merged_genopop_stats
+
+# Now I processed the file manually to check for distributions
+perl -lane 'if($F[0] eq "CHR"){next;} $maf = $F[6] / ($F[4] + $F[5] + $F[6]); $het = $F[5] / ($F[4] + $F[5] + $F[6]); print "$F[1]\t$maf\t$het";' < neogen_merged_genopop_stats.frqx | perl -lane 'print $F[-1]' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   115
+Sum:    26.9967031417674
+Minimum 0
+Maximum 1
+Average 0.234754
+Median  0.179294389820706
+Standard Deviation      0.237575
+
+# I will select a cutoff of 50% for the het rate and 95% for the MAF
+perl -lane 'if($F[0] eq "CHR"){next;} $maf = $F[6] / ($F[4] + $F[5] + $F[6]); $het = $F[5] / ($F[4] + $F[5] + $F[6]); print "$F[1]\t$maf\t$het";' < neogen_merged_genopop_stats.frqx | perl -lane 'if($F[1] <= 0.95 && $F[2] < 0.50){print $F[0];}' > non_het_snps.txt
+
+plink --bfile neogen_merged_genopop_filt --extract non_het_snps.txt --allow-extra-chr --make-bed --out neogen_merged_nonhet_filt
+
+# Just testing for curiosity's sake
+plink --bfile neogen_merged_nonhet_filt --logistic --genotypic --allow-extra-chr --covar pheno_cov_master_file.crop.tab --hide-covar --out neogen_merged_nonhet_logistic
+
+perl -lane 'if($F[-1] ne "NA" && $F[-1] < 0.005){print $_;}' < neogen_merged_nonhet_logistic.assoc.logistic
+ CHR                    SNP         BP   A1       TEST    NMISS         OR         STAT            P
+   5             5_99190989   99190989    T   GENO_2DF     1601         NA         21.6    2.039e-05
+  18            18_62774779   62774779    A     DOMDEV     1763     0.5293       -3.694    0.0002204
+  18            18_62774779   62774779    A   GENO_2DF     1763         NA        18.73    8.557e-05
+  18            18_63417698   63417698    A   GENO_2DF     1678         NA        18.45    9.872e-05
+ MHC             MHC_260913     260913    G        ADD     1654      1.207        2.916     0.003545
+LIB14427_MHC     LIB14427_MHC_73766      73766    A     DOMDEV     1736      2.027         3.85    0.0001179
+LIB14427_MHC     LIB14427_MHC_73766      73766    A   GENO_2DF     1736         NA        15.13    0.0005195
+
+# OK, now to trace Kiranmayee's steps to rerun the GWAS
+# I need to convert the coordinates so that the SNPs can be merged properly
+grep 'ARS_PIR' ../prelim_gwas/round2/data_files/merge1.bim > previously_reconciled_snps.tab
+
+# Running a union analysis to see how many overlap with Kiranmayee's previous coordinates
+perl -lane 'print $F[1]' < neogen_merged_nonhet_filt.bim > new_filt.list
+perl -lane '@b = split(/_/, $F[1]); if(scalar(@b) == 4 || $F[1] =~ /LRC/ || $F[1] =~ /KIR/){print "$b[-2]\_$b[-1]";}else{print "$b[-3]\_$b[-2]\_$b[-1]";}' < previously_reconciled_snps.tab > previously_reconciled_snps.list
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl new_filt.list previously_reconciled_snps.list
+File Number 1: new_filt.list
+File Number 2: previously_reconciled_snps.list
+Set     Count
+1       17
+1;2     55
+2       25
+
+# Damn! Well, in order to convert the coordinates, I will use a regression based on other members of the group
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -o new_filt.list previously_reconciled_snps.list
+
+perl -lane '@b = split(/_/, $F[1]); if(scalar(@b) == 4 || $F[1] =~ /LRC/ || $F[1] =~ /KIR/){$F[1] = "$b[-2]\_$b[-1]"; print join("\t", @F);}else{$F[1] = "$b[-3]\_$b[-2]\_$b[-1]"; print join("\t", @F);}' < previously_reconciled_snps.tab | perl -lane '@b = split(/_/, $F[1]); $old = pop(@b); $val = join("_", @b); print "$F[0]\t$val\t$F[1]\t$old\t$F[3]\t$F[4]\t$F[5]";' > previously_reconciled_snps.training.tab
 ```
 
+Now to do the conversion in R
+
+```R
+library(dplyr)
+traindf <- read.delim("previously_reconciled_snps.training.tab", header=F)
+names(traindf) <- c("chr", "set", "ID", "old", "pos", "ref", "alt")
+preddf <- read.delim("neogen_merged_nonhet_filt.bim", header=F)
+names(preddf) <- c("set", "ID", "sex", "old", "ref", "alt")
+
+preddf$set <- as.character(preddf$set)
+preddf$set[preddf$set == "MHC"] <- "MHCclassI_MHC"
+preddf$set <- as.factor(preddf$set)
+
+# Creating the models
+models = list(); for(x in unique(preddf$set)){fit <- lm(pos ~ old, data=traindf[traindf$set == x,]); models[[x]] <- fit}
+
+# now to convert coords
+for (x in names(models)){v <- predict(models[[x]], preddf[preddf$set == x,]); preddf[preddf$set == x,"pos"] <- v;}
+
+# dammit! It didn't work very well
+# I found out why:
+traindf %>% mutate(diff = pos - old) %>% group_by(set) %>% summarize(mean = mean(diff), stdev = sd(diff))
+# A tibble: 7 x 3
+  set                 mean   stdev
+  <fct>              <dbl>   <dbl>
+1 18               255796.  65849.
+2 23               -59833.   9038.
+3 5                484491   18554.
+4 KIR            62932209      NA
+5 LIB14427_MHC   28456035.  13267.
+6 LRC            63107830. 156684.
+7 MHCclassI_MHC  28259399. 120393.
+
+# It's gotta be because of gaps in the region and Kiranmayee's liftover. The linear regression is probably fine as is for most values?
+preddf %>% mutate(diff = pos - old) %>% group_by(set) %>% summarize(mean = mean(diff), stdev = sd(diff))
+# A tibble: 7 x 3
+  set                 mean  stdev
+  <fct>              <dbl>  <dbl>
+1 18               256757. 23365.
+2 23               -64878.   271.
+3 5                483395.  2788.
+4 KIR            62932209     NA
+5 LIB14427_MHC   28457215. 11947.
+6 LRC            63103197. 38638.
+7 MHCclassI_MHC  28274157. 46393.
+
+# Yeah, not the best, but less dispersion than the original values and less than using the mean in a simple subtraction.
+write.table(x=preddf, file="neogen_merged_nonhet_filt.revised.bim",row.names=FALSE, col.names=FALSE, quote=FALSE)
+```
+
+I then manually edited the file to change the chromosome names and positions.
+
+```bash
+perl -lane '$F[-1] = int($F[-1]); if($F[0] =~ /KIR/){$F[0] = 18;}elsif($F[0] =~ /MHC/){$F[0] = 23;}elsif($F[0] =~ /LRC/){$F[0] = 18;} print "$F[0]\t$F[1]\t$F[2]\t$F[6]\t$F[4]\t$F[5]";' < neogen_merged_nonhet_filt.revised.bim > neogen_merged_nonhet_alter.bim
+cp neogen_merged_nonhet_filt.bed neogen_merged_nonhet_alter.bed
+cp neogen_merged_nonhet_filt.fam neogen_merged_nonhet_alter.fam
+
+# Merging together
+plink --bfile ../prelim_gwas/round1/trial_1/set1_ld_filtered --bmerge neogen_merged_nonhet_alter --cow --out hd_neogen_merged_snpset
+
+# Ah, crap! Kiranmayee must have done something to this file. I'll have to replicate from her later results
+grep 'ARS_PIR' ../prelim_gwas/round2/data_files/merge1.bim | perl -lane 'print $F[1];' > markers_to_remove.txt
+plink --bfile ../prelim_gwas/round2/data_files/merge1 --cow --exclude markers_to_remove.txt --make-bed --out hd_array_ld_filt
+plink --bfile hd_array_ld_filt --bmerge neogen_merged_nonhet_alter --cow --out hd_neogen_merged_snpset
+
+# OK, I have the SNPs, let's now try to replicate her phenotype data sorting
+mkdir pheno_groups
+plink --bfile hd_neogen_merged_snpset --cow --keep-fam ../prelim_gwas/round2/data_files/pheno1.fam --make-bed --out pheno_groups/phenotype1
+plink --bfile hd_neogen_merged_snpset --cow --keep-fam ../prelim_gwas/round2/data_files/pheno2.fam --make-bed --out pheno_groups/phenotype2
+plink --bfile hd_neogen_merged_snpset --cow --keep-fam ../prelim_gwas/round2/data_files/pheno3.fam --make-bed --out pheno_groups/phenotype3
+plink --bfile hd_neogen_merged_snpset --cow --keep-fam ../prelim_gwas/round2/data_files/pheno4.fam --make-bed --out pheno_groups/phenotype4
+
+# Changing her phenotype codes to fit with plink
+for i in `seq 1 4`; do echo $i; perl -lane 'if($F[-1] == -9){$F[-1] = 0;} print join(" ", @F);' < pheno_groups/phenotype${i}.fam > temp; mv temp pheno_groups/phenotype${i}.fam; done
+
+# And, running a quick logistic analysis
+for i in `seq 1 4`; do echo $i; plink --bfile pheno_groups/phenotype${i} --cow --1 --logistic --genotypic --covar pheno_cov_master_file.crop.tab --hide-covar --out pheno_groups/logistic_test_pheno${i}; done
+```
