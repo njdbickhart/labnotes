@@ -198,4 +198,28 @@ for i in `seq 1 4`; do echo $i; perl -lane 'if($F[-1] == -9){$F[-1] = 0;} print 
 
 # And, running a quick logistic analysis
 for i in `seq 1 4`; do echo $i; plink --bfile pheno_groups/phenotype${i} --cow --1 --logistic --genotypic --covar pheno_cov_master_file.crop.tab --hide-covar --out pheno_groups/logistic_test_pheno${i}; done
+
+# Making a separate folder for analysis
+mkdir gmmat_output
+mkdir gmmat_data
 ```
+
+OK, I need to create GDS files for each dataset for use in GMMAT.
+
+```R
+library(SeqArray)
+seqBED2GDS("pheno_groups/phenotype1.bed", "pheno_groups/phenotype1.fam", "pheno_groups/phenotype1.bim", "gmmat_data/phenotype1.gds")
+seqBED2GDS("pheno_groups/phenotype2.bed", "pheno_groups/phenotype2.fam", "pheno_groups/phenotype2.bim", "gmmat_data/phenotype2.gds")
+seqBED2GDS("pheno_groups/phenotype3.bed", "pheno_groups/phenotype3.fam", "pheno_groups/phenotype3.bim", "gmmat_data/phenotype3.gds")
+seqBED2GDS("pheno_groups/phenotype4.bed", "pheno_groups/phenotype4.fam", "pheno_groups/phenotype4.bim", "gmmat_data/phenotype4.gds")
+```
+
+Now to adjust the covariate file for scripting. 
+
+```bash
+for i in `seq 1 4`; do echo $i; perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\s+/); $h{$s[0]} = $s[5];} close IN; open(IN, "< $ARGV[1]"); $t = <IN>; print "$t"; while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$s[2] = $h{$s[0]}; print join("\t", @s); print "\n";}} close IN;' pheno_groups/phenotype${i}.fam pheno_cov_master_file.txt > gmmat_data/pheno${i}_covariates.tab; done
+```
+
+#### TODO: separate the SNPsets into slurm job batches
+#### TODO: create job array script for GMMAT job submission using run_gmmat_gwas.R
+#### TODO: use Kiranmayee's kinship files located here: /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/gemma_output/pheno1.cXX.txt
