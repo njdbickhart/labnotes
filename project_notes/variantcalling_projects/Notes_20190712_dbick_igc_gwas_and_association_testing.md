@@ -214,12 +214,74 @@ seqBED2GDS("pheno_groups/phenotype3.bed", "pheno_groups/phenotype3.fam", "pheno_
 seqBED2GDS("pheno_groups/phenotype4.bed", "pheno_groups/phenotype4.fam", "pheno_groups/phenotype4.bim", "gmmat_data/phenotype4.gds")
 ```
 
-Now to adjust the covariate file for scripting. 
+Now to adjust the covariate file for scripting and create separate snpsets for the slurm job array. 
 
 ```bash
+module load r/3.5.2
 for i in `seq 1 4`; do echo $i; perl -e 'chomp(@ARGV); %h; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\s+/); $h{$s[0]} = $s[5];} close IN; open(IN, "< $ARGV[1]"); $t = <IN>; print "$t"; while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$s[2] = $h{$s[0]}; print join("\t", @s); print "\n";}} close IN;' pheno_groups/phenotype${i}.fam pheno_cov_master_file.txt > gmmat_data/pheno${i}_covariates.tab; done
+
+# Creating 1000 SNP subsets for processing
+mkdir snp_sets
+perl -e '$c = 0; $i = 1; open(OUT, "> snp_sets/snp_list_$i.txt"); while(<>){chomp; @s = split(/\t/); print OUT "$s[1]\n"; $c++; if($c >= 1000){close OUT; $i++; open(OUT, "> snp_sets/snp_list_$i.txt"); $c = 0;}} close OUT;' < pheno_groups/phenotype1.bim
+
+# I wrote a job array script that processes each SNP set separately. Now to run it!
+sbatch queue_gwas_job_array.sh gmmat_data/pheno1_covariates.tab /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/gemma_output/pheno1.cXX.txt gmmat_data/phenotype1.gds phenotype1
 ```
 
-#### TODO: separate the SNPsets into slurm job batches
-#### TODO: create job array script for GMMAT job submission using run_gmmat_gwas.R
-#### TODO: use Kiranmayee's kinship files located here: /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/gemma_output/pheno1.cXX.txt
+And here are the scripts used to run the GWAS:
+
+#### run_gmmat_gwas.R
+
+```R
+#!/software/7/apps/r/3.5.2/bin/Rscript
+# A R script to automate GMMAT GWAS on subsets of SNPs
+# ARGS = 1 : phenotype covariates, 2 : snp file, 3 : kinship file, 4 : input gds file, 5 : output filename
+
+library(GMMAT)
+
+args = commandArgs(trailingOnly=TRUE)
+
+# test if there are at least one argument: if not, return an error
+if (length(args)==0) {
+  stop("At least one arguments must be supplied (snp ids file).\n", call.=FALSE)
+}
+
+pheno <- read.table(args[1], header=TRUE, stringsAsFactors=F)
+
+snps <- scan(args[2], what="character")
+
+kins <- as.matrix(read.table(args[3]))
+
+colnames(kins)<-pheno$id
+
+row.names(kins)<-pheno$id
+
+results <- glmm.wald(fixed = bTB_status ~ breed + age + yr + season, data = pheno, id = "id", kins = kins, family = binomial(link = "logit"), infile = args[4], snps = snps)
+
+write.table(results, file=args[5], row.names=F, sep = "\t", quote=FALSE)
+```
+
+#### queue_gwas_job_array.sh
+
+```bash
+#!/usr/bin/bash
+# This is a script to queue up a job array of GWAS calculations on SNPs
+# Input: $1 : Phenotype covariates file, $2 : kinship matrix file, $3 : input GDS file, $4 : output basename
+#SBATCH --job-name=gmmatGWAS
+#SBATCH --nodes=1
+#SBATCH --time=3-0
+#SBATCH --output=gmmat_stdout/gmmat_%A_%a.out
+#SBATCH -p msn
+#SBATCH --array=1-188
+#SBATCH --mem=10000
+#SBATCH --ntasks-per-node=1
+
+N=$SLURM_ARRAY_TASK_ID
+
+module load r/3.5.2
+echo "Working on Slurm job array: $N"
+
+time /software/7/apps/r/3.5.2/bin/Rscript --vanilla run_gmmat_gwas.R $1 snp_sets/snp_list_${N}.txt $2 $3 gmmat_output/${4}_${N}.tab
+
+echo "Finished with Slurm task: $N"
+```
