@@ -226,6 +226,17 @@ perl -e '$c = 0; $i = 1; open(OUT, "> snp_sets/snp_list_$i.txt"); while(<>){chom
 
 # I wrote a job array script that processes each SNP set separately. Now to run it!
 sbatch queue_gwas_job_array.sh gmmat_data/pheno1_covariates.tab /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/gemma_output/pheno1.cXX.txt gmmat_data/phenotype1.gds phenotype1
+
+# Now to queue it all up to run overnight
+for i in `seq 1 4`; do mkdir gmmat_output/phenotype${i}; done
+mv gmmat_output/phenotype1*.tab gmmat_output/phenotype1/
+
+# Damn! Kiranmayee mislabelled the covariate files because of her previous conventions!
+cp /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/gemma_output/merge1.cXX.txt ./pheno4.cXX.txt
+cp /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/gemma_output/pheno2.cXX.txt ./
+cp /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/gemma_output/pheno3.cXX.txt ./
+
+for i in `seq 2 4`; do echo $i; sbatch queue_gwas_job_array.sh gmmat_data/pheno${i}_covariates.tab pheno${i}.cXX.txt gmmat_data/phenotype${i}.gds phenotype${i}; done
 ```
 
 And here are the scripts used to run the GWAS:
