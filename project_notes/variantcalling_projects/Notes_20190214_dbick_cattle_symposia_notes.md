@@ -318,3 +318,30 @@ pdf("bovinesnp50_visweb.pdf", useDingbats=FALSE)
 visweb(matrix, type="none")
 dev.off()
 ```
+
+## Alluvial assembly comparisons
+
+I think that a greyscale alluvial diagram might be a great way to represent the transition from each assembly. Let's try a minimap2 approach where ARS-UCD1.2 is always the reference and write a script to translate the results.
+
+I can only get away with a few categorical variables before it starts to turn into a mess. Let's separate them by assembly:
+
+* Same chr
+* Different chr
+* X chr
+* Unmapped
+
+> Ceres: /home/derek.bickharhth/cattle_genome_assemblies/dominette/symposium_comparison
+
+```bash
+# Some are already done!
+ls *.paf
+btau_1_on_ars-ucd.paf  btau_4.6_on_ars-ucd.paf  umd_3_on_ars-ucd.paf
+
+minimap2 -x asm5 ARS-UCD1.2_Btau5.0.1Y.fa Btau20050310.contigs.fa > btau_2_on_ars-ucd.paf
+minimap2 -x asm5 ARS-UCD1.2_Btau5.0.1Y.fa Btau20060815.contigs.fa > btau_3_on_ars-ucd.paf
+minimap2 -x asm5 ARS-UCD1.2_Btau5.0.1Y.fa btau_4.0_karyotype.fa > btau_4_on_ars-ucd.paf
+
+python3 combinePafToAlluvial.py Btau4:btau_4_on_ars-ucd.paf Btau4.6:btau_4.6_on_ars-ucd.paf UMD3:umd_3_on_ars-ucd.paf > paf_summary_stats.tab
+```
+
+That was a disaster! I have the estimates but the alluvial packages did not want to work with me!
