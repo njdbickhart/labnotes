@@ -502,3 +502,12 @@ sbatch --nodes=1 --mem=60000 --ntasks-per-node=2 -p msn /project/rumen_longread_
 ```
 
 Damn! It didn't work because the cluster guys didn't compile mummer with 64-bit capacity! I'll have to readapt the program to minimap2 or something else. 
+
+OK, I've rewritten things as a snakemake pipeline using minimap2. Let's see if I can run this and make it work!
+
+```bash
+module load minimap2/2.6
+cp ~/rumen_longread_metagenome_assembly/binaries/pseudohaploid/default.json ./
+
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake -s /project/rumen_longread_metagenome_assembly/binaries/pseudohaploid/snakeFile --cluster "sbatch --nodes=1 --ntasks-per-node=3 --mem=20000 --partition=msn" --jobs 999
+```
