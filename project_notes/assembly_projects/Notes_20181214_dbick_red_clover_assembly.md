@@ -487,3 +487,18 @@ sbatch --nodes=1 --mem=50000 --ntasks-per-node=2 -p msn --wrap='/project/forage_
 sbatch --nodes=1 --mem=50000 --ntasks-per-node=2 -p msn --wrap='/project/forage_assemblies/binaries/KMC/bin/kmc_tools transform red_clover_kmc -ci11 -cx1500 dump -s red_clover_kmc_k21.dump'
 sbatch --nodes=1 --mem=300000 --ntasks-per-node=2 -p msn --wrap='~/forage/binaries/smudgeplot/exec/smudgeplot.py hetkmers -o red_clover_kmc.kmer_pairs < red_clover_kmc_k21.dump'
 ```
+
+## Pseudohaploid correction
+
+Michael Schatz's group just published the Pineapple genome with a [new algorithm](https://github.com/schatzlab/pseudohaploid) that resolves highly heterozygous assemblies. Let's test it out. I will run it with the default parameters for the clover correct (best Canu assembly) and the clover flye (flye assembly).
+
+> Ceres: /home/derek.bickharhth/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano
+
+```bash
+module load mummer/3.23
+
+sbatch --nodes=1 --mem=60000 --ntasks-per-node=2 -p msn /project/rumen_longread_metagenome_assembly/binaries/pseudohaploid/create_pseudohaploid.sh clover_correct/clover_correct.contigs.fasta clover_correct.pseudohaplo
+
+```
+
+Damn! It didn't work because the cluster guys didn't compile mummer with 64-bit capacity! I'll have to readapt the program to minimap2 or something else. 
