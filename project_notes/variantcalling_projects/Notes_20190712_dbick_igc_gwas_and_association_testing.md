@@ -237,6 +237,22 @@ cp /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2
 cp /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/gemma_output/pheno3.cXX.txt ./
 
 for i in `seq 2 4`; do echo $i; sbatch queue_gwas_job_array.sh gmmat_data/pheno${i}_covariates.tab pheno${i}.cXX.txt gmmat_data/phenotype${i}.gds phenotype${i}; done
+
+# Pheno groups 3 and 4 failed. I need to calculate the kinship matrix for these datasets. Let's do that now
+module load gemma/0.96
+
+# OK, so the goofballs managing the packages in CERES didn't finish the installation of gemma. I need to do a workaround
+cp /software/7/apps/gemma/0.96/gemma.linux ./
+chmod +x gemma.linux
+./gemma.linux -bfile pheno_groups/phenotype3 -gk 1 -o pheno3.correct
+./gemma.linux -bfile pheno_groups/phenotype4 -gk 1 -o pheno4.correct
+
+# This goes by fast, so lets queue up the rest
+./gemma.linux -bfile pheno_groups/phenotype2 -gk 1 -o pheno2.correct
+./gemma.linux -bfile pheno_groups/phenotype1 -gk 1 -o pheno1.correct
+
+# Now, let's resubmit the scripts and try again
+for i in 1 2 3 4; do echo $i; sbatch queue_gwas_job_array.sh gmmat_data/pheno${i}_covariates.tab output/pheno${i}.correct.cXX.txt gmmat_data/phenotype${i}.gds phenotype${i}; done
 ```
 
 And here are the scripts used to run the GWAS:
