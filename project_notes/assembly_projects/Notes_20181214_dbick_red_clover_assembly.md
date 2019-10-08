@@ -509,5 +509,14 @@ OK, I've rewritten things as a snakemake pipeline using minimap2. Let's see if I
 module load minimap2/2.6
 cp ~/rumen_longread_metagenome_assembly/binaries/pseudohaploid/default.json ./
 
-sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake -s /project/rumen_longread_metagenome_assembly/binaries/pseudohaploid/snakeFile --cluster "sbatch --nodes=1 --ntasks-per-node=3 --mem=20000 --partition=msn" --jobs 999
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake -s /project/rumen_longread_metagenome_assembly/binaries/pseudohaploid/snakeFile --cluster "sbatch --nodes=1 --ntasks-per-node=3 --mem=20000 --partition=short" --jobs 999
+
+# Minimap was not giving the granularity that the program required, so I compiled a 64-bit version of nucmer and I am running that now
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p msn --wrap="/project/rumen_longread_metagenome_assembly/binaries/MUMmer3.23/nucmer --maxmatch -c 100 -l 500 clover_correct/clover_correct.contigs.fasta clover_correct/clover_correct.contigs.fasta -p clover_selfnucmer"
+
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p msn --wrap='/project/rumen_longread_metagenome_assembly/binaries/MUMmer3.23/delta-filter -l 1000 -i 90 clover_selfnucmer.delta > clover_selfnucmer.filter.delta'
+
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p msn --wrap='/project/rumen_longread_metagenome_assembly/binaries/MUMmer3.23/show-coords -rclH clover_selfnucmer.filter.delta > clover_selfnucmer.filter.coords'
+
+perl /project/rumen_longread_metagenome_assembly/binaries/pseudohaploid/pseudohaploid.chains.pl clover_selfnucmer.filter.coords 90 93 20000 > clover_selfnucmer.filter.chains
 ```

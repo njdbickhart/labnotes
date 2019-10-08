@@ -253,6 +253,9 @@ chmod +x gemma.linux
 
 # Now, let's resubmit the scripts and try again
 for i in 1 2 3 4; do echo $i; sbatch queue_gwas_job_array.sh gmmat_data/pheno${i}_covariates.tab output/pheno${i}.correct.cXX.txt gmmat_data/phenotype${i}.gds phenotype${i}; done
+
+# Damn Ceres storage issues! I just rewrote the script to avoid regenerating already existing files
+for i in 1 2 3 4; do echo $i; sbatch queue_gwas_job_array.sh gmmat_data/pheno${i}_covariates.tab output/pheno${i}.correct.cXX.txt gmmat_data/phenotype${i}.gds phenotype${i}; done
 ```
 
 And here are the scripts used to run the GWAS:
@@ -308,7 +311,11 @@ N=$SLURM_ARRAY_TASK_ID
 module load r/3.5.2
 echo "Working on Slurm job array: $N"
 
-time /software/7/apps/r/3.5.2/bin/Rscript --vanilla run_gmmat_gwas.R $1 snp_sets/snp_list_${N}.txt $2 $3 gmmat_output/${4}_${N}.tab
+if [ -f gmmat_output/${4}/${4}_${N}.tab ]; then
+        echo "Skipping gmmat_output/${4}/${4}_${N}.tab as it already exists!"
+else
+        time /software/7/apps/r/3.5.2/bin/Rscript --vanilla run_gmmat_gwas.R $1 snp_sets/snp_list_${N}.txt $2 $3 gmmat_output/${4}/${4}_${N}.tab
+fi
 
 echo "Finished with Slurm task: $N"
 ```
