@@ -519,4 +519,34 @@ sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p msn --wrap='/project/rumen_l
 sbatch --nodes=1 --mem=25000 --ntasks-per-node=3 -p msn --wrap='/project/rumen_longread_metagenome_assembly/binaries/MUMmer3.23/show-coords -rclH clover_selfnucmer.filter.delta > clover_selfnucmer.filter.coords'
 
 perl /project/rumen_longread_metagenome_assembly/binaries/pseudohaploid/pseudohaploid.chains.pl clover_selfnucmer.filter.coords 90 93 20000 > clover_selfnucmer.filter.chains
+
+grep '^#' clover_selfnucmer.filter.chains | awk -v cut=93 '{if ($4 >= cut){print ">"$2}}' > clover_selfnucmer.contained.ids
+
+wc -l clover_selfnucmer.contained.ids
+376 clover_selfnucmer.contained.ids
+
+/project/rumen_longread_metagenome_assembly/binaries/pseudohaploid/filter_seq -v clover_selfnucmer.contained.ids clover_correct/clover_correct.contigs.fasta > clover_correct.pseudohap.fa
+samtools faidx clover_correct.pseudohap.fa
+
+wc -l clover_correct.pseudohap.fa.fai
+2759 clover_correct.pseudohap.fa.fai
+wc -l clover_correct/*.fai
+3135 clover_correct/clover_correct.contigs.fasta.fai
+
+perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";' < clover_correct.pseudohap.fa.fai
+721484706
+perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";' < clover_correct/clover_correct.contigs.fasta.fai
+748498712
+
+# Only a reduction in 20 megabases...
+```
+
+OK, last attempt with the pipelines: let's try the [purge_haplotigs](https://bitbucket.org/mroachawri/purge_haplotigs/src/master/) alignment suite.
+
+```bash
+module load minimap2/2.6 r/3.5.2 bedtools/2.25.0 samtools
+ln -s /project/rumen_longread_metagenome_assembly/binaries/purge_haplotigs/bin/purge_haplotigs ~/bin/purge_haplotigs
+
+mkdir purge_haplotigs
+sbatch --nodes=1 --mem=14000 --ntasks-per-node=4 -p short --wrap='minimap2 -t 4 -ax map-pb clover_correct/clover_correct.contigs.fasta clover_correct/clover_correct.correctedReads.fasta.gz --secondary=no | samtools sort -m 1G -o purge_haplotigs/aligned.bam -T tmp.align'
 ```
