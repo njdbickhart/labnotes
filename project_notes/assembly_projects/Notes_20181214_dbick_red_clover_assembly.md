@@ -549,4 +549,21 @@ ln -s /project/rumen_longread_metagenome_assembly/binaries/purge_haplotigs/bin/p
 
 mkdir purge_haplotigs
 sbatch --nodes=1 --mem=14000 --ntasks-per-node=4 -p short --wrap='minimap2 -t 4 -ax map-pb clover_correct/clover_correct.contigs.fasta clover_correct/clover_correct.correctedReads.fasta.gz --secondary=no | samtools sort -m 1G -o purge_haplotigs/aligned.bam -T tmp.align'
+
+# Step 1
+sbatch --nodes=1 --ntasks-per-node=10 --mem=32000 -p msn --wrap='purge_haplotigs hist -b purge_haplotigs/aligned.bam -g clover_correct/clover_correct.contigs.fasta -t 10'
+
+# I had to modify the script to print to pdf, but then I saw that the distribution of read depth was unimodal
+# Odd... there should be bimodal peaks if this is true. perhaps I smashed everything too much with the clover_correct assembly? Let's run two tests.
+```
+
+Quickly making a flye assembly of all Clover reads.
+
+> Ceres: /project/forage_assemblies/analysis/clover_assemblies
+
+```bash
+module load miniconda/3.6
+cat /project/forage_assemblies/sequence_data/clover_old_combined_fastqs.fastq /project/forage_assemblies/sequence_data/clover_new_combined_fastqs.fastq > /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq
+
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn --wrap='source activate /KEEP/rumen_longread_metagenome_assembly/flye; flye --nano-raw /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq -g 420m -t 70 -i 2 -o clover_total_flye'
 ```
