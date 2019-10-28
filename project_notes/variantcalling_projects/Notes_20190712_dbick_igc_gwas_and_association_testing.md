@@ -319,3 +319,60 @@ fi
 
 echo "Finished with Slurm task: $N"
 ```
+
+## Printing the manhattan plots
+
+OK, now I have replicated the GWAS but with a different set of criteria SNPs. Now to produce the plots for the data and check them all out.
+
+Kiranmayee used an R vector to store and highlight the SNPs of interest and I will adopt her pipeline to save time. 
+
+> Ceres: /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/case_control
+
+```bash
+# Merging the data in order
+for i in gmmat_output/phenotype*; do echo $i; perl -e 'chomp(@ARGV); @f = `ls $ARGV[0]/*.tab`; @f = sort{@s = split(/[_\.]/, $a); @j = split(/[_\.]/, $b); $s[-2] <=> $j[-2]}@f; chomp(@f); open(OUT, "> $ARGV[1]"); print {OUT} "SNP\tCHR\tPOS\tREF\tALT\tN\tAF\tBETA\tSE\tPVAL\tconverged\n"; foreach $k (@f){open(IN, "< $k"); <IN>; while($l = <IN>){print {OUT} $l;} close IN;}' $i ${i}_merged.tab; done
+
+# Now to copy and modify Kiranmayees scripts
+cp /project/rumen_longread_metagenome_assembly/kiranmayee/IGC/prelim_gwas/round2/gemma/plot.sh ./manhattan_plot.sh
+
+# SNPs of interest to add to the plot
+perl -ne 'chomp; @s = split(/\s+/); print "\"$s[1]\", ";' < neogen_merged_nonhet_filt.revised.bim ; echo
+
+# Now to generate the plots
+sbatch manhattan_plot.sh
+
+# Not satisfying, but I can work with this. I'm also going to pull the effect sizes and the standard errors for the SNPs of interest:
+for i in `seq 1 4`; do echo $i; python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f gmmat_output/phenotype${i}_merged.tab -c 0 -l new_filt.list -d '\t' > gmmat_output/phenotype${i}_onlycustom.tab; done
+
+grep '18_63417698' neogen_merged_hardy.hwe
+  18            18_63417698      ALL    A    T          74/503/1101   0.2998   0.3127       0.1007
+  18            18_63417698      AFF    A    T           52/338/847   0.2732   0.2935      0.01961
+  18            18_63417698    UNAFF    A    T           22/165/254   0.3741   0.3616       0.5126
+grep '5_99190989' neogen_merged_hardy.hwe
+   5             5_99190989      ALL    T    A           5/272/1324   0.1699   0.1606      0.01865
+   5             5_99190989      AFF    T    A           2/170/1001   0.1449   0.1373      0.05646
+   5             5_99190989    UNAFF    T    A            3/102/323   0.2383   0.2205       0.1231
+
+grep '18_63417698' gmmat_output/*onlycustom.tab
+gmmat_output/phenotype1_onlycustom.tab:18_63417698      18      63640110        A       T       931     0.804511278195489       0.4852857470566790.12678233520238 0.000129342118284114    TRUE
+gmmat_output/phenotype2_onlycustom.tab:18_63417698      18      63640110        A       T       1434    0.808228730822873       0.4314844652376850.107676779156407        6.14378180734818e-05    TRUE
+gmmat_output/phenotype3_onlycustom.tab:18_63417698      18      63640110        A       T       1468    0.806198910081744       0.4262955850530670.106223275965894        5.9900320331582e-05     TRUE
+gmmat_output/phenotype4_onlycustom.tab:18_63417698      18      63640110        A       T       1672    0.806519138755981       0.4052558522973330.105021658954359        0.00011395279421179     TRUE
+
+grep '5_99190989' gmmat_output/*onlycustom.tab
+gmmat_output/phenotype1_onlycustom.tab:5_99190989       5       99676855        T       A       886     0.899548532731377       0.5943330751059990.180746260762023        0.00100823800625793     TRUE
+gmmat_output/phenotype2_onlycustom.tab:5_99190989       5       99676855        T       A       1367    0.909656181419166       0.6349225238747220.155864545342061        4.63012607020109e-05    TRUE
+gmmat_output/phenotype3_onlycustom.tab:5_99190989       5       99676855        T       A       1398    0.910228898426323       0.6610244380176640.154400077159731        1.85851256334299e-05    TRUE
+gmmat_output/phenotype4_onlycustom.tab:5_99190989       5       99676855        T       A       1595    0.912225705329154       0.6181864161234680.151326691057893        4.40556430047843e-05    TRUE
+```
+
+All beta values were relatively small, suggesting that the effects are very tiny for each variant on the regression. This is reflected by the hodge-podge of genotype states among affected and unaffected individuals. Unfortunately, there isn't much of a story here, but we can make the case that this is new and will have impacts downstream. 
+
+## Calculating heritability
+
+I am going to attempt to do this using the SOMMER package
+
+```R
+library(sommer)
+
+```
