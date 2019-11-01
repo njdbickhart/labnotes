@@ -47,7 +47,7 @@ head -n 5894688 haplotype_Dam.nonuniq.fasta > haplotype_Dam.nowuniq.fasta
 sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn -q msn --wrap='cat haplotype_Dam.nowuniq.fasta haplotype_Dam.uniq.fasta > haplotype_Dam.total.fasta'
 sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn -q msn --wrap='cat haplotype_Sire.nowuniq.fasta haplotype_Sire.uniq.fasta > haplotype_Sire.total.fasta'
 
-sbatch --dependency=afterok:1270592 --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn -q msn flye --pacbio-raw haplotype_Dam.total.fasta -g 2800m -t 70 -i 2 -m 10000 --asm-coverage 40 -o rw_flye_dam
+sbatch --nodes=1 --mem=800000 --ntasks-per-node=70 -p mem -q memlimit flye --pacbio-raw haplotype_Dam.total.fasta -g 2800m -t 70 -i 2 -m 10000 --asm-coverage 40 -o rw_flye_dam
 
-sbatch --dependency=afterok:1270595 --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn -q msn flye --pacbio-raw haplotype_Sire.total.fasta -g 2800m -t 70 -i 2 -m 10000 --asm-coverage 40 -o rw_flye_sire
+sbatch --nodes=1 --mem=800000 --ntasks-per-node=70 -p mem -q memlimit flye --pacbio-raw haplotype_Sire.total.fasta -g 2800m -t 70 -i 2 -m 10000 --asm-coverage 40 -o rw_flye_sire
 ```

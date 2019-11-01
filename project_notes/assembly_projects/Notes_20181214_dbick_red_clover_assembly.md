@@ -566,4 +566,15 @@ module load miniconda/3.6
 cat /project/forage_assemblies/sequence_data/clover_old_combined_fastqs.fastq /project/forage_assemblies/sequence_data/clover_new_combined_fastqs.fastq > /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq
 
 sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn --wrap='source activate /KEEP/rumen_longread_metagenome_assembly/flye; flye --nano-raw /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq -g 420m -t 70 -i 2 -o clover_total_flye'
+
+
+```
+
+> Ceres: /project/forage_assemblies/assemblies/red_clover
+
+```bash
+module load miniconda
+source activate /KEEP/rumen_longread_metagenome_assembly/flye
+# Trying with the metrics that Serge used for the mammalian genomes:
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn -q msn flye --nano-raw /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq -g 420m -t 70 -i 2 -m 10000 --asm-coverage 40 -o clover_limit_flye
 ```
