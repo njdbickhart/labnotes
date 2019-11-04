@@ -578,3 +578,15 @@ source activate /KEEP/rumen_longread_metagenome_assembly/flye
 # Trying with the metrics that Serge used for the mammalian genomes:
 sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn -q msn flye --nano-raw /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq -g 420m -t 70 -i 2 -m 10000 --asm-coverage 40 -o clover_limit_flye
 ```
+
+Now, I'm going to try the purge haplotigs pipeline again before trying a modified version of pseudohaploid again. I think that the limit flye assembly actually comes out better than the canu assembly with fewer small unplaced contigs. We will see! The Pseudohaploid run will use the less strict -k19 -w19 settings found in [Ragoo](https://github.com/malonge/RaGOO/blob/master/ragoo.py). 
+
+```bash
+module load minimap2/2.6 r/3.5.2 bedtools/2.25.0 samtools
+
+mkdir flye_purgehaplotigs
+sbatch --nodes=1 --mem=14000 --ntasks-per-node=4 -p short -q memlimit --wrap='minimap2 -t 4 -ax map-pb clover_limit_flye/assembly.fasta /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq --secondary=no | samtools sort -m 1G -o purge_haplotigs/flye_aligned.bam -T tmp.align'
+
+# Step 1
+sbatch --nodes=1 --ntasks-per-node=10 --dependency=afterok:1280980 --mem=48000 -p msn -q msn --wrap='samtools index purge_haplotigs/flye_aligned.bam; purge_haplotigs hist -b purge_haplotigs/flye_aligned.bam -g clover_limit_flye/assembly.fasta -t 10'
+```
