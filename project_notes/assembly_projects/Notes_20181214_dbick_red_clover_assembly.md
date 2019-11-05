@@ -486,7 +486,11 @@ sbatch --nodes=1 --mem=50000 --ntasks-per-node=2 -p msn --wrap='/project/forage_
 # same as above, so pretty consistent!
 sbatch --nodes=1 --mem=50000 --ntasks-per-node=2 -p msn --wrap='/project/forage_assemblies/binaries/KMC/bin/kmc_tools transform red_clover_kmc -ci11 -cx1500 dump -s red_clover_kmc_k21.dump'
 sbatch --nodes=1 --mem=300000 --ntasks-per-node=2 -p msn --wrap='~/forage/binaries/smudgeplot/exec/smudgeplot.py hetkmers -o red_clover_kmc.kmer_pairs < red_clover_kmc_k21.dump'
+
+~/forage_assemblies/binaries/smudgeplot/exec/smudgeplot.py plot red_clover_kmc.kmer_pairs_coverages.tsv
 ```
+
+That generated two plots that are very, very confused! The heterozygosity of the genome confuses these models quite a bit. I ran the kmer profile in [Genomescope](http://qb.cshl.edu/genomescope/analysis.php?code=Yws2xXiXHsLcbIK4TQbm) and it looks like there is a clear peak at the 25X coverage region that could be the unique sequence. 
 
 ## Pseudohaploid correction
 
@@ -585,8 +589,40 @@ Now, I'm going to try the purge haplotigs pipeline again before trying a modifie
 module load minimap2/2.6 r/3.5.2 bedtools/2.25.0 samtools
 
 mkdir flye_purgehaplotigs
-sbatch --nodes=1 --mem=14000 --ntasks-per-node=4 -p short -q memlimit --wrap='minimap2 -t 4 -ax map-pb clover_limit_flye/assembly.fasta /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq --secondary=no | samtools sort -m 1G -o purge_haplotigs/flye_aligned.bam -T tmp.align'
+sbatch --nodes=1 --mem=14000 --ntasks-per-node=9 -p short -q memlimit --wrap='minimap2 -t 6 -ax map-pb clover_limit_flye/assembly.fasta /project/forage_assemblies/sequence_data/clover_total_combined_fastqs.fastq --secondary=no | samtools sort -m 1G -@ 2 -o flye_purgehaplotigs/flye_aligned.bam -T tmp.align'
 
 # Step 1
-sbatch --nodes=1 --ntasks-per-node=10 --dependency=afterok:1280980 --mem=48000 -p msn -q msn --wrap='samtools index purge_haplotigs/flye_aligned.bam; purge_haplotigs hist -b purge_haplotigs/flye_aligned.bam -g clover_limit_flye/assembly.fasta -t 10'
+sbatch --nodes=1 --ntasks-per-node=10 --mem=48000 -p short -q memlimit --wrap='samtools index flye_purgehaplotigs/flye_aligned.bam; purge_haplotigs hist -b flye_purgehaplotigs/flye_aligned.bam -g clover_limit_flye/assembly.fasta -t 10'
 ```
+
+## Attempting to hack the trio canu pipeline
+
+I think that I can pull apart reads from the heterozygous site linkage groups using some informatics analysis of read kmers. My goal is to try to identify kmers that are present in a "lower peak" (ie. haplotype specific) and then calculate their co-occurrence on error-prone long reads to try to estimate linkage-group-specific reads. Then I assemble both pools of reads separately.
+
+From what I've found in the canu source code, [splithaplotype.c](https://github.com/marbl/canu/blob/master/src/haplotyping/splitHaplotype.C) determines the minima and maxima kmer occurrence peaks from a histogram and then pulls kmers from each parental haplotype from the pool in between. This avoids dealing with "noise" kmers and kmers that are shared by both parents. 
+
+Let's start by plotting the exact jellyfish kmer profile to try to select the best frequency cutoffs.
+
+> Ceres: /home/derek.bickharhth/forage/analysis/clover_kmers
+
+```R
+library(ggplot2)
+data <- read.delim("red_clover_21mer_illumina.hist", sep=" ", header=FALSE)
+
+pdf(file="red_clover_21mer_illumina.hist.pdf", useDingbats=FALSE)
+ggplot(data, aes(x = V1, y= V2)) + geom_col(color="darkblue", fill="lightblue") + xlim(0,100) + ylim(0,8000000)
+dev.off()
+```
+
+Basically produced the same plot as Genomescope (see above) but a little clearer on the kmer frequencies. It looks like a minimum cutoff of 15 and a maximum of 30 are warranted by visual inspection. Let's dump the kmers to see how much we're working with here.
+
+```bash
+/project/forage_assemblies/binaries/KMC/bin/kmc_dump -ci15 -cx30 red_clover_kmc red_clover_kmc_k21.uniq_het.peak.kmers
+
+wc -l red_clover_kmc_k21.uniq_het.peak.kmers
+99725171 red_clover_kmc_k21.uniq_het.peak.kmers
+
+# That's quite alot!
+```
+
+I need to use [directed acyclic graphs](https://algs4.cs.princeton.edu/41graph/) to organize the data, and calculate the [minimizer values](http://yorke.umd.edu/papers/genome_papers/minimizerpaper.pdf) for kmers and use a concept of [granularity in hierarchically organized kmers](https://medium.com/@infoecho/constructing-a-graph-for-genome-comparison-swiftly-d47dcd7eae5d) to try to compare and sort reads. I think that most of what I'm thinking is far too complex and that I should start with the generation of a frequency 'graph' to print edge weights (edges are counts of observances).
