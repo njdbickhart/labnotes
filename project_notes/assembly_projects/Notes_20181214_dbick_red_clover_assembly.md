@@ -593,6 +593,66 @@ sbatch --nodes=1 --mem=14000 --ntasks-per-node=9 -p short -q memlimit --wrap='mi
 
 # Step 1
 sbatch --nodes=1 --ntasks-per-node=10 --mem=48000 -p short -q memlimit --wrap='samtools index flye_purgehaplotigs/flye_aligned.bam; purge_haplotigs hist -b flye_purgehaplotigs/flye_aligned.bam -g clover_limit_flye/assembly.fasta -t 10'
+
+# OK! This got me somewhere! I now have a low and midpoint cutoff rate from the pdf file produced by the program
+# Low point: 35
+# Mid point: 95
+# high point: 160
+
+# Step 2
+sbatch --nodes=1 --ntasks-per-node=1 --mem=8000 -p short -q memlimit --wrap='purge_haplotigs cov -i flye_aligned.bam.gencov -l 35 -h 160 -m 95 -o flye_clover_stats.csv'
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f flye_clover_stats.csv -d ',' -c 1 -m -i '#'
+|Entry | Value|
+|:-----|-----:|
+|s     |  2718|
+|      |   380|	<- this is where the "junk" ratio is not met and the "haplotig" ratio is not met. 90% diploid
+|j     |   124|
+
+
+# Step 3
+sbatch --nodes=1 --ntasks-per-node=10 --mem=48000 -p short -q memlimit --wrap="purge_haplotigs purge -g clover_limit_flye/assembly.fasta -c flye_clover_stats.csv -t 10 -o flye_clover_curated -d -b flye_purgehaplotigs/flye_aligned.bam"
+
+# note that there was a pipe failure at the end of some of the multicov bedtools operations for some reason
+samtools faidx flye_clover_curated.artefacts.fasta
+samtools faidx flye_clover_curated.fasta
+samtools faidx flye_clover_curated.haplotigs.fasta
+
+wc -l *.fai
+   124 flye_clover_curated.artefacts.fasta.fai
+  1597 flye_clover_curated.fasta.fai
+  1501 flye_clover_curated.haplotigs.fasta.fai
+  3222 total
+
+for i in *.fai; do echo $i;  perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/calculateContigN50.pl -i $i; done
+flye_clover_curated.artefacts.fasta.fai
+	N50 length:     3119077
+	N50 value:      73472
+	L50 value:      30
+flye_clover_curated.fasta.fai
+	N50 length:     216376573
+	N50 value:      514218
+	L50 value:      239
+flye_clover_curated.haplotigs.fasta.fai
+	N50 length:     133405088
+	N50 value:      357870
+	L50 value:      228
+
+for i in *.fai; do echo -ne "$i\t"; perl -e '$c = 0; while(<>){chomp; @s = split(/\t/); $c += $s[1];} print "$c\n";' < $i; done
+	flye_clover_curated.artefacts.fasta.fai 	6122171
+	flye_clover_curated.fasta.fai   			431899544
+	flye_clover_curated.haplotigs.fasta.fai 	266559604
+
+for i in *.fai; do perl -lane 'print $F[0];' < $i > $i.ctg.list; done
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl flye_clover_curated.artefacts.fasta.fai.ctg.list flye_clover_curated.fasta.fai.ctg.list flye_clover_curated.haplotigs.fasta.fai.ctg.list
+	File Number 1: flye_clover_curated.artefacts.fasta.fai.ctg.list
+	File Number 2: flye_clover_curated.fasta.fai.ctg.list
+	File Number 3: flye_clover_curated.haplotigs.fasta.fai.ctg.list
+	Set     Count
+	1       124
+	2       1597
+	3       1501
+
+# So they're all unique. Let's compare that to the Schatz pipeline later
 ```
 
 ## Attempting to hack the trio canu pipeline

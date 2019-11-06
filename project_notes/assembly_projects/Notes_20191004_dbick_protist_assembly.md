@@ -47,4 +47,32 @@ Proto_HMW2ug
 
 for i in Proto_QiaT1 B_Pip_Proto Proto_HMW1ug Proto_PCI_HMW_DNA Proto_PCI_Spun_DNA Proto_HMW2ug; do echo $i; cat $i/*/*pass/*.fastq > $i.concatenated.fastq; done
 for i in Proto_QiaT1 B_Pip_Proto Proto_HMW1ug Proto_PCI_HMW_DNA Proto_PCI_Spun_DNA Proto_HMW2ug; do echo $i; sbatch --nodes=1 --mem=18000 --ntasks-per-node=2 -p msn -q msn --wrap="python3 ~/python_toolchain/sequenceData/fastqStats.py -f ${i}.concatenated.fastq -o $i"; done
+
+python3 ~/python_toolchain/sequenceData/fastqStats.py -f New_cell_proto.concatenated.fastq -o New_cell_proto
+```
+
+## Preliminary assembly
+
+We have enough data to start trying a "diagnostic" assembly of the reads. I want to try this with Canu and Flye, but it will be messy! Let's try running the flye assembly on one MSN node and canu on the rest. We'll see how that goes.
+
+Even worse, there are signs that the blue pippen protist samples may have a contaminant because of the GC% profile! I will pretend like I didn't know this and try to assemble them separately. First, let's prepare the files for flye assembly and canu assembly.
+
+> Ceres: /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover
+
+```bash
+# Very simple -- I'm going to concatenate only the high content protist runs
+cat B_Pip_Proto.concatenated.fastq New_cell_proto.concatenated.fastq Proto_HMW1ug.concatenated.fastq Proto_HMW2ug.concatenated.fastq Proto_PCI_HMW_DNA.concatenated.fastq Proto_PCI_Spun_DNA.concatenated.fastq Proto_QiaT1.concatenated.fastq RCL_Proto1.concatenated.fastq RC_Proto1.concatenated.fastq > diagnostic_protist_combined.fastq
+```
+
+And now to run the two assemblies. Fingers crossed!
+
+> Ceres: /project/rumen_longread_metagenome_assembly/assemblies/protists
+
+```bash
+module load miniconda/3.6 canu/1.8
+source activate /KEEP/rumen_longread_metagenome_assembly/flye
+
+sbatch --nodes=1 --mem=320000 --ntasks-per-node=70 -p msn -q msn flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/diagnostic_protist_combined.fastq -t 70 -i 2 -m 4000 --asm-coverage 40 --meta -o flye_meta_diagprotist
+
+sbatch --nodes=1 --ntasks-per-node=2 --mem=10G -p short -q memlimit --wrap="canu -p canu_diagprotist -d canu_diagprotist genomeSize=1000m corOutCoverage=10000 corMhapSensitivity=high corMinCoverage=0 redMemory=32 oeaMemory=32 batMemory=200 'gridOptions=-p short -q memlimit' -nanopore-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/diagnostic_protist_combined.fastq"
 ```
