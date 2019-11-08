@@ -68,6 +68,9 @@ sbatch --nodes=1 --mem=370000 --ntasks-per-node=70 -p msn flye --nano-raw /home/
 
 ## That also ran out of memory. Going to queue up on the MEM nodes for the long haul
 sbatch --nodes=1 --mem=900000 --ntasks-per-node=70 -p mem flye --nano-raw /home/derek.bickharhth/forage_assemblies/sequence_data/vetch_combined_reads.fastq -g 2000m -t 70 -i 2 -o vetch_flye --resume
+
+## I am going to try a co-assembly approach with the Noble vetch reads as well
+sbatch --nodes=1 --mem=900000 --ntasks-per-node=70 -p mem -q memlimit flye --nano-raw /project/forage_assemblies/sequence_data/combined_both_vetch.fastq -g 2000m -t 70 -i 2 -m 10000 --asm-coverage 40 -o vetch_limit_flye
 ```
 
 Now trying Canu
