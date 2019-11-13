@@ -76,3 +76,14 @@ sbatch --nodes=1 --mem=320000 --ntasks-per-node=70 -p msn -q msn flye -g 1.0g --
 
 sbatch --nodes=1 --ntasks-per-node=2 --mem=10G -p short -q memlimit --wrap="canu -p canu_diagprotist -d canu_diagprotist genomeSize=1000m corOutCoverage=10000 corMhapSensitivity=high corMinCoverage=0 redMemory=32 oeaMemory=32 batMemory=200 'gridOptions=-p short -q memlimit' -nanopore-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/diagnostic_protist_combined.fastq"
 ```
+
+Now to align sequence reads to the contigs from our longread rumen metagenome dataset and then separate into mags using a generic tool.
+
+> Ceres: /project/rumen_longread_metagenome_assembly/assemblies/protists
+
+```bash
+sbatch --nodes=1 --mem=9000 --ntasks-per-node=1 -p short -q memlimit --wrap="module load bwa; bwa index flye_meta_diagprotist/assembly.fasta"
+
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b flye_protist_aligns -t /project/rumen_longread_metagenome_assembly/sequence_data/ymprep_illumina_sequence_files.tab -f flye_meta_diagprotist/assembly.fasta -q memlimit -p short -m
+```
+
