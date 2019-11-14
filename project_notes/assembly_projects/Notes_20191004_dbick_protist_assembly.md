@@ -72,9 +72,14 @@ And now to run the two assemblies. Fingers crossed!
 module load miniconda/3.6 canu/1.8
 source activate /KEEP/rumen_longread_metagenome_assembly/flye
 
-sbatch --nodes=1 --mem=320000 --ntasks-per-node=70 -p msn -q msn flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/diagnostic_protist_combined.fastq -t 70 -i 2 -m 4000 --asm-coverage 40 --meta -o flye_meta_diagprotist
+sbatch --nodes=1 --mem=320000 --ntasks-per-node=70 -p msn -q msn flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/diagnostic_protist_11_14_combined.fastq -t 70 -i 2 -m 4000 --asm-coverage 40 --meta -o flye_meta_diagprot1114
 
 sbatch --nodes=1 --ntasks-per-node=2 --mem=10G -p short -q memlimit --wrap="canu -p canu_diagprotist -d canu_diagprotist genomeSize=1000m corOutCoverage=10000 corMhapSensitivity=high corMinCoverage=0 redMemory=32 oeaMemory=32 batMemory=200 'gridOptions=-p short -q memlimit' -nanopore-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/diagnostic_protist_combined.fastq"
+
+# OK, going to add more to the mix!
+sbatch --nodes=1 --mem=1000 --ntasks-per-node=2 -p brief-low -q memlimit --wrap="cat diagnostic_protist_combined.fastq ULR_Bp_PCI.combined.fastq ULR_Zymo_3.combined.fastq ULR_Zymo_1.combined.fastq ULR_Bp_HMW.combined.fastq Zymo_proto_1.combined.fastq Zymo_proto_3.combined.fastq Blu_pip_proto_PCI.combined.fastq Blu_pip_proto_HMW.combined.fastq > diagnostic_protist_11_14_combined.fastq"
+
+
 ```
 
 Now to align sequence reads to the contigs from our longread rumen metagenome dataset and then separate into mags using a generic tool.
