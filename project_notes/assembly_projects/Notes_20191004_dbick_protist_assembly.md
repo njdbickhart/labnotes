@@ -87,8 +87,11 @@ Now to align sequence reads to the contigs from our longread rumen metagenome da
 > Ceres: /project/rumen_longread_metagenome_assembly/assemblies/protists
 
 ```bash
-sbatch --nodes=1 --mem=9000 --ntasks-per-node=1 -p short -q memlimit --wrap="module load bwa; bwa index flye_meta_diagprotist/assembly.fasta"
+module load minimap2/2.6 samtools/1.9
+sbatch --nodes=1 --mem=9000 --ntasks-per-node=1 -p short -q memlimit --wrap="module load bwa; bwa index flye_meta_diagprot1114/assembly.fasta"
 
-python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b flye_protist_aligns -t /project/rumen_longread_metagenome_assembly/sequence_data/ymprep_illumina_sequence_files.tab -f flye_meta_diagprotist/assembly.fasta -q memlimit -p short -m
+sbatch --nodes=1 --mem=15000 --ntasks-per-node=4 -p short -q memlimit --wrap="minimap2 -ax map-ont flye_meta_diagprot1114/assembly.fasta /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/diagnostic_protist_11_14_combined.fastq | samtools sort -o flye_meta_diagprot1114.ontmaps.sort.bam -T temp_flye -; samtools index flye_meta_diagprot1114.ontmaps.sort.bam"
+
+sbatch --nodes=1 --ntasks-per-node=1 -p brief-low -q memlimit --wrap="python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b flye_protist_aligns -t /project/rumen_longread_metagenome_assembly/sequence_data/ymprep_illumina_sequence_files.tab -f /project/rumen_longread_metagenome_assembly/assemblies/protists/flye_meta_diagprot1114/assembly.fasta -q memlimit -p short -m"
 ```
 
