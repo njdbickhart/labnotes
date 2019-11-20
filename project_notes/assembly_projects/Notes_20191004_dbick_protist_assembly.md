@@ -95,3 +95,34 @@ sbatch --nodes=1 --mem=15000 --ntasks-per-node=4 -p short -q memlimit --wrap="mi
 sbatch --nodes=1 --ntasks-per-node=1 -p brief-low -q memlimit --wrap="python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b flye_protist_aligns -t /project/rumen_longread_metagenome_assembly/sequence_data/ymprep_illumina_sequence_files.tab -f /project/rumen_longread_metagenome_assembly/assemblies/protists/flye_meta_diagprot1114/assembly.fasta -q memlimit -p short -m"
 ```
 
+Now that I have the coverages from two different datasets, let's start the blobtools pipeline, metabat binning and MAGpy pipelines.
+
+```bash
+module load metabat/2.12.1 miniconda/3.6 usearch/11.0.667 hmmer3/3.2.1 blobtools/1.1.1 diamond/0.9.28
+
+# Generating coverage files
+for i in flye_meta_diagprot1114.ontmaps.sort.bam flye_protist_aligns/YMpreprun3/YMpreprun3.sorted.merged.bam; do echo $i; sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p brief-low -q memlimit --wrap="jgi_summarize_bam_contig_depths --outputDepth $i.cov $i"; done
+
+# The minimap2 alignment of reads to the protist contigs didn't work very well! Curious... Going to just use the YMprep3 data
+
+sbatch --nodes=1 -p brief-low -q memlimit --ntasks-per-node=15 --mem=50000 --wrap="metabat2 -i flye_meta_diagprot1114/assembly.fasta -a flye_protist_aligns/YMpreprun3/YMpreprun3.sorted.merged.bam.cov -o mags/fm14 -t 15 -v"
+
+# Now let's try MAGpy. I need to copy over the config files and use them for setting up the session
+cp /project/rumen_longread_metagenome_assembly/binaries/MAGpy/config.json ./
+cp /project/rumen_longread_metagenome_assembly/binaries/MAGpy/MAGpy.json ./
+cp -r /project/rumen_longread_metagenome_assembly/binaries/MAGpy/scripts ./
+cp -r /project/rumen_longread_metagenome_assembly/binaries/MAGpy/envs ./
+# For sourmash (because pip installed it in the worst spot)
+export PATH=/home/derek.bickharhth/.local/bin:$PATH
+source activate /KEEP/rumen_longread_metagenome_assembly/magpy/
+
+# MAGpy run
+# --conda --conda-prefix /KEEP/rumen_longread_metagenome_assembly/magpy
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p short -q memlimit snakemake  -s /project/rumen_longread_metagenome_assembly/binaries/MAGpy/MAGpy --cluster-config MAGpy.json --cluster 'sbatch --nodes=1 --ntasks-per-node={cluster.core} --mem={cluster.vmem} -p {cluster.proj} -q memlimit' --jobs 1000
+
+# Diamond run before blobtools
+sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye_meta_diagprot1114/assembly.fasta --db /project/rumen_longread_metagenome_assembly/binaries/magpy_sources/uniprot_trembl.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye_meta_diagprot1114.diamondout.tsv"
+```
+
+
+
