@@ -100,6 +100,9 @@ Now that I have the coverages from two different datasets, let's start the blobt
 ```bash
 module load metabat/2.12.1 miniconda/3.6 usearch/11.0.667 hmmer3/3.2.1 blobtools/1.1.1 diamond/0.9.28
 
+# Downloading blobtools diamond databases
+sbatch -t 2-0 download_diamond_db.sh
+
 # Generating coverage files
 for i in flye_meta_diagprot1114.ontmaps.sort.bam flye_protist_aligns/YMpreprun3/YMpreprun3.sorted.merged.bam; do echo $i; sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -p brief-low -q memlimit --wrap="jgi_summarize_bam_contig_depths --outputDepth $i.cov $i"; done
 
@@ -122,6 +125,9 @@ sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p short -q memlimit snakemake  
 
 # Diamond run before blobtools
 sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye_meta_diagprot1114/assembly.fasta --db /project/rumen_longread_metagenome_assembly/binaries/magpy_sources/uniprot_trembl.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye_meta_diagprot1114.diamondout.tsv"
+
+# Blobtools taxify
+blobtools taxify -f flye_meta_diagprot1114.diamondout.tsv -m /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteomes.taxids -s 0 -t 2 -o pacbio_accum_diamond_uniprot
 ```
 
 
