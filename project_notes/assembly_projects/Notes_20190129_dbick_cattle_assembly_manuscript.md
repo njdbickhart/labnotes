@@ -569,6 +569,12 @@ sbatch process_centrifuge_db.sh
 rm input-sequences.fna
 
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -o {cluster.stdout}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
+
+# I need to update the filtration script to keep taxids that are specific to mammalian lineages
+perl -lane 'print "$F[1]";' < taxonomy/names.dmp > taxids.list
+taxadb download -o taxadb --type full
+taxadb create -i taxadb -c 25 --dbname taxadb.sqlite
+
 ```
 
 ## Intersection of gap regions with Sniffles

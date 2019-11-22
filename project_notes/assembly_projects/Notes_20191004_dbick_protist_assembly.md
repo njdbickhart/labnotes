@@ -124,10 +124,10 @@ source activate /KEEP/rumen_longread_metagenome_assembly/magpy/
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p short -q memlimit snakemake  -s /project/rumen_longread_metagenome_assembly/binaries/MAGpy/MAGpy --cluster-config MAGpy.json --cluster 'sbatch --nodes=1 --ntasks-per-node={cluster.core} --mem={cluster.vmem} -p {cluster.proj} -q memlimit' --jobs 1000
 
 # Diamond run before blobtools
-sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye_meta_diagprot1114/assembly.fasta --db /project/rumen_longread_metagenome_assembly/binaries/magpy_sources/uniprot_trembl.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye_meta_diagprot1114.diamondout.tsv"
+sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye_meta_diagprot1114/assembly.fasta --db uniprot_ref_proteomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye_meta_diagprot1114.diamondout.tsv"
 
 # Blobtools taxify
-blobtools taxify -f flye_meta_diagprot1114.diamondout.tsv -m /mnt/nfs/nfs2/bickhart-users/metagenomics_projects/diamond/uniprot_ref_proteomes.taxids -s 0 -t 2 -o pacbio_accum_diamond_uniprot
+sbatch -t 2-0 --nodes=1 --mem=25000 --ntasks-per-node=3 -p msn -q msn --wrap='blobtools taxify -f flye_meta_diagprot1114.diamondout.tsv -m uniprot_ref_proteomes.taxids -s 0 -t 2 -o flye_meta_diagprot1114_diamond_uniprot'
 ```
 
 
