@@ -127,7 +127,12 @@ sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p short -q memlimit snakemake  
 sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye_meta_diagprot1114/assembly.fasta --db uniprot_ref_proteomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye_meta_diagprot1114.diamondout.tsv"
 
 # Blobtools taxify
-sbatch -t 2-0 --nodes=1 --mem=25000 --ntasks-per-node=3 -p msn -q msn --wrap='blobtools taxify -f flye_meta_diagprot1114.diamondout.tsv -m uniprot_ref_proteomes.taxids -s 0 -t 2 -o flye_meta_diagprot1114_diamond_uniprot'
+sbatch -t 2-0 --nodes=1 --mem=20000 --ntasks-per-node=3 -p mem -q memlimit --wrap='blobtools taxify -f flye_meta_diagprot1114.diamondout.tsv -m uniprot_ref_proteomes.taxids -s 0 -t 2 -o flye_meta_diagprot1114_diamond_uniprot'
+
+# Blobtools create
+sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p mem -q memlimit --wrap='blobtools create -i flye_meta_diagprot1114/assembly.fasta -b flye_protist_aligns/YMpreprun3/YMpreprun3.sorted.merged.bam -t flye_meta_diagprot1114_diamond_uniprot.flye_meta_diagprot1114.diamondout.tsv.taxified.out -o flye_protist_diagprot_blobtools --db blob_ncbi.db'
+
+sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p mem -q memlimit --wrap='blobtools plot -i flye_protist_diagprot_blobtools.blobDB.json --notitle -r superkingdom -o flye_pd_blobtools_supkingdom'
 ```
 
 
