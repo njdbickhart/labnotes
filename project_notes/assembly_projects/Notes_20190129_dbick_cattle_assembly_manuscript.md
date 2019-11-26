@@ -575,6 +575,29 @@ perl -lane 'print "$F[1]";' < taxonomy/names.dmp > taxids.list
 taxadb download -o taxadb --type full
 taxadb create -i taxadb -c 25 --dbname taxadb.sqlite
 
+
+# Testing cd-hit for clustering
+module load cd-hit/4.6.4
+sbatch -t 1-0 --nodes=1 --mem=50000 --ntasks-per-node=30 -p msn -q msn --wrap='cat assembly/*/*.renamed.fasta > cat_renamed.fasta; cd-hit-est -i cat_renamed.fasta -o cat_renamed_cdhit -c 0.95 -n 10 -d 0 -M 50000 -T 30 -s 0.9'
+
+# Looks like it worked as well as I hoped!
+...
+>Cluster 504
+0       13983nt, >009HO02140.scaf.50... *
+>Cluster 505
+0       13978nt, >009HO02140.scaf.51... *
+>Cluster 506
+0       13969nt, >001HO11361.scaf.68... *
+1       13712nt, >200HO06150.scaf.53... at +/98.26%
+>Cluster 507
+0       13969nt, >007HO08492.scaf.70... *
+>Cluster 508
+0       13088nt, >007HO08492.scaf.84... at -/95.61%
+1       13965nt, >009HO02140.scaf.52... *
+2       12891nt, >200HO07201.scaf.22... at +/99.95%
+>Cluster 509
+0       13953nt, >200HO09805.scaf.120... *
+...
 ```
 
 ## Intersection of gap regions with Sniffles

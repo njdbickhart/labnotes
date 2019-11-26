@@ -133,6 +133,14 @@ sbatch -t 2-0 --nodes=1 --mem=20000 --ntasks-per-node=3 -p mem -q memlimit --wra
 sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p mem -q memlimit --wrap='blobtools create -i flye_meta_diagprot1114/assembly.fasta -b flye_protist_aligns/YMpreprun3/YMpreprun3.sorted.merged.bam -t flye_meta_diagprot1114_diamond_uniprot.flye_meta_diagprot1114.diamondout.tsv.taxified.out -o flye_protist_diagprot_blobtools --db blob_ncbi.db'
 
 sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p mem -q memlimit --wrap='blobtools plot -i flye_protist_diagprot_blobtools.blobDB.json --notitle -r superkingdom -o flye_pd_blobtools_supkingdom'
+
+mkdir blob_plots
+mv flye_pd_blobtools_supkingdom.flye_protist_diagprot_blobtools.blobDB* ./blob_plots/
+mv flye_meta_diagprot1114_diamond_uniprot.flye_meta_diagprot1114.diamondout.tsv.taxified.out ./blob_plots/
+mv flye_protist_diagprot_blobtools.YMpreprun3.sorted.merged.bam.cov ./blob_plots/
+
+# I didn't get "blobs" but this is a known problem. the dingbats at CERES made the default python version 2.7 for blobtools!
+# I need to run it with python3 from the get-go or else it silently fails.
 ```
 
 
