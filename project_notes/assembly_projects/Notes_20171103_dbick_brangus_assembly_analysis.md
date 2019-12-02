@@ -22,6 +22,7 @@ These are my notes on the analysis of the haploid Brangus reference assembly. Pa
 	* [Updated scaffolding statistics](#ustats)
 * [QV and other summary statistics](#qv)
 * [CNV calls and statistics](#cnv)
+	* [tabulate_column_counter.pl](#tabscript)
 
 <a name="prep"></a>
 ## Assembly download, prep and marker analysis
@@ -747,6 +748,9 @@ perl calculate_averages.pl Angus
 ```
 
 And here is the short script I used to tabulate the count information:
+
+<a name="tabscript"></a>
+#### tabulate_column_counter.pl
 
 ```perl
 #!/usr/bin/perl
