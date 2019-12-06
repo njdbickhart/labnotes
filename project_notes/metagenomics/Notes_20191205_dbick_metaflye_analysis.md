@@ -20,3 +20,22 @@ I will need to divy up tasks and run them in order to generate the results neede
 	* Run the viral association script
 	* Count number of split-read or hard-clipped CCS reads
 	* Adapt DESMAN to pick strains from the alignments
+
+
+## Running the analysis
+
+#### CCS read alignments
+
+> Ceres: /project/forage_assemblies/sheep_project
+
+```bash
+module load minimap2/2.6
+for i in *.tar.gz; do echo $i; sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -p msn --wrap="tar -xvf $i"; done
+
+# OK, so the contigs are not properly binned, but given their sizes, this is probably OK.
+# Let me start the long-term alignment first so that I can analyze this next week
+# I will use this for blobtools "coverage" estimates as well
+for i in canu.contigs.fasta flye_contigs.fasta; do echo $i; sbatch --nodes=1 --mem=30000 --ntasks-per-node=3 -p msn --wrap="minimap2 -x map-pb $i /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq.gz > $i.ccs.paf"; done
+
+# The blobtools coverage estimates didn't work very well with the CCS reads in sam format. Maybe I can resolve this with scripting?
+```
