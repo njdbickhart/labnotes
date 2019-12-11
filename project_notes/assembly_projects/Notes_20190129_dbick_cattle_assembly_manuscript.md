@@ -575,6 +575,20 @@ perl -lane 'print "$F[1]";' < taxonomy/names.dmp > taxids.list
 taxadb download -o taxadb --type full
 taxadb create -i taxadb -c 25 --dbname taxadb.sqlite
 
+#################
+# This worked!  #
+#################
+# This whole taxadb thing didn't work. I found a workaround python script that helped me
+git clone https://github.com/dib-lab/2018-ncbi-lineages.git
+
+# Pulling species level taxids for greping
+grep 'species' taxadb/nodes.dmp | perl -lane 'print $F[0];' > taxids.species
+
+# generating a species-level list of taxids
+python3 2018-ncbi-lineages/make-lineage-csv.py -o taxids.list.csv taxadb/nodes.dmp taxadb/names.dmp taxids.species
+
+# Filtering for only the Chordata
+grep 'Chordat' taxids.list.csv | perl -ne 'chomp; @s = split(/,/); print "$s[0]\n";' > chordata.taxids
 
 # Testing cd-hit for clustering
 module load cd-hit/4.6.4
@@ -598,6 +612,10 @@ sbatch -t 1-0 --nodes=1 --mem=50000 --ntasks-per-node=30 -p msn -q msn --wrap='c
 >Cluster 509
 0       13953nt, >200HO09805.scaf.120... *
 ...
+
+
+### Testing again
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q msn -o {cluster.stdout}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
 ```
 
 ## Intersection of gap regions with Sniffles
