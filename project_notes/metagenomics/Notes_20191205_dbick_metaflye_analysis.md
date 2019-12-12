@@ -77,4 +77,10 @@ for i in canu.contigs.fasta flye_contigs.fasta; do echo $i; sbatch -t 2-0 -p msn
 # NOTE: I had to clone the blobtools repo because Conda screwed up the libraries for the program
 # Blobtools taxify
 for i in canu.contigs.fasta flye_contigs.fasta; do echo $i; sbatch -t 2-0 --nodes=1 --mem=20000 --ntasks-per-node=3 -p msn -q msn --wrap="./blobtools/blobtools taxify -f $i.diamondout.tsv -m /project/rumen_longread_metagenome_assembly/assemblies/protists/uniprot_ref_proteomes.taxids -s 0 -t 2 -o ${i}_unip"; done
+
+# Copying the database file
+cp /project/rumen_longread_metagenome_assembly/assemblies/protists/blob_ncbi.db ./
+
+# Blobtools create
+for i in canu flye; do sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools create -i $i.contigs.fasta -b ${i}_wgs/63/63.sorted.merged.bam -t $i.contigs.fasta_unip.$i.contigs.fasta.diamondout.tsv.taxified.out -o $i.blobtools --db blob_ncbi.db"; done
 ```

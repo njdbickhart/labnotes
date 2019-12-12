@@ -617,6 +617,9 @@ sbatch -t 1-0 --nodes=1 --mem=50000 --ntasks-per-node=30 -p msn -q msn --wrap='c
 ### Testing again
 conda activate /KEEP/rumen_longread_metagenome_assembly/snakemake
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p msn -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/readScrape/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q msn -o {cluster.stdout}" --jobs 999 -s ~/python_toolchain/snakeMake/readScrape/readScrape
+
+# Creating the DAG pdf
+snakemake --forceall --dag -s ~/python_toolchain/snakeMake/readScrape/readScrape | dot -Tpdf > readScrape_dag.pdf
 ```
 
 ## Intersection of gap regions with Sniffles
