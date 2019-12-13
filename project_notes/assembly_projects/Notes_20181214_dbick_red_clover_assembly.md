@@ -686,3 +686,28 @@ wc -l red_clover_kmc_k21.uniq_het.peak.kmers
 ```
 
 I need to use [directed acyclic graphs](https://algs4.cs.princeton.edu/41graph/) to organize the data, and calculate the [minimizer values](http://yorke.umd.edu/papers/genome_papers/minimizerpaper.pdf) for kmers and use a concept of [granularity in hierarchically organized kmers](https://medium.com/@infoecho/constructing-a-graph-for-genome-comparison-swiftly-d47dcd7eae5d) to try to compare and sort reads. I think that most of what I'm thinking is far too complex and that I should start with the generation of a frequency 'graph' to print edge weights (edges are counts of observances).
+
+## Alfalfa side project
+
+> CERES: /project/forage_assemblies/analysis/alfalfa_project
+
+```bash
+module load minimap2/2.6
+
+# mapping the reads to the target sequence
+minimap2 -x map-ont t_dna_pmls485.fa /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq > gusalfb1_nanopore_mappings.paf
+
+# Now I'm going to steal my viral overlap script and modify it so that a bed file can be generated
+cp ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAnalysisScripts/selectLikelyViralOverhangs.pl ./
+cp ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAnalysisScripts/filterViralOverhangsAndGenerateSeq.pl ./
+
+perl selectLikelyViralOverhangs.pl gusalfb1_nanopore_mappings.paf gusalfb1_overhangs
+
+# OK, there aren't many reads! I will start out with the whole list (22 reads) and then move onto the filtered list if needed
+# Full set of reads that had ANY alignments whatsoever
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %reads; while(<IN>){chomp; @s = split(/\t/); $reads{$s[0]} = 1;} close IN; open(IN, "< $ARGV[1]"); while($h = <IN>){$h =~ s/^\@//; if(exists($reads{$h})){print "\@$h\n"; $s = <>; $p = <>; $q = <>; print "$s$p$q";}else{<>; <>; <>;}} close IN;' gusalfb1_nanopore_mappings.paf /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq > full_align_filtered_reads.fastq
+
+# I had to queue this on the cluster because it was taking a long time
+sbatch --nodes=1 --mem=6000 --ntasks-per-node=2 -p msn -q msn --wrap="perl filter_fastq_file.pl gusalfb1_nanopore_mappings.paf /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq full_align_filtered_reads.fastq"
+```
+

@@ -83,4 +83,55 @@ cp /project/rumen_longread_metagenome_assembly/assemblies/protists/blob_ncbi.db 
 
 # Blobtools create
 for i in canu flye; do sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools create -i $i.contigs.fasta -b ${i}_wgs/63/63.sorted.merged.bam -t $i.contigs.fasta_unip.$i.contigs.fasta.diamondout.tsv.taxified.out -o $i.blobtools --db blob_ncbi.db"; done
+
+# Blobtools view and plot
+for i in canu flye; do sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i $i.blobtools.blobDB.json --notitle -r superkingdom -o ${i}_supkingdom"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i $i.blobtools.blobDB.json --notitle -r phylum -o ${i}_phylum"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools view -i $i.blobtools.blobDB.json -o ${i}_table -r all"; done
+
+mkdir blob_plots
+mv *.stats.txt ./blob_plots/
+mv *.png ./blob_plots/
+
+# Taking stock of superkingdoms
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f canu_table.canu.blobtools.blobDB.table.txt -c 5 -i '#' -d '\t' -m
+|Entry     | Value|
+|:---------|-----:|
+|Bacteria  | 18821|
+|Archaea   |   881|
+|Eukaryota |   296|
+|Viruses   |   208|
+|no-hit    |    71|
+
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f flye_table.flye.blobtools.blobDB.table.txt -c 5 -i '#' -d '\t' -m
+|Entry     | Value|
+|:---------|-----:|
+|Bacteria  | 15751|
+|Archaea   |   584|
+|no-hit    |   249|
+|Eukaryota |   205|
+|Viruses   |   123|
 ```
+
+#### Network plot and read alignment
+
+I added a rudimentary network plot to my pipeline script. Let's see if it works!
+
+```bash
+source activate /KEEP/rumen_longread_metagenome_assembly/seaborn/
+module load samtools/1.9 minimap2/2.6
+
+perl -lane 'if($F[0] =~ /^#/){next;} if($F[5] eq "Viruses"){print "$F[0]\t$F[1]";}' < canu_table.canu.blobtools.blobDB.table.txt > canu.viral.contigs.list
+perl -lane 'if($F[0] =~ /^#/){next;} if($F[5] eq "Viruses"){print "$F[0]\t$F[1]";}' < flye_table.flye.blobtools.blobDB.table.txt > flye.viral.contigs.list
+
+# Preparing list of viral contig fastas
+perl -lane 'print $F[0];' < canu.viral.contigs.list | xargs -I {} samtools faidx canu.contigs.fasta {} >> canu.viral.contigs.fa
+perl -lane 'print $F[0];' < flye.viral.contigs.list | xargs -I {} samtools faidx flye.contigs.fasta {} >> flye.viral.contigs.fa
+
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p msn -q msn -J canuflye --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a canu.contigs.fasta -g canu.viral.contigs.fa -b canu_table.canu.blobtools.blobDB.table.txt -i canu_hic/63/63.sorted.merged.bam -v canu.viral.contigs.list -l /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq -m /software/7/apps/minimap2/2.6/minimap2 -o canu.contigs.vassoc"
+
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p msn -q msn -J flyeflye --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a flye.contigs.fasta -g flye.viral.contigs.fa -b flye_table.flye.blobtools.blobDB.table.txt -i flye_hic/63/63.sorted.merged.bam -v flye.viral.contigs.list -l /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq -m /software/7/apps/minimap2/2.6/minimap2 -o flye.contigs.vassoc"
+```
+
+### TODO:
+### Run DESMAN
+### Run a script to calculate Hi-C intercontig mapping rates
+### Run a script to calculate number of chimeric CCS read mappings
