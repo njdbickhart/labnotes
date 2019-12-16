@@ -131,7 +131,66 @@ sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p msn -q msn -J canuflye --wra
 sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p msn -q msn -J flyeflye --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a flye.contigs.fasta -g flye.viral.contigs.fa -b flye_table.flye.blobtools.blobDB.table.txt -i flye_hic/63/63.sorted.merged.bam -v flye.viral.contigs.list -l /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq -m /software/7/apps/minimap2/2.6/minimap2 -o flye.contigs.vassoc"
 ```
 
+
+#### Hi-C and metabat binning
+
+OK, I think that I will run Aaron Darling's [Bin3c tool](https://github.com/cerebis/bin3C) to save some time. The instructions listed a very important point: mate-pairing Hi-C reads is likely to fail because of the distances between pairs! I should use their recommended alignment strategy to avoid faulty alignments.
+
+> Ceres:
+
+```bash
+module load bwa/0.7.17 samtools/1.9 miniconda
+
+for i in canu flye; do sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p msn -q msn --wrap="bwa mem -5SP -t 3 $i.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R1_001.fastq.gz /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R2_001.fastq.gz | samtools view -F 0x904 -bS - | samtools sort -T $i.tmp -o $i.hiclinks.bam -@ 3 -"; done
+
+# Setup bin3C
+git clone --recursive https://github.com/cerebis/bin3C
+
+conda create --prefix=/KEEP/rumen_longread_metagenome_assembly/bin3C python=2.7
+conda activate /KEEP/rumen_longread_metagenome_assembly/bin3C
+
+
+# OK, I don't know which RE was used, but I'm guessing it's Sau3AI for educational purposes here
+python bin3C/bin3C.py mkmap -e Sau3AI -v canu.contigs.fasta canu.hiclinks.bam canu.hiclinks.bin3c_out
+	IOError: BAM file must be sorted by read name
+
+# URRRRRRGH! 
+# Sorting by read name
+for i in canu flye; do echo $i; sbatch --nodes=1 --mem=10000 --ntasks-per-node=4 -p msn -q msn --wrap="samtools sort -T $i.tmp -n -o $i.hiclinks.rname.bam -@ 3 $i.hiclinks.bam"; done
+
+python bin3C/bin3C.py mkmap -e Sau3AI -v canu.contigs.fasta canu.hiclinks.rname.bam canu_bin3c
+
+sbatch --nodes=1 --mem=16000 --ntasks-per-node=2 -p msn -q msn --wrap="python bin3C/bin3C.py cluster -v --no-spades canu_bin3c/contact_map.p.gz canu_bin3c_cluster"
+
+sbatch --nodes=1 --mem=16000 --ntasks-per-node=2 -p msn -q msn --wrap="python bin3C/bin3C.py mkmap -e Sau3AI -v flye.contigs.fasta flye.hiclinks.rname.bam flye_bin3c"
+
+sbatch --nodes=1 --dependency=afterany:1397741 --mem=16000 --ntasks-per-node=2 -p msn -q msn --wrap="python bin3C/bin3C.py cluster -v --no-spades flye_bin3c/contact_map.p.gz flye_bin3c_cluster"
+
+#### Metabat2
+module load metabat/2.12.1 miniconda/3.6 usearch/11.0.667 hmmer3/3.2.1
+# Getting coverage files
+for i in flye canu; do sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p brief-low -q memlimit --wrap="jgi_summarize_bam_contig_depths --outputDepth $i.wgs.cov ${i}_wgs/63/63.sorted.merged.bam"; done
+
+for i in flye canu; do sbatch --nodes=1 -p brief-low -q memlimit --ntasks-per-node=15 --mem=20000 --wrap="metabat2 -i $i.contigs.fasta -a $i.wgs.cov -o ${i}_meta/$i.bin -t 15 -v"; done
+
+
+#### DAS_TOOL
+
+``` 
+
+#### DESMAN strain inference
+
+NOTE: I've installed DESMAN in my Blobtools virtual environment because they require the same version of python and they're used in pretty similar circumstances.
+
+> Ceres:
+
+```bash
+
+```
+
 ### TODO:
+### Run DAS_tool
 ### Run DESMAN
 ### Run a script to calculate Hi-C intercontig mapping rates
 ### Run a script to calculate number of chimeric CCS read mappings
+### Pull Nematode contigs/bins and do Busco on each
