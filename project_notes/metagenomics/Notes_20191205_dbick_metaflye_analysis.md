@@ -63,6 +63,8 @@ I am going to run both assemblies through Prodigal. The ORF data will be extreme
 module load prodigalorffinder/2.6.3
 
 for i in canu.contigs.fasta flye_contigs.fasta; do echo $i; sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p msn --wrap="prodigal -a $i.prod.prottrans -c -d $i.prod.genenuc -f gff -i $i -o $i.prod.out -p meta"; done
+
+for i in canu flye; do grep '>' $i.contigs.fasta.prod.prottrans |  perl -e '@ids = ("ID", "partial", "start_type", "rbs_motif", "rbs_spacer", "gc_cont"); print "ContigID\tStart\tEnd\tOrient\t" . join("\t", @ids) . "\n"; while(<STDIN>){chomp; $_ =~ s/\>//g; @lsegs = split(/\s*\#\s*/); @bsegs = split(/\;/, $lsegs[-1]); print "$lsegs[0]\t$lsegs[1]\t$lsegs[2]\t$lsegs[3]"; foreach my $k (@bsegs){$k =~ s/^.+\=//; print "\t$k";} print "\n";}' > $i.contigs.prod.shortform.tab; done
 ```
 
 #### Blobtools
@@ -175,8 +177,66 @@ for i in flye canu; do sbatch --nodes=1 -p brief-low -q memlimit --ntasks-per-no
 
 
 #### DAS_TOOL
+# First associate bins with contigs
+for i in flye canu; do echo $i; for j in ${i}_meta/*.fa; do bin=`basename $j | cut -d'.' -f2,3`; echo $bin; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; if($_ =~ /^>/){$_ =~ s/>//; print "$_\t$ARGV[1]\n";}} close IN;' $j $bin >> $i.metabat.bins.tab; done; done
+for i in canu flye; do echo $i; perl -lane 'print "$F[2]\t$F[0]";' < ${i}_bin3c_bins.ctgassoc > $i.bin3c.bins.tab; done
+
+module load diamond/0.9.28 usearch/11.0.667
+conda activate /KEEP/rumen_longread_metagenome_assembly/das_tool/
+for i in canu flye; do echo $i; mkdir ${i}_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p msn -q msn --wrap="DAS_Tool --search_engine 'diamond' -i ${i}.bin3c.bins.tab,${i}.metabat.bins.tab -l bin3c,metabat -c $i.contigs.fasta -o ${i}_dastool/$i.das -t 4 --write_bins 1"; done
 
 ``` 
+
+#### BUSCO analysis of Eukaryotic contigs
+
+OK, the BUSCO scores are likely to be low on the Eukaryotes, but we'll give it a try!
+
+```bash
+module load busco3 samtools/1.9
+
+# First, I need to classify the bins and then pull the contigs from each. I've written a script to do this
+perl pull_bin3c_ctg_name_tax.pl canu_bin3c_cluster/fasta/ canu_table.canu.blobtools.blobDB.table.txt canu_bin3c_bins
+perl pull_bin3c_ctg_name_tax.pl flye_bin3c_cluster/fasta/ flye_table.flye.blobtools.blobDB.table.txt flye_bin3c_bins
+
+# No unique Eukaryotic bins... interesting. I guess that I'll have to do this after DAS_tool dereplication?
+# In the meantime, I'll pull each fasta individually and run BUSCO on them
+perl -ne 'if($_ =~ /^#/){next;} chomp; @F = split(/\t/); if($F[5] eq "Eukaryota"){print "$F[0]\n";}' < canu_table.canu.blobtools.blobDB.table.txt > canu_table.canu.blobtools.euk_ctg.list
+perl -ne 'if($_ =~ /^#/){next;} chomp; @F = split(/\t/); if($F[5] eq "Eukaryota"){print "$F[0]\n";}' < flye_table.flye.blobtools.blobDB.table.txt > flye_table.flye.blobtools.euk_ctg.list
+
+for i in canu flye; do mkdir ${i}_euk; for j in `cat ${i}_table.$i.blobtools.euk_ctg.list`; do echo $j; samtools faidx $i.contigs.fasta $j > ${i}_euk/$j.ctg.fa; done; done
+cat flye_euk/*.fa > flye_euk/full_flye_euk.ctg.fa
+cat canu_euk/*.fa > canu_euk/full_canu_euk.ctg.fa
+
+# OK, there are complex rules for working with BUSCO that are uncovered by using the "module show busco3" command
+cp /software/7/apps/busco3/3.1.0/config/config.ini.default ./busco_config.ini
+
+export BUSCO_CONFIG_FILE=/project/forage_assemblies/sheep_project/busco_config.ini
+cp -Rp /software/apps/augustus/gcc/64/3.2.3/config /project/rumen_longread_metagenome_assembly/AUGUSTUS_CONFIG
+export AUGUSTUS_CONFIG_PATH=/project/rumen_longread_metagenome_assembly/AUGUSTUS_CONFIG
+
+# Testing
+run_BUSCO.py -i flye_euk/contig_1003.ctg.fa -l /reference/data/BUSCO/latest/nematoda_odb9 -o busco.contig_1003 -m geno
+
+# Queuing up the rest of the scripts
+mkdir flye_busco
+cd flye_busco/
+for i in /project/forage_assemblies/sheep_project/flye_euk/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p msn -q msn --wrap="run_BUSCO.py -i $i -l /reference/data/BUSCO/latest/nematoda_odb9 -o busco.${name} -m geno"; done
+cd ..
+
+mkdir canu_busco
+cd canu_busco/
+for i in /project/forage_assemblies/sheep_project/canu_euk/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p msn -q msn --wrap="run_BUSCO.py -i $i -l /reference/data/BUSCO/latest/nematoda_odb9 -o busco.${name} -m geno"; done
+cd ..
+
+# The nematode database had few hits. Let's try the eukaryota database?
+cd flye_busco/
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p msn -q msn --wrap="run_BUSCO.py -i /project/forage_assemblies/sheep_project/flye_euk/full_flye_euk.ctg.fa -l /reference/data/BUSCO/latest/eukaryota_odb9 -o busco.eukaryota.full -m geno"
+cd ..
+
+cd canu_busco/
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p msn -q msn --wrap="run_BUSCO.py -i /project/forage_assemblies/sheep_project/canu_euk/full_canu_euk.ctg.fa -l /reference/data/BUSCO/latest/eukaryota_odb9 -o busco.eukaryota.full -m geno"
+cd ..
+```
 
 #### DESMAN strain inference
 
@@ -185,7 +245,33 @@ NOTE: I've installed DESMAN in my Blobtools virtual environment because they req
 > Ceres:
 
 ```bash
+module load r/3.6.1 prodigalorffinder/2.6.3 samtools/1.9 miniconda
+conda activate /KEEP/rumen_longread_metagenome_assembly/blobtools/
 
+mkdir desman
+for i in flye canu; do mkdir desman/${i}_bins; mkdir desman/${i}_beds; done
+
+# Creating the lists from the bin3c bins
+for i in flye canu; do echo $i; perl -e 'chomp(@ARGV); $outfold = "$ARGV[1]_bins"; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @F = split(/\t/); open(OUT, ">> desman/$outfold/$F[1].list"); print OUT "$F[0]\n"; close OUT;} close IN;' ${i}_dastool/${i}.das_DASTool_scaffolds2bin.txt $i; done
+
+# And the bed lists
+for i in flye canu; do echo $i; cat ${i}_dastool/*.scg > ${i}_dastool/$i.combined.scg; done
+
+for i in canu flye; do grep '>' ${i}_dastool/${i}.das_proteins.faa |  perl -e '@ids = ("ID", "partial", "start_type", "rbs_motif", "rbs_spacer", "gc_cont"); print "ContigID\tStart\tEnd\tOrient\t" . join("\t", @ids) . "\n"; while(<STDIN>){chomp; $_ =~ s/\>//g; @lsegs = split(/\s*\#\s*/); @bsegs = split(/\;/, $lsegs[-1]); print "$lsegs[0]\t$lsegs[1]\t$lsegs[2]\t$lsegs[3]"; foreach my $k (@bsegs){$k =~ s/^.+\=//; print "\t$k";} print "\n";}' > ${i}_dastool/${i}.das_proteins.shortform.tab; done
+
+for i in canu flye; do echo $i; python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ${i}_dastool/${i}.das_proteins.shortform.tab -c 0 -l ${i}_dastool/$i.combined.scg | perl -lane '$r = $F[0]; $r =~ s/_\d{1,3}$//; print "$r\t$F[1]\t$F[2]\t$F[0]";' > ${i}_dastool/$i.prod.proteins.scg.loc.bed; done
+
+for i in flye canu; do echo $i; for j in desman/${i}_bins/*.list; do name=`basename $j | cut -d'.' -f1,2`; echo $name; python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnGrep.py -f ${i}_dastool/$i.prod.proteins.scg.loc.bed -c 0 -l $j > desman/${i}_beds/${name}.scg.bed; done; done
+
+### Testing it out
+WORKING=/project/forage_assemblies/sheep_project/
+sbatch -p msn -q msn ~/python_toolchain/metagenomics/desmanStrainInference.py -a $WORKING/flye.contigs.fasta -c $WORKING/desman/flye_bins/bin.611.list -g $WORKING/desman/flye_beds/bin.611.scg.bed -d /project/rumen_longread_metagenome_assembly/binaries/DESMAN -b $WORKING/flye_wgs/63/63.sorted.merged.bam -o $WORKING/desman/test
+
+### Now queuing up the real thing
+for j in canu flye; do echo $j; for i in desman/${j}_bins/*.list; do echo $WORKING/$i; name=`basename $i | cut -d'.' -f1,2`; echo $name; sbatch -p msn -q msn ~/python_toolchain/metagenomics/desmanStrainInference.py -a $WORKING/$j.contigs.fasta -c $WORKING/$i -g $WORKING/desman/${j}_beds/$name.scg.bed -d /project/rumen_longread_metagenome_assembly/binaries/DESMAN -b $WORKING/${j}_wgs/63/63.sorted.merged.bam -o $WORKING/desman/${j}_output/$name; done; done
+
+### Testing desman strain prediction
+sbatch -p msn -q msn ~/python_toolchain/metagenomics/desmanStrainPrediction.py -a /project/forage_assemblies/sheep_project/canu.contigs.fasta -c /project/forage_assemblies/sheep_project/canu_dastool/canu.das_DASTool_bins/bin.1159.contigs.fa -o /project/forage_assemblies/sheep_project/desman/canu_output/bin.1159 -d /project/rumen_longread_metagenome_assembly/binaries/DESMAN -g /project/forage_assemblies/sheep_project/desman/canu_beds/bin.1159.scg.bed
 ```
 
 ### TODO:
@@ -194,3 +280,64 @@ NOTE: I've installed DESMAN in my Blobtools virtual environment because they req
 ### Run a script to calculate Hi-C intercontig mapping rates
 ### Run a script to calculate number of chimeric CCS read mappings
 ### Pull Nematode contigs/bins and do Busco on each
+
+
+## Generating figures and tables
+
+It's time to start summarizing the stats from this run.
+
+#### Kingdom-level and GC bin contig size plot
+
+First I need to prepare the data for the plots.
+
+```bash
+# Preparing ctg length, GC and superkingdom tables
+for i in canu flye; do echo $i; perl -ne 'chomp; @F = split(/\t/); if($F[0] =~ /^#/){next;} print "$F[1]\t$F[2]\t$F[5]\n";' < ${i}_table.$i.blobtools.blobDB.table.txt > $i.blobtools.lenbygcbyking.tab; done
+```
+
+```R
+library(ggridges)
+library(ggplot2)
+library(dplyr)
+
+canu <- read.delim("canu.blobtools.lenbygcbyking.tab", header=FALSE)
+flye <- read.delim("flye.blobtools.lenbygcbyking.tab", header=FALSE)
+
+canu <- mutate(canu, ASM=c("canu"))
+flye <- mutate(flye, ASM=c("flye"))
+colnames(canu) <- c("LEN", "GC", "KING", "ASM")
+colnames(flye) <- c("LEN", "GC", "KING", "ASM")
+
+combined <- bind_rows(canu, flye)
+combined$ASM <- as.factor(combined$ASM)
+combined$KING <- factor(combined$KING, levels = c("no-hit", "Viruses", "Eukaryota", "Archaea", "Bacteria"))
+
+pdf(file="superkingdom_length.pdf", useDingbats=FALSE)
+ggplot(combined, aes(y=KING, x=LEN, fill=ASM)) + geom_density_ridges(aes(alpha = 0.4)) + theme_bw() + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_brewer(palette="Dark2") + scale_x_log10(breaks=c(1000, 10000, 100000, 1000000, 6000000), limits=c(100, 6000000), labels=c("1000", "10,000", "100,000", "1,000,000", "6,000,000")) + xlab(label = "Log10 Contig Lengths (bp)") + ylab(label= "Contig Superkingdom Taxonomic Assignment")
+dev.off()
+
+# now for the GC%
+pdf(file="gc_assembly_counts.pdf", useDingbats=FALSE)
+ggplot(combined, aes(x=ASM, y=GC, fill=ASM)) + geom_violin(trim=FALSE) + geom_boxplot(width=0.1, outlier.shape = NA, fill = "white") + theme_bw() + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_brewer(palette="Dark2") + labs(x="Assembly", y = "Avg GC ratio per contig")
+dev.off()
+```
+
+#### ORF prediction classification
+
+I think that I have everything that I need for this in my *.shortform.tab files. Let's check.
+
+```R
+library(ggplot2)
+library(dplyr)
+library(ggridges)
+
+canu <- read.delim("canu.contigs.prod.shortform.tab")
+flye <- read.delim("flye.contigs.prod.shortform.tab")
+
+cdata <- mutate(canu, ASM=c("canu"), LEN=End - Start) %>% select(ASM, LEN)
+fdata <- mutate(flye, ASM=c("flye"), LEN=End - Start) %>% select(ASM, LEN)
+
+combined <- bind_rows(cdata, fdata)
+pdf(file="orf_lengths.pdf", useDingbats=FALSE)
+ggplot(combined, aes(y=ASM, x=LEN, fill=ASM)) + geom_density_ridges(aes(alpha = 0.4)) + theme_bw() + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_brewer(palette="Dark2") + scale_x_log10(breaks=c(100, 1000, 10000, 50000), limits=c(50, 55000), labels=c("100", "1000", "10,000", "50,000")) + xlab(label = "Log10 ORF lengths (bp)") + ylab(label="Assembly")
+```
