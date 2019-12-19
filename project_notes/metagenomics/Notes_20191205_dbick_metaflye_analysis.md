@@ -39,6 +39,9 @@ for i in *.tar.gz; do echo $i; sbatch --nodes=1 --mem=1000 --ntasks-per-node=1 -
 for i in canu.contigs.fasta flye_contigs.fasta; do echo $i; sbatch --nodes=1 --mem=30000 --ntasks-per-node=3 -p msn --wrap="minimap2 -x map-pb $i /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq.gz > $i.ccs.paf"; done
 
 # The blobtools coverage estimates didn't work very well with the CCS reads in sam format. Maybe I can resolve this with scripting?
+
+# Rerunning on v2 assembly
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=3 -p msn --wrap="minimap2 -x map-pb flye2.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq.gz > flye2.contigs.fasta.ccs.paf"
 ```
 
 #### WGS read alignments
@@ -53,6 +56,12 @@ python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /project/forag
 
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /project/forage_assemblies/sheep_project/canu.contigs.fasta -t /project/rumen_longread_metagenome_assembly/sheep_poop/hic_links.tab -b canu_hic -p short -q memlimit -m
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /project/forage_assemblies/sheep_project/canu.contigs.fasta -t /project/rumen_longread_metagenome_assembly/sheep_poop/wgs_reads.tab -b canu_wgs -p short -q memlimit -m
+
+# Rerunning on v2 assembly
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn -q msn --wrap="bwa index flye2.contigs.fasta"
+
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p msn -q msn --wrap="bwa mem -5SP -t 3 flye2.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R1_001.fastq.gz /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R2_001.fastq.gz | samtools view -F 0x904 -bS - | samtools sort -n -T flye2hic.tmp -o flye2.hiclinks.bam -@ 3 -"
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /project/forage_assemblies/sheep_project/flye2.contigs.fasta -t /project/rumen_longread_metagenome_assembly/sheep_poop/wgs_reads.tab -b flye2_wgs -p short -q memlimit -m
 ```
 
 #### ORF annotation
@@ -65,6 +74,9 @@ module load prodigalorffinder/2.6.3
 for i in canu.contigs.fasta flye_contigs.fasta; do echo $i; sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p msn --wrap="prodigal -a $i.prod.prottrans -c -d $i.prod.genenuc -f gff -i $i -o $i.prod.out -p meta"; done
 
 for i in canu flye; do grep '>' $i.contigs.fasta.prod.prottrans |  perl -e '@ids = ("ID", "partial", "start_type", "rbs_motif", "rbs_spacer", "gc_cont"); print "ContigID\tStart\tEnd\tOrient\t" . join("\t", @ids) . "\n"; while(<STDIN>){chomp; $_ =~ s/\>//g; @lsegs = split(/\s*\#\s*/); @bsegs = split(/\;/, $lsegs[-1]); print "$lsegs[0]\t$lsegs[1]\t$lsegs[2]\t$lsegs[3]"; foreach my $k (@bsegs){$k =~ s/^.+\=//; print "\t$k";} print "\n";}' > $i.contigs.prod.shortform.tab; done
+
+# Rerunning on v2 assembly
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p msn --wrap="prodigal -a flye2.contigs.fasta.prod.prottrans -c -d flye2.contigs.fasta.prod.genenuc -f gff -i flye2.contigs.fasta -o flye2.contigs.fasta.prod.out -p meta"
 ```
 
 #### Blobtools
@@ -111,6 +123,10 @@ python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f flye_table.flye.blob
 |no-hit    |   249|
 |Eukaryota |   205|
 |Viruses   |   123|
+
+
+# Rerun on v2 assembly
+sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye2.contigs.fasta --db /project/rumen_longread_metagenome_assembly/assemblies/protists/uniprot_ref_proteomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye2.contigs.fasta.diamondout.tsv";
 ```
 
 #### Network plot and read alignment
@@ -143,7 +159,7 @@ OK, I think that I will run Aaron Darling's [Bin3c tool](https://github.com/cere
 ```bash
 module load bwa/0.7.17 samtools/1.9 miniconda
 
-for i in canu flye; do sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p msn -q msn --wrap="bwa mem -5SP -t 3 $i.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R1_001.fastq.gz /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R2_001.fastq.gz | samtools view -F 0x904 -bS - | samtools sort -T $i.tmp -o $i.hiclinks.bam -@ 3 -"; done
+for i in canu flye; do sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p msn -q msn --wrap="bwa mem -5SP -t 3 $i.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R1_001.fastq.gz /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R2_001.fastq.gz | samtools view -F 0x904 -bS - | samtools sort -n -T $i.tmp -o $i.hiclinks.bam -@ 3 -"; done
 
 # Setup bin3C
 git clone --recursive https://github.com/cerebis/bin3C
@@ -186,6 +202,33 @@ conda activate /KEEP/rumen_longread_metagenome_assembly/das_tool/
 for i in canu flye; do echo $i; mkdir ${i}_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p msn -q msn --wrap="DAS_Tool --search_engine 'diamond' -i ${i}.bin3c.bins.tab,${i}.metabat.bins.tab -l bin3c,metabat -c $i.contigs.fasta -o ${i}_dastool/$i.das -t 4 --write_bins 1"; done
 
 ``` 
+
+#### Bin3c off-diagonal analysis and Hi-C inter-contig links
+
+I want to quantify the number of off-diagonal hits on the bin3c plots and to count the overall number of inter- and intra- contig links to compare against assemblies. The contact map is a pickled instance of the ContactMap class in the "mzd" folder of the bin3c repo. I think that I can pull a matrix from that and then run through the off-diagonal upper-triangle to identify bad hits.
+
+```bash
+module load samtools/1.9 miniconda
+conda activate /KEEP/rumen_longread_metagenome_assembly/bin3C
+```
+
+```python
+import pandas as pd
+import numpy as np
+import sys
+sys.path.insert(1, '/project/forage_assemblies/sheep_project/bin3C')
+# hmm.. no cPickle on conda. Will have to edit those documents
+import pickle
+import gzip
+
+from mzd.io_utils import load_object
+contact = load_object('canu_bin3c/contact_map.p.gz')
+
+# didn't work from here -- I need to run the whole clustering pipeline I think!
+```
+
+OK, try #2 -- let's add a print-out of the matrix or a threshold contact-contact table in the clustering script. I editted the plotting function in bin3C/mzd/contact_map.py
+
 
 #### BUSCO analysis of Eukaryotic contigs
 
