@@ -127,6 +127,10 @@ python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f flye_table.flye.blob
 
 # Rerun on v2 assembly
 sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye2.contigs.fasta --db /project/rumen_longread_metagenome_assembly/assemblies/protists/uniprot_ref_proteomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye2.contigs.fasta.diamondout.tsv";
+
+sbatch -t 2-0 --nodes=1 --mem=20000 --ntasks-per-node=3 -p msn -q msn --wrap="./blobtools/blobtools taxify -f flye2.contigs.fasta.diamondout.tsv -m /project/rumen_longread_metagenome_assembly/assemblies/protists/uniprot_ref_proteomes.taxids -s 0 -t 2 -o flye2.contigs.fasta_unip"
+
+sbatch -t 2-0 --dependency=afterok:1427747 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools create -i flye2.contigs.fasta -b flye2_wgs/63/63.sorted.merged.bam -t flye2.contigs.fasta_unip.flye2.contigs.fasta.diamondout.tsv.taxified.out -o flye2.blobtools --db blob_ncbi.db"
 ```
 
 #### Network plot and read alignment
@@ -201,6 +205,9 @@ module load diamond/0.9.28 usearch/11.0.667
 conda activate /KEEP/rumen_longread_metagenome_assembly/das_tool/
 for i in canu flye; do echo $i; mkdir ${i}_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p msn -q msn --wrap="DAS_Tool --search_engine 'diamond' -i ${i}.bin3c.bins.tab,${i}.metabat.bins.tab -l bin3c,metabat -c $i.contigs.fasta -o ${i}_dastool/$i.das -t 4 --write_bins 1"; done
 
+
+# For the second version
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p msn -q msn --wrap="bwa mem -5SP -t 3 flye2.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R1_001.fastq.gz /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R2_001.fastq.gz | samtools view -F 0x904 -bS - | samtools sort -n -T flye2.tmp -o flye2.hiclinks.bam -@ 3 -"
 ``` 
 
 #### Bin3c off-diagonal analysis and Hi-C inter-contig links
