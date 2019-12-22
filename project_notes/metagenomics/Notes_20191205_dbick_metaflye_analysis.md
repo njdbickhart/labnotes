@@ -131,6 +131,8 @@ sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="
 sbatch -t 2-0 --nodes=1 --mem=20000 --ntasks-per-node=3 -p msn -q msn --wrap="./blobtools/blobtools taxify -f flye2.contigs.fasta.diamondout.tsv -m /project/rumen_longread_metagenome_assembly/assemblies/protists/uniprot_ref_proteomes.taxids -s 0 -t 2 -o flye2.contigs.fasta_unip"
 
 sbatch -t 2-0 --dependency=afterok:1427747 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools create -i flye2.contigs.fasta -b flye2_wgs/63/63.sorted.merged.bam -t flye2.contigs.fasta_unip.flye2.contigs.fasta.diamondout.tsv.taxified.out -o flye2.blobtools --db blob_ncbi.db"
+
+sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i flye2.blobtools.blobDB.json --notitle -r superkingdom -o flye2_supkingdom"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i flye2.blobtools.blobDB.json --notitle -r phylum -o flye2_phylum"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools view -i flye2.blobtools.blobDB.json -o flye2_table -r all"
 ```
 
 #### Network plot and read alignment
@@ -208,6 +210,19 @@ for i in canu flye; do echo $i; mkdir ${i}_dastool; sbatch --nodes=1 --mem=25000
 
 # For the second version
 sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p msn -q msn --wrap="bwa mem -5SP -t 3 flye2.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R1_001.fastq.gz /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R2_001.fastq.gz | samtools view -F 0x904 -bS - | samtools sort -n -T flye2.tmp -o flye2.hiclinks.bam -@ 3 -"
+
+sbatch --nodes=1 --mem=16000 --ntasks-per-node=2 -p msn -q msn --wrap="python bin3C/bin3C.py mkmap -e Sau3AI -v flye2.contigs.fasta flye2.hiclinks.bam flye2_bin3c"
+
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p brief-low -q memlimit --wrap="jgi_summarize_bam_contig_depths --outputDepth flye2.wgs.cov flye2_wgs/63/63.sorted.merged.bam"
+
+sbatch --dependency=afterok:1444378 --nodes=1 -p brief-low -q memlimit --ntasks-per-node=15 --mem=20000 --wrap="metabat2 -i flye2.contigs.fasta -a flye2.wgs.cov -o flye2_meta/flye2.bin -t 15 -v"
+
+# I'm going to try to use DasTool only on the bin3c bins to save time
+python bin3C/bin3C.py cluster -v --no-spades flye2_bin3c/contact_map.p.gz flye2_bin3c_cluster
+perl pull_bin3c_ctg_name_tax.pl flye2_bin3c_cluster/fasta/ flye2_table.flye2.blobtools.blobDB.table.txt flye2_bin3c_bins
+perl -lane 'print "$F[2]\t$F[0]";' < flye2_bin3c_bins.ctgassoc > flye2.bin3c.bins.tab
+
+mkdir flye2_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p msn -q msn --wrap="DAS_Tool --search_engine 'diamond' -i flye2.bin3c.bins.tab -l bin3c -c flye2.contigs.fasta -o flye2_dastool/flye2.das -t 4 --write_bins 1"
 ``` 
 
 #### Bin3c off-diagonal analysis and Hi-C inter-contig links
@@ -232,9 +247,12 @@ from mzd.io_utils import load_object
 contact = load_object('canu_bin3c/contact_map.p.gz')
 
 # didn't work from here -- I need to run the whole clustering pipeline I think!
+AttributeError: ContactMap instance has no attribute 'seqinfo'
 ```
 
 OK, try #2 -- let's add a print-out of the matrix or a threshold contact-contact table in the clustering script. I editted the plotting function in bin3C/mzd/contact_map.py
+
+I was able to print out the matrix and labels for each cluster. The clusters take up a large proportion of cells of the matrix each, so I will have to devise labels for them with a custom script before loading into R.
 
 
 #### BUSCO analysis of Eukaryotic contigs
@@ -322,6 +340,9 @@ for j in canu flye; do echo $j; for i in desman/${j}_bins/*.list; do echo $WORKI
 
 ### Testing desman strain prediction
 sbatch -p msn -q msn ~/python_toolchain/metagenomics/desmanStrainPrediction.py -a /project/forage_assemblies/sheep_project/canu.contigs.fasta -c /project/forage_assemblies/sheep_project/canu_dastool/canu.das_DASTool_bins/bin.1159.contigs.fa -o /project/forage_assemblies/sheep_project/desman/canu_output/bin.1159 -d /project/rumen_longread_metagenome_assembly/binaries/DESMAN -g /project/forage_assemblies/sheep_project/desman/canu_beds/bin.1159.scg.bed
+
+### Running on version2
+
 ```
 
 ### TODO:
