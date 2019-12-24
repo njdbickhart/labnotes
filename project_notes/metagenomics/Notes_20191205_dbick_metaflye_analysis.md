@@ -5,8 +5,23 @@
 These are my notes and plans for validating the MetaFlye data for use in the reviewer rebuttals.
 
 ## Table of Contents
+* [Analysis plan](#analysis)
+* [Running the analysis](#running)
+	* [CCS read alignments](#ccs)
+	* [WGS read alignments](#wgs)
+	* [ORF annotation](#orf)
+	* [Blobtools](#blobtools)
+	* [Network plot and read alignment](#network)
+	* [Hi-C and metabat binning](#binning)
+	* [Checkm plotting](#checkm)
+	* [Bin3c off-diagonal analysis and Hi-C inter-contig links](#offdiag)
+	* [BUSCO analysis of Eukaryotic contigs](#busco)
+	* [DESMAN strain inference](#desman)
+* [Generating figures and tables](#generating)
+	* [Kingdom-level and GC bin contig size plot](#kingdomlevel)
+	* [ORF prediction classification](#orfprediction)
 
-
+<a name="analysis"></a>
 ## Analysis plan
 
 I will need to divy up tasks and run them in order to generate the results needed.
@@ -22,9 +37,10 @@ I will need to divy up tasks and run them in order to generate the results neede
 	* Adapt DESMAN to pick strains from the alignments
 * Run prodigal on the contigs
 
-
+<a name="running"></a>
 ## Running the analysis
 
+<a name="ccs"></a>
 #### CCS read alignments
 
 > Ceres: /project/forage_assemblies/sheep_project
@@ -40,10 +56,58 @@ for i in canu.contigs.fasta flye_contigs.fasta; do echo $i; sbatch --nodes=1 --m
 
 # The blobtools coverage estimates didn't work very well with the CCS reads in sam format. Maybe I can resolve this with scripting?
 
-# Rerunning on v2 assembly
-sbatch --nodes=1 --mem=30000 --ntasks-per-node=3 -p msn --wrap="minimap2 -x map-pb flye2.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq.gz > flye2.contigs.fasta.ccs.paf"
-```
+# Total size of the CCS reads
+perl -e '$c = 0; while(<>){$s = <>; chomp($s); $c += length($s); <>; <>;} print "$c\n";' < /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq
+51,928,785,035		<- 51X coverage of a assembly size of 1 Gbp
 
+# Rerunning on v2 assembly
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=3 -p msn -q msn --wrap="minimap2 -x map-pb flye2.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq > flye2.contigs.fasta.ccs.paf"
+
+# Some exploratory data analysis on CCS read alignments
+# Just getting all reads that map multiple times and counts of their mapping start and end locations (to try to track repeats)
+perl -e '%data; %keeps; while(<>){chomp; @s = split(/\t/); $data{$s[0]}->{$s[2]}->{$s[3]} += 1; $keeps{$s[0]} += 1;} @rs; foreach $j (sort {$keeps{$b} <=> $keeps{$a}} keys(%keeps)){if($keeps{$j} > 1){push(@rs, $j);}} foreach $chr (@rs){foreach $start (keys(%{$data{$chr}})){foreach $end (keys(%{$data{$chr}->{$start}})){$val = $data{$chr}->{$start}->{$end}; print "$chr\t$start\t$end\t$val\n";}}}' < canu.contigs.fasta.ccs.paf > canu.contigs.fasta.ccs.mult.algn.bed
+
+cat canu.contigs.fasta.ccs.mult.algn.bed | cut -f4 | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   2672241
+Sum:    4019981
+Minimum 1
+Maximum 12
+Average 1.504348
+Median  1
+Standard Deviation      1.009274
+Mode(Highest Distributed Value) 1
+
+# OK, time to translate this to a new script.
+perl identify_multimapped_ccs_reads.pl canu.contigs.fasta.ccs.paf canu.contigs.fasta.ccs.mult.algn.bed canu.contigs.fasta.ccs.mult.algn.graph
+
+cat canu.contigs.fasta.ccs.mult.algn.graph | cut -f3 | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   34001
+Sum:    325368
+Minimum 1
+Maximum 4555
+Average 9.569366
+Median  2
+Standard Deviation      66.898076
+Mode(Highest Distributed Value) 1
+
+# Let's do this on Flye now
+perl identify_multimapped_ccs_reads.pl flye2.contigs.fasta.ccs.paf flye2.contigs.fasta.ccs.mult.algn.bed flye2.contigs.fasta.ccs.mult.algn.graph
+
+cat flye2.contigs.fasta.ccs.mult.algn.graph | cut -f3 | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   26069
+Sum:    148533
+Minimum 1
+Maximum 1302
+Average 5.697687
+Median  2
+Standard Deviation      21.533184
+Mode(Highest Distributed Value) 1
+
+# Graph connections greater than 51 X coverage
+perl -lane 'if($F[2] > 51){print $_;}' < flye2.contigs.fasta.ccs.mult.algn.graph > flye2.contigs.fasta.ccs.mult.gt51.graph
+perl -lane 'if($F[2] > 51){print $_;}' < canu.contigs.fasta.ccs.mult.algn.graph > canu.contigs.fasta.ccs.mult.gt51.graph
+```
+<a name="wgs"></a>
 #### WGS read alignments
 
 ```bash
@@ -62,8 +126,9 @@ sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p msn -q msn --wrap="bwa index
 
 sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p msn -q msn --wrap="bwa mem -5SP -t 3 flye2.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R1_001.fastq.gz /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R2_001.fastq.gz | samtools view -F 0x904 -bS - | samtools sort -n -T flye2hic.tmp -o flye2.hiclinks.bam -@ 3 -"
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /project/forage_assemblies/sheep_project/flye2.contigs.fasta -t /project/rumen_longread_metagenome_assembly/sheep_poop/wgs_reads.tab -b flye2_wgs -p short -q memlimit -m
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /project/forage_assemblies/sheep_project/flye2.contigs.fasta -t /project/rumen_longread_metagenome_assembly/sheep_poop/hic_links.tab -b flye2_hic -p short -q memlimit -m
 ```
-
+<a name="orf"></a>
 #### ORF annotation
 
 I am going to run both assemblies through Prodigal. The ORF data will be extremely useful downstream.
@@ -78,7 +143,7 @@ for i in canu flye; do grep '>' $i.contigs.fasta.prod.prottrans |  perl -e '@ids
 # Rerunning on v2 assembly
 sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p msn --wrap="prodigal -a flye2.contigs.fasta.prod.prottrans -c -d flye2.contigs.fasta.prod.genenuc -f gff -i flye2.contigs.fasta -o flye2.contigs.fasta.prod.out -p meta"
 ```
-
+<a name="blobtools"></a>
 #### Blobtools
 
 ```bash
@@ -134,7 +199,7 @@ sbatch -t 2-0 --dependency=afterok:1427747 --nodes=1 --mem=10000 --ntasks-per-no
 
 sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i flye2.blobtools.blobDB.json --notitle -r superkingdom -o flye2_supkingdom"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i flye2.blobtools.blobDB.json --notitle -r phylum -o flye2_phylum"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools view -i flye2.blobtools.blobDB.json -o flye2_table -r all"
 ```
-
+<a name="network"></a>
 #### Network plot and read alignment
 
 I added a rudimentary network plot to my pipeline script. Let's see if it works!
@@ -153,9 +218,16 @@ perl -lane 'print $F[0];' < flye.viral.contigs.list | xargs -I {} samtools faidx
 sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p msn -q msn -J canuflye --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a canu.contigs.fasta -g canu.viral.contigs.fa -b canu_table.canu.blobtools.blobDB.table.txt -i canu_hic/63/63.sorted.merged.bam -v canu.viral.contigs.list -l /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq -m /software/7/apps/minimap2/2.6/minimap2 -o canu.contigs.vassoc"
 
 sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p msn -q msn -J flyeflye --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a flye.contigs.fasta -g flye.viral.contigs.fa -b flye_table.flye.blobtools.blobDB.table.txt -i flye_hic/63/63.sorted.merged.bam -v flye.viral.contigs.list -l /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq -m /software/7/apps/minimap2/2.6/minimap2 -o flye.contigs.vassoc"
+
+# For flye version 2
+perl -lane 'if($F[0] =~ /^#/){next;} if($F[5] eq "Viruses"){print "$F[0]\t$F[1]";}' < flye2_table.flye2.blobtools.blobDB.table.txt > flye2.viral.contigs.list
+
+perl -lane 'print $F[0];' < flye2.viral.contigs.list | xargs -I {} samtools faidx flye2.contigs.fasta {} >> flye2.viral.contigs.fa
+
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p msn -q msn -J flyeflye --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a flye2.contigs.fasta -g flye2.viral.contigs.fa -b flye2_table.flye2.blobtools.blobDB.table.txt -i flye2_hic/63/63.sorted.merged.bam -v flye2.viral.contigs.list -l /project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_CCS.fastq -m /software/7/apps/minimap2/2.6/minimap2 -o flye2.contigs.vassoc"
 ```
 
-
+<a name="binning"></a>
 #### Hi-C and metabat binning
 
 OK, I think that I will run Aaron Darling's [Bin3c tool](https://github.com/cerebis/bin3C) to save some time. The instructions listed a very important point: mate-pairing Hi-C reads is likely to fail because of the distances between pairs! I should use their recommended alignment strategy to avoid faulty alignments.
@@ -223,8 +295,61 @@ perl pull_bin3c_ctg_name_tax.pl flye2_bin3c_cluster/fasta/ flye2_table.flye2.blo
 perl -lane 'print "$F[2]\t$F[0]";' < flye2_bin3c_bins.ctgassoc > flye2.bin3c.bins.tab
 
 mkdir flye2_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p msn -q msn --wrap="DAS_Tool --search_engine 'diamond' -i flye2.bin3c.bins.tab -l bin3c -c flye2.contigs.fasta -o flye2_dastool/flye2.das -t 4 --write_bins 1"
+
+# CheckM runs
+for i in canu flye2; do echo $i; sbatch --nodes=1 --mem=50000 --ntasks-per-node=10 -p msn -q msn checkm lineage_wf -f $i.checkm.tab --tab_table -t 10 ${i}_bin3c_cluster/fasta/ ${i}_bin3c_checkm; done
+
+
+# Summary stats on bin3c binning:
+# Contigs per bin
+for i in flye2_bin3c_cluster/cluster_report.csv canu_bin3c_cluster/cluster_report.csv; do echo $i; perl -e '$c = 0; $sum = 0; <>; while(<>){chomp; @s = split(/,/); $c++; $sum += $s[2];} print "$c\t$sum\t" . ($sum / $c) . "\n\n";' < $i; done
+flye2_bin3c_cluster/cluster_report.csv
+589     6150    10.4414261460102
+
+canu_bin3c_cluster/cluster_report.csv
+446     4765    10.6838565022422
+
+# bases per bin
+for i in flye2_bin3c_cluster/cluster_report.csv canu_bin3c_cluster/cluster_report.csv; do echo $i; perl -e '$c = 0; $sum = 0; <>; while(<>){chomp; @s = split(/,/); $c++; $sum += $s[3];} print "$c\t$sum\t" . ($sum / $c) . "\n\n";' < $i; done
+flye2_bin3c_cluster/cluster_report.csv
+589     1084505102      1841265.02886248
+
+canu_bin3c_cluster/cluster_report.csv
+446     946219639       2121568.69730942
 ``` 
 
+<a name="checkm"></a>
+#### Checkm plotting
+
+```R
+library(doMC)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+
+flye <- read.delim("flye2.checkm.tab", header=TRUE)
+canu <- read.delim("canu.checkm.tab", header=TRUE)
+
+asms <- list(Canu = canu, metaFlye = flye)
+asmnames <- names(asms)
+for(i in 1:length(asmnames)){
+asms[[i]]$ASM <- asmnames[i]
+}
+
+result_table <- do.call(rbind.data.frame, asms)
+tmp_wide <- result_table %>% group_by(ASM) %>% filter(Contamination < 5) %>% summarize(`>90%` = sum(Completeness>90), `>80%` = sum(Completeness>80 & Completeness<=90), `>70%` = sum(Completeness>70 & Completeness<=80), `>60%` = sum(Completeness>60 & Completeness<=70))
+
+melt(tmp_wide,id.vars = 'ASM', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
+plot_table <- melt(tmp_wide,id.vars = 'ASM', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
+plot_table$title <- "CheckM Bin Statistics (< 5% Contamination)"
+packageVersion("ggplot2")
+plot_table$Completeness <- factor(plot_table$Completeness,levels = rev(c('>90%','>80%','>70%', '>60%')))
+colors <- rev(c("#08306B","#1664AB","#4A97C9","#93C4DE"))
+pdf("flye2_canu_bin3c_checkm_stats.pdf", useDingbats=FALSE)
+ggplot(plot_table, aes(ASM, Bins, fill=Completeness)) + geom_bar(stat="identity", position="stack")  + facet_grid( ~ title)  + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_manual(values = colors) +  scale_x_discrete(limits = asmnames)
+dev.off()
+```
+<a name="offdiag"></a>
 #### Bin3c off-diagonal analysis and Hi-C inter-contig links
 
 I want to quantify the number of off-diagonal hits on the bin3c plots and to count the overall number of inter- and intra- contig links to compare against assemblies. The contact map is a pickled instance of the ContactMap class in the "mzd" folder of the bin3c repo. I think that I can pull a matrix from that and then run through the off-diagonal upper-triangle to identify bad hits.
@@ -252,9 +377,23 @@ AttributeError: ContactMap instance has no attribute 'seqinfo'
 
 OK, try #2 -- let's add a print-out of the matrix or a threshold contact-contact table in the clustering script. I editted the plotting function in bin3C/mzd/contact_map.py
 
-I was able to print out the matrix and labels for each cluster. The clusters take up a large proportion of cells of the matrix each, so I will have to devise labels for them with a custom script before loading into R.
+I was able to print out the matrix and labels for each cluster. The clusters take up a large proportion of cells of the matrix each, so I will have to devise labels for them. I've written a script to try to parse out all of the off-diagonal associations.
 
+```bash
+perl check_mat_offdiagonal.pl flye2_bin3c_cluster/cluster_plot.png.mat flye2_bin3c_cluster/cluster_plot.png.ticks flye2_bin3c_cluster/flye2_offdiagonal_hits.tab > flye2_bin3c_cluster/flye2_offdiagonal_stats.txt
 
+perl check_mat_offdiagonal.pl canu_bin3c_cluster/cluster_plot.png.mat canu_bin3c_cluster/cluster_plot.png.ticks canu_bin3c_cluster/canu_offdiagonal_hits.tab > canu_bin3c_cluster/canu_offdiagonal_stats.txt
+
+wc -l *_bin3c_cluster/*_hits.tab
+  840 canu_bin3c_cluster/canu_offdiagonal_hits.tab
+ 1549 flye2_bin3c_cluster/flye2_offdiagonal_hits.tab
+ 2389 total
+
+grep 'CL' flye2_bin3c_cluster/flye2_offdiagonal_stats.txt > flye2_bin3c_cluster/flye2_offdiag_digraph.tab
+grep 'CL' canu_bin3c_cluster/canu_offdiagonal_stats.txt > canu_bin3c_cluster/canu_offdiag_digraph.tab
+```
+
+<a name="busco"></a>
 #### BUSCO analysis of Eukaryotic contigs
 
 OK, the BUSCO scores are likely to be low on the Eukaryotes, but we'll give it a try!
@@ -306,6 +445,7 @@ sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p msn -q msn --wrap="run_BUSCO
 cd ..
 ```
 
+<a name="desman"></a>
 #### DESMAN strain inference
 
 NOTE: I've installed DESMAN in my Blobtools virtual environment because they require the same version of python and they're used in pretty similar circumstances.
@@ -345,18 +485,13 @@ sbatch -p msn -q msn ~/python_toolchain/metagenomics/desmanStrainPrediction.py -
 
 ```
 
-### TODO:
-### Run DAS_tool
-### Run DESMAN
-### Run a script to calculate Hi-C intercontig mapping rates
-### Run a script to calculate number of chimeric CCS read mappings
-### Pull Nematode contigs/bins and do Busco on each
 
-
+<a name="generating"></a>
 ## Generating figures and tables
 
 It's time to start summarizing the stats from this run.
 
+<a name="kingdomlevel"></a>
 #### Kingdom-level and GC bin contig size plot
 
 First I need to prepare the data for the plots.
@@ -364,6 +499,8 @@ First I need to prepare the data for the plots.
 ```bash
 # Preparing ctg length, GC and superkingdom tables
 for i in canu flye; do echo $i; perl -ne 'chomp; @F = split(/\t/); if($F[0] =~ /^#/){next;} print "$F[1]\t$F[2]\t$F[5]\n";' < ${i}_table.$i.blobtools.blobDB.table.txt > $i.blobtools.lenbygcbyking.tab; done
+
+perl -ne 'chomp; @F = split(/\t/); if($F[0] =~ /^#/){next;} print "$F[1]\t$F[2]\t$F[5]\n";' < flye2_table.flye2.blobtools.blobDB.table.txt > flye2.blobtools.lenbygcbyking.tab
 ```
 
 ```R
@@ -391,8 +528,30 @@ dev.off()
 pdf(file="gc_assembly_counts.pdf", useDingbats=FALSE)
 ggplot(combined, aes(x=ASM, y=GC, fill=ASM)) + geom_violin(trim=FALSE) + geom_boxplot(width=0.1, outlier.shape = NA, fill = "white") + theme_bw() + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_brewer(palette="Dark2") + labs(x="Assembly", y = "Avg GC ratio per contig")
 dev.off()
+
+### Flye v2 plots
+canu <- read.delim("canu.blobtools.lenbygcbyking.tab", header=FALSE)
+flye <- read.delim("flye2.blobtools.lenbygcbyking.tab", header=FALSE)
+
+canu <- mutate(canu, ASM=c("canu"))
+flye <- mutate(flye, ASM=c("flye"))
+colnames(canu) <- c("LEN", "GC", "KING", "ASM")
+colnames(flye) <- c("LEN", "GC", "KING", "ASM")
+
+combined <- bind_rows(canu, flye)
+combined$ASM <- as.factor(combined$ASM)
+combined$KING <- factor(combined$KING, levels = c("no-hit", "Viruses", "Eukaryota", "Archaea", "Bacteria"))
+
+pdf(file="superkingdom_flye2_length.pdf", useDingbats=FALSE)
+ggplot(combined, aes(y=KING, x=LEN, fill=ASM)) + geom_density_ridges(aes(alpha = 0.4)) + theme_bw() + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_brewer(palette="Dark2") + scale_x_log10(breaks=c(1000, 10000, 100000, 1000000, 6000000), limits=c(100, 6000000), labels=c("1000", "10,000", "100,000", "1,000,000", "6,000,000")) + xlab(label = "Log10 Contig Lengths (bp)") + ylab(label= "Contig Superkingdom Taxonomic Assignment")
+dev.off()
+
+pdf(file="gc_assembly_counts_flye2.pdf", useDingbats=FALSE)
+ggplot(combined, aes(x=ASM, y=GC, fill=ASM)) + geom_violin(trim=FALSE) + geom_boxplot(width=0.1, outlier.shape = NA, fill = "white") + theme_bw() + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_brewer(palette="Dark2") + labs(x="Assembly", y = "Avg GC ratio per contig")
+dev.off()
 ```
 
+<a name="orfprediction"></a>
 #### ORF prediction classification
 
 I think that I have everything that I need for this in my *.shortform.tab files. Let's check.
@@ -412,3 +571,12 @@ combined <- bind_rows(cdata, fdata)
 pdf(file="orf_lengths.pdf", useDingbats=FALSE)
 ggplot(combined, aes(y=ASM, x=LEN, fill=ASM)) + geom_density_ridges(aes(alpha = 0.4)) + theme_bw() + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_brewer(palette="Dark2") + scale_x_log10(breaks=c(100, 1000, 10000, 50000), limits=c(50, 55000), labels=c("100", "1000", "10,000", "50,000")) + xlab(label = "Log10 ORF lengths (bp)") + ylab(label="Assembly")
 ```
+
+# TODO:
+
+## Redo plot of contig sizes per superkingdom
+## Prepare table of blobplots summary stats (contig N50, total size, etc)
+## Prepare bin3c table of bins
+## Run CheckM on canu and Bin3C bins
+## Finish writeup of methods
+## Quantify chimeric long-reads
