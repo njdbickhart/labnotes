@@ -709,5 +709,58 @@ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %reads; while(<IN>){chomp; @s = s
 
 # I had to queue this on the cluster because it was taking a long time
 sbatch --nodes=1 --mem=6000 --ntasks-per-node=2 -p msn -q msn --wrap="perl filter_fastq_file.pl gusalfb1_nanopore_mappings.paf /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq full_align_filtered_reads.fastq"
+
+# OK, let's try assembling these with canu
+module load canu/1.9
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p short -q memlimit --wrap="canu -p gus_alfalfa -d canu_alfalfa genomeSize=10k corMhapSensitivity=high corMinCoverage=0 contigFilter='2 0 1.0 0.5 0' 'gridOptions=-p short -q memlimit' -nanopore-raw full_align_filtered_reads.fastq"
+
+grep '>' canu_alfalfa/gus_alfalfa.contigs.fasta
+>tig00000001 len=52946 reads=10 class=contig suggestRepeat=no suggestCircular=no
+
+# Jackpot? Let's align the old segment to this one to check
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=3 -p msn -q msn --wrap='minimap2 -x asm10 canu_alfalfa/gus_alfalfa.contigs.fasta t_dna_pmls485.fa > gus_alfalfa_to_tdna.paf'
+# The output
+T-DNA_from_pMLS485      5497    80      5441    -       tig00000001     52946   30491   35791   4348    5366    60      tp:A:P  cm:i:403        s1:i:4343       s2:i:91 dv:f:0.0166
+# Right smack in the middle! Lots of errors though.
+
+# Let's try 3 billion iterations (2) of racon to polish this thing
+# First, align all reads to this larger contig
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=3 -p msn -q msn --wrap='minimap2 -x map-ont canu_alfalfa/gus_alfalfa.contigs.fasta /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq > gus_alfalfa_contig_map_it1.paf'
+
+# There were allot more reads aligning than I expected! I think that maybe Canu joined a chimeric contig here?
+module load bedtools/2.25.0
+perl -lane 'print "$F[5]\t$F[7]\t$F[8]";' < gus_alfalfa_contig_map_it1.paf | bedtools sort -i stdin | bedtools intersect -a gus_alfalfa.contigs.len.bed -b stdin -wao | less
+...
+tig00000001     1       52946   tig00000001     16374   17096   722
+tig00000001     1       52946   tig00000001     16374   17132   758
+tig00000001     1       52946   tig00000001     20410   52937   32527
+tig00000001     1       52946   tig00000001     22789   38127   15338
+tig00000001     1       52946   tig00000001     23465   38519   15054
+...
+
+# So, let's crop the contig at 20410 bp onwards
+module load samtools
+samtools faidx canu_alfalfa/gus_alfalfa.contigs.fasta tig00000001:20410-52946 > gus_alfalfa.contigs.cropped.fasta
+# I renamed the head of the fasta file to "target_region"
+# Let's realign then!
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=3 -p msn -q msn --wrap='minimap2 -x asm10 gus_alfalfa.contigs.cropped.fasta t_dna_pmls485.fa > gus_alfalfa_cropped_to_tdna.paf'
+# Now, 10kb from the start
+T-DNA_from_pMLS485      5497    80      5441    -       target_region   32537   10082   15382   4348    5366    60      tp:A:P  cm:i:403        s1:i:4343       s2:i:91 dv:f:0.0166
+
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=3 -p msn -q msn --wrap='minimap2 -x map-ont gus_alfalfa.contigs.cropped.fasta /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq > gus_alfalfa_contig_map_it2.paf'
+
+# There's still a ton of repetitive chaff aligning to the contig. Going to filter it
+perl -lane 'if($F[9] > 1000){print $_;}' < gus_alfalfa_contig_map_it2.paf > gus_alfalfa_contig_map_it2.filt.paf
+# It's racon time!
+module load racon/1.3.0
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=10 -p msn -q msn --wrap='racon -t 10 /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq gus_alfalfa_contig_map_it2.filt.paf gus_alfalfa.contigs.cropped.fasta > gus_alfalfa.contigs.racon1.fasta'
+
+# Now for racon iteration 2!
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=3 -p msn -q msn --wrap='minimap2 -x map-ont gus_alfalfa.contigs.racon1.fasta /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq > gus_alfalfa_contig_map_it3.paf'
+
+# note: did not filter the paf this time. fingers crossed!
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=10 -p msn -q msn --wrap='racon -t 10 /project/forage_assemblies/sequence_data/gusalfb1_nanopore_raw.fastq gus_alfalfa_contig_map_it3.filt.paf gus_alfalfa.contigs.racon1.fasta > gus_alfalfa.contigs.racon2.fasta'
+
+# That was horrible and collapsed the fasta! we're sticking with the first round results.
 ```
 

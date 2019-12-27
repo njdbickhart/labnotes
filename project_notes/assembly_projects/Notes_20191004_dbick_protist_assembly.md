@@ -143,5 +143,25 @@ mv flye_protist_diagprot_blobtools.YMpreprun3.sorted.merged.bam.cov ./blob_plots
 # I need to run it with python3 from the get-go or else it silently fails.
 ```
 
+## Actual assemblies
 
+OK, we've generated a ton of data on these samples, let's start assembling!
 
+#### NOTE: to clean up the workspace, I moved most of the preliminary protist analysis to a new folder! diag_protist
+
+> Ceres: /project/rumen_longread_metagenome_assembly/assemblies/protists
+
+```bash
+# flye assembly
+module load miniconda/3.6
+source activate /KEEP/rumen_longread_metagenome_assembly/flye
+
+sbatch --nodes=1 --mem=450000 --ntasks-per-node=70 -p mem -q memlimit flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/cow7201_total_combined.2019.fastq -t 70 -i 2 -m 4000 --meta --plasmids -o flye_meta_7201
+
+# Read stats for future reference:
+[2019-12-27 17:37:44] INFO: Total read length: 134283567513
+[2019-12-27 17:37:44] INFO: Input genome size: 1000000000
+[2019-12-27 17:37:45] INFO: Estimated coverage: 134
+[2019-12-27 17:37:45] INFO: Reads N50/N90: 16874 / 2519
+
+```
