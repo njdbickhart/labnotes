@@ -156,7 +156,7 @@ OK, we've generated a ton of data on these samples, let's start assembling!
 module load miniconda/3.6
 source activate /KEEP/rumen_longread_metagenome_assembly/flye
 
-sbatch --nodes=1 --mem=450000 --ntasks-per-node=70 -p mem -q memlimit flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/cow7201_total_combined.2019.fastq -t 70 -i 2 -m 4000 --meta --plasmids -o flye_meta_7201
+sbatch --nodes=1 --mem=450000 --ntasks-per-node=70 -p mem -q memlimit flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/cow7201_total_combined.2019.fastq -t 70 -i 2 -m 4000 --meta --plasmids -o flye_meta_7201 --resume
 
 # Read stats for future reference:
 [2019-12-27 17:37:44] INFO: Total read length: 134283567513

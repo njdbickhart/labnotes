@@ -662,3 +662,39 @@ bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed 
 bedtools intersect -b UMD/GCF_000003055.6_Bos_taurus_UMD_3.1.1_genomic.gaps.bed -a sniffles.umd.filt.dels.bed -wa -f 0.50 -r | perl -lane 'print "$F[0]:$F[1]-$F[2]";' | sort | uniq | wc -l
 5649	<- 54%
 ```
+
+## Quick plot of read mapping percentages
+
+```R
+library(ggplot2)
+library(gridextra)
+
+angus <- read.delim("angus_asm/angus_bamstats.tab", header=TRUE)
+brahman <- read.delim("brahman_asm/brahman_bamstats.tab", header=TRUE)
+ars <- read.delim("arsucd_asm/ars_ucd_bamstats.tab", header=TRUE)
+angus <- mutate(angus, ASM=c("angus"))
+brahman <- mutate(brahman, ASM=c("brahman"))
+ars <- mutate(ars, ASM=c("arsucd"))
+
+combined <- bind_rows(angus, brahman, ars)
+
+combined <- mutate(combined, Breed = substr(sapply(strsplit(combined$File, "[.]"), '[', 1), 1, nchar(sapply(strsplit(combined$File, "[.]"), '[', 1)) - 1))
+
+combined$Breed <- as.factor(combined$Breed)
+
+p1 <- ggplot(combined, aes(x=ASM, y=MapPerc, fill=ASM)) + geom_violin(trim=FALSE) + geom_dotplot(binaxis="y", stackdir="center", dotsize=1) + scale_fill_brewer(palette="Dark2") + theme_bw()
+p2 <- p1 + ggtitle("Total map percent statistics")
+p3 <- p1 + ggtitle("Map percentages by breed") + facet_wrap( ~ Breed, nrow=1) + theme(legend.position = "none")
+
+pdf(file="map_percentages.pdf", useDingbats=FALSE)
+grid.arrange(p2, p3, nrow=2)
+dev.off()
+
+p1 <- ggplot(combined, aes(x=ASM, y=AvgChrMapPerc, fill=ASM)) + geom_violin(trim=FALSE) + geom_dotplot(binaxis="y", stackdir="center", dotsize=1) + scale_fill_brewer(palette="Dark2") + theme_bw()
+p2 <- p1 + ggtitle("Average Chromosome Read Mapping statistics")
+p3 <- p1 + ggtitle("Avg Chromosome Map percentages by breed") + facet_wrap( ~ Breed, nrow=1) + theme(legend.position = "none")
+
+pdf(file="chr_map_percentages.pdf", useDingbats=FALSE)
+grid.arrange(p2, p3, nrow=2)
+dev.off()
+```
