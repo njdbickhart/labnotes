@@ -482,7 +482,20 @@ for j in canu flye; do echo $j; for i in desman/${j}_bins/*.list; do echo $WORKI
 sbatch -p msn -q msn ~/python_toolchain/metagenomics/desmanStrainPrediction.py -a /project/forage_assemblies/sheep_project/canu.contigs.fasta -c /project/forage_assemblies/sheep_project/canu_dastool/canu.das_DASTool_bins/bin.1159.contigs.fa -o /project/forage_assemblies/sheep_project/desman/canu_output/bin.1159 -d /project/rumen_longread_metagenome_assembly/binaries/DESMAN -g /project/forage_assemblies/sheep_project/desman/canu_beds/bin.1159.scg.bed
 
 ### Running on version2
+mkdir desman/flye2_beds; mkdir desman/flye2_bins
 
+perl -e 'chomp(@ARGV); $outfold = "$ARGV[1]_bins"; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @F = split(/\t/); open(OUT, ">> desman/$outfold/$F[1].list"); print OUT "$F[0]\n"; close OUT;} close IN;' flye2_dastool/flye2.das_DASTool_scaffolds2bin.txt flye2
+
+cat flye2_dastool/*.scg > flye2_dastool/flye2.combined.scg
+
+i=flye2; grep '>' ${i}_dastool/${i}.das_proteins.faa |  perl -e '@ids = ("ID", "partial", "start_type", "rbs_motif", "rbs_spacer", "gc_cont"); print "ContigID\tStart\tEnd\tOrient\t" . join("\t", @ids) . "\n"; while(<STDIN>){chomp; $_ =~ s/\>//g; @lsegs = split(/\s*\#\s*/); @bsegs = split(/\;/, $lsegs[-1]); print "$lsegs[0]\t$lsegs[1]\t$lsegs[2]\t$lsegs[3]"; foreach my $k (@bsegs){$k =~ s/^.+\=//; print "\t$k";} print "\n";}' > ${i}_dastool/${i}.das_proteins.shortform.tab
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f ${i}_dastool/${i}.das_proteins.shortform.tab -c 0 -l ${i}_dastool/$i.combined.scg | perl -lane '$r = $F[0]; $r =~ s/_\d{1,4}$//; print "$r\t$F[1]\t$F[2]\t$F[0]";' > ${i}_dastool/$i.prod.proteins.scg.loc.bed
+
+for i in flye2; do echo $i; for j in desman/${i}_bins/*.list; do name=`basename $j | cut -d'.' -f1,2`; echo $name; python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnGrep.py -f ${i}_dastool/$i.prod.proteins.scg.loc.bed -c 0 -l $j > desman/${i}_beds/${name}.scg.bed; done; done
+
+WORKING=/project/forage_assemblies/sheep_project/
+for j in flye2; do echo $j; for i in desman/${j}_bins/*.list; do echo $WORKING/$i; name=`basename $i | cut -d'.' -f1,2`; echo $name; sbatch -p msn -q msn ~/python_toolchain/metagenomics/desmanStrainInference.py -a $WORKING/$j.contigs.fasta -c $WORKING/$i -g $WORKING/desman/${j}_beds/$name.scg.bed -d /project/rumen_longread_metagenome_assembly/binaries/DESMAN -b $WORKING/${j}_wgs/63/63.sorted.merged.bam -o $WORKING/desman/${j}_output/$name; done; done
 ```
 
 
