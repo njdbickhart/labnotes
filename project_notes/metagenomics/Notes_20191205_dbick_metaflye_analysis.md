@@ -106,7 +106,58 @@ Mode(Highest Distributed Value) 1
 # Graph connections greater than 51 X coverage
 perl -lane 'if($F[2] > 51){print $_;}' < flye2.contigs.fasta.ccs.mult.algn.graph > flye2.contigs.fasta.ccs.mult.gt51.graph
 perl -lane 'if($F[2] > 51){print $_;}' < canu.contigs.fasta.ccs.mult.algn.graph > canu.contigs.fasta.ccs.mult.gt51.graph
+
+## The CCS read counts were highly inflated by repetitive region alignments. Let's see if I can remove those multi-mapped alignments
+sort -k1 flye2.contigs.fasta.ccs.mult.algn.bed | perl -lane 'print "$F[0]-$F[1]-$F[2]";' | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -o flye2.contigs.fasta.ccs.mult.ctg.counts
+
+# Actually, I found errors in the logic in the script above. I rewrote it and ran it. I think it's working better now.
+# I added a third output file format that links the read mapping coords together in a link for later filtering
+perl identify_multimapped_ccs_reads.pl canu.contigs.fasta.ccs.paf canu.contigs.fasta.ccs.mult.algn.bed canu.contigs.fasta.ccs.mult.algn.graph canu.contigs.fasta.ccs.mult.algn.links
+
+perl -lane 'if($F[-1] > 5){print $_;}' < canu.contigs.fasta.ccs.mult.algn.links | wc -l
+107
+
+perl identify_multimapped_ccs_reads.pl flye2.contigs.fasta.ccs.paf flye2.contigs.fasta.ccs.mult.algn.bed flye2.contigs.fasta.ccs.mult.algn.graph flye2.contigs.fasta.ccs.mult.algn.links
+
+# Removing links between legitimate bin3c bins
+for i in flye2 canu; do echo $i; perl -e 'chomp @ARGV; %bbins; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); push(@{$bbins{$s[1]}}, $s[0]);} close IN; my %graph; foreach $c (keys(%bbins)){ @working = @{$bbins{$c}}; for($i = 0; $i < scalar(@working); $i++){for($j = 0; $j < scalar(@working); $j++){$graph{$working[$i]}->{$working[$j]} = 1;}}} open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($graph{$s[0]}->{$s[3]}) || exists($graph{$s[1]}->{$s[0]})){next;}else{print join("\t", @s) . "\n";}} close IN;' $i.bin3c.bins.tab $i.contigs.fasta.ccs.mult.algn.links > $i.contigs.fasta.ccs.mult.algn.filt.links; done
+
+# A script to link the reads with hi-c
+for i in flye2 canu; do sbatch --nodes=1 --mem=1000 --ntasks-per-node=2 -p msn -q msn --wrap="perl add_hic_evidence.pl $i.contigs.fasta.ccs.mult.algn.filt.links ${i}_hic/63/63.sorted.merged.bam $i.contigs.fasta.ccs.mult.algn.links.evd"; done
+
+# sorting and condensing
+perl sort_evidence.pl flye2.contigs.fasta.ccs.mult.algn.links.evd flye2.contigs.fasta.ccs.mult.algn.links.cond.evd
+perl sort_evidence.pl canu.contigs.fasta.ccs.mult.algn.links.evd canu.contigs.fasta.ccs.mult.algn.links.cond.evd
+
+# HIC read X coverage
+python3 ~/python_toolchain/sequenceData/bamStats.py -f flye2_hic/63/63.sorted.merged.bam
+#Genome size: {'1,469,466,257'} and avg read len: {'150'}. Cropping similar columns
+File    TotalReads      MappedReads     MapPerc RawXCov MapXCov AvgMapChrXCov   AvgChrMapPerc
+63.sorted.merged.bam    221,409,724     191,177,768     0.863   22.601  19.515  15.632  0.977
 ```
+
+Now to try to find relevant statistics on the data I've collated.
+
+```R
+library(dplyr)
+fevd <- read.delim("flye2.contigs.fasta.ccs.mult.algn.links.cond.evd", header=FALSE)
+fevd <- mutate(fevd, LEN = V3 - V2) %>% mutate(COV = (V8 * 150) / LEN)
+nrow(fevd[fevd$V7 > 5 & fevd$COV > 1,])
+222
+
+# Using Hi-C X coverage estimates above for filtering
+nrow(fevd[fevd$V7 > 5 & fevd$COV > 20,])
+[1] 9
+write.table(fevd[fevd$V7 > 5 & fevd$COV > 20,], file="flye2.ccs.fevd.likelies", row.names=FALSE, quote=FALSE, sep="\t", col.names=FALSE)
+
+cevd <- read.delim("canu.contigs.fasta.ccs.mult.algn.links.cond.evd", header=FALSE)
+cevd <- mutate(cevd, LEN = V3 - V2) %>% mutate(COV = (V8 * 150) / LEN)
+nrow(cevd[cevd$V7 > 5 & cevd$COV > 20,])
+
+write.table(cevd[cevd$V7 > 5 & cevd$COV > 20,], file="canu.ccs.fevd.likelies", row.names=FALSE, quote=FALSE, sep="\t", col.names=FALSE)
+```
+
+
 <a name="wgs"></a>
 #### WGS read alignments
 
@@ -164,7 +215,7 @@ cp /project/rumen_longread_metagenome_assembly/assemblies/protists/blob_ncbi.db 
 for i in canu flye; do sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools create -i $i.contigs.fasta -b ${i}_wgs/63/63.sorted.merged.bam -t $i.contigs.fasta_unip.$i.contigs.fasta.diamondout.tsv.taxified.out -o $i.blobtools --db blob_ncbi.db"; done
 
 # Blobtools view and plot
-for i in canu flye; do sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i $i.blobtools.blobDB.json --notitle -r superkingdom -o ${i}_supkingdom"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i $i.blobtools.blobDB.json --notitle -r phylum -o ${i}_phylum"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools view -i $i.blobtools.blobDB.json -o ${i}_table -r all"; done
+for i in canu flye; do sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i $i.blobtools.blobDB.json --notitle -r superkingdom --format pdf -o ${i}_supkingdom"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i $i.blobtools.blobDB.json --notitle --format pdf -r phylum -o ${i}_phylum"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools view -i $i.blobtools.blobDB.json -o ${i}_table -r all"; done
 
 mkdir blob_plots
 mv *.stats.txt ./blob_plots/
@@ -197,7 +248,7 @@ sbatch -t 2-0 --nodes=1 --mem=20000 --ntasks-per-node=3 -p msn -q msn --wrap="./
 
 sbatch -t 2-0 --dependency=afterok:1427747 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools create -i flye2.contigs.fasta -b flye2_wgs/63/63.sorted.merged.bam -t flye2.contigs.fasta_unip.flye2.contigs.fasta.diamondout.tsv.taxified.out -o flye2.blobtools --db blob_ncbi.db"
 
-sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i flye2.blobtools.blobDB.json --notitle -r superkingdom -o flye2_supkingdom"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i flye2.blobtools.blobDB.json --notitle -r phylum -o flye2_phylum"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools view -i flye2.blobtools.blobDB.json -o flye2_table -r all"
+sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i flye2.blobtools.blobDB.json --notitle --format pdf -r superkingdom -o flye2_supkingdom"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools plot -i flye2.blobtools.blobDB.json --notitle -r phylum --format pdf -o flye2_phylum"; sbatch -t 2-0 --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="./blobtools/blobtools view -i flye2.blobtools.blobDB.json -o flye2_table -r all"
 ```
 <a name="network"></a>
 #### Network plot and read alignment
