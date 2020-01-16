@@ -764,3 +764,8 @@ sbatch --nodes=1 --mem=30000 --ntasks-per-node=10 -p msn -q msn --wrap='racon -t
 # That was horrible and collapsed the fasta! we're sticking with the first round results.
 ```
 
+We increased the X coverage by double in the meantime. I am going to rerun the pipeline and pick out only the premium reads.
+
+```bash
+sbatch --nodes=1 --mem=16000 --ntasks-per-node=3 -p msn -q msn --wrap="minimap2 -x map-ont t_dna_pmls485.fa /project/forage_assemblies/sequence_data/gusalfb1_total_nanopore_raw.fastq > gusalfb1_nanopore_mappings_total.paf"
+```
