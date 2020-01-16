@@ -164,4 +164,14 @@ sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn -q msn flye -g 1.0g --
 [2019-12-27 17:37:45] INFO: Estimated coverage: 134
 [2019-12-27 17:37:45] INFO: Reads N50/N90: 16874 / 2519
 
+# Also for future reference at 90% overlap of disjointigs
+grep 'Length:' /project/rumen_longread_metagenome_assembly/assemblies/protists/flye_meta_7201/flye.log | perl -lane 'print $F[1];' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   10,020
+Sum:    1,387,722,782
+Minimum 11,203
+Maximum 1,217,044
+Average 138,495.287625
+Median  115,649
+Standard Deviation      101,898.306042
+Mode(Highest Distributed Value) 39,410
 ```

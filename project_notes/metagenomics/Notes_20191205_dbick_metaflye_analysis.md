@@ -157,6 +157,121 @@ nrow(cevd[cevd$V7 > 5 & cevd$COV > 20,])
 write.table(cevd[cevd$V7 > 5 & cevd$COV > 20,], file="canu.ccs.fevd.likelies", row.names=FALSE, quote=FALSE, sep="\t", col.names=FALSE)
 ```
 
+Finally, let's validate each one. I want to see how many CCS reads support the contig as-is and how many are divergent. This will show if there's a problem with chimerism or repeats.
+
+```bash
+perl count_read_map_ratio.pl canu.ccs.fevd.likelies canu.contigs.fasta.ccs.paf canu.ccs.fevd.rcounts
+for i in *.rcounts*; do echo $i; python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f $i -c 5 -d '\t' -m; done
+canu.ccs.fevd.rcounts_1.out
+|Entry   | Value|
+|:-------|-----:|
+|MAPQ0   |  5352|
+|PARTIAL |   987|
+|NORM    |     1|
+canu.ccs.fevd.rcounts_2.out
+|Entry   | Value|
+|:-------|-----:|
+|MAPQ0   |  4794|
+|PARTIAL |   982|
+|NORM    |     1|
+canu.ccs.fevd.rcounts_3.out
+|Entry   | Value|
+|:-------|-----:|
+|MAPQ0   |   145|
+|PARTIAL |    56|
+|NORM    |    20|
+canu.ccs.fevd.rcounts_4.out
+|Entry   | Value|
+|:-------|-----:|
+|MAPQ0   |   172|
+|PARTIAL |    46|
+|NORM    |    20|
+canu.ccs.fevd.rcounts_5.out
+|Entry   | Value|
+|:-------|-----:|
+|MAPQ0   |   105|
+|PARTIAL |    44|
+|NORM    |    20|
+
+perl count_read_map_ratio.pl flye2.ccs.fevd.likelies flye2.contigs.fasta.ccs.paf flye2.ccs.fevd.rcounts
+for i in flye2*.rcounts*; do echo $i; python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f $i -c 5 -d '\t' -m; done
+flye2.ccs.fevd.rcounts_1.out
+|Entry   | Value|
+|:-------|-----:|
+|PARTIAL |  2159|
+|MAPQ0   |    62|
+flye2.ccs.fevd.rcounts_2.out
+|Entry   | Value|
+|:-------|-----:|
+|PARTIAL | 29326|
+|MAPQ0   |   182|
+flye2.ccs.fevd.rcounts_3.out
+|Entry   | Value|
+|:-------|-----:|
+|PARTIAL | 43376|
+|MAPQ0   |   208|
+flye2.ccs.fevd.rcounts_4.out
+|Entry   | Value|
+|:-------|-----:|
+|NORM    |  1826|
+|PARTIAL |  1380|
+|MAPQ0   |   568|
+flye2.ccs.fevd.rcounts_5.out
+|Entry   | Value|
+|:-------|-----:|
+|PARTIAL |  6913|
+|NORM    |  5904|
+|MAPQ0   |     1|
+flye2.ccs.fevd.rcounts_6.out
+|Entry   | Value|
+|:-------|-----:|
+|NORM    | 29018|
+|PARTIAL | 16273|
+|MAPQ0   |  2148|
+flye2.ccs.fevd.rcounts_7.out
+|Entry   | Value|
+|:-------|-----:|
+|MAPQ0   |   171|
+|PARTIAL |    61|
+|NORM    |    35|
+flye2.ccs.fevd.rcounts_8.out
+|Entry   | Value|
+|:-------|-----:|
+|MAPQ0   |  1787|
+|NORM    |  1521|
+|PARTIAL |   952|
+flye2.ccs.fevd.rcounts_9.out
+|Entry   | Value|
+|:-------|-----:|
+|PARTIAL |  2304|
+|NORM    |  1477|
+|MAPQ0   |   821|
+
+```
+
+Let's condense this all down into something that's useful.
+
+#### Canu likely chimeric
+
+| Chr | Start | End | Chr | Start | End | CCs reads | Hi-C link cov | MapQ0 | Partial | Norm |
+| :---| :---| :----| :---| :--- | :---- | :--------| :-------------| :---- | :----| :----|
+|tig00022560|	26340|	39630|	tig00064035|	2508|	18524|	24 |20.1 | 5352 | 987 | 1|
+| tig00053493|	84365|	87068|	tig00080874 |	4808|	7510|	9 | 90 | 172 | 56 | 20 | 
+
+#### Flye2 likely chimeric
+
+| Chr | Start | End | Chr | Start | End | CCs reads | Hi-C link cov | MapQ0 | Partial | Norm |
+| :---| :---| :----| :---| :--- | :---- | :--------| :-------------| :---- | :----| :----|
+| contig_1050 |	1996938 |	1997074	| contig_11674	|323	|21004	|96 | 29.7 | 62 | 2159 | 0  |
+| contig_15841|	164213|	165317|	contig_6761|	30609|	40086|	443 | 167 | 182 | 29700 | 0 |
+| contig_15841|	209118|	210297|	contig_6761|	30608|	40086|	4200 | 22.5 | 208 | 43000| 0 |
+| contig_14057|	17|	5617|	contig_9755|	0|	8524|	121 | 97.0 | 568 | 1380 | 1826 |
+| contig_12232|	0|	531|	contig_468|	8|	18407|	1091 | 171.0 | 1 | 6900 | 5900|
+| contig_14333|	18|	2456|	contig_9516|	6|	7074|	1869 | 20.7 | 2148 | 16000 | 29000|
+| contig_12644|	5942|	10660|	contig_3716|	10|	6954|	17 | 75.2 | 171 | 61 | 35 |
+| contig_15873|	12|	562|	contig_9755|	177|	8524|	15 | 162.0 | 1787 | 952 | 1521 |
+| contig_14854	|15	|1850	|contig_9755	|44	|8524	|42 | 114.4 | 821 | 2304 | 1477 |
+
 
 <a name="wgs"></a>
 #### WGS read alignments
@@ -289,6 +404,30 @@ OK, I think that I will run Aaron Darling's [Bin3c tool](https://github.com/cere
 module load bwa/0.7.17 samtools/1.9 miniconda
 
 for i in canu flye; do sbatch --nodes=1 --mem=20000 --ntasks-per-node=10 -p msn -q msn --wrap="bwa mem -5SP -t 3 $i.contigs.fasta /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R1_001.fastq.gz /project/rumen_longread_metagenome_assembly/sheep_poop/hic_data/Smith_Sheep_63_HC_S2_L001_R2_001.fastq.gz | samtools view -F 0x904 -bS - | samtools sort -n -T $i.tmp -o $i.hiclinks.bam -@ 3 -"; done
+
+# Getting HIC read statistics
+for i in flye2 canu; do echo $i; sbatch --nodes=1 --mem=1000 --ntasks-per-node=2 -p msn -q msn --wrap="perl calc_proportion_intercontig.pl ${i}_hic/63/63.sorted.merged.bam $i.hic_readcounts.tab"; done
+
+head *readcounts.tab
+==> canu.hic_readcounts.tab <==
+Total:  215424778
+Mapped: 185004106
+Unmapped:       30420672
+MapRatio:       0.8588
+INTRACTG:       170551154
+INTERCTG:       11523430
+INTRARatio:     0.7917
+INTERRatio:     0.0535
+
+==> flye2.hic_readcounts.tab <==
+Total:  215424778
+Mapped: 185192822
+Unmapped:       30231956
+MapRatio:       0.8597
+INTRACTG:       170609094
+INTERCTG:       11654976
+INTRARatio:     0.7920
+INTERRatio:     0.0541
 
 # Setup bin3C
 git clone --recursive https://github.com/cerebis/bin3C
