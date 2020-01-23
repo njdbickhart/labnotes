@@ -174,4 +174,8 @@ Average 138,495.287625
 Median  115,649
 Standard Deviation      101,898.306042
 Mode(Highest Distributed Value) 39,410
+
+# The plasmids command took 7 days and produced an 8.9 terabyte paf file! It's an all-vs-all alignment using minimap2! Let's drop that for now.
+# I had to change the "stage_name" to "consensus" in the params.json file in the metaflye folder.
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn -q msn flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/cow7201_total_combined.2019.fastq -t 70 -m 5000 --meta -o flye_meta_7201 --resume
 ```
