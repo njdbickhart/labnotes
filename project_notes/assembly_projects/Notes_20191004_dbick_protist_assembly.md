@@ -179,4 +179,23 @@ Mode(Highest Distributed Value) 39,410
 # The plasmids command took 7 days and produced an 8.9 terabyte paf file! It's an all-vs-all alignment using minimap2! Let's drop that for now.
 # I had to change the "stage_name" to "consensus" in the params.json file in the metaflye folder.
 sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p msn -q msn flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/cow7201_total_combined.2019.fastq -t 70 -m 5000 --meta -o flye_meta_7201 --resume
+
+### 8615 ###
+sbatch --nodes=1 --mem=600000 --ntasks-per-node=70 -p mem -q memlimit flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_10.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_11.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_12.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_13.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_14.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_1.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_2.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_3.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_4.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_5.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_6.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_7.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_8.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8615_9.raw.fastq.gz -t 70 -m 3000 --meta -o flye_meta_8615 --resume
+
+### 8484 ###
+sbatch --nodes=1 --mem=700000 --ntasks-per-node=70 -p mem -q memlimit flye -g 1.0g --nano-raw /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_10.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_11.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_12.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_13.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_14.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_15.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_16.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_1.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_2.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_3.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_4.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_5.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_6.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_7.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_8.raw.fastq.gz /project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow8484_9.raw.fastq.gz -t 70 -m 3000 --meta -o flye_meta_8484
+
+```
+
+## Assembly informatics
+
+> Ceres:
+
+```bash
+module load diamond/0.9.28
+
+## 7201 ##
+sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye_meta_7201/disjointig_metaflye_7201.fasta --db uniprot_ref_proteomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye_meta_7201.disjointig.diamondout.tsv"
+sbatch -t 2-0 -p msn -q msn --nodes=1 --ntasks-per-node=30 --mem=100000 --wrap="diamond blastx --query flye_meta_7201/filtered_metaflye_7201.fasta --db uniprot_ref_proteomes.diamond.dmnd --threads 29 --outfmt 6 --sensitive --max-target-seqs 1 --evalue 1e-25 -o flye_meta_7201.filtered.diamondout.tsv"
 ```
