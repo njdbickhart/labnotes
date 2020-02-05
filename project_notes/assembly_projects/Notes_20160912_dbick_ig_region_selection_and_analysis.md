@@ -203,3 +203,4 @@ samtools faidx /mnt/iscsi/vnx_gliu_7/reference/umd3_kary_unmask_ngap.fa chr18:63
 
 samtools index tims_fastas_vector_trimmed.bam
 ~/jdk1.8.0_05/bin/java -Xmx80g -jar ~/pilon-1.16.jar --genome tims_fastas_vector_trimmed.fa --frags tims_fastas_vector_trimmed.bam --diploid --nostrays --threads 10 --output tims_fastas_vector_pilon
+```
