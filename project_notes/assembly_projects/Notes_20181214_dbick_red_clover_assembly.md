@@ -764,3 +764,25 @@ sbatch --nodes=1 --mem=30000 --ntasks-per-node=10 -p msn -q msn --wrap='racon -t
 # That was horrible and collapsed the fasta! we're sticking with the first round results.
 ```
 
+## Polishing the assembly for public release
+
+I want to run a quick pilon polish to make sure that the assembly is ready for use by other groups. I will use the clover hen corrected canu assembly for this.
+
+> Ceres: /project/forage_assemblies/assemblies/red_clover
+
+```bash
+sbatch --nodes=1 --mem=12000 --ntasks-per-node=1 -p priority -q msn --wrap="bwa index clover_limit_flye/assembly.fasta"
+
+ls /project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/*/*fastq.gz > clover_hen_illumina_sequence.tab
+
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b pilon_first -t clover_hen_illumina_sequence.tab -f /project/forage_assemblies/assemblies/red_clover/clover_limit_flye/assembly.fasta -m -q msn -p priority
+
+python3 ~/python_toolchain/sequenceData/slurmPilonCorrectionPipeline.py -f /project/forage_assemblies/assemblies/red_clover/pilon_first/clover/clover.sorted.merged.bam -g /project/forage_assemblies/assemblies/red_clover/clover_limit_flye/assembly.fasta -q msn -p priority -o pilon_first_correction -m
+
+# Now to realign to the new assembly!
+cat pilon_first_correction/*.fasta > pilon_first_correction/clover_pilonone_corrected.fasta
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p priority -q msn --wrap="module load bwa; bwa index pilon_first_correction/clover_pilonone_corrected.fasta"
+
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b pilon_second -t clover_hen_illumina_sequence.tab -f /project/forage_assemblies/assemblies/red_clover/pilon_first_correction/clover_pilonone_corrected.fasta -m -q msn -p priority
+```
+
