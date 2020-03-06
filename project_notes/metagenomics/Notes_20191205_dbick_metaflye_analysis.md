@@ -272,6 +272,68 @@ Let's condense this all down into something that's useful.
 | contig_15873|	12|	562|	contig_9755|	177|	8524|	15 | 162.0 | 1787 | 952 | 1521 |
 | contig_14854	|15	|1850	|contig_9755	|44	|8524	|42 | 114.4 | 821 | 2304 | 1477 |
 
+#### Summarizing split-CCS read analysis
+
+```R
+library(dplyr)
+cdata <- read.delim("canu.contigs.fasta.ccs.mult.algn.graph.ct", header=FALSE)
+fdata <- read.delim("flye2.contigs.fasta.ccs.mult.algn.graph.ct", header=FALSE)
+colnames(cdata) <- c("ASM", "Count")
+colnames(fdata) <- c("ASM", "Count")
+comb <- bind_rows(cdata, fdata)
+summary(comb)
+comb$ASM <- as.factor(comb$ASM)
+summary(comb)
+comb <- within(comb, quantile <- as.integer(cut(Count, quantile(Count, probs=0:5/5), include.lowest=TRUE)))
+as.integer(cut(comb$Count, quantile(comb$Count, probs=0:5/5))
+)
+comb <- within(comb, quantile <- as.integer(cut(Count, quantile(Count, probs=0:4/4), include.lowest=TRUE)))
+as.integer(cut(comb$Count, quantile(comb$Count, probs=0:3/3)))
+as.integer(cut(comb$Count, quantile(comb$Count, probs=c(0, 0.5, 1))))
+comb <- within(comb, quantile <- as.integer(cut(Count, quantile(Count, probs=c(0, 0.5, 1)), include.lowest=TRUE)))
+summary(comb)
+colnames(comb) <- c("ASM", "Count", "Thirds")
+comb %>% group_by(Thirds, ASM) %>% summarize(num = n(), sum=sum(Count))
+comb <- within(comb, quantile <- as.integer(cut(Count, quantile(Count, probs=c(0.1, 0.5, 1)), include.lowest=TRUE)))
+summary(comb)
+comb <- within(comb, quantile <- as.integer(cut(Count, quantile(Count, probs=c(0.1, 0.5, 1.0)), include.lowest=TRUE)))
+summary(comb)
+comb <- within(comb, quantile <- as.integer(cut(Count, quantile(Count, probs=c(0.1, 0.5, 0.75, 1.0)), include.lowest=TRUE)))
+summary(comb)
+comb %>% group_by(quantile, ASM) %>% summarize(num = n(), sum=sum(Count))
+head(comb[comb$quantile ==1,])
+head(comb[comb$quantile ==2,])
+summary(comb[comb$quantile ==2,])
+summary(comb[comb$quantile ==3,])
+summary(comb[comb$quantile ==1,])
+summary(comb[comb$quantile ==1, comb$ASM == "flye2"])
+summary(comb[comb$quantile ==1 & comb$ASM == "flye2", ])
+summary(comb[comb$quantile ==1 & comb$ASM == "canu", ])
+comb %>% filter(Count >= 5) %>% group_by(ASM) %>% summarize(count = n())
+
+
+# Trying discrete quantiles
+comb <- mutate(comb, Quant = cut(comb$Count, breaks=c(0, 1, 5, 10, 20, 50, 6095)))
+comb %>% group_by(Quant, ASM) %>% summarize(num = n(), sum=sum(Count))
+# A tibble: 12 x 4
+# Groups:   Quant [6]
+   Quant        ASM     num    sum
+   <fct>        <fct> <int>  <int>
+ 1 (0,1]        canu  10181  10181
+ 2 (0,1]        flye2 11008  11008
+ 3 (1,5]        canu   5403  16423
+ 4 (1,5]        flye2  5115  15225
+ 5 (5,10]       canu   2297  17622
+ 6 (5,10]       flye2  1763  13446
+ 7 (10,20]      canu   2054  30385
+ 8 (10,20]      flye2  1216  17783
+ 9 (20,50]      canu   1803  57010
+10 (20,50]      flye2   920  29282
+11 (50,6.1e+03] canu   1178 192089
+12 (50,6.1e+03] flye2   583  74653
+
+```
+
 
 <a name="wgs"></a>
 #### WGS read alignments

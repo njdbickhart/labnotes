@@ -764,6 +764,7 @@ sbatch --nodes=1 --mem=30000 --ntasks-per-node=10 -p msn -q msn --wrap='racon -t
 # That was horrible and collapsed the fasta! we're sticking with the first round results.
 ```
 
+<<<<<<< HEAD
 ## Polishing the assembly for public release
 
 I want to run a quick pilon polish to make sure that the assembly is ready for use by other groups. I will use the clover hen corrected canu assembly for this.
@@ -786,3 +787,44 @@ sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p priority -q msn --wrap="modu
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b pilon_second -t clover_hen_illumina_sequence.tab -f /project/forage_assemblies/assemblies/red_clover/pilon_first_correction/clover_pilonone_corrected.fasta -m -q msn -p priority
 ```
 
+=======
+We increased the X coverage by double in the meantime. I am going to rerun the pipeline and pick out only the premium reads.
+
+```bash
+sbatch --nodes=1 --mem=16000 --ntasks-per-node=3 -p msn -q msn --wrap="minimap2 -x map-ont t_dna_pmls485.fa /project/forage_assemblies/sequence_data/gusalfb1_total_nanopore_raw.fastq > gusalfb1_nanopore_mappings_total.paf"
+
+perl -lane 'if($F[9] > 2000 && $F[10] > 5000 && $F[11] >= 60){print $_;}' < gusalfb1_nanopore_mappings_total.paf | wc -l
+17  # These are the reads with good alignment to the insert, good mapping quality and reasonable mapping rates
+
+perl -lane 'if($F[9] > 2000 && $F[10] > 5000 && $F[11] >= 60){print $_;}' < gusalfb1_nanopore_mappings_total.paf | perl -lane 'print $F[0];' > gusalfb1_nanopore_mappings_total.hqreadnames.list
+
+perl filter_fastq_file.pl gusalfb1_nanopore_mappings_total.hqreadnames.list /project/forage_assemblies/sequence_data/gusalfb1_total_nanopore_raw.fastq gusalfb1_nanopore_mappings_total.hqreads.fastq
+
+module load canu/1.9
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p msn -q msn --wrap="canu -p gus_alfalfa -d canu_totalfalfa genomeSize=10k corMhapSensitivity=high corMinCoverage=0 contigFilter='2 0 1.0 0.5 0' 'gridOptions=-p msn -q msn' -nanopore-raw gusalfb1_nanopore_mappings_total.hqreads.fastq"
+
+# Wow! It assembled two contigs. I'll check to see which one contains the insert
+minimap2 -x asm10 canu_totalfalfa/gus_alfalfa.contigs.fasta t_dna_pmls485.fa > canu_totalalfalfa.tdna.align.paf
+
+grep '>' canu_totalfalfa/gus_alfalfa.contigs.fasta
+>tig00000007 len=49247 reads=8 class=contig suggestRepeat=no suggestCircular=no
+>tig00000008 len=26084 reads=1 class=contig suggestRepeat=no suggestCircular=no
+
+# I think that the first contig is probably the best. Maybe the second is a chimera?
+# Ah, a clustalomega alignment shows that the second contig is a subset of the first that was separated for some reason. The only sequence divergence is at the end of the read.
+
+
+## Let's see how the pileups look
+samtools faidx canu_totalfalfa/gus_alfalfa.contigs.fasta tig00000007 > gus_total_fasta_tig7.fasta
+
+minimap2 -a -x map-ont gus_total_fasta_tig7.fasta canu_totalfalfa/gus_alfalfa.correctedReads.fasta.gz | samtools sort -T gus -o gus_alfalfa_corrected_tig7.bam -
+samtools index gus_alfalfa_corrected_tig7.bam
+
+samtools tview gus_alfalfa_corrected_tig7.bam gus_total_fasta_tig7.fasta
+
+## Doing this on the uncorrected reads
+minimap2 -a -x map-ont gus_total_fasta_tig7.fasta gusalfb1_nanopore_mappings_total.hqreads.fastq | samtools sort -T gus -o gus_alfalfa_uncorrected_tig7.bam
+samtools index gus_alfalfa_uncorrected_tig7.bam
+
+```
+>>>>>>> origin/master

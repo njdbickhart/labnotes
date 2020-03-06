@@ -698,3 +698,46 @@ pdf(file="chr_map_percentages.pdf", useDingbats=FALSE)
 grid.arrange(p2, p3, nrow=2)
 dev.off()
 ```
+
+## Cattle centromere mapping
+
+> Ceres: /project/cattle_genome_assemblies/dominette/repeatmasker
+
+```bash
+perl -lane '$a = "ARSUCD"; $l = $F[2] - $F[1]; $p = ($F[0] =~ m/^NKLS/)? "UNPLACED" : "CHRSCAFF";if($p ne "UNPLACED" && $F[1] <= 500000){ $p = "CHRSTART";} print join("\t", @F) . "\t$l\t$a\t$p";' < ARS-UCD1.2_Btau5.0.1Y.fa.out.centromeres.bed > ARS-UCD1.2_Btau5.0.1Y.fa.out.centromeres.bed.rtab
+perl -lane '$a = "UMD3"; $l = $F[2] - $F[1]; $p = ($F[0] =~ m/^718/)? "UNPLACED" : "CHRSCAFF"; if($p ne "UNPLACED" && $F[1] <= 500000){ $p = "CHRSTART";} print join("\t", @F) . "\t$l\t$a\t$p";' < umd3_reference_genome.fasta.out.centromeres.bed > umd3_reference_genome.fasta.out.centromeres.bed.rtab
+
+cat ARS-UCD1.2_Btau5.0.1Y.fa.out.centromeres.bed.rtab umd3_reference_genome.fasta.out.centromeres.bed.rtab > combined_centromere.rtab
+```
+
+```R
+library(ggplot2)
+library(dplyr)
+data <- read.delim("combined_centromere.rtab", header=FALSE)
+
+colnames(data) <- c("chr", "start", "end", "cats", "Length", "Assembly", "Scaff")
+data.sum <- group_by(data, Assembly, Scaff) %>% summarize(Num = n(), Min= min(Length), Max= max(Length), Mean = mean(Length), SD = sd(Length), SE = (sd(Length)/ sqrt(length(Length))))
+
+# Reordering levels to make it neater
+data.sum$Scaff = factor(data.sum$Scaff, levels(data.sum$Scaff)[c(2,1,3)])
+
+pdf("centromere_size_histogram.pdf", useDingbats=FALSE)
+ggplot(data.sum, aes(x=Assembly, y=Mean, fill=Assembly)) + scale_fill_brewer(palette="Dark2") + geom_bar(stat="identity", colour="black", size=0.2) + geom_errorbar(aes(ymin = Mean - (2 * SE), ymax = Mean + (2 * SE)), width=0.2) + xlab("Assembly") + ylab("Centromeric repeat length (bp)") + theme_bw() + facet_wrap(~Scaff)
+dev.off()
+
+aov(Length ~ Assembly, data = data)
+summary(aov(Length ~ Assembly, data = data))
+              Df    Sum Sq   Mean Sq F value Pr(>F)
+Assembly       1 6.240e+11 6.240e+11   656.3 <2e-16 ***
+Residuals   3746 3.561e+12 9.507e+08
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+summary(aov(Length ~ Scaff, data = data))
+              Df    Sum Sq   Mean Sq F value Pr(>F)
+Scaff          2 1.005e+11 5.023e+10   46.05 <2e-16 ***
+Residuals   3745 4.085e+12 1.091e+09
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+```
