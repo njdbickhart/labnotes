@@ -271,3 +271,11 @@ for i in disjointig_metaflye_7201.hic.bam filtered_metaflye_7201.hic.bam; do sam
 conda activate /KEEP/rumen_longread_metagenome_assembly/hic_qc/
 for i in *.bam; do echo $i; sbatch --nodes=1 --mem=10000 --ntasks-per-node=2 -p priority -q msn -t 1-0 --wrap="python ~/rumen_longread_metagenome_assembly/binaries/hic_qc/hic_qc.py -b $i -n -1 -o $i.hic -r --sample_type metagenome"; done
 ```
+
+#### Downloading ENA dataset 
+
+> Ceres: /project/rumen_longread_metagenome_assembly/assemblies/mick_rug
+
+```bash
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p priority -q msn --wrap="/project/rumen_longread_metagenome_assembly/binaries/enaBrowserTools/python3/enaGroupGet -g analysis -f submitted -t PRJEB31266"
+```
