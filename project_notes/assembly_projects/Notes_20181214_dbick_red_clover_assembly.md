@@ -687,6 +687,26 @@ wc -l red_clover_kmc_k21.uniq_het.peak.kmers
 
 I need to use [directed acyclic graphs](https://algs4.cs.princeton.edu/41graph/) to organize the data, and calculate the [minimizer values](http://yorke.umd.edu/papers/genome_papers/minimizerpaper.pdf) for kmers and use a concept of [granularity in hierarchically organized kmers](https://medium.com/@infoecho/constructing-a-graph-for-genome-comparison-swiftly-d47dcd7eae5d) to try to compare and sort reads. I think that most of what I'm thinking is far too complex and that I should start with the generation of a frequency 'graph' to print edge weights (edges are counts of observances).
 
+Let's start out by pulling the "one bp difference" kmers from smudgeplot out by using the het kmer counts we just found above.
+
+```bash
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=2 -p priority -q msn intersect_hetpeak_with_kmerpairs.pl red_clover_kmc_k21.uniq_het.peak.kmers red_clover_kmc.kmer_pairs_sequences.tsv red_clover_uniq_het.kmer_pairs.sequences
+```
+
+#### Advice from Arang:
+> meryl-lookup -memory 12 -include -mers $meryl -sequence $read1 -sequence2 $read2 -r2 $out.R2.fastq.gz
+> From Meryl version 1
+
+## Testing purge_dups
+
+OK, I'm going to try to use [purge_dups](https://github.com/dfguan/purge_dups) instead. It looks like the pipeline manager tool that the author created won't work on Ceres (no QOS terms), so I need to create manual scripts to queue everything up.
+
+> Ceres: /lustre/project/forage_assemblies/analysis/clover_kmers/
+
+```bash
+
+```
+
 ## Alfalfa side project
 
 > CERES: /project/forage_assemblies/analysis/alfalfa_project
@@ -826,5 +846,11 @@ sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p priority -q msn --wrap="modu
 
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b pilon_second -t clover_hen_illumina_sequence.tab -f /project/forage_assemblies/assemblies/red_clover/pilon_first_correction/clover_pilonone_corrected.fasta -m -q msn -p priority
 python3 ~/python_toolchain/sequenceData/slurmPilonCorrectionPipeline.py -f /project/forage_assemblies/assemblies/red_clover/pilon_second/clover/clover.sorted.merged.bam -g /project/forage_assemblies/assemblies/red_clover/pilon_first_correction/clover_pilonone_corrected.fasta -q msn -p priority -o pilon_second_correction -m
+
+# Creating the last version of the assembly
+perl -e '@f = `ls pilon_second_correction/*.fasta`; open(OUT, "> clover_second_pilon_assembly.fasta"); foreach $j (@f){open(IN, "< $j"); while(<IN>){if($_ =~ /^>/){$_ =~ s/_pilon//g;} print OUT $_;} close IN;} close OUT;'
+
+# I'm just curious on how the polishing performed. Let's generate some stats
+sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p priority -q msn --wrap="nucmer -maxmatch -l 100 -c 500 clover_limit_flye/assembly.fasta clover_second_pilon_assembly.fasta -prefix pre_vs_post_corr_clover"
 ```
 

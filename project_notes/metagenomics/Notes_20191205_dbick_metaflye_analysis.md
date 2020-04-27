@@ -601,6 +601,44 @@ pdf("flye2_canu_bin3c_checkm_stats.pdf", useDingbats=FALSE)
 ggplot(plot_table, aes(ASM, Bins, fill=Completeness)) + geom_bar(stat="identity", position="stack")  + facet_grid( ~ title)  + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(axis.title=element_text(size=13, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + scale_fill_manual(values = colors) +  scale_x_discrete(limits = asmnames)
 dev.off()
 ```
+
+Now I'm generating results for use in my presentation. It's an apples to oranges comparison, but should show a major magnitude in difference. 
+
+```bash
+perl -e 'print "ID\tCompleteness\tContamination\n"; <>; while(<>){chomp; @s = split(/\t/); if($s[-1] < 5){print "$s[0]\t$s[-2]\t$s[-1]\n";}}' < /lustre/project/rumen_longread_metagenome_assembly/analysis/dastool/pacbio_final_dastool_DASTool_summary.txt > rumen.pacbio.bins.dastool.tab
+perl -e 'print "ID\tCompleteness\tContamination\n"; <>; while(<>){chomp; @s = split(/\t/); if($s[-2] < 5){print "$s[0]\t$s[-3]\t$s[-2]\n";}}' < flye2.checkm.tab > flye2.checkm.short.tab
+```
+
+```R
+library(doMC)
+library(data.table)
+library(ggplot2)
+library(dplyr)
+
+rumen <- read.delim("rumen.pacbio.bins.dastool.tab", header=TRUE)
+sheep <- read.delim("flye2.checkm.short.tab", header=TRUE)
+
+asms <- list(Rumen = rumen, Sheep = sheep)
+asmnames <- names(asms)
+for(i in 1:length(asmnames)){
+asms[[i]]$ASM <- asmnames[i]
+}
+
+result_table <- do.call(rbind.data.frame, asms)
+tmp_wide <- result_table %>% group_by(ASM) %>% filter(Contamination < 5) %>% summarize(`>90%` = sum(Completeness>90), `>80%` = sum(Completeness>80 & Completeness<=90), `>70%` = sum(Completeness>70 & Completeness<=80), `>60%` = sum(Completeness>60 & Completeness<=70))
+
+melt(tmp_wide,id.vars = 'ASM', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
+plot_table <- melt(tmp_wide,id.vars = 'ASM', measure.vars = c('>90%','>80%','>70%', '>60%'), value.name = 'Bins',variable.name ="Completeness")
+plot_table$title <- "CheckM Bin Statistics (< 5% Contamination)"
+plot_table$Completeness <- factor(plot_table$Completeness,levels = rev(c('>90%','>80%','>70%', '>60%')))
+
+colors <- rev(c("#08306B","#1664AB","#4A97C9","#93C4DE"))
+
+pdf("sheep_vs_rumen_checkm_stats.pdf", useDingbats=FALSE)
+ggplot(plot_table, aes(ASM, Bins, fill=Completeness)) + geom_bar(stat="identity", position="stack")  + facet_grid( ~ title)  + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(axis.title=element_text(size=15, face="bold"), axis.text.x = element_text(size=11), axis.text.y = element_text(size=13)) + scale_fill_manual(values = colors) +  scale_x_discrete(limits = asmnames) + theme_bw()
+dev.off()
+```
+
 <a name="offdiag"></a>
 #### Bin3c off-diagonal analysis and Hi-C inter-contig links
 
@@ -748,6 +786,10 @@ for i in flye2; do echo $i; for j in desman/${i}_bins/*.list; do name=`basename 
 
 WORKING=/project/forage_assemblies/sheep_project/
 for j in flye2; do echo $j; for i in desman/${j}_bins/*.list; do echo $WORKING/$i; name=`basename $i | cut -d'.' -f1,2`; echo $name; sbatch -p msn -q msn ~/python_toolchain/metagenomics/desmanStrainInference.py -a $WORKING/$j.contigs.fasta -c $WORKING/$i -g $WORKING/desman/${j}_beds/$name.scg.bed -d /project/rumen_longread_metagenome_assembly/binaries/DESMAN -b $WORKING/${j}_wgs/63/63.sorted.merged.bam -o $WORKING/desman/${j}_output/$name; done; done
+
+for i in $WORKING/flye2_dastool/flye2.das_DASTool_bins/*.fa; do echo $i; name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -p priority -q msn ~/python_toolchain/metagenomics/desmanStrainPrediction.py -a $working/flye2.contigs.fasta -c $i -o $WORKING/desman/flye2_output/$name.list -d /project/rumen_longread_metagenome_assembly/binaries/DESMAN -g $WORKING/desman/flye2_beds/$name.list.scg.bed; done
+
+cat desman/flye2_output/*/*.strain.count | perl -lane '@g = split(/\//, $F[0]); print "$g[-1]\t$F[1]";' > desman/flye2.strain.counts.tab
 ```
 
 
