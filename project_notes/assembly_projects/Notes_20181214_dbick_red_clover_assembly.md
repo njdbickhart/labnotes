@@ -854,3 +854,22 @@ perl -e '@f = `ls pilon_second_correction/*.fasta`; open(OUT, "> clover_second_p
 sbatch --nodes=1 --mem=100000 --ntasks-per-node=2 -p priority -q msn --wrap="nucmer -maxmatch -l 100 -c 500 clover_limit_flye/assembly.fasta clover_second_pilon_assembly.fasta -prefix pre_vs_post_corr_clover"
 ```
 
+## Polished assembly QC
+
+Queueing up my assembly QC pipeline to provide stats on Clover
+
+> Ceres: /lustre/project/forage_assemblies/assemblies/red_clover
+
+```bash
+module load miniconda/3.6
+
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
+```
+
+## Clover recalling
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano
+
+```bash
+for i in CloverB Clover2 Clover; do echo $i; sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i $i/*/fast5_pass -s $i/g3_6_f -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_fast.cfg --cpu_threads_per_caller 14 --num_callers 5"; done
+```

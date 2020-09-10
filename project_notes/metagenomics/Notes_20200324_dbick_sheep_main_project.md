@@ -207,6 +207,16 @@ sbatch --nodes=1 --mem=200000 --ntasks-per-node=30 -p priority -q msn flye --pac
 sbatch --nodes=1 --mem=20000 --ntasks-per-node=15 -p priority -q msn --wrap="/project/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash screen -p 15 -w /project/forage_assemblies/sheep_project/eukcheck/RefSeq88n_andfecaleuk.msh flye3.contigs.fasta > flye3.contigs.mashscreen.tab"
 ```
 
+I ran into issues with the classification prior to this, but let's continue with the analysis using the raw reads and the new flye4 reference.
+
+```bash
+# First the Q20 CCS reads
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=15 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash screen -p 15 -w /lustre/project/forage_assemblies/sheep_project/eukcheck/RefSeq88n_andfecaleuk.msh /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/*Q20.fasta.gz > sheep_ccs_read_screen.tab"
+
+# Next let's try a distance strategy for the contigs...
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=15 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash dist -p 15 -i -v 0.05 -d 0.10 /lustre/project/forage_assemblies/sheep_project/eukcheck/RefSeq88n_andfecaleuk.msh flye4.contigs.fasta > flye4_mash_dist_euk.tab"
+```
+
 #### Running a megahit assembly for comparison
 
 > Ceres: /luster/project/forage_assemblies/sheep_project/complete_flye
@@ -224,4 +234,265 @@ sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --c
 
 # URG! I forgot that megahit doesn't use proper fasta format! I need to reformat to 60 bp per line
 python3 ~/python_toolchain/snakeMake/metaGenomeAnalysis/scripts/convertMegahitContigNames.py megahit.contigs.fasta megahit.reformat.fasta
+
+# Rerunning for flye4 assembly
+module load miniconda/3.6; sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/metaGenomeAnalysis/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -p --jobs 250 -s ~/python_toolchain/snakeMake/metaGenomeAnalysis/Snakefile --use-conda
+
+# Copying clr datasets for the run
+for i in clr1 clr2 clr3; do name=`echo "sheep_"$i`; echo $name; cp /lustre/project/rumen_longread_metagenome_assembly/assemblies/sheep/$name/output/${name}_pilon_2.fasta.gz /lustre/project/forage_assemblies/sheep_project/complete_flye/$i.contigs.fasta.gz; done
+
+module load miniconda/3.6; sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/metaGenomeAnalysis/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -p --jobs 250 -s ~/python_toolchain/snakeMake/metaGenomeAnalysis/Snakefile --use-conda
+```
+
+## Generating CLR reads for CCS comparison
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly
+
+```bash
+module load pbsuite_new/15.8.24
+for i in m54337U_200203_184822.subreads.bam m54337U_200211_145859.subreads.bam; do echo $i; sbatch --nodes=1 --mem=35000 --ntasks-per-node=3 -p priority -q msn -t 1-0 --wrap="bamToFastq $i > $i.fastq"; done
+
+# OK, let's see if we can pull CCS reads from the fastqs. It looks like the run name is the first part of the read, with the ZMW being between '/' brackets. I want to calculate the number of reads present and then the average lengths
+# Getting CCS readnames first
+gunzip -c m54337U_200213_024013.Q20.fasta.gz | grep '>' | perl -lane '$_ =~ s/>//; print $_;' > m54337U_200213_024013.Q20.fasta.rnames
+
+# Calculating the subread length statistics
+perl calc_ccs_stats.pl m54337U_200213_024013.Q20.fasta.rnames m54337U_200213_024013.fastq.gz > m54337U_200213_024013.stats
+3204385
+```
+
+```R
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+data <- read.delim("m54337U_200213_024013.stats", header=FALSE)
+colnames(data) <- c("Read", "Length")
+
+# Unique count of reads
+length(unique(data$Read))
+[1] 2699414
+
+# Creating a dataframe to summarize
+rsummaries <- data %>% group_by(Read) %>% mutate(Ct = n(), Avg = mean(Length)) %>% summarize(RCt = n(), AvgLen = mean(Avg))
+rsummaries %>% summarize(Avg = mean(RCt), Min = min(RCt), Max = max(RCt))
+# A tibble: 1 x 3
+    Avg   Min   Max
+  <dbl> <dbl> <dbl>
+1  15.5     4  2179
+
+# Let's see how many reads fit within the minimum
+tally(rsummaries[rsummaries$RCt == 4,])
+# A tibble: 1 x 1
+      n
+  <int>
+1     3
+
+rsummaries[rsummaries$RCt == 4,]
+# A tibble: 3 x 3
+       Read   RCt AvgLen
+      <int> <int>  <dbl>
+1  37685763     4 16090.
+2  87163605     4 10753.
+3 177343308     4 11350.
+
+data[data$Read %in% c(37685763, 87163605, 177343308),]
+              Read Length
+8533757   37685763  15689
+8533758   37685763  16273
+8533759   37685763  16119
+8533760   37685763  16277
+20080347  87163605  10827
+20080348  87163605  10695
+20080349  87163605  10928
+20080350  87163605  10561
+41037503 177343308  11444
+41037504 177343308  11319
+41037505 177343308  11390
+41037506 177343308  11245
+
+# Just plotting the summaries for viewing later
+pdf(file="m54337U_200213_024013.stats.pdf", useDingbats=FALSE)
+p1 <- ggplot(rsummaries, aes(x="", y=RCt)) + geom_boxplot() + labs(title="SubRead counts")
+p2 <- ggplot(rsummaries, aes(x="", y=AvgLen)) + geom_boxplot() + labs(title="Average SubRead Length")
+grid.arrange(p1, p2, nrow=2)
+dev.off()
+```
+
+#### Sequel I reads
+
+First, to extract the reads from the bams.
+
+```bash
+module load pbsuite_new/15.8.24 samtools
+
+for i in subreads.bam/*.bam; do echo $i; sbatch --nodes=1 --mem=35000 --ntasks-per-node=3 -p priority -q msn -t 1-0 --wrap="bamToFastq $i > $i.fastq"; done
+
+# Now to get the stats
+samtools faidx sheep_poop_sequel1_CCS.fastq
+perl -lane 'print $F[1];' < sheep_poop_sequel1_CCS.fastq.fai > sheep_poop_sequel1_CCS.fastq.rnames
+
+perl calc_ccs_stats.pl sheep_poop_sequel1_CCS.fastq.rnames subreads.bam/m54033_180827_171729.subreads.bam.fastq.gz > m54033_180827_171729.clr.stats
+
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f m54033_180919_161442.clr.stats -c 0 -d '\t' | perl -e '<>; while(<>){chomp; @s = split(/\t/); print "$s[1]\n";}' | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   206553
+Sum:    2286804
+Minimum 3
+Maximum 158
+Average 11.071270
+Median  10
+Standard Deviation      5.647489
+Mode(Highest Distributed Value) 6
+
+python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f m54033_180919_161442.clr.stats -c 0 -d '\t' | perl -e '<>; while(<>){chomp; @s = split(/\t/); print "$s[1]\n";}' | perl -lane 'if($F[0] == 3){print $F[0];}' | wc -l
+7
+
+# Converting this to fasta
+perl -e '%read; while($r = <>){chomp($r); $s = <>; chomp($s); <>; <>; $r =~ s/^@//; if(exists($read{$r})){next;} $s =~ s/(.{1,60})/$1\n/g; $read{$r} = 1; print ">$r\n$s";}' < sheep_poop_sequel1_CCS.fastq > sheep_poop_sequel1_CCS.fasta
+```
+
+So, I will keep the "skip the first read" philosophy to avoid screwing up the pipeline and sampling shorter CCS segments. Looks like it won't matter in most cases anyways!
+
+### Generating the CLR subreads
+
+So, I think that I should ignore the first read in all cases and then just extract up to the fourth subread in all cases. I wrote a python script to do this on a file-by-file basis.
+
+```bash
+# testing this out on the first read set
+sbatch --nodes=1 --mem=35000 --ntasks-per-node=2 -p priority -q msn --wrap="python3 ~/python_toolchain/assembly/extractPacbioCLRFromCCSData.py -f m54337U_200213_024013.Q20.fasta.gz -q m54337U_200213_024013.fastq.gz -o m54337U_200213_024013_clr"
+
+# Had some weird issues with downloading files from gdrive. Half didn't make it. Working on the remainder for now
+for i in m54337U_200203_184822 m54337U_200211_145859 m54337U_200220_195233; do echo $i; sbatch --nodes=1 --mem=35000 --ntasks-per-node=2 -p priority -q msn --wrap="python3 ~/python_toolchain/assembly/extractPacbioCLRFromCCSData.py -f $i.Q20.fasta.gz -q $i.fastq.gz -o ${i}_clr"; done
+
+# And the rest
+for i in m54337U_200214_212611 m54337U_200222_075656 m54337U_200223_200916 m54337U_200227_201603; do echo $i; sbatch --nodes=1 --mem=35000 --ntasks-per-node=2 -p priority -q msn --wrap="python3 ~/python_toolchain/assembly/extractPacbioCLRFromCCSData.py -f $i.Q20.fasta.gz -q $i.fastq.gz -o ${i}_clr"; done
+```
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/sheep/
+
+```bash
+# Now, let's test a metaflye run on this
+module load miniconda/3.6
+source activate /KEEP/rumen_longread_metagenome_assembly/flye
+
+sbatch --nodes=1 --mem=1000000 --ntasks-per-node=70 -p priority-mem -q msn-mem flye -g 1.0g --pacbio-raw /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/m54337U_200203_184822_clr.1.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/m54337U_200211_145859_clr.1.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/m54337U_200213_024013_clr.1.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/m54337U_200214_212611_clr.1.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/m54337U_200220_195233_clr.1.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/m54337U_200222_075656_clr.1.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/m54337U_200223_200916_clr.1.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/m54337U_200227_201603_clr.1.fastq.gz -t 70 -i 2 -m 4000 --asm-coverage 40 --meta -o sheep_clr1
+```
+
+#### Sequel I reads
+
+Generating the pseudo CLR fastqs needed
+
+```bash
+for i in subreads.bam/*.fastq.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch --nodes=1 --mem=35000 --ntasks-per-node=2 -p priority -q msn --wrap="python3 ~/python_toolchain/assembly/extractPacbioCLRFromCCSData.py -f sheep_poop_sequel1_CCS.fasta.gz -q $i -o ${name}_clr"; done
+
+# Some libraries must not have made it to CCS. There were several that were empty after processing
+# Most had losses of 1-10 reads in the third file, though some were perfectly equal
+for i in *_clr*.fastq; do echo $i; sbatch --nodes=1 --mem=5000 --ntasks-per-node=1 -p priority -q msn --wrap="gzip $i"; done
+
+```
+
+And now, time for the assembly of everything! Let's test one assembly out first
+
+```bash
+module load miniconda/3.6
+source activate /KEEP/rumen_longread_metagenome_assembly/flye
+
+sbatch --nodes=1 --mem=1000000 --ntasks-per-node=70 -p priority-mem -q msn-mem flye -g 1.0g --pacbio-raw ../../sheep_poop/m54033_180919_161442_clr.1.fastq.gz ../../sheep_poop/m54033_180921_182853_clr.1.fastq.gz ../../sheep_poop/m54033_181128_171116_clr.1.fastq.gz ../../sheep_poop/m54033_181130_213801_clr.1.fastq.gz ../../sheep_poop/m54033_181203_205641_clr.1.fastq.gz ../../sheep_poop/m54033_181204_171640_clr.1.fastq.gz ../../sheep_poop/m54033_181217_171601_clr.1.fastq.gz ../../sheep_poop/m54033_181219_095558_clr.1.fastq.gz ../../sheep_poop/m54033_181220_061614_clr.1.fastq.gz ../../sheep_poop/m54033_190206_141429_clr.1.fastq.gz ../../sheep_poop/m54033_190207_103359_clr.1.fastq.gz ../../sheep_poop/m54337_181123_182744_clr.1.fastq.gz ../../sheep_poop/m54337_181124_144902_clr.1.fastq.gz ../../sheep_poop/m54337_181125_110904_clr.1.fastq.gz ../../sheep_poop/m54337_181126_072918_clr.1.fastq.gz ../../sheep_poop/m54337_181210_204959_clr.1.fastq.gz ../../sheep_poop/m54337_181212_153618_clr.1.fastq.gz ../../sheep_poop/m54337_181214_195839_clr.1.fastq.gz ../../sheep_poop/m54337_181215_161949_clr.1.fastq.gz ../../sheep_poop/m54337_181217_200214_clr.1.fastq.gz ../../sheep_poop/m54337_181218_162309_clr.1.fastq.gz ../../sheep_poop/m54337_181219_124328_clr.1.fastq.gz ../../sheep_poop/m54337_181220_090342_clr.1.fastq.gz ../../sheep_poop/m54337U_200203_184822_clr.1.fastq.gz ../../sheep_poop/m54337U_200211_145859_clr.1.fastq.gz ../../sheep_poop/m54337U_200213_024013_clr.1.fastq.gz ../../sheep_poop/m54337U_200214_212611_clr.1.fastq.gz ../../sheep_poop/m54337U_200220_195233_clr.1.fastq.gz ../../sheep_poop/m54337U_200222_075656_clr.1.fastq.gz ../../sheep_poop/m54337U_200223_200916_clr.1.fastq.gz ../../sheep_poop/m54337U_200227_201603_clr.1.fastq.gz -o sheep_clr1 --meta -t 70
+
+sbatch --nodes=1 --mem=1000000 --ntasks-per-node=70 -p priority-mem -q msn-mem flye -g 1.0g --pacbio-raw ../../sheep_poop/m54033_180919_161442_clr.2.fastq.gz ../../sheep_poop/m54033_180921_182853_clr.2.fastq.gz ../../sheep_poop/m54033_181128_171116_clr.2.fastq.gz ../../sheep_poop/m54033_181130_213801_clr.2.fastq.gz ../../sheep_poop/m54033_181203_205641_clr.2.fastq.gz ../../sheep_poop/m54033_181204_171640_clr.2.fastq.gz ../../sheep_poop/m54033_181217_171601_clr.2.fastq.gz ../../sheep_poop/m54033_181219_095558_clr.2.fastq.gz ../../sheep_poop/m54033_181220_061614_clr.2.fastq.gz ../../sheep_poop/m54033_190206_141429_clr.2.fastq.gz ../../sheep_poop/m54033_190207_103359_clr.2.fastq.gz ../../sheep_poop/m54337_181123_182744_clr.2.fastq.gz ../../sheep_poop/m54337_181124_144902_clr.2.fastq.gz ../../sheep_poop/m54337_181125_110904_clr.2.fastq.gz ../../sheep_poop/m54337_181126_072918_clr.2.fastq.gz ../../sheep_poop/m54337_181210_204959_clr.2.fastq.gz ../../sheep_poop/m54337_181212_153618_clr.2.fastq.gz ../../sheep_poop/m54337_181214_195839_clr.2.fastq.gz ../../sheep_poop/m54337_181215_161949_clr.2.fastq.gz ../../sheep_poop/m54337_181217_200214_clr.2.fastq.gz ../../sheep_poop/m54337_181218_162309_clr.2.fastq.gz ../../sheep_poop/m54337_181219_124328_clr.2.fastq.gz ../../sheep_poop/m54337_181220_090342_clr.2.fastq.gz ../../sheep_poop/m54337U_200203_184822_clr.2.fastq.gz ../../sheep_poop/m54337U_200211_145859_clr.2.fastq.gz ../../sheep_poop/m54337U_200213_024013_clr.2.fastq.gz ../../sheep_poop/m54337U_200214_212611_clr.2.fastq.gz ../../sheep_poop/m54337U_200220_195233_clr.2.fastq.gz ../../sheep_poop/m54337U_200222_075656_clr.2.fastq.gz ../../sheep_poop/m54337U_200223_200916_clr.2.fastq.gz ../../sheep_poop/m54337U_200227_201603_clr.2.fastq.gz -o sheep_clr2 --meta -t 70
+
+sbatch --nodes=1 --mem=1000000 --ntasks-per-node=70 -p priority-mem -q msn-mem flye -g 1.0g --pacbio-raw ../../sheep_poop/m54033_180919_161442_clr.3.fastq.gz ../../sheep_poop/m54033_180921_182853_clr.3.fastq.gz ../../sheep_poop/m54033_181128_171116_clr.3.fastq.gz ../../sheep_poop/m54033_181130_213801_clr.3.fastq.gz ../../sheep_poop/m54033_181203_205641_clr.3.fastq.gz ../../sheep_poop/m54033_181204_171640_clr.3.fastq.gz ../../sheep_poop/m54033_181217_171601_clr.3.fastq.gz ../../sheep_poop/m54033_181219_095558_clr.3.fastq.gz ../../sheep_poop/m54033_181220_061614_clr.3.fastq.gz ../../sheep_poop/m54033_190206_141429_clr.3.fastq.gz ../../sheep_poop/m54033_190207_103359_clr.3.fastq.gz ../../sheep_poop/m54337_181123_182744_clr.3.fastq.gz ../../sheep_poop/m54337_181124_144902_clr.3.fastq.gz ../../sheep_poop/m54337_181125_110904_clr.3.fastq.gz ../../sheep_poop/m54337_181126_072918_clr.3.fastq.gz ../../sheep_poop/m54337_181210_204959_clr.3.fastq.gz ../../sheep_poop/m54337_181212_153618_clr.3.fastq.gz ../../sheep_poop/m54337_181214_195839_clr.3.fastq.gz ../../sheep_poop/m54337_181215_161949_clr.3.fastq.gz ../../sheep_poop/m54337_181217_200214_clr.3.fastq.gz ../../sheep_poop/m54337_181218_162309_clr.3.fastq.gz ../../sheep_poop/m54337_181219_124328_clr.3.fastq.gz ../../sheep_poop/m54337_181220_090342_clr.3.fastq.gz ../../sheep_poop/m54337U_200203_184822_clr.3.fastq.gz ../../sheep_poop/m54337U_200211_145859_clr.3.fastq.gz ../../sheep_poop/m54337U_200213_024013_clr.3.fastq.gz ../../sheep_poop/m54337U_200214_212611_clr.3.fastq.gz ../../sheep_poop/m54337U_200220_195233_clr.3.fastq.gz ../../sheep_poop/m54337U_200222_075656_clr.3.fastq.gz ../../sheep_poop/m54337U_200223_200916_clr.3.fastq.gz ../../sheep_poop/m54337U_200227_201603_clr.3.fastq.gz -o sheep_clr3 --meta -t 70
+```
+
+Empty libraries for CCS:
+* m54033_180827_171729
+* m54033_181218_133601
+
+#### Quick stats
+
+```bash
+perl -e '<>; <>; <>; while(<>){$_ =~ s/^\s+//; @s = split(/\s+/); if($s[-3] > 5 && $s[-2] < 10){print "$s[0]\t$s[-3]\n";}}' < ../checkm/qa_table.txt > flye3_checkm_contigs.tab
+perl -e '<>; <>; <>; while(<>){$_ =~ s/^\s+//; @s = split(/\s+/); if($s[-3] > 5 && $s[-2] < 10){print "$s[0]\t$s[-3]\n";}}' < flye_sheep_2/checkm_table.txt > flye4_checkm_contigs.tab
+
+perl -e '$asm = "flye4"; chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = [$s[1]];} close IN; open(IN, "< $ARGV[1]"); <IN>; print "Contig\tCompleteness\tSize\tAvgCov\tASM\n"; while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){push(@{$h{$s[0]}}, ($s[1], $s[2]));}} close IN; foreach my $c (keys(%h)){print "$c\t" . join("\t", @{$h{$c}}) . "\t$asm\n";}' flye4_checkm_contigs.tab binning/metabat2/flye4.contigs/jgi_abund.txt > flye4_checkm_contigs.extended.tab
+```
+
+```R
+library(dplyr)
+library(ggplot2)
+flye3 <- read.delim("flye3_long_contigs.tab", header=FALSE)
+flye4 <- read.delim("flye4_long_contigs.tab", header=FALSE)
+combined <- bind_rows(flye3, flye4)
+head(combined)
+colnames(combined) <- c("Len", "Cov", "Phylum", "ASM")
+
+pdf("Xcoverages.pdf", useDingbats=FALSE)
+ggplot(combined, aes(x=Phylum, y=Cov, fill=Phylum)) + geom_jitter(aes(colour=Phylum)) + geom_boxplot(width=0.1, outlier.shape = NA) + theme_bw() + theme(axis.title=element_blank(), axis.text.x = element_text(size=11), axis.text.y = element_text(size=11)) + theme(legend.position = "none") + scale_fill_brewer(palette="Dark2") + labs(title="XCoverage of 1Mbp+ contigs") + facet_wrap(~ASM)
+dev.off()
+
+pdf("len_byX.pdf", useDingbats=FALSE)
+ggplot(combined, aes(x=Len, y=Cov, colour=Phylum)) + geom_point(shape=18) + geom_smooth(method=lm, linetype="dashed", color="darkred", fill="coral") + labs(title="X coverage by contig length") + facet_wrap(~ASM)
+dev.off()
+
+flye4 <- read.delim("flye4_checkm_contigs.extended.tab")
+pdf("flye4_cov_by_completeness.pdf", useDingbats=FALSE)
+ggplot(flye4, aes(x=Completeness, y=AvgCov, color="blue")) + geom_point(aes(size=Size), alpha=0.10) + labs(title="Coverage by CheckM Completeness", ylab = "Average Coverage (log10)") + scale_y_log10()
+dev.off()
+```
+
+And quick stats for the CLR assemblies.
+
+```bash
+tail -n 8 sheep_clr*/*.log | perl -e '%h; while(<>){chomp; if($_ =~ /[=\[]/){next;} $_ =~ s/^\s+//; @s = split(/\t/); if(scalar(@s) < 2){next;} push(@{$h{$s[0]}}, $s[1]);} foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}'
+```
+
+#### Pilon correction of CLR assemblies
+
+I coopted a new snakemake workflow to automatically pilon correct assemblies. Let's test it out.
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/sheep
+
+```bash
+# Preparing for the pipeline
+for i in sheep_clr1 sheep_clr2 sheep_clr3; do echo $i; mkdir $i/asm1; cp $i/assembly.fasta $i/asm1/$i.fa; done
+
+cp ~/python_toolchain/snakeMake/pilonCorrection/default.json ./
+for i in sheep_clr1 sheep_clr2 sheep_clr3; do echo $i; cp default.json $i/; done
+
+module load miniconda/3.6
+conda activate /KEEP/rumen_longread_metagenome_assembly/python3/
+# Because the Ceres staff never update their modules, I had to update my virtual environment to contain all the dependencies I need. 
+
+# Now I need to run the snakemake pipeline in each folder like so
+sbatch --nodes=1 --mem=10000 --ntasks-per-node=1 -p priority -q msn snakemake -s ~/python_toolchain/snakeMake/pilonCorrection/Snakefile --cluster "sbatch --nodes=1 --ntasks-per-node={threads} --mem=33000 -p priority -q msn -o logs/{rule}.stdout" --latency-wait 40 --jobs 50
+
+
+#NOTE: the script must have the same file extension for all sequence files. Since pilon automatically affixes a "fasta", that means everything else must have one!
+```
+
+## Statistical calculations
+
+Here are some notes on generating statistics on the polished assembly files.
+
+#### Read depth ratios (long and short reads)
+
+Pavel raised a good point about the balance of the short and long reads to each other on the assembled contigs. I will align both files and then calculate the per-base depth on each assembly. I will also use proportion of total bases aligned instead of an absolute read value (but I will output this for comparisons anyways!).
+
+First I need to align the CCS reads to each assembly.
+
+> Ceres: /lustre/project/forage_assemblies/sheep_project/complete_flye
+
+```bash
+for i in sheep_poop_sequel1_CCS sheep_poop_sequelII_CCS; do for j in flye4.contigs.fasta clr1.contigs.fasta clr2.contigs.fasta clr3.contigs.fasta; do echo $i; echo $j; sbatch --nodes=1 --mem=45000 --ntasks-per-node=10 -p priority -q msn --wrap="minimap2 -x asm10 -t 10 -N 50 --secondary=no $j /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/$i.fasta > $i.$j.paf"; done; done
+
+for i in clr1.contigs clr2.contigs clr3.contigs flye4.contigs; do echo $i; for j in sheep_poop_sequel1_CCS sheep_poop_sequelII_CCS; do echo $j; sbatch --nodes=1 --mem=50000 --ntasks-per-node=3 -p priority -q msn --wrap="python3 ~/python_toolchain/metagenomics/calcReadBalanceASM.py -o $j.$i.fasta.rb -b mapping/$i/Lib101_L1.bam -b mapping/$i/Lib101_L2.bam -b mapping/$i/Lib101_L3.bam -b mapping/$i/Lib101_L4.bam -p $j.$i.fasta.paf -l /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/$j.fasta"; done; done
+```
+
+## Tim methylation analysis
+
+
+```bash
+perl -e '$max = 0; $ctg = ""; while(<>){chomp; @s = split(/\t/); if($s[1] > $max){$max = $s[1]; $ctg = $s[0];}} print "$max\t$ctg\n";' < flye4.contigs.fasta.fai
+5546585 contig_65409
+
+cat sheep_poop_sequel1_CCS.flye4.contigs.ids sheep_poop_sequelII_CCS.flye4.contigs.ids | perl -lane 'if($F[1] eq "contig_65409"){print $F[0];}' > contig_65409.ccs.read.ids
 ```

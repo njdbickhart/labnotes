@@ -205,3 +205,103 @@ export AUGUSTUS_CONFIG_PATH=/project/forage_assemblies/analysis/vetch/assembly_s
 sbatch --nodes=1 --mem=40000 --ntasks-per-node=10 -p priority -q msn --wrap="busco -m genome -i purged.fa -f --offline -l /reference/data/BUSCO/v4/lineages/eudicots_odb10 -c 10 -o purged_vetch"
 sbatch --nodes=1 --mem=40000 --ntasks-per-node=10 -p priority -q msn --wrap="busco -m genome -i /project/forage_assemblies/assemblies/vetch/vetch_flye/assembly.fasta -f --offline -l /reference/data/BUSCO/v4/lineages/eudicots_odb10 -c 10 -o dfrc_vetch"
 ```
+
+## Recalling reads
+
+It turns out that I basecalled all of the vetch reads using the 3.0 version of guppy and they're now up to version 3.6. I just redownloaded guppy and want to give this another go. Let's try it out.
+
+> Ceres: /lustre/project/forage_assemblies/sequence_data/
+
+```bash
+# Calling all with the new config High accuracy config file
+for i in `ls -d /lustre/project/forage_assemblies/sequence_data/Vetch*/*/fast5_p*`; do echo $i; sbatch --nodes=1 --mem=100000 --ntasks-per-node=25 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i $i -s $i/../../g3_6 -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_hac.cfg --cpu_threads_per_caller 25"; done
+
+# It was taking a LOONG time, so I requeued a few with specs derived from biostars
+for i in B2 B3 B4 B5 B6 B7 B8 B9 Booger MN Vortex Zymo; do name=Vetch${i}; echo $name; sbatch --nodes=1 --mem=100000 --ntasks-per-node=25 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i $name/*/fast5_pass -s $name/g3_6 -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_hac.cfg --cpu_threads_per_caller 1 --num_callers 25"; done
+
+# testing a new config for VetchB2 (which failed due to memory):
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=60 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i VetchB2/*/fast5_pass -s VetchB2/g3_6 -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_hac.cfg --cpu_threads_per_caller 3 --num_callers 20"
+
+# VetchB7 also failed. Not sure why it's taking so long to call these reads!
+# Another new config for that one
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=60 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i VetchB7/*/fast5_pass -s VetchB7/g3_6 -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_hac.cfg --cpu_threads_per_caller 6 --num_callers 10"
+
+# It looks like it takes a long cpu time to call each read and each caller loads up until it runs out of memory. Let's try to redo this
+for i in VetchBooger VetchB8 VetchB9 VetchB5 VetchB6 VetchB3; do echo $i; rm -r $i/g3_6; sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i $i/*/fast5_pass -s $i/g3_6 -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_hac.cfg --cpu_threads_per_caller 14 --num_callers 5"; done
+
+
+# This is still taking a LOOONG time! Let's try the fast calling for the time being?
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i VetchB10/*/fast5_pass -s VetchB10/g3_6_f -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_fast.cfg --cpu_threads_per_caller 14 --num_callers 5"
+
+for i in VetchB2 VetchB3 VetchB4 VetchB5 VetchB6 VetchB7 VetchB8 VetchB9 VetchBooger VetchMN VetchVortex VetchZymo; do echo $i; sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i $i/*/fast5_pass -s $i/g3_6_f -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_fast.cfg --cpu_threads_per_caller 14 --num_callers 5"; done
+
+# Now, let's run the assembly again with Flye
+conda activate /KEEP/rumen_longread_metagenome_assembly/flye
+
+sbatch --nodes=1 --mem=900000 --ntasks-per-node=70 -p priority-mem -q msn-mem flye --nano-raw /lustre/project/forage_assemblies/sequence_data/vetch_36_recalled_reads.fastq -g 2000m -t 70 -o vetch_recalled_flye
+```
+
+#### Vetch HIC
+
+> Ceres: /lustre/project/forage_assemblies/sequence_data/vetch_hic
+
+```bash
+# queueing up the alignments
+module load bwa miniconda/3.6
+
+ls /lustre/project/forage_assemblies/sequence_data/vetch_hic/*.fastq.gz > template.tab
+
+# Starting the alignments
+for i in vetch_flye vetch_recalled_flye; do p="/lustre/project/forage_assemblies/assemblies/vetch/"; echo "$p/$i"; sbatch --nodes=1 --ntasks-per-node=2 -p priority -q msn -t 1-0 --wrap="bwa index $p/$i/assembly.fasta; python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -b $i -t template.tab -f $p/$i/assembly.fasta -q msn -p priority -e '2-0' -m"; done
+
+# Damn, the script needs readname sorted bams
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=10 -p priority -q msn --wrap="samtools sort -n -T vetch_flye/S3HIC/vtemp -o vetch_flye/S3HIC/vetch_flye_readname.bam -@ 10 vetch_flye/S3HIC/vetch_flye.merged.bam"
+sbatch --nodes=1 --mem=25000 --ntasks-per-node=10 -p priority -q msn --wrap="samtools sort -n -T vetch_recalled_flye/S3HIC/vtemp -o vetch_recalled_flye/S3HIC/vetch_recalled_flye_readname.bam -@ 10 vetch_recalled_flye/S3HIC/vetch_recalled_flye.merged.bam"
+
+conda activate /lustre/project/forage_assemblies/sequence_data/vetch_hic/hic_qc/hic_qc
+python hic_qc/hic_qc.py -b vetch_recalled_flye/S3HIC/vetch_recalled_flye_readname.bam -n 1000000 -r
+mv Read_mate_dist* ./vetch_recalled_flye/
+
+python hic_qc/hic_qc.py -b vetch_flye/S3HIC/vetch_flye_readname.bam -n 1000000 -r
+```
+
+And now to collate results from the dist.tsv files.
+
+```bash
+perl -e '%v = ("perc_pairs_on_same_strand_hq" => ">1.5%", "perc_informative_read_pairs" => ">5.0%", "perc_pairs_intra_hq_gt10kbp" => ">3.0%", "perc_intercontig_pairs_hq_gt10kbp" => ">2.5%", "proximo_usable_rp_hq_per_ctg_gt_5k" => ">600.0", "perc_noninformative_read_pairs" => "<=50%", "perc_zero_dist_pairs" => "<=20%", "perc_mapq0_reads" => "<=20%", "perc_unmapped_reads" => "<=10%", "perc_split_reads" => "<10%", "perc_intercontig_pairs" => "10-60%", "perc_intercontig_pairs_hq" => "10-60%"); chomp(@ARGV); %data; foreach $i (@ARGV){open(IN, "< $i"); while(<IN>){chomp; @s = split(/\t/); if(exists($v{$s[0]})){push(@{$data{$s[0]}}, $s[1]);} } close IN;} print "Category\t" . join("\t", @ARGV) . "\tExpected\n"; foreach $k (keys(%data)){print "$k\t" . join("\t", @{$data{$k}}) . "\t$v{$k}\n";}' vetch_flye_dist.tsv vetch_recalled_dist.tsv
+Category        vetch_flye_dist.tsv     vetch_recalled_dist.tsv Expected
+
+proximo_usable_rp_hq_per_ctg_gt_5k      0.94    0.74    >600.0
+perc_pairs_on_same_strand_hq    0.67%   0.98%   >1.5%
+perc_informative_read_pairs     16.27%  12.90%  >5.0%
+perc_noninformative_read_pairs  69.06%  72.89%  <=50%
+
+perc_pairs_intra_hq_gt10kbp     0.38%   0.56%   >3.0%
+perc_intercontig_pairs  54.57%  55.84%  10-60%
+perc_intercontig_pairs_hq       12.29%  12.77%  10-60%
+perc_intercontig_pairs_hq_gt10kbp       12.00%  11.85%  >2.5%
+
+perc_unmapped_reads     1.36%   1.06%   <=10%
+perc_zero_dist_pairs    23.15%  21.48%  <=20%
+perc_split_reads        38.79%  41.35%  <10%
+perc_mapq0_reads        39.51%  46.35%  <=20%
+```
+
+#### Illumina QC runs.
+
+Now that the illumina WGS data is here, let's run it through my qc pipeline.
+
+> Ceres: /lustre/project/forage_assemblies/assemblies/vetch/vetch_flye
+
+```bash
+module load miniconda/3.6
+
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
+```
+> Ceres: /lustre/project/forage_assemblies/assemblies/vetch/vetch_recalled_flye
+
+```bash
+module load miniconda/3.6
+
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
+```
