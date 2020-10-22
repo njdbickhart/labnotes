@@ -36,7 +36,7 @@ OK, setting up the assembly QC pipeline and letting it go to town!
 ```bash
 module load miniconda/3.6
 
-sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn -t 8-0 snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout} -t 8-0" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
 
 bash /home/derek.bickharhth/python_toolchain/snakeMake/assemblyValidation/scripts/spectra-cn.revised.sh mapped/meryl_db.meryl /lustre/project/gaur_genome_assembly/Rambouillet/rambouillet.contigs.polish.purge.salsa.pbjelly.polish.NUMT.MT.fasta finalt finalt
 
@@ -66,4 +66,39 @@ meryl intersect output merqury/finalt/$asm.solid.meryl merqury/finalt/$asm.meryl
     echo -e "${asm}\tall\t${ASM}\t${TOTAL}" | awk '{print $0"\t"((100*$3)/$4)}' > merqury/$asm/$name.completeness.stats
 rm -r $asm.solid.meryl
 echo
+```
+
+#### Rerunning busco 3
+
+The runtime and standards for busco 4 are all borked. I'm running on the previous version.
+
+```bash
+module load busco3/3.1.0
+
+export BUSCO_CONFIG_FILE=/software/7/apps/busco3/3.1.0/config/config.ini.default
+for i in fastas/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; mkdir $name"_btemp"; cp -Rp /software/apps/augustus/gcc/64/3.2.3/config $name"_btemp/AUGUSTUS_CONFIG"; done
+
+for i in fastas/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 70 --mem=350000 -p priority -q msn --wrap="export AUGUSTUS_CONFIG_PATH=/lustre/project/gaur_genome_assembly/Rambouillet/rambouillet_qc/${name}_btemp/AUGUSTUS_CONFIG; run_BUSCO.py -i $i -o temp_${name} -c 70 -l /reference/data/BUSCO/v3/mammalia_odb9 -m genome"; done
+
+for i in contigs ctgpolish ctgpolpurge final finhap oar4 ram1 scaffoldfixed scaffolds; do echo $i; cp run_temp_$i/short_summary*.txt busco/$i/busco_summary.txt; done
+
+# NOTE: I had to run a snakemake instance with the --cleanup-metadata argument for two of the files
+
+# Rerunning on freebayes_qc
+
+export BUSCO_CONFIG_FILE=/software/7/apps/busco3/3.1.0/config/config.ini.default
+for i in fastas/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; mkdir $name"_btemp"; cp -Rp /software/apps/augustus/gcc/64/3.2.3/config $name"_btemp/AUGUSTUS_CONFIG"; done
+
+for i in fastas/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 70 --mem=350000 -p priority -q msn -t 6-0 --wrap="export AUGUSTUS_CONFIG_PATH=/lustre/project/gaur_genome_assembly/Rambouillet/freebayes_qc/${name}_btemp/AUGUSTUS_CONFIG; run_BUSCO.py -i $i -o temp_${name} -c 70 -l /reference/data/BUSCO/v3/mammalia_odb9 -m genome"; done
+```
+
+
+#### Testing kmer venn addition to Meryl
+
+> Ceres: /lustre/project/gaur_genome_assembly/Rambouillet/freebayes_qc
+
+```bash
+conda activate /KEEP/rumen_longread_metagenome_assembly/meryl
+
+sbatch -N 1 -n 4 --mem=30000 -p priority -q msn -t 2-0 --wrap="python3 ~/python_toolchain/sequenceData/merylVennUpset.py -m /lustre/project/rumen_longread_metagenome_assembly/binaries/meryl/build/bin/meryl -o ram_freebayes_comp -d merqury/finalt/finalt.meryl -d merqury/finhap/finhap.meryl -d merqury/freebayes/freebayes.meryl -d merqury/freehap/freehap.meryl -d merqury/freethap/freethap.meryl -d merqury/freetwo/freetwo.meryl -d merqury/ram1/ram1.meryl -d mapped/meryl_db.meryl"
 ```

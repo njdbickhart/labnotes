@@ -873,3 +873,49 @@ sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --c
 ```bash
 for i in CloverB Clover2 Clover; do echo $i; sbatch --nodes=1 --mem=300000 --ntasks-per-node=70 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/bin/guppy_basecaller -i $i/*/fast5_pass -s $i/g3_6_f -c /lustre/project/rumen_longread_metagenome_assembly/binaries/ont-guppy-cpu/data/dna_r9.4.1_450bps_fast.cfg --cpu_threads_per_caller 14 --num_callers 5"; done
 ```
+
+## Clover CCS
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs
+
+```bash
+conda activate /KEEP/rumen_longread_metagenome_assembly/flye/
+
+sbatch -N 1 -n 80 --mem=1100000 -p priority-mem -q msn-mem -t 5-0 flye --pacbio-hifi /lustre/project/rumen_longread_metagenome_assembly/sequence_data/clover_ccs/m54337U_200929_165102.Q20.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/clover_ccs/m54337U_201002_155306.Q20.fastq -g 800m -t 78 -o clover_hiflye
+
+vim default.json
+
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn -t 4-0 snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout} -t 4-0" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
+
+### IPA assembly
+conda activate /KEEP/rumen_longread_metagenome_assembly/ipa
+
+sbatch -N 1 -n 2 --mem=30000 -p priority -q msn -t 3-0 ipa dist --nthreads 24 --njobs 100 -i /lustre/project/rumen_longread_metagenome_assembly/sequence_data/clover_ccs/m54337U_200929_165102.Q20.fastq -i /lustre/project/rumen_longread_metagenome_assembly/sequence_data/clover_ccs/m54337U_201002_155306.Q20.fastq --run-dir clover_ipa --cluster-args "sbatch -N 1 -n {params.num_threads} -o logs/ --mem=40000 -p priority -q msn -t 3-0"
+
+# It created a config file, but it didn't point to the correct snakemake file. I had to dig through and requeue manually using the suggested params in the slurm-out stdout file
+sbatch -N 1 -n 2 --mem=15000 -p priority -q msn -t 4-0 --wrap="/KEEP/rumen_longread_metagenome_assembly/ipa/bin/python3 -m snakemake -j 100 -d clover_ipa -p -s /KEEP/rumen_longread_metagenome_assembly/ipa/etc/ipa.snakefile --configfile clover_ipa/config.yaml --reason --cluster 'sbatch -N 1 -n {params.num_threads} -o stdout.{rule}.out --mem=85000 -p priority -q msn -t 4-0' --latency-wait 60 --rerun-incomplete"
+```
+
+#### Generating meryl venn diagram for comparison
+
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs
+
+```bash
+conda activate /KEEP/rumen_longread_metagenome_assembly/meryl
+
+sbatch -N 1 -n 4 --mem=30000 -p priority -q msn -t 2-0 --wrap="python ~/python_toolchain/sequenceData/merylVennUpset.py -m /lustre/project/rumen_longread_metagenome_assembly/binaries/meryl/build/bin/meryl -o clover_hifi_comp --d merqury/altIPA/altIPA.meryl -d merqury/primaryIPA/primaryIPA.meryl -d merqury/hifiASM/hifiASM.meryl -d merqury/hifiFlye/hifiFlye.meryl -d merqury/ontFlye/ontFlye.meryl"
+```
+
+#### Testing out website generations script
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs
+
+```bash
+conda env create -f ~/python_toolchain/snakeMake/assemblyValidation/envs/base.yaml -p ninja
+conda activate /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/ninja
+
+python ~/python_toolchain/snakeMake/assemblyValidation/scripts/createWebpage.py -f final -o clover_summary -c hifiASM_altIPA -c hifiASM_hifiFlye -c hifiASM_primaryIPA -c hifiFlye_altIPA -c hifiFlye_primaryIPA -c ontFlye_altIPA -c ontFlye_hifiASM -c ontFlye_hifiFlye -c ontFlye_primaryIPA -c primaryIPA_altIPA -s clover_limit_flye.fasta -s red_clover_2cells_hifiasm.p_ctg.fasta -s clover_hiflye.fasta -s final.p_ctg.fasta -s final.a_ctg.fasta -a ontFlye -a hifiASM -a hifiFlye -a primaryIPA -a altIPA
+
+mkdir package
+```

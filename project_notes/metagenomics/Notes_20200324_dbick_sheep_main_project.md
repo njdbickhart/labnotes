@@ -495,4 +495,66 @@ perl -e '$max = 0; $ctg = ""; while(<>){chomp; @s = split(/\t/); if($s[1] > $max
 5546585 contig_65409
 
 cat sheep_poop_sequel1_CCS.flye4.contigs.ids sheep_poop_sequelII_CCS.flye4.contigs.ids | perl -lane 'if($F[1] eq "contig_65409"){print $F[0];}' > contig_65409.ccs.read.ids
+
+# I want to make separate bins for read IDs for each contig. I'll also bin them into sizes that are > 5 mb, 1mb 100kb and 10kb, and separate them by read sets
+mkdir sequel1contigreads
+mkdir sequel2contigreads
+
+# This should sort them all into the highest bin that they fit
+perl -e '$odir = "sequel1contigreads"; @bins = (5000000, 1000000, 100000, 10000); foreach $i (@bins){mkdir("$odir/$i");} chomp(@ARGV); open(IN, "< $ARGV[0]"); %ctgs; while(<IN>){chomp; @s = split(/\t/); $ctgs{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $z = $ctgs{$s[1]}; $fb = -1; foreach $i (@bins){if($z >= $i){$fb = $i; last;}} if($fb == -1){next;} open(OUT, ">> $odir/$fb/$s[1].ids"); print OUT "$s[0]\n"; close OUT;} close IN;' flye4.contigs.fasta.fai sheep_poop_sequel1_CCS.flye4.contigs.ids
+
+perl -e '$odir = "sequel2contigreads"; @bins = (5000000, 1000000, 100000, 10000); foreach $i (@bins){mkdir("$odir/$i");} chomp(@ARGV); open(IN, "< $ARGV[0]"); %ctgs; while(<IN>){chomp; @s = split(/\t/); $ctgs{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $z = $ctgs{$s[1]}; $fb = -1; foreach $i (@bins){if($z >= $i){$fb = $i; last;}} if($fb == -1){next;} open(OUT, ">> $odir/$fb/$s[1].ids"); print OUT "$s[0]\n"; close OUT;} close IN;' flye4.contigs.fasta.fai sheep_poop_sequelII_CCS.flye4.contigs.ids
+```
+
+#### TODO: Try aligning long reads and use SNP callers to identify variants. Stratify into potential strains based on graph of assembly.
+
+```bash
+module load samtools minimap2 
+
+for i in flye3.contigs.fasta flye4.contigs.fasta clr1.contigs.fasta clr2.contigs.fasta clr3.contigs.fasta; do echo $i; sbatch -N 1 -n 3 -p priority -q msn --mem=55000 -t 3-0 --wrap="minimap2 -ax asm20 -R '@RG\tID:CCS\tSM:CCS' $i /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_sequel1_CCS.fasta /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_sequelII_CCS.fasta | samtools sort -T $i.tmp -o $i.ccs.bam -"; done
+
+for i in clr1.contigs.fasta.ccs.bam clr2.contigs.fasta.ccs.bam clr3.contigs.fasta.ccs.bam flye4.contigs.fasta.ccs.bam; do echo $i; sbatch -N 1 -n 1 --mem=10000 -p priority -q msn --wrap="samtools index $i"; done
+
+# Freebayes
+module load miniconda/3.6
+conda activate /lustre/project/forage_assemblies/sheep_project/complete_flye/freebayes
+
+for i in flye3.contigs.fasta flye4.contigs.fasta clr1.contigs.fasta clr2.contigs.fasta clr3.contigs.fasta; do name=`echo $i | cut -d'.' -f1`; echo $name; sbatch run_freeparallel.sh $i $i.fai 100000 $i.ccs.bam $name.ccs.vcf; done
+
+# Whatshap
+
+
+#### Testing
+freebayes -f flye4.contigs.fasta -r contig_11399:1-228080 flye4.contigs.fasta.ccs.bam > flye4.contig_11399.example.vcf
+perl -lane 'if($F[0] =~ /#/){print $_;}elsif($F[5] > 1){print $_;}' < flye4.contig_11399.example.vcf > flye4.contig_11399.filtered.vcf
+
+freebayes -f flye4.contigs.fasta -r contig_46389:1-2593 flye4.contigs.fasta.ccs.bam > flye4.contig_4638.example.vcf
+perl -lane 'if($F[0] =~ /#/){print $_;}elsif($F[5] > 1){print $_;}' < flye4.contig_4638.example.vcf > flye4.contig_4638.filtered.vcf
+```
+
+#### Viral association analysis
+
+```bash
+module load samtools/1.9 minimap2/2.6 miniconda/3.6
+source activate /KEEP/rumen_longread_metagenome_assembly/seaborn/
+
+sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p priority -q msn -J flyeflye --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a flye4.contigs.fasta -b blobtools/table.flye4.contigs.blobDB.table.txt -i /lustre/project/forage_assemblies/sheep_project/complete_flye/mapping/flye4.contigs/hic_Sau3AI.bam -v flye4.viral.contigs.list -l /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_sequelII_CCS.fasta -m /software/7/apps/minimap2/2.6/minimap2 -o flye4.contigs.vassoc"
+```
+
+That worked, but I tried to print a bipartite graph with no success. Much of the issue is that viral-viral associations are present. I want to test to see if I exclude these and sort the graph by viral class if I can solve this issue.
+
+
+#### Rerunning das_tool
+
+```bash
+module load diamond/0.9.28 usearch/11.0.667 miniconda/3.6
+conda activate /KEEP/rumen_longread_metagenome_assembly/das_tool/
+
+perl -ne 'chomp; @s = split(/,/); print "$s[0]\tgb2.$s[1]\n";' < flye4.gb2.csvgraphbin2_wo_inconsistent_2.csv > flye4.gb2.csvgraphbin2_wo_inconsistent_2.tab
+
+mkdir gb2_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p priority -q msn --wrap="DAS_Tool --search_engine 'diamond' -i flye4.gb2.csvgraphbin2_wo_inconsistent_2.tab,binning/bin3c/flye4.contigs/bin3c.full.clusters.tab,binning/metabat2/flye4.contigs/metabat2.full.clusters.tab -l graph2bin,bin3c,metabat -c flye4.contigs.fasta -o gb2_dastool/flye4.das -t 4 --write_bins 1"
+
+perl -ne 'chomp; @s = split(/,/); print "$s[0]\tgb2.$s[1]\n";' < flye4.gb2.csvgraphbin2_wo_unsupported_1.csv > flye4.gb2.csvgraphbin2_wo_unsupported_1.tab
+
+mkdir gb1_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p priority -q msn --wrap="DAS_Tool --search_engine 'diamond' -i flye4.gb2.csvgraphbin2_wo_unsupported_1.tab,binning/bin3c/flye4.contigs/bin3c.full.clusters.tab,binning/metabat2/flye4.contigs/metabat2.full.clusters.tab -l graph2bin1,bin3c,metabat -c flye4.contigs.fasta -o gb1_dastool/flye4.gb1.das -t 4 --write_bins 1"
 ```
