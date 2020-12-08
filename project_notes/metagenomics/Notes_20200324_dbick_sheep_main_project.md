@@ -521,7 +521,38 @@ conda activate /lustre/project/forage_assemblies/sheep_project/complete_flye/fre
 
 for i in flye3.contigs.fasta flye4.contigs.fasta clr1.contigs.fasta clr2.contigs.fasta clr3.contigs.fasta; do name=`echo $i | cut -d'.' -f1`; echo $name; sbatch run_freeparallel.sh $i $i.fai 100000 $i.ccs.bam $name.ccs.vcf; done
 
+###### Desman analysis first
+cp /lustre/project/rumen_longread_metagenome_assembly/analysis/desman/illumina_rest/run_desman_pipeline_illumina_rest.sh ./
+
+mkdir desman/bin_lists
+mkdir desman/bed_lists
+for i in flye4 clr1 clr2 clr3; do mkdir desman/bin_lists/$i; mkdir desman/bed_lists/$i; done
+
+for i in flye4 clr1 clr2 clr3; do echo $i; cat b3c_${i}_dastool/$i.das_proteins.faa.archaea.scg b3c_${i}_dastool/$i.das_proteins.faa.bacteria.scg > desman/$i.das_proteins.faa.faa.combined.scg; cat b3c_${i}_dastool/$i.das_proteins.faa | grep '>' | perl -e '@ids = ("ID", "partial", "start_type", "rbs_motif", "rbs_spacer", "gc_cont"); print "ContigID\tStart\tEnd\tOrient\t" . join("\t", @ids) . "\n"; while(<STDIN>){chomp; $_ =~ s/\>//g; @lsegs = split(/\s*\#\s*/); @bsegs = split(/\;/, $lsegs[-1]); print "$lsegs[0]\t$lsegs[1]\t$lsegs[2]\t$lsegs[3]"; foreach my $k (@bsegs){$k =~ s/^.+\=//; print "\t$k";} print "\n";}' >  desman/$i.das_prodigal.shortform.tab ; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if(exists($h{$s[0]})){$r = $s[0]; $r =~ s/_\d{1,3}//; print "$h{$s[0]},$r,$s[1],$s[2],$s[0],$s[3]\n";}} close IN;' desman/$i.das_proteins.faa.faa.combined.scg desman/$i.das_prodigal.shortform.tab > desman/$i.das_prodigal.master_cogs.csv; done
+
+# Now I've generated the master files for partitioning into separate bins. Let's generate the individual bins for parallelization
+
+for i in flye4 clr1 clr2 clr3; do echo $i; cat b3c_${i}_dastool/$i.das_proteins.faa.archaea.scg b3c_${i}_dastool/$i.das_proteins.faa.bacteria.scg | perl -lane 'print $F[0];' > desman/$i.scg.list; python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnGrep.py -f desman/$i.das_prodigal.shortform.tab -c 0 -l desman/$i.scg.list | perl -lane '$r = $F[0]; $r  =~ s/_\d{1,3}$//; print "$r\t$F[1]\t$F[2]\t$F[0]";' > desman/$i.scg.loc.bed; perl -lane 'open(OUT, ">> desman/bin_lists/$F[1].hqdas.bin.list"); print OUT "$F[0]"; close OUT;' < b3c_${i}_dastool/${i}.das_DASTool_scaffolds2bin.txt; mv desman/bin_lists/*.list desman/bin_lists/$i/; for j in desman/bin_lists/$i/*.list; do name=`basename $j | cut -d'.' -f1,2`; echo " $name"; python3 ~/rumen_longread_metagenome_assembly/binaries/python_toolchain/utils/tabFileColumnGrep.py -f desman/$i.scg.loc.bed -c 0 -l $j > desman/bed_lists/$i/${name}.scg.bed; done; done
+
+
+# Now to cross my fingers and queue it up!
+
+conda activate /KEEP/rumen_longread_metagenome_assembly/desman
+
+# Note, I have to do this individually for each assembly as there are more than 1000 jobs in total
+for i in flye4 clr1 clr2 clr3; do echo $i; mkdir desman/results_${i}; cd desman/results_${i}/; for j in ../bin_lists/$i/*.list; do name=`echo $j | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "bin_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $j | cut -d'.' -f1,2`; echo $bed; sbatch /lustre/project/forage_assemblies/sheep_project/complete_flye/run_desman_pipeline_illumina_rest.sh $name $bed $i; done; cd ../../; done
+
+# Ugh, the virtual environments are letting me down!
+conda activate /KEEP/rumen_longread_metagenome_assembly/desman
+for i in flye4; do echo $i; mkdir desman/results_${i}; cd desman/results_${i}/; for j in ../bin_lists/$i/*.list; do name=`echo $j | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "bin_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $j | cut -d'.' -f1,2`; echo $bed; RUMEN=/lustre/project/rumen_longread_metagenome_assembly; FORAGE=/lustre/project/forage_assemblies/sheep_project/complete_flye; sbatch -N 1 -n 5 --mem=28000 -p priority -q msn --wrap=" python $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a $FORAGE/${i}.contigs.fasta -c $FORAGE/desman/bin_lists/${i}/${bed}.hqdas.bin.list -g $FORAGE/desman/bed_lists/${i}/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -b $FORAGE/${i}.contigs.fasta.ccs.bam -o $name; python $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $FORAGE/${i}.contigs.fasta -c $FORAGE/desman/bin_lists/${i}/${bed}.hqdas.bin.list -g $FORAGE/desman/bed_lists/${i}/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -o $name"; done; cd ../../; done
+
+for i in clr1 clr2 clr3; do echo $i; mkdir desman/results_${i}; cd desman/results_${i}/; for j in ../bin_lists/$i/*.list; do name=`echo $j | perl -e '$h = <STDIN>; chomp($h); @bsegs = split(/[\._]/, $h); print "bin_$bsegs[4]\_$bsegs[5]";'`; echo $name; bed=`basename $j | cut -d'.' -f1,2`; echo $bed; RUMEN=/lustre/project/rumen_longread_metagenome_assembly; FORAGE=/lustre/project/forage_assemblies/sheep_project/complete_flye; sbatch -N 1 -n 5 --mem=28000 -p priority -q msn --wrap=" python $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainInference.py -a $FORAGE/${i}.contigs.fasta -c $FORAGE/desman/bin_lists/${i}/${bed}.hqdas.bin.list -g $FORAGE/desman/bed_lists/${i}/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -b $FORAGE/${i}.contigs.fasta.ccs.bam -o $name; python $RUMEN/binaries/python_toolchain/metagenomics/desmanStrainPrediction.py -a $FORAGE/${i}.contigs.fasta -c $FORAGE/desman/bin_lists/${i}/${bed}.hqdas.bin.list -g $FORAGE/desman/bed_lists/${i}/${bed}.scg.bed -d $RUMEN/binaries/DESMAN -o $name"; done; cd ../../; done
+
+cat desman/results_flye4/*/desman_dic.fits.strain.count > desman/results_flye4/total_strain_counts.tab
+for i in clr1 clr2 clr3; do cat desman/results_${i}/*/desman_dic.fits.strain.count > desman/results_${i}/total_strain_counts.tab; done
+
 # Whatshap
+conda activate /KEEP/rumen_longread_metagenome_assembly/whatshap
 
 
 #### Testing
@@ -532,6 +563,26 @@ freebayes -f flye4.contigs.fasta -r contig_46389:1-2593 flye4.contigs.fasta.ccs.
 perl -lane 'if($F[0] =~ /#/){print $_;}elsif($F[5] > 1){print $_;}' < flye4.contig_4638.example.vcf > flye4.contig_4638.filtered.vcf
 ```
 
+Creating a quick Desman strain count plot to show collaborators.
+
+```R
+# Created in perl
+# perl -lane 'if($F[1] eq "None"){$F[1] = 0;} print "$F[0]\t$F[1]\tHiFi";' < desman/results_flye4/total_strain_counts.tab > desman/initial_strain_counts.tab
+# perl -lane 'if($F[1] eq "None"){$F[1] = 0;} print "$F[0]\t$F[1]\tClr1";' < desman/results_clr1/total_strain_counts.tab >> desman/initial_strain_counts.tab
+
+library(dplyr)
+library(ggplot2)
+
+sdata <- read.delim("desman/initial_strain_counts.tab", header=FALSE, sep="\t")
+colnames(sdata) <- c("BName", "Strains", "ASM")
+
+pdf(file="desman/initial_strain_counts.pdf", useDingbats=FALSE)
+ggplot(sdata, aes(x=Strains, fill=ASM)) + geom_histogram(alpha=0.6, position="identity") + theme_bw() + ggtitle("DESMAN strain count CLR vs HIFI")
+dev.off()
+
+```
+
+
 #### Viral association analysis
 
 ```bash
@@ -539,6 +590,10 @@ module load samtools/1.9 minimap2/2.6 miniconda/3.6
 source activate /KEEP/rumen_longread_metagenome_assembly/seaborn/
 
 sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p priority -q msn -J flyeflye --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a flye4.contigs.fasta -b blobtools/table.flye4.contigs.blobDB.table.txt -i /lustre/project/forage_assemblies/sheep_project/complete_flye/mapping/flye4.contigs/hic_Sau3AI.bam -v flye4.viral.contigs.list -l /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_sequelII_CCS.fasta -m /software/7/apps/minimap2/2.6/minimap2 -o flye4.contigs.vassoc"
+
+for i in clr1 clr2 clr3; do echo $i; perl -ne '@s = split(/\t/); if($s[29] eq "Viruses"){print "$s[0]\t$s[1]\n";}' < blobtools/table.${i}.contigs.blobDB.table.txt > ${i}.viral.contigs.list; done
+
+for i in clr1 clr2 clr3; do echo $i; sbatch --nodes=1 --mem=30000 --ntasks-per-node=4 -p priority -q msn -J ${i}_virus --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAssociationPipeline.py -a ${i}.contigs.fasta -b blobtools/table.${i}.contigs.blobDB.table.txt -i /lustre/project/forage_assemblies/sheep_project/complete_flye/mapping/${i}.contigs/hic_Sau3AI.bam -v ${i}.viral.contigs.list -l /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_sequelII_CCS.fasta -m /software/7/apps/minimap2/2.6/minimap2 -o ${i}.contigs.vassoc"; done
 ```
 
 That worked, but I tried to print a bipartite graph with no success. Much of the issue is that viral-viral associations are present. I want to test to see if I exclude these and sort the graph by viral class if I can solve this issue.
@@ -557,4 +612,8 @@ mkdir gb2_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p priority 
 perl -ne 'chomp; @s = split(/,/); print "$s[0]\tgb2.$s[1]\n";' < flye4.gb2.csvgraphbin2_wo_unsupported_1.csv > flye4.gb2.csvgraphbin2_wo_unsupported_1.tab
 
 mkdir gb1_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p priority -q msn --wrap="DAS_Tool --search_engine 'diamond' -i flye4.gb2.csvgraphbin2_wo_unsupported_1.tab,binning/bin3c/flye4.contigs/bin3c.full.clusters.tab,binning/metabat2/flye4.contigs/metabat2.full.clusters.tab -l graph2bin1,bin3c,metabat -c flye4.contigs.fasta -o gb1_dastool/flye4.gb1.das -t 4 --write_bins 1"
+
+
+### I need to rerun dastool on just the bin3c bins to get this ready for DEsman
+for i in flye4 clr1 clr2 clr3; do echo $i; mkdir b3c_${i}_dastool; sbatch --nodes=1 --mem=25000 --ntasks-per-node=4 -p priority -q msn --wrap="DAS_Tool --search_engine 'diamond' -i binning/bin3c/${i}.contigs/bin3c.full.clusters.tab -l bin3c -c $i.contigs.fasta -o b3c_${i}_dastool/${i}.das -t 4 --write_bins 1"; done
 ```

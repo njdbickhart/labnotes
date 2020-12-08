@@ -102,3 +102,21 @@ conda activate /KEEP/rumen_longread_metagenome_assembly/meryl
 
 sbatch -N 1 -n 4 --mem=30000 -p priority -q msn -t 2-0 --wrap="python3 ~/python_toolchain/sequenceData/merylVennUpset.py -m /lustre/project/rumen_longread_metagenome_assembly/binaries/meryl/build/bin/meryl -o ram_freebayes_comp -d merqury/finalt/finalt.meryl -d merqury/finhap/finhap.meryl -d merqury/freebayes/freebayes.meryl -d merqury/freehap/freehap.meryl -d merqury/freethap/freethap.meryl -d merqury/freetwo/freetwo.meryl -d merqury/ram1/ram1.meryl -d mapped/meryl_db.meryl"
 ```
+
+
+#### Running individual Assembly QC on Rambouillet reads
+
+> Ceres: /lustre/project/gaur_genome_assembly/Rambouillet/publication_qc/rambouillet_reads
+
+```bash
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn -t 8-0 snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout} -t 8-0" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
+```
+
+
+#### Running individual Assembly QC on Texel reads
+
+> Ceres: /lustre/project/gaur_genome_assembly/Rambouillet/publication_qc/texel_reads
+
+```bash
+sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn -t 8-0 snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout} -t 8-0" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
+```

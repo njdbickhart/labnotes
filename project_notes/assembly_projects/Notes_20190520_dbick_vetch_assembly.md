@@ -305,3 +305,48 @@ module load miniconda/3.6
 
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
 ```
+
+## HiFi Vetch assembly
+
+Now let's try using IPA and flye on this.
+
+#### IPA assembly
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/vetch_ccs
+
+```bash
+module load miniconda/3.6
+
+conda activate /KEEP/rumen_longread_metagenome_assembly/ipa
+mkdir logs
+
+sbatch -N 1 -n 2 --mem=30000 -p priority -q msn -t 6-0 ipa dist --nthreads 24 --njobs 100 -i /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201014_164652.Q20.fastq -i /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201016_161735.Q20.fastq -i /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201025_064141.Q20.fastq -i /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201026_190917.Q20.fastq -i /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201028_074044.Q20.fastq -i /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201104_080456.Q20.fastq --run-dir vetch_ipa --cluster-args "sbatch -N 1 -n {params.num_threads} --tmp-dir /lustre/project/rumen_longread_metagenome_assembly/assemblies/vetch_ccs/ipa_temp -o logs --mem=40000 -p priority -q msn -t 6-0"
+
+# and again, the run was incomplete so I needed to rerun manually
+sbatch -N 1 -n 2 --mem=30000 -p priority -q msn -t 6-0 --wrap="/KEEP/rumen_longread_metagenome_assembly/ipa/bin/python3 -m snakemake -j 100 -d vetch_ipa -p -s /KEEP/rumen_longread_metagenome_assembly/ipa/etc/ipa.snakefile --configfile vetch_ipa/config.yaml --reason --cluster 'sbatch -N 1 -n {params.num_threads} -o stdout.{rule}.out --mem=50000 -p priority -q msn -t 6-0'  --latency-wait 60 --rerun-incomplete"
+
+# I also needed to edit the config.yaml file to set the temp directory for common tasks
+
+```
+
+#### Flye assembly
+
+```bash
+module load miniconda/3.6
+
+conda activate /KEEP/rumen_longread_metagenome_assembly/flye/
+
+sbatch -A proj-rumen_longread_metagenome_assembly -N 1 -n 80 --mem=1100000 -p priority-mem -q msn-mem -t 5-0 flye --pacbio-hifi /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201014_164652.Q20.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201016_161735.Q20.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201025_064141.Q20.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201026_190917.Q20.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201028_074044.Q20.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/m54337U_201104_080456.Q20.fastq -g 2g -t 78 -o vetch_hiflye
+
+```
+
+#### Themis run
+
+```bash
+module load miniconda/3.6 "java/11.0.2" bedtools
+
+PATH=$PATH:/software/7/apps/merqury/1.1/:/software/7/apps/meryl/1.0/Linux-amd64/bin/
+MERQURY=/software/7/apps/merqury/1.1
+
+sbatch -N 1 -n 2 --mem=6000 -p priority -q msn --wrap='python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/themisASM.py -a /lustre/project/forage_assemblies/assemblies/vetch/vetch_recalled_flye/assembly.fasta -n recalled -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/vetch_ccs/vetch_ipa/19-final/final.p_ctg.fasta -n primaryIPA -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/vetch_ccs/vetch_ipa/19-final/final.a_ctg.fasta -n altIPA -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/vetch_ccs/vetch_hiflye/assembly.fasta -n hiflye -b eudicots_odb10 -f /lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L001-ds.f5daa53646d64f4bac4fc79cf6e436ab/HV30Vetch_S1_L001_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L001-ds.f5daa53646d64f4bac4fc79cf6e436ab/HV30Vetch_S1_L001_R2_001.fastq.gz -s illumina -c "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -j 100 --resume'
+```
