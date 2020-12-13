@@ -561,6 +561,17 @@ perl -lane 'if($F[0] =~ /#/){print $_;}elsif($F[5] > 1){print $_;}' < flye4.cont
 
 freebayes -f flye4.contigs.fasta -r contig_46389:1-2593 flye4.contigs.fasta.ccs.bam > flye4.contig_4638.example.vcf
 perl -lane 'if($F[0] =~ /#/){print $_;}elsif($F[5] > 1){print $_;}' < flye4.contig_4638.example.vcf > flye4.contig_4638.filtered.vcf
+
+
+#### Testing pacbio phasing 
+conda activate /KEEP/rumen_longread_metagenome_assembly/desman
+for i in `ls -d bin*`; do echo $i; sbatch -N 1 -n 2 -p priority -q msn --mem=45000 --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/phasing/run_phaser.py /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_sequel1_CCS.fasta ../../flye4.contigs.fasta.ccs.bam $i/flye4.pileup temp temp --strand + -o $i.pbhap"; done
+
+# It works for some, but it tries to load the whole fastq into memory! OSError: [Errno 12] Cannot allocate memory
+# Tested out an alteration
+sbatch -N 1 -n 2 -p priority -q msn --mem=45000 --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/phasing/run_phaser.py /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/sheep_poop_sequel1_CCS.fasta flye4.contigs.fasta.ccs.bam desman/results_flye4/bin_522_hqdas/flye4.pileup desman/bed_lists/flye4/bin3c.522.scg.bed temp --strand '+' -o test.pbhap"
+
+# Nope! I'll have to redesign at some point.
 ```
 
 Creating a quick Desman strain count plot to show collaborators.
