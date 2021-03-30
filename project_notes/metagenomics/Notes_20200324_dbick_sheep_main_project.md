@@ -259,12 +259,25 @@ gunzip -c m54337U_200213_024013.Q20.fasta.gz | grep '>' | perl -lane '$_ =~ s/>/
 # Calculating the subread length statistics
 perl calc_ccs_stats.pl m54337U_200213_024013.Q20.fasta.rnames m54337U_200213_024013.fastq.gz > m54337U_200213_024013.stats
 3204385
+
+# Updating the script so that I can quantify the differences between the CLR reads and all subreads in the dataset
+# Sequel II
+for i in m54337U_200203_184822 m54337U_200211_145859 m54337U_200213_024013 m54337U_200214_212611 m54337U_200220_195233 m54337U_200222_075656 m54337U_200223_200916 m54337U_200227_201603; do echo $i; sbatch -N 1 -n 2 --mem=55000 -p priority -q msn --wrap="perl updated_calc_ccs_stats.pl $i.Q20.fasta $i.fastq.gz > $i.stats"; done
+# Sequel I
+for i in `ls subreads.bam/*.bam | xargs -I {} basename {} | cut -d'.' -f1`; do echo $i; sbatch -N 1 -n 2 --mem=55000 -p priority -q msn --wrap="perl updated_calc_ccs_stats.pl sheep_poop_sequel1_CCS.fasta subreads.bam/$i.subreads.bam.fastq.gz > $i.stats"; done
+
+# Sequel 1 stats
+echo -e 'SubReadNum\tLength' > sequelI_ccs_subread_stats.tab; for i in m54?3?_*.stats; do echo $i; perl -lane 'if($F[0] =~ /Read/){next;} $F[1] = ($F[1] > 10)? 10 : $F[1]; print "$F[1]\t$F[2]";' < $i >> sequelI_ccs_subread_stats.tab; done
+
+# Sequel 2 stats
+echo -e 'SubReadNum\tLength' > sequelII_ccs_subread_stats.tab; for i in m54?37U_*.stats; do echo $i; perl -lane 'if($F[0] =~ /Read/){next;} $F[1] = ($F[1] > 15)? 15 : $F[1]; print "$F[1]\t$F[2]";' < $i >> sequelII_ccs_subread_stats.tab; done
 ```
 
 ```R
 library(dplyr)
 library(ggplot2)
 library(gridExtra)
+library(scales)
 data <- read.delim("m54337U_200213_024013.stats", header=FALSE)
 colnames(data) <- c("Read", "Length")
 
@@ -315,6 +328,33 @@ pdf(file="m54337U_200213_024013.stats.pdf", useDingbats=FALSE)
 p1 <- ggplot(rsummaries, aes(x="", y=RCt)) + geom_boxplot() + labs(title="SubRead counts")
 p2 <- ggplot(rsummaries, aes(x="", y=AvgLen)) + geom_boxplot() + labs(title="Average SubRead Length")
 grid.arrange(p1, p2, nrow=2)
+dev.off()
+
+
+seq1 <- read.delim("sequelI_ccs_subread_stats.tab", header=TRUE)
+seq1$SubReadNum <- as.factor(seq1$SubReadNum)
+seq1.rc <- group_by(seq1, SubReadNum) %>% summarize(count=n(), mbases = sum(as.numeric(Length)) / 1000000)
+
+
+cbar <- ggplot(seq1.rc, aes(x=SubReadNum, y=count)) + geom_bar(stat="identity", color="blue") + labs(title="A. Sequel 1 Read counts per subread", ylab = "Subread number", xlab = "") + geom_text(aes(label=comma(count)), size = 2, vjust = 1.5, color = "white")
+bbar <- ggplot(seq1.rc, aes(x=SubReadNum, y=mbases)) + geom_bar(stat="identity", color="red") + labs(title="B. Sequel 1 Sum of Mbp per subread", ylab="Sum of DNA bases (Mbp)", xlab = "") + geom_text(aes(label=sprintf('%0.1f', mbases)), size = 3, vjust = 1.5, color = "white")
+dbar <- ggplot(seq1, aes(x=SubReadNum, y=Length)) + geom_violin(trim=FALSE, color="green", fill="gray") + geom_boxplot(width=0.1, fill="white", outlier.shape=NA) + labs(title="C. Sequel 1 Read length distribution by subread", x = "Subread number", y= "Log10 Read length") + scale_y_log10()
+
+pdf(file="sequel1_subread_stats.pdf", useDingbats=FALSE)
+grid.arrange(cbar, bbar, dbar, nrow=3)
+dev.off()
+
+seq2 <- read.delim("sequelII_ccs_subread_stats.tab", header=TRUE)
+seq2$SubReadNum <- as.factor(seq2$SubReadNum)
+seq2.rc <- group_by(seq2, SubReadNum) %>% summarize(count=n(), mbases = sum(as.numeric(Length)) / 1000000)
+
+
+cbar <- ggplot(seq2.rc, aes(x=SubReadNum, y=count)) + geom_bar(stat="identity", color="blue") + labs(title="A. Sequel 2 Read counts per subread", ylab = "Subread number", xlab = "") + geom_text(aes(label=comma(count)), size = 1, vjust = 1.5, color = "white")
+bbar <- ggplot(seq2.rc, aes(x=SubReadNum, y=mbases)) + geom_bar(stat="identity", color="red") + labs(title="B. Sequel 2 Sum of Mbp per subread", ylab="Sum of DNA bases (Mbp)", xlab = "") + geom_text(aes(label=sprintf('%0.1f', mbases)), size = 1, vjust = 1.5, color = "white")
+dbar <- ggplot(seq2, aes(x=SubReadNum, y=Length)) + geom_violin(trim=FALSE, color="green", fill="gray") + geom_boxplot(width=0.1, fill="white", outlier.shape=NA) + labs(title="C. Sequel 2 Read length distribution by subread", x = "Subread number", y= "Log10 Read length") + scale_y_log10()
+
+pdf(file="sequel2_subread_stats.pdf", useDingbats=FALSE)
+grid.arrange(cbar, bbar, dbar, nrow=3)
 dev.off()
 ```
 
@@ -443,6 +483,76 @@ And quick stats for the CLR assemblies.
 
 ```bash
 tail -n 8 sheep_clr*/*.log | perl -e '%h; while(<>){chomp; if($_ =~ /[=\[]/){next;} $_ =~ s/^\s+//; @s = split(/\t/); if(scalar(@s) < 2){next;} push(@{$h{$s[0]}}, $s[1]);} foreach $k (keys(%h)){print "$k\t" . join("\t", @{$h{$k}}) . "\n";}'
+```
+
+#### Summary of CCS read extractions
+
+```R
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+ls()
+seq1 <- read.delim("sequelI_ccs_subread_stats.tab", header=TRUE)
+summary(seq1)
+seq1.rc <- group_by(seq1, SubReadNum) %>% summarize(count=n())
+seq1.rc
+seq1.rc <- group_by(seq1, SubReadNum) %>% summarize(count=n(), bases = sum(as.numeric(Length)))
+seq1.rc
+seq1.rc <- group_by(seq1, SubReadNum) %>% summarize(count=n(), gbases = sum(as.numeric(Length)) / 1000000000)
+seq1.rc
+seq1.rc <- group_by(seq1, SubReadNum) %>% summarize(count=n(), mbases = sum(as.numeric(Length)) / 1000000)
+seq1.rc
+library(gridExtra)
+
+
+library(scales)
+cbar <- ggplot(seq1.rc, aes(x=SubReadNum, y=count)) + geom_bar(stat="identity", color="blue") + labs(title="A. Sequel 1 Read counts per subread", ylab = "Subread number", xlab = "") + geom_text(aes(label=comma(count)), size = 2, vjust = 1.5, color = "white")
+bbar <- ggplot(seq1.rc, aes(x=SubReadNum, y=mbases)) + geom_bar(stat="identity", color="red") + labs(title="B. Sequel 1 Sum of Mbp per subread", ylab="Sum of DNA bases (Mbp)", xlab = "") + geom_text(aes(label=sprintf('%0.1f', mbases)), size = 3, vjust = 1.5, color = "white")
+dbar <- ggplot(seq1, aes(x=SubReadNum, y=Length)) + geom_violin(trim=FALSE, color="green", fill="gray") + geom_boxplot(width=0.1, fill="white", outlier.shape=NA) + labs(title="C. Sequel 1 Read length distribution by subread", x = "Subread number", y= "Log10 Read length") + scale_y_log10()
+pdf(file="sequel1_subread_stats.pdf", useDingbats=FALSE)
+grid.arrange(cbar, bbar, dbar, nrow=3)
+dev.off()
+
+seq2 <- read.delim("sequelII_ccs_subread_stats.tab", header=TRUE)
+seq2$SubReadNum <- as.factor(seq2$SubReadNum)
+seq2.rc <- group_by(seq2, SubReadNum) %>% summarize(count=n(), mbases = sum(as.numeric(Length)) / 1000000)
+cbar <- ggplot(seq2.rc, aes(x=SubReadNum, y=count)) + geom_bar(stat="identity", color="blue") + labs(title="A. Sequel 2 Read counts per subread", ylab = "Subread number", xlab = "") + geom_text(aes(label=comma(count)), size = 1, vjust = 1.5, color = "white")
+bbar <- ggplot(seq2.rc, aes(x=SubReadNum, y=mbases)) + geom_bar(stat="identity", color="red") + labs(title="B. Sequel 2 Sum of Mbp per subread", ylab="Sum of DNA bases (Mbp)", xlab = "") + geom_text(aes(label=sprintf('%0.1f', mbases)), size = 1, vjust = 1.5, color = "white")
+dbar <- ggplot(seq2, aes(x=SubReadNum, y=Length)) + geom_violin(trim=FALSE, color="green", fill="gray") + geom_boxplot(width=0.1, fill="white", outlier.shape=NA) + labs(title="C. Sequel 2 Read length distribution by subread", x = "Subread number", y= "Log10 Read length") + scale_y_log10()
+pdf(file="sequel2_subread_stats.pdf", useDingbats=FALSE)
+grid.arrange(cbar, bbar, dbar, nrow=3)
+dev.off()
+
+# Statistical tests
+mean(seq1[seq1$SubReadNum == 2, "Length"])
+[1] 13759.85
+mean(seq1[seq1$SubReadNum == 3, "Length"])
+[1] 13730.54
+mean(seq1[seq1$SubReadNum == 4, "Length"])
+[1] 13711.69
+
+sd(seq1[seq1$SubReadNum == 2, "Length"])
+[1] 3497.003
+sd(seq1[seq1$SubReadNum == 3, "Length"])
+[1] 3465.349
+sd(seq1[seq1$SubReadNum == 4, "Length"])
+[1] 3466.757
+
+ks.test(seq1[seq1$SubReadNum == 3, "Length"], seq1[seq1$SubReadNum == 4, "Length"], alternative="greater")
+
+        Two-sample Kolmogorov-Smirnov test
+
+data:  seq1[seq1$SubReadNum == 3, "Length"] and seq1[seq1$SubReadNum == 4, "Length"]
+D^+ = 0.00089678, p-value = 0.05727
+alternative hypothesis: the CDF of x lies above that of y
+
+ks.test(seq1[seq1$SubReadNum == 3, "Length"], seq1[seq1$SubReadNum == 4, "Length"], alternative="less")
+
+        Two-sample Kolmogorov-Smirnov test
+
+data:  seq1[seq1$SubReadNum == 3, "Length"] and seq1[seq1$SubReadNum == 4, "Length"]
+D^- = 0.0024929, p-value = 2.521e-10
+alternative hypothesis: the CDF of x lies below that of y
 ```
 
 #### Pilon correction of CLR assemblies

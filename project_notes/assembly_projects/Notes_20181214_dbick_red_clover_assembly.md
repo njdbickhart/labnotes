@@ -919,3 +919,35 @@ python ~/python_toolchain/snakeMake/assemblyValidation/scripts/createWebpage.py 
 
 mkdir package
 ```
+
+
+#### Clover hic qc
+
+```bash
+module load samtools bwa miniconda/3.6
+conda activate /KEEP/rumen_longread_metagenome_assembly/hic_qc
+sbatch -N 1 -n 32 --mem=55000 -p priority -q msn --wrap='bwa mem -t 28 /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/fastas/primaryIPA.fa LIB109270_S1_L001_R1_001.fastq.gz LIB109270_S1_L001_R2_001.fastq.gz | samtools sort -T clover_hic -n -@ 4 -o clover_hic.sorted.bam -'
+
+sbatch -N 1 -n 2 --mem=12000 -p priority -q msn --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/hic_qc/hic_qc.py -b clover_hic.sorted.bam --outfile_prefix  clover_hic "
+
+## Running on the additional data
+python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/fastas/primaryIPA.fa -b omnic_ipa_paligns -t omnic_data.tab -q msn -p priority -n -m
+
+sbatch -N 1 -n 2 --mem=12000 -p priority -q msn --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/hic_qc/hic_qc.py -b omnic_ipa_paligns/clover/clover.sorted.merged.bam --outfile_prefix  clover_omnic "
+```
+
+#### Clover salsa scaffolding
+
+```bash
+module load bedtools/2.25.0 miniconda/3.6 minimap2
+conda activate /KEEP/rumen_longread_metagenome_assembly/salsa
+
+bamToBed -i omnic_ipa_paligns/clover/clover.sorted.merged.bam > omnic_ipa_paligns/clover.sorted.bed
+sbatch -N 1 -n 2 --mem=280000 -p priority -q msn --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/SALSA/run_pipeline.py -a fastas/primaryIPA.fa -l fastas/primaryIPA.fa.fai -e DNASE -b omnic_ipa_paligns/clover.sorted.bed -o omnic_ipa_paligns/salsa_scaffolds"
+
+# Now for ASM-ASM comparisons
+sbatch -N 1 -n 3 --mem=50000 -p priority -q msn --wrap="minimap2 -x asm5 fastas/primaryIPA.fa omnic_ipa_paligns/salsa_scaffolds/scaffolds_FINAL.fasta > omnic_ipa_paligns/rc_pipa_to_salsa.paf"
+
+conda activate /KEEP/rumen_longread_metagenome_assembly/r
+Rscript /lustre/project/rumen_longread_metagenome_assembly/binaries/Themis-ASM/scripts/pafDotPlotly.R -i omnic_ipa_paligns/rc_pipa_to_salsa.paf -v -l -s -o rc_pipa_to_salsa
+```

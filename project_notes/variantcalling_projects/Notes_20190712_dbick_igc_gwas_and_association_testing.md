@@ -454,3 +454,13 @@ LIB14427_MHC_116810     23      28586756        G       A       -0.010  0.916   
 18_63114542     18      63361534        A       G       -0.011  0.957   -0.069  0.687   -0.091  0.590   -0.129  0.437
 MHC_9213        23      28355864        A       G       -0.176  0.259   -0.147  0.299   -0.164  0.244   -0.153  0.271
 ```
+
+## LD calculation
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/kiranmayee/IGC/case_control
+
+```bash
+module load plink/1.9
+
+sbatch -N 1 -n 2 --mem=15000 -p priority -q msn --wrap="plink --bfile hd_neogen_merged_snpset --r2 --ld-window-r2 0.3 --allow-extra-chr --cow"
+```

@@ -350,3 +350,39 @@ MERQURY=/software/7/apps/merqury/1.1
 
 sbatch -N 1 -n 2 --mem=6000 -p priority -q msn --wrap='python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/themisASM.py -a /lustre/project/forage_assemblies/assemblies/vetch/vetch_recalled_flye/assembly.fasta -n recalled -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/vetch_ccs/vetch_ipa/19-final/final.p_ctg.fasta -n primaryIPA -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/vetch_ccs/vetch_ipa/19-final/final.a_ctg.fasta -n altIPA -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/vetch_ccs/vetch_hiflye/assembly.fasta -n hiflye -b eudicots_odb10 -f /lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L001-ds.f5daa53646d64f4bac4fc79cf6e436ab/HV30Vetch_S1_L001_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L001-ds.f5daa53646d64f4bac4fc79cf6e436ab/HV30Vetch_S1_L001_R2_001.fastq.gz -s illumina -c "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -j 100 --resume'
 ```
+
+
+## Purge dups
+
+```bash
+module load miniconda/3.6 "java/11.0.2" bedtools
+
+conda activate /KEEP/rumen_longread_metagenome_assembly/purge_dups/
+
+for i in /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/*.fastq; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 3 -p priority -q msn --mem=46000 --wrap="minimap2 -I -xmap-pb vetch_ipa/19-final/final.p_ctg.fasta $i | gzip -c - > $name.paf.gz"; done
+
+# This is taking too long. Let's speed it up for CCS read alignments
+
+for i in /lustre/project/rumen_longread_metagenome_assembly/sequence_data/hairy_vetch_ccs/*.fastq; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 15 -p priority -q msn --mem=55000 --wrap="minimap2 -t 15 -x asm20 vetch_ipa/19-final/final.p_ctg.fasta $i > $name.asm20.paf"; done
+
+for i in *.paf; do sbatch -N 1 -n 1 --mem=5000 -p priority -q msn --wrap="gzip $i"; done
+
+sbatch -N 1 -n 2 --mem=65000 -p priority -q msn --wrap="pbcstat *asm20.paf.gz; calcuts PB.stat > cutoffs 2> calcults.log"
+
+sbatch -N 1 -n 4 --mem=55000 -p priority -q msn --wrap="split_fa vetch_ipa/19-final/final.p_ctg.fasta > ipa_primary.fasta.split; minimap2 -xasm5 -DP ipa_primary.fasta.split ipa_primary.fasta.split | gzip -c - > ipa_primary.split.self.paf.gz"
+
+sbatch -N 1 -n 4 --mem=55000 -p priority -q msn --wrap="purge_dups -2 -T cutoffs -c PB.base.cov ipa_primary.split.self.paf.gz > dups.bed 2> purge_dups.log"
+
+sbatch -N 1 -n 4 --mem=55000 -p priority -q msn --wrap="get_seqs -l 5000 -e dups.bed vetch_ipa/19-final/final.p_ctg.fasta"
+
+mv purged.fa vetch_hifi_primary_ipa.fasta
+mv hap.fa vetch_hifi_primary_ipa_haps.fasta
+
+sbatch -N 1 -n 1 --mem=20000 -p primary -q msn --wrap="python3 ~/python_toolchain/sequenceData/reformatFasta.py -f vetch_hifi_primary_ipa.fasta -o vetch_hifi_temp.fasta -v"
+
+mv vetch_hifi_temp.fasta vetch_hifi_primary_ipa.fasta
+rm vetch_hifi_temp.fasta.fai vetch_hifi_primary_ipa.fasta.fai
+
+mv vetch_hifi_primary_ipa.fasta vetch_hifi_primary_ipa_purged.fasta
+sbatch -N 1 -n 1 --mem=5000 -p priority -q msn --wrap="gzip vetch_hifi_primary_ipa_purged.fasta"
+```
