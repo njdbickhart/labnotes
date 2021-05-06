@@ -1417,13 +1417,13 @@ Standard Deviation      5.881967
 Mode(Highest Distributed Value) 0
 
 clr3
-total   279
-Sum:    2205
+total   534
+Sum:    2223
 Minimum 0
-Maximum 86
-Average 7.903226
-Median  6
-Standard Deviation      8.851774
+Maximum 68
+Average 4.162921
+Median  3
+Standard Deviation      6.798469
 Mode(Highest Distributed Value) 0
 
 flye4
@@ -1445,7 +1445,7 @@ clr1
 clr2
 24018   792893  378
 clr3
-30864   372970  730
+23583   493333  345
 flye4
 12751   336899  309
 
@@ -1459,13 +1459,77 @@ python3 ~/python_toolchain/metagenomics/createMAGstrainAssoc.py -r mag_phase_hr/
 # Averages
 for i in clr1 clr2 clr3 flye4; do echo $i; cat mag_phase_hr/consolidated/$i/*.long | perl -e '$c = 0; $m = 0; $l = 0; while(<STDIN>){chomp; @s = split(/\t/); if($s[2] < 4){next;} $c++; $m += $s[6] - $s[5];  $l += $s[2];} $m /= $c; $l /= $c; print "$c\t$m\t$l\n";' ; done
 clr1
-18798   846.481966166613        33.2747632726886
+22826   1092.63970910365        28.1955226496101
 clr2
-20142   844.06091748585 33.9573031476517
+24018   906.666208676826        29.1952285785661
 clr3
-28291   697.173730161535        56.4024954932664
+30864   761.680728356661        52.0766264904095
 flye4
-9432    1079.53201865988        25.1512934690416
+12751   1174.2172378637 19.7565681123049
+
+for i in clr1 clr2 flye4; do echo $i; cat ../mag_phase_hr/consolidated/$i/*.long | perl -e '%data; $count=0; while(<>){chomp; @F = split(/\t/); if(length($F[1]) > 1){$count++; $t = $F[0] . $F[4] . $F[5]; $data{$t} += 1;}} $sum = 0; foreach $v (values(%data)){$sum += $v;} print "$count\t$sum\t" . ($sum / scalar(keys(%data))) . "\n"; '; done
+clr1
+27558   27558   5.06674020959735
+clr2
+28902   28902   4.84688914975683
+flye4
+17481   17481   4.38780120481928
+cat magphase/consolidated/clr3/*.long | perl -e '%data; $count=0; while(<>){chomp; @F = split(/\t/); if(length($F[1]) > 1){$count++; $t = $F[0] . $F[4] . $F[5]; $data{$t} += 1;}} $sum = 0; foreach $v (values(%data)){$sum += $v;} print "$count\t$sum\t" . ($sum / scalar(keys(%data))) . "\n"; '
+28109   28109   5.35307560464673
+
+
+# New version again
+mkdir magphase
+
+for j in flye4 clr1 clr2 ; do echo $j; mkdir magphase/$j; for i in desman/bed_lists/$j/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=45000 -t 1-0 --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/phasing/mag_phaser.py -a $j.contigs.fasta -b $j.contigs.fasta.ccs.filt.bam -g $i --bhFDR 0.01 -o magphase/$j/$name.strain"; done; done
+
+mkdir magphase/consolidated
+for j in flye4 clr1 clr2; do echo $j; mkdir magphase/consolidated/$j; for i in desman/bed_lists/$j/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; python3 ~/python_toolchain/metagenomics/calcMagPhaseOutputVals.py -f magphase/$j -p $name -d b3c_${j}_dastool/${j}.das_DASTool_summary.txt -o magphase/consolidated/$j/$name; done; done
+
+for i in clr1 clr2 flye4; do echo $i; cat magphase/consolidated/$i/*.short > magphase/consolidated/$i.consolidated.short.tab; done
+
+
+### Newest version
+# averages
+for i in clr1 clr2 flye4; do echo $i; cat magphase/consolidated/$i/*.long | perl -e '$c = 0; $m = 0; $l = 0; $max = 0; while(<STDIN>){chomp; @s = split(/\t/); if($s[2] < 4){next;} $c++; $m += $s[6] - $s[5];  $max = ($s[6] - $s[5] > $max)? $s[6] - $s[5] : $max; $l += $s[2];} $m /= $c; $l /= $c; print "$c\t$m\t$max\t$l\n";' ; done
+clr1
+16139   1008.12714542413        463082  25.4517628105831
+clr2
+16160   992.585829207921        480257  27.1715965346535
+flye4
+9919    1100.73727190241        336899  19.6123601169473
+
+for i in clr3; do echo $i; cat clr3_rerun/magphase/consolidated/$i.filt/*.long | perl -e '$c = 0; $m = 0; $l = 0; $max = 0; while(<STDIN>){chomp; @s = split(/\t/); if($s[2] < 4){next;} $c++; $m += $s[6] - $s[5];  $max = ($s[6] - $s[5] > $max)? $s[6] - $s[5] : $max; $l += $s[2];} $m /= $c; $l /= $c; print "$c\t$m\t$max\t$l\n";' ; done
+clr3
+16313   893.287132961442        493333  26.3890761968982
+
+# Counts
+for i in clr1 clr2 flye4; do echo $i; cat magphase/consolidated/$i/*.long | perl -e '%data; $count=0; while(<>){chomp; @F = split(/\t/); if(length($F[1]) > 1){$count++; $t = $F[0] . $F[4] . $F[5]; $data{$t} += 1;}} $sum = 0; $max = 0; foreach $v (values(%data)){$sum += $v; if($v > $max){$max = $v;}} print "$count\t$sum\t$max\t" . ($sum / scalar(keys(%data))) . "\n"; '; done
+clr1
+19845   19845   59      4.78538702676634
+clr2
+19954   19954   54      4.61577608142494
+flye4
+13894   13894   25      4.23210478221139
+
+for i in clr3; do echo $i; cat clr3_rerun/magphase/consolidated/$i.filt/*.long | perl -e '%data; $count=0; while(<>){chomp; @F = split(/\t/); if(length($F[1]) > 1){$count++; $t = $F[0] . $F[4] . $F[5]; $data{$t} += 1;}} $sum = 0; $max = 0; foreach $v (values(%data)){$sum += $v; if($v > $max){$max = $v;}} print "$count\t$sum\t$max\t" . ($sum / scalar(keys(%data))) . "\n"; '; done
+clr3
+19914   19914   64      4.95619711299154
+
+# New stats in CLR3_RERUN
+# NOTE THESE ARE FOR THE NEW DEFITION OF COMPLETE MAGS
+for i in clr1 clr2 clr3 flye4; do echo $i; cat magphase/consolidated/$i.consolidated.long.tab | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -l  binning/DASTool/$i.contigs.full_DASTool_summary.txt.complete.list -c 0 -d '\t' | perl -e '$c = 0; $m = 0; $l = 0; $max = 0; while(<STDIN>){chomp; @s = split(/\t/); if($s[2] < 4){next;} $c++; $m += $s[6] - $s[5];  $max = ($s[6] - $s[5] > $max)? $s[6] - $s[5] : $max; $l += $s[2];} $m /= $c; $l /= $c; print "$c\t$m\t$max\t$l\n";' ; done
+clr1
+8516    1106.05648191639        463082  27.0534288398309
+clr2
+10725   1057.83188811189        480257  24.0620046620047
+clr3
+16294   961.246164232233        493333  33.9976678531975
+flye4
+6571    1151.29584538122        336899  20.1491401613149
+
+for i in clr1 clr2 clr3 flye4; do echo $i; cat magphase/consolidated/$i.consolidated.long.tab | python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f stdin -l  binning/DASTool/$i.contigs.full_DASTool_summary.txt.complete.list -c 0 -d '\t' | perl -e '%data; $count=0; while(<>){chomp; @F = split(/\t/); if(length($F[1]) > 1){$count++; $t = $F[0] . $F[4] . $F[5]; $data{$t} += 1;}} $sum = 0; $max = 0; foreach $v (values(%data)){$sum += $v; if($v > $max){$max = $v;}} print "$count\t$sum\t$max\t" . ($sum / scalar(keys(%data))) . "\n"; '; done
+
 ```
 
 Now to try to plot the melted data to show the differences between strains
@@ -1511,6 +1575,15 @@ perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; <IN>; while(<IN>){chomp; @s =
 perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; <IN>; while(<IN>){chomp; @s = split(/\t/); if($s[2] eq "HiFi"){@bsegs = split(/_/, $s[0]); $h{"bin3c.$bsegs[1]"} = $s[1];}} close IN; open(IN, "< $ARGV[1]"); $h = <IN>; chomp($h); $h = $h . "\tDesmanS\n"; print "$h"; while($l = <IN>){chomp $l; @s = split(/\t/, $l); if(!exists($h{$s[0]})){print "$l\tNA\n";}else{print "$l\t" . $h{$s[0]} . "\n";}} close IN;' desman/initial_strain_counts.tab mag_phase_hr/ani_estimates/flye4.scgani.instrain.tab > mag_phase_hr/ani_estimates/flye4.scgani.instrain.desman.tab
 
 perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = [$s[1], $s[2], $s[3]];} close IN; open(IN, "< $ARGV[1]"); $h = <IN>; chomp($h); $h = "$h\tMagStrain\tComp\tCont\n"; print "$h"; while($l = <IN>){chomp $l; @s = split(/\t/, $l); if(!exists($h{$s[0]})){next;} $t = join("\t", @{$h{$s[0]}}); print "$l\t$t\n";} close IN;' mag_phase_hr/consolidated/flye4.consolidated.short.tab mag_phase_hr/ani_estimates/flye4.scgani.instrain.desman.tab > mag_phase_hr/ani_estimates/flye4.scgani.instrain.desman.full.tab
+
+# For the CLR datasets
+for z in clr1 clr2; do echo $z; echo -e "bin\tscglen\tSNPs\tMaxPhase\tANI" > mag_phase_hr/ani_estimates/$z.scgani.tab; for i in desman/bed_lists/$z/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; j=mag_phase_hr/consolidated/$z/$name.long; perl -e 'chomp(@ARGV); $l = 0; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[2] - $s[1] > 0){$l += $s[2] - $s[1];}} close IN; $ls = 0; $ll = 0; $ln = 0; open(IN, "< $ARGV[1]"); %d; while(<IN>){chomp; @s = split(/\t/); if(!exists($d{$s[4]}->{$s[5]}) && $s[6] - $s[5] > 1){$d{$s[4]}->{$s[5]} = 1; $ln += length($s[1]); if(length($s[1]) > $ll){$ll = length($s[1]);}}} close IN; $ls = $ln / $l; $ls = 1 - $ls; print "$ARGV[2]\t$l\t$ln\t$ll\t$ls\n";' $i $j $name >> mag_phase_hr/ani_estimates/$z.scgani.tab; done; done
+
+for z in clr1 clr2; do echo $z; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = [$s[1], $s[2], $s[3]];} close IN; open(IN, "< $ARGV[1]"); $h = <IN>; chomp($h); $h = "$h\tMagStrain\tComp\tCont\n"; print "$h"; while($l = <IN>){chomp $l; @s = split(/\t/, $l); if(!exists($h{$s[0]})){next;} $t = join("\t", @{$h{$s[0]}}); print "$l\t$t\n";} close IN;' mag_phase_hr/consolidated/$z.consolidated.short.tab mag_phase_hr/ani_estimates/$z.scgani.tab > mag_phase_hr/ani_estimates/$z.scgani.magphaseonly.full.tab; done
+
+for z in clr3; do echo $z; echo -e "bin\tscglen\tSNPs\tMaxPhase\tANI" > mag_phase_hr/ani_estimates/$z.scgani.tab; for i in clr3_rerun/desman/bed_lists/$z/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; j=clr3_rerun/magphase/consolidated/$z/$name.long; perl -e 'chomp(@ARGV); $l = 0; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[2] - $s[1] > 0){$l += $s[2] - $s[1];}} close IN; $ls = 0; $ll = 0; $ln = 0; open(IN, "< $ARGV[1]"); %d; while(<IN>){chomp; @s = split(/\t/); if(!exists($d{$s[4]}->{$s[5]}) && $s[6] - $s[5] > 1){$d{$s[4]}->{$s[5]} = 1; $ln += length($s[1]); if(length($s[1]) > $ll){$ll = length($s[1]);}}} close IN; $ls = $ln / $l; $ls = 1 - $ls; print "$ARGV[2]\t$l\t$ln\t$ll\t$ls\n";' $i $j $name >> mag_phase_hr/ani_estimates/$z.scgani.tab; done; done
+
+for z in clr3; do echo $z; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = [$s[1], $s[2], $s[3]];} close IN; open(IN, "< $ARGV[1]"); $h = <IN>; chomp($h); $h = "$h\tMagStrain\tComp\tCont\n"; print "$h"; while($l = <IN>){chomp $l; @s = split(/\t/, $l); if(!exists($h{$s[0]})){next;} $t = join("\t", @{$h{$s[0]}}); print "$l\t$t\n";} close IN;' clr3_rerun/magphase/consolidated//$z.consolidated.short.tab mag_phase_hr/ani_estimates/$z.scgani.tab > mag_phase_hr/ani_estimates/$z.scgani.magphaseonly.full.tab; done
 ```
 
 Comparing some stats now
@@ -1948,9 +2021,13 @@ mkdir mash_intra_bin
 
 for j in flye4 clr1 clr2 clr3; do echo $j; sbatch -N 1 -n 2 --mem=10000 -p priority -q msn --wrap="~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash dist gtdbtk_bins/${j}_k21_s100000_combined.msh gtdbtk_bins/${j}_k21_s100000_combined.msh > mash_intra_bin/${j}.intrabin.pairwise"; done
 
+# Fixing with new CLR3 assembly
+sbatch -N 1 -n 2 --mem=10000 -p priority -q msn --wrap="~/rumen_longread_metagenome_assembly/binaries/mash-Linux64-v2.0/mash dist clr3_rerun/gtdbtk_bins/clr3_k21_s100000_combined.msh clr3_rerun/gtdbtk_bins/clr3_k21_s100000_combined.msh > mash_intra_bin/clr3.intrabin.pairwise"
+
 # I wrote a script to pull out only the nearest neighbors
-python3 mash_intra_bin/create_table.py mash_intra_bin/flye4.intrabin.pairwise HIFI mash_intra_bin/flye4.intrabin.neighbors.tab
-for i in 1 2 3; do echo $i; python3 mash_intra_bin/create_table.py mash_intra_bin/clr${i}.intrabin.pairwise CLR${i} mash_intra_bin/clr${i}.intrabin.neighbors.tab; done
+python3 mash_intra_bin/create_table.py mash_intra_bin/flye4.intrabin.pairwise HIFI gtdbtk_output/flye4.contigs/gtdbtk.bac120.summary.tsv mash_intra_bin/flye4.intrabin.neighbors.tab
+for i in 1 2; do echo $i; python3 mash_intra_bin/create_table.py mash_intra_bin/clr${i}.intrabin.pairwise CLR${i} gtdbtk_output/clr${i}.contigs/gtdbtk.bac120.summary.tsv mash_intra_bin/clr${i}.intrabin.neighbors.tab; done
+for i in 3; do echo $i; python3 mash_intra_bin/create_table.py mash_intra_bin/clr${i}.intrabin.pairwise CLR${i} clr3_rerun/gtdbtk_output/clr3.contigs/gtdbtk.bac120.summary.tsv mash_intra_bin/clr${i}.intrabin.neighbors.tab; done
 
 
 for i in flye4 clr1 clr2 clr3; do echo $i; perl -lane 'if($F[0] eq "Bin"){next;}else{print "$F[2]";}' < mash_intra_bin/${i}.intrabin.neighbors.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl ; done
@@ -1987,6 +2064,23 @@ mkdir mapq_checks
 sbatch -N 1 -n 2 --mem=30000 -p priority -q msn --wrap="python3 ~/python_toolchain/sequenceData/getBAMMapQ0Ratios.py -b mapping/flye4.contigs/merged.bam -o mapq_checks/flye4.shortreads.mapq.bed"
 
 sbatch -N 1 -n 2 --mem=30000 -p priority -q msn --wrap="python3 ~/python_toolchain/sequenceData/getBAMMapQ0Ratios.py -b flye4.contigs.fasta.ccs.bam -o mapq_checks/flye4.hifireads.mapq.bed"
+
+file=mapq_checks/flye4.shortreads.mapq; echo -e "TECH\tRATIO\tZERO" > $file.tab;  perl -lane '$tech = "SHORT"; $ratio = ($F[-2] != 0)? $F[-1] / $F[-2] : 0; $zero = ($F[-2] != 0)? "FALSE" : "TRUE"; print "$tech\t$ratio\t$zero";' < $file.bed >> $file.tab;
+file=mapq_checks/flye4.hifireads.mapq; echo -e "TECH\tRATIO\tZERO" > $file.tab;  perl -lane '$tech = "HIFI"; $ratio = ($F[-2] != 0)? $F[-1] / $F[-2] : 0; $zero = ($F[-2] != 0)? "FALSE" : "TRUE"; print "$tech\t$ratio\t$zero";' < $file.bed >> $file.tab;
+```
+
+```R
+setwd("C:/SharedFolders/metagenomics/tim_sheep/mapq_checks/")
+library(dplyr)
+library(ggplot2)
+
+temp <- read.delim("flye4.hifireads.mapq.tab", header = TRUE)
+temp2 <- read.delim("flye4.shortreads.mapq.tab", header = TRUE)
+combined <- bind_rows(temp, temp2)
+combined$TECH <- as.factor(combined$TECH)
+
+ggplot(data=combined, aes(x=TECH, y=RATIO, fill=TECH)) + geom_violin() + scale_fill_brewer(palette="Dark2") + theme_bw()
+# File was saved as hifi_assembly_short_vs_hifi_mapq0.pdf
 ```
 
 ## Rerunning CLR3
@@ -2095,15 +2189,26 @@ conda activate /KEEP/rumen_longread_metagenome_assembly/desman
 export PATH=$PATH:/lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/sequence/
 export PATH=$PATH:/lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/rarefaction/
 
-for j in clr3; do echo $j; mkdir mag_phase_hr/$j; for i in desman/bed_lists/$j/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=45000 -t 1-0 --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/phasing/mag_phaser.py -a assembly/$j.contigs.fa -b assembly/$j.contigs.fa.ccs.check.bam -g $i -o magphase/$j/$name.strain"; done; done
+for j in clr3; do echo $j; mkdir magphase/$j; for i in desman/bed_lists/$j/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=45000 -t 1-0 --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/phasing/mag_phaser.py -a assembly/$j.contigs.fa -b assembly/$j.contigs.fa.ccs.check.bam -g $i --bhFDR 0.01 -o magphase/$j/$name.strain"; done; done
 
+sbatch -N 1 -n 1 --mem=45000 -p priority -q msn --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/sequence/filter_bam_by_coverage.py -c 0.9 --filter_secondary --filter_supp assembly/clr3.contigs.fa.ccs.check.bam assembly/clr3.contigs.fa.ccs.filt.bam"
+samtools index assembly/clr3.contigs.fa.ccs.filt.bam
+
+for j in clr3; do echo $j; mkdir magphase/$j.filt; for i in desman/bed_lists/$j/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=45000 -t 1-0 --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/cDNA_Cupcake/phasing/mag_phaser.py -a assembly/$j.contigs.fa -b assembly/$j.contigs.fa.ccs.filt.bam -g $i --bhFDR 0.01 -o magphase/$j.filt/$name.strain"; done; done
 
 mkdir magphase/consolidated
 for j in clr3; do echo $j; mkdir magphase/consolidated/$j; for i in desman/bed_lists/$j/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; python3 ~/python_toolchain/metagenomics/calcMagPhaseOutputVals.py -f magphase/$j -p $name -d binning/DASTool/clr3.contigs.full_DASTool_summary.txt -o magphase/consolidated/$j/$name; done; done
 
+for j in clr3; do echo $j; mkdir magphase/consolidated/$j.filt; for i in desman/bed_lists/$j/*.scg.bed; do name=`basename $i | cut -d'.' -f1,2`; echo $name; python3 ~/python_toolchain/metagenomics/calcMagPhaseOutputVals.py -f magphase/$j.filt -p $name -d binning/DASTool/clr3.contigs.full_DASTool_summary.txt -o magphase/consolidated/$j.filt/$name; done; done
+
 cat magphase/consolidated/clr3/*.short > magphase/consolidated/clr3.consolidated.short.tab
+cat magphase/consolidated/clr3.filt/*.short > magphase/consolidated/clr3.consolidated.filt.short.tab
 
 python3 ~/python_toolchain/metagenomics/createMAGstrainAssoc.py -r ../mag_phase_hr/consolidated/flye4.consolidated.short.tab -o magphase/consolidated/flye4_strain_associations -n clr1 -a ../gtdbtk_bins/flye4_clr1_associations.tab -s ../mag_phase_hr/consolidated/clr1.consolidated.short.tab -n clr2 -a ../gtdbtk_bins/flye4_clr2_associations.tab -s ../mag_phase_hr/consolidated/clr2.consolidated.short.tab -n clr3 -a gtdbtk_bins/flye4_clr3_associations.tab -s magphase/consolidated/clr3.consolidated.short.tab
+
+python3 ~/python_toolchain/metagenomics/createMAGstrainAssoc.py -r ../magphase/consolidated/flye4.consolidated.short.tab -o magphase/consolidated/flye4_strain_associations_filt -n clr1 -a ../gtdbtk_bins/flye4_clr1_associations.tab -s ../magphase/consolidated/clr1.consolidated.short.tab -n clr2 -a ../gtdbtk_bins/flye4_clr2_associations.tab -s ../magphase/consolidated/clr2.consolidated.short.tab -n clr3 -a gtdbtk_bins/flye4_clr3_associations.tab -s magphase/consolidated/clr3.consolidated.filt.short.tab
+
+### TODO: copy over the new output file and update the table in the manuscript.
 
 # NOTE: example clostridia clr3 bin is bin3c_367 now with mash distance 0.06 to all three flye4 bins
 mkdir example_clostridia
@@ -2126,7 +2231,25 @@ cp gtdbtk_bins/clr3.contigs/bin3c_367.fna example_clostridia/clr3.367.contigs.fa
 for i in clr.1 clr.2 clr.3; do echo $i; for j in clr3; do echo $j; sbatch -N 1 -n 70 -p priority -q msn --mem=65000 -t 2-0 --wrap="minimap2 -ax map-pb -t 35 -R '@RG\tID:$i\tSM:$i' assembly/$j.contigs.fa /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/*_${i}.fastq.gz | samtools sort -@ 35 -T $j.$i -o minimap_clr_bams/$j.$i.sorted.bam -"; done; done
 for i in clr1 clr2 clr3; do echo $i; sbatch -N 1 -n 1 --mem=9000 -p priority -q msn --wrap="samtools index minimap_clr_bams/clr3.$i.sorted.bam; samtools view -b minimap_clr_bams/clr3.$i.sorted.bam contig_33698 contig_37094 contig_38905 contig_39380 contig_39384 contig_39657 contig_39905 contig_40140 contig_44383 contig_48574 contig_48576 contig_48599 contig_48603 contig_57059 contig_59619 contig_59629 contig_59631 contig_59632 contig_63024 contig_67956 scaffold_49001 scaffold_59627 contig_18119 contig_18123 contig_18973 contig_28140 contig_28142 contig_29347 contig_29348 contig_31958 contig_18654 > clr3.367.$i.bam"; done
 
-sbatch -N 1 -n 1 --mem=8000 -p priority -q msn --wrap="samtools merge clostridia_aligns/bams/clr1.451.clr.bam clostridia_aligns/bams/clr1.451.clr1.bam clostridia_aligns/bams/clr1.451.clr2.bam clostridia_aligns/bams/clr1.451.clr3.bam"
+samtools merge example_clostridia/clr3.367.clr.bam clr3.367.clr1.bam clr3.367.clr2.bam clr3.367.clr3.bam
+
+
+##### getting stats
+
+
+#####
+# Note: these are the remaining contigs from clr2 for liz
+grep 'bin3c.327' binning/DASTool/clr2.contigs.full_cluster_attribution.tsv | perl -ne 'chomp; @s = split(/\t/); print "$s[0] ";' ; echo
+contig_11551 contig_11554 contig_20468 contig_22549 contig_27175 contig_28326 contig_28328 contig_33627 contig_34719 contig_34730 contig_34732 contig_34827 contig_37523 contig_38166 contig_43350 contig_45847 contig_48452 contig_50830 contig_51331 contig_51614 contig_51624 contig_51627 contig_52726 contig_59129 contig_64508 contig_65919
+
+samtools view -b ../clr2.contigs.fasta.ccs.bam contig_11551 contig_11554 contig_20468 contig_22549 contig_27175 contig_28326 contig_28328 contig_33627 contig_34719 contig_34730 contig_34732 contig_34827 contig_37523 contig_38166 contig_43350 contig_45847 contig_48452 contig_50830 contig_51331 contig_51614 contig_51624 contig_51627 contig_52726 contig_59129 contig_64508 contig_65919 > example_clostridia/clr2.327.ccs.bam
+
+samtools index ../mapping/clr2.contigs/merged.bam; samtools view -b ../mapping/clr2.contigs/merged.bam contig_11551 contig_11554 contig_20468 contig_22549 contig_27175 contig_28326 contig_28328 contig_33627 contig_34719 contig_34730 contig_34732 contig_34827 contig_37523 contig_38166 contig_43350 contig_45847 contig_48452 contig_50830 contig_51331 contig_51614 contig_51624 contig_51627 contig_52726 contig_59129 contig_64508 contig_65919 > example_clostridia/clr2.327.sr.bam
+
+for i in clr1 clr2 clr3; do echo $i; sbatch -N 1 -n 1 --mem=9000 -p priority -q msn --wrap="samtools view -b ../minimap_clr_bams/clr2.$i.sorted.bam contig_11551 contig_11554 contig_20468 contig_22549 contig_27175 contig_28326 contig_28328 contig_33627 contig_34719 contig_34730 contig_34732 contig_34827 contig_37523 contig_38166 contig_43350 contig_45847 contig_48452 contig_50830 contig_51331 contig_51614 contig_51624 contig_51627 contig_52726 contig_59129 contig_64508 contig_65919 > clr2.327.$i.bam"; done
+
+samtools merge example_clostridia/clr2.327.clr.bam clr2.327.clr1.bam clr2.327.clr2.bam clr2.327.clr3.bam
+#####
 
 # viruses
 source activate /KEEP/rumen_longread_metagenome_assembly/seaborn/
@@ -2140,4 +2263,96 @@ perl -lane 'if($F[0] eq 'VirusCtg'){next;}else{print "$F[1]\t$F[0]\t$F[3]";}' < 
 # Master table
 perl -ne 'chomp; @F = split(/\t/); if($_ =~ /^##/){next;} for($x = 0; $x < scalar(@F); $x++){$F[$x] =~ s/\s+/_/g;} print join("\t", @F[0..2, 4..9, 12,15,18,21,24]) . "\n";' <blobtools/table.clr3.contigs.blobDB.table.txt > clr3.mastertable.template.tab
 python3 ~/python_toolchain/metagenomics/addJSONColumnsToTable.py -j clr3_data_files_03_2021.json -o clr3_master_table_03_2021.tab -t clr3.mastertable.template.tab
+```
+
+
+### Basic, basic stats
+
+```bash
+for i in /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/illumina_wgs/LIB101996_R1.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sheep_poop/illumina_wgs/LIB101996_R2.fastq.gz; do echo $i; gunzip -c $i | perl -e '$c = 0; $bp = 0; while(<>){$s = <>; <>; <>; chomp($s); $c++; $bp += length($s);} print "$c\t$bp\n";'; done
+
+/lustre/project/rumen_longread_metagenome_assembly/sheep_poop/illumina_wgs/LIB101996_R1.fastq.gz
+512187895       76972169332
+/lustre/project/rumen_longread_metagenome_assembly/sheep_poop/illumina_wgs/LIB101996_R2.fastq.gz
+512187895       76975222468
+
+for i in *.fai; do echo $i; perl -lane 'if($F[1] < 1000){next;}else{print "$_";}' < $i > temp.gt1kb.fai; perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/calculateContigN50.pl -i temp.gt1kb.fai; done
+clr1.contigs.fasta.fai
+Total length:   2984846227
+Num contigs:    48338
+N50 length:     1492428347
+N50 value:      185361
+L50 value:      3134
+Max:    7141023
+Min:    1000
+clr2.contigs.fasta.fai
+Total length:   3008462117
+Num contigs:    48793
+N50 length:     1504349034
+N50 value:      187989
+L50 value:      3112
+Max:    6067615
+Min:    1000
+flye4.contigs.fasta.fai
+Total length:   3424468269
+Num contigs:    57259
+N50 length:     1712285155
+N50 value:      279880
+L50 value:      2274
+Max:    5546585
+Min:    1000
+
+for i in clr3_rerun/assembly/clr3.contigs.fa.fai; do echo $i; perl -lane 'if($F[1] < 1000){next;}else{print "$_";}' < $i > temp.gt1kb.fai; perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/calculateContigN50.pl -i temp.gt1kb.fai; done
+clr3_rerun/assembly/clr3.contigs.fa.fai
+Total length:   2977556825
+Num contigs:    52607
+N50 length:     1488853997
+N50 value:      181150
+L50 value:      3100
+Max:    5235210
+Min:    1000
+
+perl -lane 'if($F[1] > 90 && $F[2] < 5){print $_;}' < clr3_rerun/tables/clr3.contigs.ctg_cov_by_comp.simp.tab | wc -l
+64
+
+perl -lane 'if($F[1] > 90 && $F[2] < 5){print "$F[0]";}' < clr3_rerun/tables/clr3.contigs.ctg_cov_by_comp.simp.tab > clr3_rerun/tables/clr3.contigs.ctg_cov_by_comp.simp.tab.hqctgs.list
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f /lustre/project/rumen_longread_metagenome_assembly/assemblies/sheep/sheep_clr3/assembly_info.txt -c 0 -l clr3_rerun/tables/clr3.contigs.ctg_cov_by_comp.simp.tab.hqctgs.list -d '\t' | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 3 -d '\t' -m
+|Entry | Value|
+|:-----|-----:|
+|N     |    42|
+|Y     |    22|
+
+perl -lane 'if($F[1] > 1000000){print $_;}' < /lustre/project/rumen_longread_metagenome_assembly/assemblies/sheep/sheep_clr3/assembly_info.txt | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 3 -d '\t' -m
+|Entry | Value|
+|:-----|-----:|
+|N     |   258|
+|Y     |    26|
+```
+
+#### IGV coordinates for figures
+
+HiFi 451:   contig_23521:224,065-231,684
+HiFi 451:   contig_15470:274,833-275,900
+
+clr1 451: contig_37225:2,983-10,287  (is the analog of the first HiFi 451 region)
+
+
+
+> /mnt/c/Sharedfolders
+
+```bash
+for i in clr1.451.ccs.bam clr1.451.sr.bam hifi.451.sr.bam hifi.451.ccs.bam; do echo $i; name=`echo $i | cut -d'.' -f1,2,3`; python3 filter_bam_by_coverage.py $i $name.filt.bam -c 0.9 --filter_secondary --filter_supp; done
+
+for i in hifi*filt.bam; do name=`echo $i | cut -d'.' -f1,2,3,4`; base=`echo $i | cut -d'.' -f1,2`; echo $name; ctg="contig_23521"; start=227243; end=230008; python3 paint_bam_post_phaser.py $i $name.$ctg.$start.$end.bam magphase_v23_bhr/$base.strain.human_readable_by_read.txt -c $ctg -s $start -e $end; done 
+
+
+for i in hifi*filt.bam; do name=`echo $i | cut -d'.' -f1,2,3,4`; base=`echo $i | cut -d'.' -f1,2`; echo $name; ctg="contig_15470"; start=274833; end=275900; python3 paint_bam_post_phaser.py $i $name.$ctg.$start.$end.bam magphase_v23_bhr/$base.strain.human_readable_by_read.txt -c $ctg -s $start -e $end; samtools index $name.$ctg.$start.$end.bam; done
+```
+
+#### Assigning empty taxa
+
+```bash
+grep -v 'NOBIN' flye4_master_table_12_2020.tab | perl -lane 'if(scalar(@F) < 22){print $_;}' | perl -e '%data; while(<>){chomp; @s = split(/\t/); $data{$s[13]}->{"d__$s[7];p__$s[8];o__$s[9];f__$s[10];g__$s[11];s__$s[12]"} += 1;} foreach my $k (keys(%data)){ print "$k"; foreach my $v (sort {$data{$k}->{$b} <=> $data{$k}->{$a}} keys(%{$data{$k}})){print "\t$v\t" . $data{$k}->{$v};} print "\n";}' > gtdbtk_output/flye4_nongtdbtk_bins.tab
+
 ```

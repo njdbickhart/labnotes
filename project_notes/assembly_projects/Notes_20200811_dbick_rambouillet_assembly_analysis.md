@@ -31,7 +31,7 @@ Assembly locations:
 
 OK, setting up the assembly QC pipeline and letting it go to town!
 
-> Ceres:
+> Ceres: /lustre/project/gaur_genome_assembly/Rambouillet/publication_qc/
 
 ```bash
 module load miniconda/3.6
