@@ -1322,7 +1322,7 @@ ccsdata <- read.delim("flye4.mmgenome2.input.tab", header=TRUE)
 ilmdata <- read.delim("flye4.mmgenome.ilumina.tab", header=TRUE)
 
 combined <- left_join(ccsdata, ilmdata, by="contigName")
-mm <- mmload("flye4.contigs.fasta", coverage=combined)
+mm <- mmload("flye4.contigs.fasta", coverage=combined, taxonomy=taxa)
 
 for (c in c("clr1", "clr2", "clr3", "ilmn")){
 filename <- paste0("hifi.", c, ".covplot.pdf")
@@ -1900,10 +1900,16 @@ Just in case we need it for review:
 > Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/sheep
 
 ```bash
-module load miniconda/3.6
+module load miniconda/3.6 minimap2 samtools
 source activate /KEEP/rumen_longread_metagenome_assembly/flye
 
-sbatch --nodes=1 --mem=1000000 --ntasks-per-node=70 -p priority-mem -q msn-mem flye -g 1.0g --pacbio-hifi /lustre/project/gaur_genome_assembly/metagenome_assembly/sheep_614208/PacBio/sheep_201614208.CCS.Q20.fastq -o sheep_sample2_metaflye --meta -t 70
+sbatch --nodes=1 --mem=1500000 --ntasks-per-node=70 -p priority-mem -q msn-mem flye -g 1.0g --pacbio-hifi /lustre/project/gaur_genome_assembly/metagenome_assembly/sheep_614208/PacBio/sheep_201614208.CCS.Q20.fastq -o sheep_sample2_metaflye --meta -t 60 --resume
+
+# Trying on new branch
+export LD_LIBRARY_PATH=/KEEP/rumen_longread_metagenome_assembly/flye/lib:$LD_LIBRARY_PATH
+export CPATH=/KEEP/rumen_longread_metagenome_assembly/flye/include/:$CPATH
+export PYTHONPATH=/lustre/project/rumen_longread_metagenome_assembly/binaries/Flye:$PYTHONPATH
+sbatch --nodes=1 --mem=1500000 --ntasks-per-node=70 -p priority-mem -q msn-mem /lustre/project/rumen_longread_metagenome_assembly/binaries/Flye/bin/flye -g 1.0g --pacbio-hifi /lustre/project/gaur_genome_assembly/metagenome_assembly/sheep_614208/PacBio/sheep_201614208.CCS.Q20.fastq -o sheep_sample2_metaflye --meta -t 60 --resume
 ```
 
 

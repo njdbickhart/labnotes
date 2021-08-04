@@ -918,6 +918,8 @@ conda activate /lustre/project/rumen_longread_metagenome_assembly/assemblies/clo
 python ~/python_toolchain/snakeMake/assemblyValidation/scripts/createWebpage.py -f final -o clover_summary -c hifiASM_altIPA -c hifiASM_hifiFlye -c hifiASM_primaryIPA -c hifiFlye_altIPA -c hifiFlye_primaryIPA -c ontFlye_altIPA -c ontFlye_hifiASM -c ontFlye_hifiFlye -c ontFlye_primaryIPA -c primaryIPA_altIPA -s clover_limit_flye.fasta -s red_clover_2cells_hifiasm.p_ctg.fasta -s clover_hiflye.fasta -s final.p_ctg.fasta -s final.a_ctg.fasta -a ontFlye -a hifiASM -a hifiFlye -a primaryIPA -a altIPA
 
 mkdir package
+
+wget https://zenodo.org/record/17232/files/redclover_v2.1.fasta
 ```
 
 
@@ -934,6 +936,11 @@ sbatch -N 1 -n 2 --mem=12000 -p priority -q msn --wrap="python /lustre/project/r
 python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/fastas/primaryIPA.fa -b omnic_ipa_paligns -t omnic_data.tab -q msn -p priority -n -m
 
 sbatch -N 1 -n 2 --mem=12000 -p priority -q msn --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/hic_qc/hic_qc.py -b omnic_ipa_paligns/clover/clover.sorted.merged.bam --outfile_prefix  clover_omnic "
+
+
+
+sbatch -N 1 -n 1 --mem=45000 -p priority -q msn --wrap="bwa index clover_primary_ipa.purged.fa"
+sbatch -N 1 -n 1 --mem=9000 --dependency=afterok:5851618 -p priority -q msn --wrap="python3 ~/python_toolchain/sequenceData/slurmAlignScriptBWA.py -f /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_primary_ipa.purged.fa -b omnic_purge_paligns -t omnic_data.tab -q msn -p priority -n -m"
 ```
 
 #### Clover salsa scaffolding
@@ -950,4 +957,415 @@ sbatch -N 1 -n 3 --mem=50000 -p priority -q msn --wrap="minimap2 -x asm5 fastas/
 
 conda activate /KEEP/rumen_longread_metagenome_assembly/r
 Rscript /lustre/project/rumen_longread_metagenome_assembly/binaries/Themis-ASM/scripts/pafDotPlotly.R -i omnic_ipa_paligns/rc_pipa_to_salsa.paf -v -l -s -o rc_pipa_to_salsa
+
+# Running scaffolding on purged primary IPA assembly
+sbatch -N 1 -n 1 --mem=10000 -p priority -q msn --wrap="bamToBed -i omnic_purge_paligns/clover/clover.sorted.merged.bam > omnic_purge_paligns/clover.sorted.bed"
+
+sbatch -N 1 -n 2 --mem=280000 -p priority -q msn --wrap="python /lustre/project/rumen_longread_metagenome_assembly/binaries/SALSA/run_pipeline.py -a clover_primary_ipa.purged.fa -l clover_primary_ipa.purged.fa.fai -e DNASE -b omnic_purge_paligns/clover.sorted.bed -o omnic_purge_paligns/salsa_scaffolds"
+
+# Now for an ASM-ASM comparison
+
+```
+
+The scaffolding wasn't the best. Maybe I should purge dups first?
+
+## Purge dups
+
+```bash
+module load miniconda/3.6 "java/11.0.2" bedtools minimap2
+
+conda activate /KEEP/rumen_longread_metagenome_assembly/purge_dups/
+
+for i in /lustre/project/rumen_longread_metagenome_assembly/sequence_data/clover_ccs/*Q20.fastq; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 15 -p priority -q msn --mem=55000 --wrap="minimap2 -t 15 -x asm20 clover_ipa/19-final/final.p_ctg.fasta $i > $name.asm20.paf"; done
+
+for i in *.paf; do sbatch -N 1 -n 1 --mem=5000 -p priority -q msn --wrap="gzip $i"; done
+
+sbatch -N 1 -n 2 --mem=65000 -p priority -q msn --wrap="pbcstat *asm20.paf.gz; calcuts PB.stat > cutoffs 2> calcults.log"
+
+sbatch -N 1 -n 4 --mem=55000 -p priority -q msn --wrap="split_fa clover_ipa/19-final/final.p_ctg.fasta > ipa_primary.fasta.split; minimap2 -xasm5 -DP ipa_primary.fasta.split ipa_primary.fasta.split | gzip -c - > ipa_primary.split.self.paf.gz"
+
+sbatch -N 1 -n 4 --mem=55000 -p priority -q msn --wrap="get_seqs -l 5000 -e dups.bed clover_ipa/19-final/final.p_ctg.fasta"
+
+sbatch -N 1 -n 1 --mem=20000 -p primary -q msn --wrap="python3 ~/python_toolchain/sequenceData/reformatFasta.py -f clover_primary_ipa.purged.fa -o clover_hifi_temp.fasta -v"
+
+mv clover_hifi_temp.fasta clover_primary_ipa.purged.fa
+```
+
+## Themis run
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_ccs_themis
+
+```bash
+module load miniconda/3.6 "java/11.0.2" bedtools
+
+PATH=$PATH:/software/7/apps/merqury/1.1/:/software/7/apps/meryl/1.0/Linux-amd64/bin/
+MERQURY=/software/7/apps/merqury/1.1
+
+sbatch -N 1 -n 2 --mem=6000 -p priority -q msn --wrap='python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/themisASM.py -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/redclover_v2.1.fasta -n shortRead -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_primary_ipa.purged.fa -n hifiContigs -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/omnic_purge_paligns/salsa_scaffolds/scaffolds_FINAL.fasta -n hifiScaffolds -b eudicots_odb10 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L001-ds.ac229a7a209e4f809c4ac2bda32e46fe/Hen17Cv_S1_L001_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L001-ds.ac229a7a209e4f809c4ac2bda32e46fe/Hen17Cv_S1_L001_R2_001.fastq.gz -s lane1 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L002-ds.e4d313d6db7a45ec88dba60164d0d717/Hen17Cv_S1_L002_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L002-ds.e4d313d6db7a45ec88dba60164d0d717/Hen17Cv_S1_L002_R2_001.fastq.gz -s lane2 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L003-ds.20e6182d55ac40e2b889f55011234126/Hen17Cv_S1_L003_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L003-ds.20e6182d55ac40e2b889f55011234126/Hen17Cv_S1_L003_R2_001.fastq.gz -s lane3 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L004-ds.8b23d704e97542d982a7416ef5ce3c8a/Hen17Cv_S1_L004_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L004-ds.8b23d704e97542d982a7416ef5ce3c8a/Hen17Cv_S1_L004_R2_001.fastq.gz -s lane4 -c "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -j 100 --resume'
+```
+
+## Download bac ends
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/bac_ends
+
+```bash
+conda activate /KEEP/rumen_longread_metagenome_assembly/eutils
+PERL5LIB=/KEEP/rumen_longread_metagenome_assembly/eutils/lib/perl5:/KEEP/rumen_longread_metagenome_assembly/eutils/lib/5.26.2/x86_64-linux-thread-multi/:/KEEP/rumen_longread_metagenome_assembly/eutils/lib/site_perl/:$PERL5LIB
+
+sbatch -N 1 -n 2 --mem=6000 -p priority -q msn --wrap='for i in `seq 235466 298279`; do echo $i; esearch -db nucleotide -query HR${i} | efetch -format fasta >> bac_ends_unsorted.fasta; done'
+
+perl generate_pairs.pl bac_ends_unsorted.fasta sorted_bac_ends
+
+grep '>' sorted_bac_ends.f.fasta > for.list
+grep '>' sorted_bac_ends.r.fasta > rev.list
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl for.list rev.list
+File Number 1: for.list
+File Number 2: rev.list
+Set     Count
+1       2497
+1;2     29069
+2       2175
+
+# looks like they screwed up their submission! I'm going to have to filter the file to keep only the paired bac ends
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1_2 for.list rev.list | perl -lane 'if($F[0] =~ /File/){next;}else{$F[0] =~ s/>//; print "$F[0]";}' > shared.list
+
+perl generate_pairs.pl bac_ends_unsorted.fasta sorted_bac_ends shared.list
+
+module load minimap2
+minimap2 -ax sr /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/omnic_purge_paligns/salsa_scaffolds/scaffolds_FINAL.fasta sorted_bac_ends.f.fasta sorted_bac_ends.r.fasta > hifi_bacends_paired.sam
+perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] & 2048){}else{print $_;}' < hifi_bacends_paired.sam | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 6 -i '@' -d '\t' | perl -e '%h; <>; while(<>){chomp; @s = split(/\t/); if($s[0] eq "="){$h{"same"} += $s[1];}elsif($s[0] eq "*"){$h{"unmap"} += $s[1];}else{$h{"different"} += $s[1];}} foreach $i ("same", "different", "unmap"){print "$i\t$h{$i}\n";}'
+same    27984
+different       29188
+unmap   966
+
+```
+
+|Entry        | Value|
+|:------------|-----:|
+|same		  |27,984|
+|different    |29,188|
+|unmap        |   966|
+
+```bash
+minimap2 -ax sr /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/redclover_v2.1.fasta sorted_bac_ends.f.fasta sorted_bac_ends.r.fasta > short_bacends_paired.sam
+
+perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] & 2048){}else{print $_;}' < short_bacends_paired.sam | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 6 -i '@' -d '\t' | perl -e '%h; <>; while(<>){chomp; @s = split(/\t/); if($s[0] eq "="){$h{"same"} += $s[1];}elsif($s[0] eq "*"){$h{"unmap"} += $s[1];}else{$h{"different"} += $s[1];}} foreach $i ("same", "different", "unmap"){print "$i\t$h{$i}\n";}'
+same    14714
+different       42456
+unmap   968
+```
+
+|Entry                      | Value|
+|:--------------------------|-----:|
+|same                       |14,714|
+|different					|42,456|
+|unmap                      |   968|
+
+So, the Salsa scaffold HIFI assembly better resolves BAC end placement on the same scaffolds than the short read assembly! Big time! Almost twice as likely to resolve it!
+
+Let's create a graph so we can compare our scaffold-scaffold aligments with additional evidence.
+
+```bash
+perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] & 2048){}else{if($F[6] eq "="){$F[6] = $F[2];} print "$F[2]-$F[6]";}' < hifi_bacends_paired.sam | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -d '\t' | perl -e '<>; while(<>){chomp; @s = split(/[-\t]/); if($s[0] eq $s[1]){next;} print join("\t", @s) . "\n";}' > hifi_bacends_discord.bigraph
+
+perl -lane 'print $F[-1];' < hifi_bacends_discord.bigraph | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   3962
+Sum:    29188
+Minimum 1
+Maximum 286
+Average 7.366986
+Median  2
+Standard Deviation      16.919970
+
+perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] & 2048){}else{if($F[6] ne "=" && $F[3] < 250000){print "$F[2]-$F[6]";}' < hifi_bacends_paired.sam | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -d '\t'
+
+# I think that the BAC end alignments don't work as well due to my lack of repeatmasking. Let's try again.
+sbatch -N 1 -n 50 --mem=55000 -p priority -q msn --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/RepeatMasker/RepeatMasker -pa 50 -q -species arabidopsis -no_is -gff scaffolds_FINAL.fasta"
+```
+
+## Super scaffolding run
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_ccs_themis
+
+```bash
+grep 'LG' mapped/mapshortRead_hifiScaffolds.paf | perl -e '%h; %l; while(<>){chomp; @s = split(/\t/); $h{$s[0]}->{$s[5]} += $s[9]; $l{$s[0]} = $s[1];} foreach $q (sort{$l{$b} <=> $l{$a}} keys(%l)){$num = scalar(keys(%{$h{$q}})); print "$q\t$l{$q}\t$num"; foreach $r (sort{$h{$q}->{$b} <=> $h{$q}->{$a}} keys(%{$h{$q}})){if($h{$q}->{$r} < 1000){next;}print "\t$r:" . $h{$q}->{$r};} print "\n";}' > scaffold_lg_linkage.tab
+
+# I think that one of my old perl scripts can help here
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -g mapped/mapshortRead_hifiScaffolds.paf -m 5000 -o shortread_superscaffold_order
+
+
+# Manual inspection SOP
+perl -lane 'print "$F[0]\t$F[1]\t$F[2]";' < shortread_superscaffold_order.alnstats | grep 'LG6' | head
+
+grep 'LG' shortread_superscaffold_order.segs | perl -lane 'if($F[-1] == 0){next;}else{print $_;}' | less
+```
+
+|Group | Scaffold list |
+|:--- | :--- |
+| LG6 | scaffold_19:-; scaffold_5:-; scaffold_17:-|
+|LG3 | scaffold_3:+; scaffold_14:+; scaffold_10:-|
+|LG5 | scaffold_9:-; scaffold_18:-; scaffold_25:+|
+|LG4 | scaffold_26:-; scaffold_8:+; scaffold_1:+|
+|LG7 | scaffold_11:-; scaffold_12:-; scaffold_7:+|
+|LG1 | scaffold_4:-; scaffold_6:-|
+|LG2 | scaffold_2:+|
+
+OK, The alignments were all over the place so this needs confirmation. Let's use these as a base to see how the bigraph alignment of BAC ends looks. Nevermind that! It is crap! I don't know which to trust, so I'm going to align the ONT reads as an orthogonal dataset to compare against.
+
+```bash
+module load minimap2
+
+sbatch -N 1 -n 30 --mem=75000 -p priority -q msn --wrap='minimap2 -t 30 -x map-ont /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/omnic_purge_paligns/salsa_scaffolds/scaffolds_FINAL.fasta /lustre/project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/RC_ULR.total.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_new_combined_fastqs.fastq.gz > clover_scaffolds_ont_aligns.paf'
+
+sbatch -N 1 -n 2 --mem=55000 -p priority -q msn --wrap="perl ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAnalysisScripts/selectLikelyViralOverhangs.pl clover_scaffolds_ont_aligns.paf clover_scaffolds_ont_overhangs"
+
+sbatch -N 1 -n 2 --mem=10000 -p priority -q msn --wrap='cat /lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_new_combined_fastqs.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/RC_ULR.total.fastq | perl convert_fastq_to_fasta.pl; perl ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAnalysisScripts/filterViralOverhangsAndGenerateSeq.pl clover_scaffolds_ont_overhangs.subread.bed temp.fa 200 clover_scaffolds_ont_overhangs.fa; rm temp.fa'
+
+sbatch -N 1 -n 3 --mem=36000 -p priority -q msn --wrap='minimap2 -x map-ont /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/omnic_purge_paligns/salsa_scaffolds/scaffolds_FINAL.fasta clover_scaffolds_ont_overhangs.fa > clover_scaffolds_overhangs.paf'
+
+sbatch -N 1 -n 2 --mem=55000 -p priority -q msn --wrap="perl ~/rumen_longread_metagenome_assembly/binaries/RumenLongReadASM/viralAnalysisScripts/filterOverhangAlignments.pl clover_scaffolds_overhangs.paf clover_scaffolds_ont_aligns.paf clover_scaffolds_filtered_association_table.tab"
+
+perl -e '%h; while(<>){chomp; @s = split(/\t/); shift(@s); @s = sort {$a cmp $b} @s; if($s[0] eq $s[1]){next;} $h{"$s[0]\t$s[1]"} += 1;} foreach $k (sort{$h{$b} <=> $h{$a}} keys(%h)){print "$k\t$h{$k}\n";}' < clover_scaffolds_filtered_association_table.tab
+scaffold_10     scaffold_34     107
+scaffold_11     scaffold_7      77
+scaffold_14     scaffold_34     59
+scaffold_2      scaffold_54     57
+scaffold_4      scaffold_44     55
+scaffold_2      scaffold_32     53
+scaffold_3      scaffold_64     45
+scaffold_36     scaffold_5      42
+scaffold_1      scaffold_141    41
+scaffold_1      scaffold_89     35
+scaffold_20     scaffold_24     33
+scaffold_140    scaffold_18     32
+scaffold_41     scaffold_46     28
+scaffold_15     scaffold_82     27
+scaffold_19     scaffold_42     27
+scaffold_13     scaffold_29     22
+scaffold_16     scaffold_97     20
+scaffold_11     scaffold_20     20
+scaffold_48     scaffold_9      20
+scaffold_14     scaffold_3      19
+scaffold_111    scaffold_9      19
+scaffold_20     scaffold_49     17
+scaffold_138    scaffold_9      17
+scaffold_26     scaffold_35     16
+scaffold_1      scaffold_50     16
+scaffold_46     scaffold_68     16
+scaffold_53     scaffold_82     15
+
+
+# Trying this with the contigs
+sbatch -N 1 -n 30 --mem=75000 -p priority -q msn --wrap='minimap2 -t 30 -x map-ont clover_ccs_themis/fastas/hifiContigs.fa /lustre/project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/RC_ULR.total.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_new_combined_fastqs.fastq.gz > clover_contigs_ont_aligns.paf'
+```
+
+## Ragtag scaffolding
+
+OK, the orthogonal data failed to help me resolve scaffolds. Let's see how RagTag performs. I will try to create superscaffolds using the LG groups from red clover 2, and then using ragtag's Hi-C error correction to try to fix them. Let's start with the contigs from the purged IPA assembly first and then test them against the Salsa scaffolds.
+
+```bash
+module load miniconda/3.6 minimap2
+
+conda activate /KEEP/rumen_longread_metagenome_assembly/ragtag
+
+sbatch -N 1 -n 20 -p priority -q msn --mem=105000 --wrap="ragtag.py scaffold -o clover_contigs_rcv2 -t 20 /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/redclover_v2.1.fasta /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_primary_ipa.purged.fa"
+
+sbatch -N 1 -n 20 -p priority -q msn --mem=105000 --wrap="ragtag.py scaffold -o clover_scaffolds_rcv2 -t 20 /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/redclover_v2.1.fasta /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/omnic_purge_paligns/salsa_scaffolds/scaffolds_FINAL.fasta"
+
+# Creating reads for assembly correction
+sbatch -N 1 -n 2 --mem=10000 -p priority -q msn --wrap='cat /lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_nano/clover_new_combined_fastqs.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/RC_ULR.total.fastq | perl convert_fastq_to_fasta.pl'
+
+mv temp.fa redclover_ont_combined.fasta
+gzip redclover_ont_combined.fasta
+
+# Making a comparative alignment plot
+conda activate /KEEP/rumen_longread_metagenome_assembly/r
+
+sbatch -N 1 -n 3 --mem=30000 -p priority -q msn --wrap='minimap2 -x asm10 clover_contigs_rcv2/ragtag.scaffold.fasta clover_scaffolds_rcv2/ragtag.scaffold.fasta > ragtag_scaffoldvscontig.paf; Rscript /lustre/project/rumen_longread_metagenome_assembly/binaries/Themis-ASM/scripts/pafDotPlotly.R -i ragtag_scaffoldvscontig.paf -o ragtag_svsc -v -s -l'
+```
+
+## Contingency: HifiASM
+
+I am going to try to run HifiASM on the HiFi reads + Hi-C reads to see if we can best resolve the assembly that way. It will make Heng Li happy if it does!
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs
+
+```bash
+sbatch -N 1 -n 70 -p priority-mem -q msn-mem --mem=1000000 --wrap="/lustre/project/rumen_longread_metagenome_assembly/binaries/hifiasm/hifiasm -o redclover.hifi.asm -t 70 --h1 /lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S10_L001_R1_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S10_L002_R1_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S10_L003_R1_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S10_L004_R1_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S1_L001_R1_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S9_L001_R1_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S9_L002_R1_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S9_L003_R1_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S9_L004_R1_001.fastq.gz --h2 /lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S10_L001_R2_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S10_L002_R2_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S10_L003_R2_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S10_L004_R2_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S1_L001_R2_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S9_L001_R2_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S9_L002_R2_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S9_L003_R2_001.fastq.gz,/lustre/project/rumen_longread_metagenome_assembly/sequence_data/red_clover_omniC/LIB109270_S9_L004_R2_001.fastq.gz /lustre/project/rumen_longread_metagenome_assembly/sequence_data/clover_ccs/m54337U_200929_165102.Q20.fastq /lustre/project/rumen_longread_metagenome_assembly/sequence_data/clover_ccs/m54337U_201002_155306.Q20.fastq"
+
+
+perl -ne 'chomp; @F = split(/\t/); if($F[0] eq "S"){$F[2] =~ s/(.{60})/$1\n/g; print ">$F[1]\n$F[2]\n";}' < redclover.hifi.asm.hic.hap1.p_ctg.gfa > redclover.hifi.asm.hic.hap1.p_ctg.fasta
+
+samtools faidx redclover.hifi.asm.hic.hap1.p_ctg.fasta
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/calculateContigN50.pl -i redclover.hifi.asm.hic.hap1.p_ctg.fasta.fai
+Total length:   457806091
+Num contigs:    1502
+N50 length:     233830670
+N50 value:      7234713
+L50 value:      18
+Max:    24557875
+Min:    7799
+
+conda activate /KEEP/rumen_longread_metagenome_assembly/r
+sbatch -N 1 -n 3 --mem=30000 -p priority -q msn --wrap='minimap2 -x asm10 /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_primary_ipa.purged.fa redclover.hifi.asm.hic.hap1.p_ctg.fasta > hifiasm_ipactg_align.paf; Rscript /lustre/project/rumen_longread_metagenome_assembly/binaries/Themis-ASM/scripts/pafDotPlotly.R -i hifiasm_ipactg_align.paf -o hifiasm_ipactg_align -v -s -l'
+```
+
+## Validation EST map
+
+```bash
+module load bwa samtools
+# Downloading the EST sequences
+perl -lane 'print $F[0]; open(IN, "wget -O - http://marker.kazusa.or.jp/Red_clover/sequence/$F[0] |"); open(OUT, "> $F[0].fasta"); $pre = 0; while(<IN>){chomp; if($_ =~ /\<pre\>/){$pre = 1; next;}elsif($_ =~ /\<\/pre\>/){$pre = 0;} if($pre){if($_ =~ /^>/){$_ = ">$F[0]";} print {OUT} $_;}} close IN; close OUT;' < linkage_map.tab
+
+# Now to filter the linkage map to exclude reads that weren't identified
+perl -lane 'if( -s "est_linkage/$F[0].fasta"){print $_;}' < est_linkage/linkage_map.tab > est_linkage/linkage_map_filtered.tab
+
+# Moving individual fasta sequence to a new directory to keep things clean
+mkdir est_linkage/indiv_fastas
+mv est_linkage/*.fasta est_linkage/indiv_fastas/
+
+cat est_linkage/indiv_fastas/*.fasta > est_linkage/linkage_map_filtered.fasta
+
+# converting to a format that gives linkage information
+perl -e 'chomp(@ARGV); %data; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $s[2] =~ s/\.\d+$//; $data{$s[0]} = [$s[1], $s[2]]; } close IN; open(IN, " < $ARGV[1]"); while(<IN>){if($_ =~ /^>/){chomp; $_ =~ s/>//; @d = @{$data{$_}}; unshift(@d, $_); print ">" . join(".", @d) . "\n";}elsif($_ =~ /^\s+$/){next;}else{print $_;}} close IN;' est_linkage/linkage_map_filtered.tab est_linkage/linkage_map_filtered.fasta > est_linkage/linkage_map_filtered.fmt.fasta
+
+# Running the order script
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a clover_ccs_themis/fastas/hifiScaffolds.fa -p est_linkage/linkage_map_filtered.fmt.fasta -o est_linkage/hifi_scaffolds
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a clover_ccs_themis/clover_scaffolds_rcv2/ragtag.scaffold.fasta -p est_linkage/linkage_map_filtered.fmt.fasta -o est_linkage/ragtag_scaffolds
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a clover_ccs_themis/clover_contigs_rcv2/ragtag.scaffold.fasta -p est_linkage/linkage_map_filtered.fmt.fasta -o est_linkage/ragtag_contigs
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a clover_ccs_themis/fastas/hifiContigs.fa -p est_linkage/linkage_map_filtered.fmt.fasta -o est_linkage/hifi_contigs
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/assembly_scripts/alignAndOrderSnpProbes.pl -a clover_ccs_themis/fastas/shortRead.fa -p est_linkage/linkage_map_filtered.fmt.fasta -o est_linkage/short_read
+
+# Identifying best assembly based on consensus statistics
+for i in est_linkage/*.stats; do echo $i; perl -lane 'if($F[0] eq 'Mapping'){next;}else{print "$F[0]\t$F[1]\t$F[2]\t$F[3]\t$F[4]\t$F[5]";}' < $i; done
+
+## If we base things off of consensus incorporation of sequence that has at least 10 mapping markers in succession, it looks like the ragtag contigs are best. 
+## LG2: LG2 scaffold + ctg.000054F_1_1  <- actually didn't pan out might be heterozygous alignment?
+## LG5: LG5 scaffold + ctg.000021F_1_1 (<- also interior to the scaffold) + ctg.000066F_1_1 + ctg.000085F_1_1
+```
+
+So the only modification I should make appears to be:
+
+LG5: ctg.000066F_1_1:-, ctg.000085F_1_1:+, LG5
+
+Let's make that modification in a new agp file and generate what I feel is a suitable penultimate assembly. Then, maybe I can run ragtag with hi-c? Let's just make the fasta file and see what the collaborators think first.
+
+```bash
+perl -lane '$t = $F[0]; $t =~ s/Tp57577_TGAC_v2_//; $t =~ s/_RagTag//; print "$F[0]\t1\t$F[1]\t$t\t1\t+";' < clover_ccs_themis/clover_contigs_rcv2/ragtag.scaffold.fasta.fai > est_linkage/ragtag_contigs.plan.bed
+
+vim est_linkage/ragtag_contigs.plan.bed
+
+module load java
+java -Xmx15g -jar ~/rumen_longread_metagenome_assembly/binaries/CombineFasta/store/CombineFasta.jar agp2fasta -f clover_ccs_themis/clover_contigs_rcv2/ragtag.scaffold.fasta -b est_linkage/ragtag_contigs.plan.bed -o est_linkage/ARS_DFRC.1.fasta
+samtools faidx est_linkage/ARS_DFRC.1.fasta
+
+# I'm not too happy because only 260 Megs are in superscaffolds!
+```
+
+
+### Network analysis
+
+OK, I want to see if I can consolidate all of the linkage information that I have into networks and analyze the topology. I will use the EST data to assess contig/scaffold assignment in general (to linkage groups) but then create edges based on each method. I will then try to consolidate all networks and weight the edges based on discovery. 
+
+Let's first organize all of the data I have:
+
+#### Data types
+* BAC_ends: bac_ends/hifi_bacends_discord.bigraph
+* EST_linkages: est_linkage/hifi_scaffolds.tab
+* ONT longreads: clover_ccs_themis/clover_scaffolds_filtered_association_table.tab
+
+
+I just checked assembly sizes, and the Hifi scaffolds (from Salsa) have more bases assigned to linkage groups than the base contigs. I will try to use the scaffolds in the first round of network analysis and omit the Hi-C linkage data (as it will be highly biased!). 
+
+All data files will need to be converted to a bi-graph format.
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs
+
+```bash
+mkdir graph_comps
+
+# Removing duplicate entries from the bacend analysis
+perl -e '$c = 0; while(<>){if($c % 2 == 0){print $_;} $c++;}' < bac_ends/hifi_bacends_discord.bigraph > graph_comps/hifiScaffolds_bacends.bigraph
+
+# Taking raw associations between ESTS into the bigraph
+perl -e '%data; $lastc = "None"; $lasts = "None"; while(<>){chomp; @s = split(/\t/); if($s[4] ne $lastc){$lastc = $s[4];}elsif($s[1] eq "*"){next;}else{@cats = sort { $a cmp $b} ($lasts, $s[1]); $data{$cats[0]}->{$cats[1]} += 1;} $lasts = $s[1];} foreach $first (keys(%data)){foreach $second (keys(%{$data{$first}})){print "$first\t$second\t" . $data{$first}->{$second} . "\n";}}' < est_linkage/hifi_scaffolds.tab > graph_comps/hifiScaffolds_estlinks.bigraph
+
+# converting the ont read overlaps into a bigraph
+perl -e '%data; while(<>){chomp; @s = split(/\t/); @y = sort{$a cmp $b} ($s[1], $s[2]); $data{$y[0]}->{$y[1]} += 1;} foreach $first (keys(%data)){foreach $second (keys(%{$data{$first}})){print "$first\t$second\t" . $data{$first}->{$second} . "\n";}}' < clover_ccs_themis/clover_scaffolds_filtered_association_table.tab > graph_comps/hifiScaffolds_ont.bigraph
+
+# I need attribute data for each scaffold including LG assignment based on EST maps. I'll keep it simple and just consolidate scaffold length and LG assignment for now
+perl -e 'chomp(@ARGV); @list = ("LG", "Length"); %data; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[0]}->{"Length"} = $s[1]; $data{$s[0]}->{"LG"} = "Unassigned";} close IN; open(IN, "< $ARGV[0]"); <IN>; while(<IN>){@s = split(/\s+/); $lg = $s[1] . ""; for($x =0; $x < 3; $x++){shift(@s);} foreach my $d (@s){@bsegs = split(/:/, $d); if($bsegs[0] eq "*"){next;} $data{$bsegs[0]}->{"LG"} = $lg;} } close IN; print "Scaffold\t" . join("\t", @list) . "\n"; foreach my $k (keys(%data)){print "$k"; foreach my $l (@list){print "\t" . $data{$k}->{$l}} print "\n";}' est_linkage/hifi_scaffolds.stats clover_ccs_themis/fastas/hifiScaffolds.fa.fai > graph_comps/hifiScaffolds_attributes.tab
+
+
+```
+
+## Finalizing scaffolds
+
+OK, my network analysis resulted in a strategy for finishing this up. I need to figure out how several of the unassigned scaffolds fit into the mix, but once I do, I can finish everything up.
+
+I am going to use the Salsa HiFi scaffolds to start as my base. I will then take all EST assigned scaffolds and place them in the best order possible. Then I will add 8 otherwise unassigned scaffolds to the linkage groups based on the network analysis. 
+
+```bash
+module load bwa samtools
+# First, generate a consensus for each scaffold and a range for values
+perl -e '%data; while(<>){chomp; @s = split(/\t/); if($s[1] eq "*"){next;}  $data{$s[1]}->{$s[4]} += 1;} foreach $s (sort {$a cmp $b} keys(%data)){foreach $k (sort {$data{$s}->{$b} <=> $data{$s}->{$a}} keys(%{$data{$s}})){print "$s\t$k\t" . $data{$s}->{$k} . "\n"; last;}}' < est_linkage/hifi_scaffolds.tab > est_linkage/hifi_scaffolds_consensus.tab
+
+perl -e 'chomp(@ARGV); %cons; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $cons{$s[0]} = $s[1];} close IN; %range; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[4] ne $cons{$s[1]}){next;} if(!exists($range{$s[1]})){$range{$s[1]} = [$cons{$s[1]}, $s[5], $s[5], $s[2], $s[2]];}else{$range{$s[1]}->[2] = $s[5]; $range{$s[1]}->[4] = $s[2];}} close IN; foreach my $k (sort {$range{$a}->[0] cmp $range{$b}->[0] || $range{$a}->[1] <=> $range{$b}->[1]} keys(%range)){print "$k\t" . join("\t", @{$range{$k}}) . "\n";}' est_linkage/hifi_scaffolds_consensus.tab est_linkage/hifi_scaffolds.tab > est_linkage/hifi_scaffolds.prelim.plan.tab
+
+# I'm going to use the minimum placing for each scaffold in the meantime. Then I will pad entries by 1000 bp in the final scaffolds
+perl -e 'chomp(@ARGV); %lens; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $lens{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); $c = 1; $last = "None"; while(<IN>){chomp; @s = split(/\t/); if($last ne $s[1]){$last = $s[1]; $c = 1;} $end = $lens{$s[0]}; $orient = ($s[4] - $s[5] <= 0)? "+" : "-"; print "$s[0]\t1\t$end\t$s[1]\t$c\t$orient\n"; $c++;} close IN;' clover_ccs_themis/fastas/hifiScaffolds.fa.fai est_linkage/hifi_scaffolds.prelim.plan.tab > est_linkage/hifi_scaffolds.prelim.plan.bed
+
+mkdir placed_scaffs
+cp est_linkage/hifi_scaffolds.prelim.plan.bed placed_scaffs/hifi_scaffolds.plan.bed
+
+# I only added in four scaffolds that were 100kb+ for a total addition of around 1 Mbp to the final assembly
+perl -e '%data; while(<>){chomp; @s = split(/\t/); $data{$s[3]} += $s[2];} foreach $k (keys(%data)){print "$k\t$data{$k}\n";}' < placed_scaffs/hifi_scaffolds.plan.bed
+LG6     46133763
+LG2     74472114
+LG7     59238277
+LG5     57895441
+LG1     53631259
+LG4     60492793
+LG3     54406022
+
+# I need to now add in the remainder at the end of the assembly
+perl -lane 'print $F[0];' < placed_scaffs/hifi_scaffolds.plan.bed > placed_scaffs/hifi_scaffolds.plan.scaff.list
+perl -lane 'print $F[0];' < clover_ccs_themis/fastas/hifiScaffolds.fa.fai > hifiScaffolds.scaff.list
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl hifiScaffolds.scaff.list placed_scaffs/hifi_scaffolds.plan.scaff.list
+File Number 1: hifiScaffolds.scaff.list
+File Number 2: placed_scaffs/hifi_scaffolds.plan.scaff.list
+Set     Count
+1       81
+1;2     62
+
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl -l 1 hifiScaffolds.scaff.list placed_scaffs/hifi_scaffolds.plan.scaff.list > hifiScaffolds.missing.list
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f clover_ccs_themis/fastas/hifiScaffolds.fa.fai -l hifiScaffolds.missing.list -d '\t' -c 0 | perl -lane 'print "$F[0]\t1\t$F[1]\t$F[0]\t1\t+";' > hifiScaffolds.missing.bed
+cat placed_scaffs/hifi_scaffolds.plan.bed hifiScaffolds.missing.bed > placed_scaffs/hifi_scaffolds.plan.final.bed
+
+# Now let's make a fasta!
+module load java
+java -Xmx15g -jar ~/rumen_longread_metagenome_assembly/binaries/CombineFasta/store/CombineFasta.jar agp2fasta -f clover_ccs_themis/fastas/hifiScaffolds.fa -b placed_scaffs/hifi_scaffolds.plan.final.bed -o placed_scaffs/ARS_DFRC_1.1.fasta -i 1000
+
+samtools faidx placed_scaffs/ARS_DFRC_1.1.fasta
+```
+
+#### New themis run
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/manuscript_themis
+
+```bash
+module load miniconda/3.6 "java/11.0.2" bedtools
+
+PATH=$PATH:/software/7/apps/merqury/1.1/:/software/7/apps/meryl/1.0/Linux-amd64/bin/
+MERQURY=/software/7/apps/merqury/1.1
+
+ln -s /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_ccs_themis/busco_downloads busco_downloads
+mkdir logs
+
+sbatch -N 1 -n 2 --mem=6000 -p priority -q msn --wrap='python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/themisASM.py -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/redclover_v2.1.fasta -n shortRead -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_primary_ipa.purged.fa -n hifiContigs -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/placed_scaffs/ARS_DFRC_1.1.fasta -n ARSDFRC1 -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/ncbi-genomes-2021-08-04/GCA_000219495.2_MedtrA17_4.0_genomic.fna -n MedTr4 -b eudicots_odb10 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L001-ds.ac229a7a209e4f809c4ac2bda32e46fe/Hen17Cv_S1_L001_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L001-ds.ac229a7a209e4f809c4ac2bda32e46fe/Hen17Cv_S1_L001_R2_001.fastq.gz -s lane1 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L002-ds.e4d313d6db7a45ec88dba60164d0d717/Hen17Cv_S1_L002_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L002-ds.e4d313d6db7a45ec88dba60164d0d717/Hen17Cv_S1_L002_R2_001.fastq.gz -s lane2 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L003-ds.20e6182d55ac40e2b889f55011234126/Hen17Cv_S1_L003_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L003-ds.20e6182d55ac40e2b889f55011234126/Hen17Cv_S1_L003_R2_001.fastq.gz -s lane3 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L004-ds.8b23d704e97542d982a7416ef5ce3c8a/Hen17Cv_S1_L004_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L004-ds.8b23d704e97542d982a7416ef5ce3c8a/Hen17Cv_S1_L004_R2_001.fastq.gz -s lane4 -c "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -j 100'
 ```

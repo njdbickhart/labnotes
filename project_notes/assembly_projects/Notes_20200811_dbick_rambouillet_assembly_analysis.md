@@ -110,6 +110,13 @@ sbatch -N 1 -n 4 --mem=30000 -p priority -q msn -t 2-0 --wrap="python3 ~/python_
 
 ```bash
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn -t 8-0 snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout} -t 8-0" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
+
+# The pipeline got screwed up
+for i in oar4 ram1; do echo $i; sbatch depth.sh mapped/$i/merged.bam calls/$i/merged_depth.txt; done
+
+module load python_3/3.6.6 miniconda/3.6
+conda activate /KEEP/rumen_longread_metagenome_assembly/lumpy
+for i in oar4 ram1 ram2; do echo $i; sbatch -N 1 -n 2 --mem=55000 -p priority -q msn --wrap="lumpyexpress -B mapped/$i/merged.bam -o calls/$i/merged_lumpy.vcf -v 2> logs/$i/lumpy_rerun.log"  ; done
 ```
 
 
