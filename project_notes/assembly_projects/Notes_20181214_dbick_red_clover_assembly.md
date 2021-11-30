@@ -1056,13 +1056,30 @@ different       42456
 unmap   968
 ```
 
-|Entry                      | Value|
-|:--------------------------|-----:|
-|same                       |14,714|
-|different					|42,456|
-|unmap                      |   968|
+|Entry                      | Value|Pairs |
+|:--------------------------|-----:|-----:|
+|same                       |14,714| 7,357|
+|different					|42,456|21,228|
+|unmap                      |   968|   484|
 
 So, the Salsa scaffold HIFI assembly better resolves BAC end placement on the same scaffolds than the short read assembly! Big time! Almost twice as likely to resolve it!
+
+#### Super scaffold run
+
+```bash
+minimap2 -ax sr ../manuscript_themis/fastas/ARSDFRC1.fa sorted_bac_ends.f.fasta sorted_bac_ends.r.fasta > ARSRC1_bacends_paired.sam
+
+perl -lane 'if($F[0] =~ /^@/){next;} if($F[1] & 2048){}else{print $_;}' < ARSRC1_bacends_paired.sam | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 6 -i '@' -d '\t' | perl -e '%h; <>; while(<>){chomp; @s = split(/\t/); if($s[0] eq "="){$h{"same"} += $s[1];}elsif($s[0] eq "*"){$h{"unmap"} += $s[1];}else{$h{"different"} += $s[1];}} foreach $i ("same", "different", "unmap"){print "$i\t$h{$i}\n";}'
+same    31590
+different       25582
+unmap   966
+```
+
+|Entry                      | Value|Pairs |
+|:--------------------------|-----:|-----:|
+|same                       |31,590|15,795|
+|different					|25,582|12,791|
+|unmap                      |   966|   483|
 
 Let's create a graph so we can compare our scaffold-scaffold aligments with additional evidence.
 
@@ -1359,7 +1376,7 @@ samtools faidx placed_scaffs/ARS_DFRC_1.1.fasta
 > Ceres: /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/manuscript_themis
 
 ```bash
-module load miniconda/3.6 "java/11.0.2" bedtools
+module load python_3/3.6.6 miniconda/3.6 "java/11.0.2" bedtools
 
 PATH=$PATH:/software/7/apps/merqury/1.1/:/software/7/apps/meryl/1.0/Linux-amd64/bin/
 MERQURY=/software/7/apps/merqury/1.1
@@ -1367,5 +1384,84 @@ MERQURY=/software/7/apps/merqury/1.1
 ln -s /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_ccs_themis/busco_downloads busco_downloads
 mkdir logs
 
-sbatch -N 1 -n 2 --mem=6000 -p priority -q msn --wrap='python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/themisASM.py -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/redclover_v2.1.fasta -n shortRead -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_primary_ipa.purged.fa -n hifiContigs -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/placed_scaffs/ARS_DFRC_1.1.fasta -n ARSDFRC1 -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/ncbi-genomes-2021-08-04/GCA_000219495.2_MedtrA17_4.0_genomic.fna -n MedTr4 -b eudicots_odb10 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L001-ds.ac229a7a209e4f809c4ac2bda32e46fe/Hen17Cv_S1_L001_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L001-ds.ac229a7a209e4f809c4ac2bda32e46fe/Hen17Cv_S1_L001_R2_001.fastq.gz -s lane1 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L002-ds.e4d313d6db7a45ec88dba60164d0d717/Hen17Cv_S1_L002_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L002-ds.e4d313d6db7a45ec88dba60164d0d717/Hen17Cv_S1_L002_R2_001.fastq.gz -s lane2 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L003-ds.20e6182d55ac40e2b889f55011234126/Hen17Cv_S1_L003_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L003-ds.20e6182d55ac40e2b889f55011234126/Hen17Cv_S1_L003_R2_001.fastq.gz -s lane3 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L004-ds.8b23d704e97542d982a7416ef5ce3c8a/Hen17Cv_S1_L004_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L004-ds.8b23d704e97542d982a7416ef5ce3c8a/Hen17Cv_S1_L004_R2_001.fastq.gz -s lane4 -c "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -j 100'
+sbatch -N 1 -n 2 --mem=6000 -p priority -q msn --wrap='python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/themisASM.py -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/redclover_v2.1.fasta -n shortRead -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/clover_primary_ipa.purged.fa -n hifiContigs -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/placed_scaffs/ARS_DFRC_1.1.fasta -n ARSDFRC1 -a /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/ncbi-genomes-2021-08-04/GCA_000219495.2_MedtrA17_4.0_genomic.fna -n MedTr4 -b eudicots_odb10 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L001-ds.ac229a7a209e4f809c4ac2bda32e46fe/Hen17Cv_S1_L001_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L001-ds.ac229a7a209e4f809c4ac2bda32e46fe/Hen17Cv_S1_L001_R2_001.fastq.gz -s lane1 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L002-ds.e4d313d6db7a45ec88dba60164d0d717/Hen17Cv_S1_L002_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L002-ds.e4d313d6db7a45ec88dba60164d0d717/Hen17Cv_S1_L002_R2_001.fastq.gz -s lane2 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L003-ds.20e6182d55ac40e2b889f55011234126/Hen17Cv_S1_L003_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L003-ds.20e6182d55ac40e2b889f55011234126/Hen17Cv_S1_L003_R2_001.fastq.gz -s lane3 -f /lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L004-ds.8b23d704e97542d982a7416ef5ce3c8a/Hen17Cv_S1_L004_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/CloverGenome-137246120/FASTQ_Generation_2019-06-16_03_19_42Z-188429241/Hen17Cv_L004-ds.8b23d704e97542d982a7416ef5ce3c8a/Hen17Cv_S1_L004_R2_001.fastq.gz -s lane4 -c "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -j 100 --resume'
+```
+
+#### Star annotation
+
+```bash
+module load star/2.7.9a
+
+# creating the index
+sbatch -n 20 -N 1 --mem=36000 -p priority -q msn --wrap="mkdir fastas/star_ars; STAR --runThreadN 20 --runMode genomeGenerate --genomeDir fastas/star_ars --genomeFastaFiles fastas/ARSDFRC1.fa"
+
+sbatch -n 20 -N 1 --mem=36000 -p priority -q msn --wrap="mkdir fastas/star_ars; STAR --runThreadN 20 --genomeDir fastas/star_ars --readFilesIn /lustre/project/rumen_longread_metagenome_assembly/plants/red_clover_IsoSeq/collapse_isoforms.fastq --outFileNamePrefix star_ars_dfrc"
+
+# The star aligner complains about quality score string lengths...
+module load minimap2
+
+sbatch -n 20 -N 1 --mem=36000 -p priority -q msn --wrap='minimap2 -x splice fastas/ARSDFRC1.fa /lustre/project/rumen_longread_metagenome_assembly/plants/red_clover_IsoSeq/hq_transcripts.fastq > ars_dfrc_hq_transcripts.paf'
+
+perl -lane 'print "$F[5]\t$F[7]\t$F[8]\t$F[0]";' < ars_dfrc_hq_transcripts.paf | bedtools sort -i stdin | bedtools merge -i stdin -c 4 -o distinct -delim ';' | head
+```
+
+
+#### Creating circos diagram from PAF
+
+> /mnt/c/SharedFolders/sequencing_projects/red_clover/hifi_assemblies 
+
+```bash
+python3 /mnt/c/SharedFolders/test_software/CircosAlignmentPlotter/p2c.py mapshortRead_ARSDFRC1.paf shortRead.fa.fai ARSDFRC1.fa.fai targets.bed circos_TGAC_ARSDFRC
+
+cd circos_TGAC_ARSDFRC
+
+conda activate circos 
+
+circos
+```
+
+Note: I had to remove a ton of link data because the script failed to filter links that were not present in the "targets.bed" file. I also had to modify the configuration file to remove extraneous stuff, and I also had to manipulate the config files to make the picture look a bit better. Still, not a bad start!
+
+
+#### NCBI region check
+
+```bash
+module load samtools minimap2 bedtools/2.25.0 java
+
+perl -e 'while(<>){chomp; @s = split(/\t/); $type = pop(@s); $chr = shift(@s); shift(@s); @bsegs = split(/,/, $s[0]); foreach $k (@bsegs){@c = split(/\.\./, $k); $len = $c[1] - $c[0]; print "$chr\t$c[0]\t$c[1]\t$len\t$type\n";}}' < ncbi_regions.txt > ncbi_regions.bed
+
+sbatch -N 1 -n 30 -p priority -q msn -t 1-0 --mem=50000 --wrap='minimap2 -ax asm20 -t 20 ARS_RC_1.1.fasta ../m54337U_200929_165102.Q20.fastq | samtools sort -T m54 -o m54337U_200929_165102.Q20.bam -@ 10 -'
+
+perl -lane 'open(IN, "samtools view m54337U_200929_165102.Q20.bam $F[0]:$F[1]-$F[2] |"); $h = 0; $c = 0; while(<IN>){chomp; @s = split(/\t/); if($s[5] =~ /H/){$h += 1;} $c++;} close IN; $r = $h/$c; print join("\t", @F) . "\t$h\t$c\t$r";' < ncbi_regions.bed > ncbi_regions.hardclipped.tab
+
+# Now to mask all sequence that was mitochondrial and clearly misassembled
+perl -lane 'if($F[5] > 0){print $F[3];}' < ncbi_regions.hardclipped.tab | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   47
+Sum:    23044
+Minimum 119
+Maximum 8907
+Average 490.297872
+Median  196
+Standard Deviation      1328.009444
+Mode(Highest Distributed Value) 119
+
+perl -lane 'if($F[5] > 0){print "$F[0]\t$F[1]\t$F[2]";}' < ncbi_regions.hardclipped.tab > ncbi_regions.tomask.bed
+bedtools maskfasta -fi ARS_RC_1.1.fasta -fo ARS_RC_1.1.v2.fasta -bed ncbi_regions.tomask.bed
+
+perl -lane 'if($F[5] < 1){print "$F[0]:$F[1]-$F[2]";}' < ncbi_regions.hardclipped.tab > ncbi_regions_numt.tab
+
+perl -lane 'print "$F[0]\t1\t$F[1]";' < ARS_RC_1.1.fasta.fai > ARS_RC_1.1.fasta.lens.bed
+java -Xmx15g -jar ~/rumen_longread_metagenome_assembly/binaries/CombineFasta/store/CombineFasta.jar agp2fasta -f  ARS_RC_1.1.fasta -b ncbi_regions.tomask.newplan.bed -o ARS_RC_1.1.v2.fasta -i 50
+
+perl -lane 'system("samtools faidx ARS_RC_1.1.fasta $F[0]");' < ncbi_regions_numt.tab > ncbi_regions_numt.fa
+```
+
+```bash
+minimap2 -x asm5 -N 50 --secondary=no /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/placed_scaffs/ARS_RC_1.1.v2.fasta final_IsoSeq_analysis/hq_transcripts.fasta > ARS_RC_1.1.v2.transcript.paf
+
+minimap2 -ax splice --cs /lustre/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/placed_scaffs/ARS_RC_1.1.v2.fasta final_IsoSeq_analysis/hq_transcripts.fasta | samtools sort -T temp -o ARS_RC_1.1.v2.transcript.bam -
+
+bedtools bamtobed -bed12 -i ARS_RC_1.1.v2.transcript.bam > ARS_RC_1.1.v2.transcript.bed
+/lustre/project/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/bedToGenePred ARS_RC_1.1.v2.transcript.bed ARS_RC_1.1.v2.transcript.genepred
+/lustre/project/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/genePredToGtf 'file' ARS_RC_1.1.v2.transcript.genepred ARS_RC_1.1.transcript.gtf
 ```

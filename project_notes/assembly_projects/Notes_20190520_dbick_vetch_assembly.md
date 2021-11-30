@@ -389,3 +389,13 @@ rm vetch_hifi_temp.fasta.fai vetch_hifi_primary_ipa.fasta.fai
 mv vetch_hifi_primary_ipa.fasta vetch_hifi_primary_ipa_purged.fasta
 sbatch -N 1 -n 1 --mem=5000 -p priority -q msn --wrap="gzip vetch_hifi_primary_ipa_purged.fasta"
 ```
+
+## Comparative genomics analysis
+
+I want to generate two distinct datasets for future publication:
+
+1. A phylogenetic tree that shows the divergence of Vetch from other assembled plant species
+2. A list of unique assembled gene signatures that highlight how interesting Vetch is from a biological perspective
+
+A list of [genome assemblies can be found here](https://www.nature.com/articles/s41598-020-63664-7#Sec2) where a list of [methods to generate a phylogeny can be found here](https://academic.oup.com/gigascience/article/10/10/giab070/6407244?searchresult=1).
+

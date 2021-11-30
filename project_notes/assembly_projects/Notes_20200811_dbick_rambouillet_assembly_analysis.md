@@ -127,3 +127,20 @@ for i in oar4 ram1 ram2; do echo $i; sbatch -N 1 -n 2 --mem=55000 -p priority -q
 ```bash
 sbatch --nodes=1 --mem=5000 --ntasks-per-node=2 -p priority -q msn -t 8-0 snakemake --cluster-config ~/python_toolchain/snakeMake/assemblyValidation/cluster.json --cluster "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout} -t 8-0" -p --jobs 250 -s ~/python_toolchain/snakeMake/assemblyValidation/assemblyValidation --use-conda
 ```
+
+
+#### Rerunning busco
+
+> Ceres: /lustre/project/gaur_genome_assembly/Rambouillet/publication_qc/rambouillet_reads
+
+```bash
+module load python_3/3.6.6 miniconda/3.6 busco4/4.0.2
+
+busco_configurator.py /software/7/apps/busco4/4.0.2/config/config.ini ./busco_config.ini
+cp -Rp /software/7/apps/augustus/3.3.2/config/ ./AUGUSTUS_CONFIG
+export AUGUSTUS_CONFIG_PATH=/90daydata/project/gaur_genome_assembly/Rambouillet/publication_qc/rambouillet_reads/AUGUSTUS_CONFIG
+export BUSCO_CONFIG_FILE=/90daydata/project/gaur_genome_assembly/Rambouillet/publication_qc/rambouillet_reads/busco_config.ini
+
+for i in fastas/*.fa; do name=`basename $i | cut -d'.' -f1`; sbatch -N 1 -n 70 --mem=150000 -p priority -q msn --wrap="busco --in $i --out busco_rerun_${name} --force --cpu 70 --mode genome --lineage /90daydata/project/gaur_genome_assembly/Rambouillet/publication_qc/rambouillet_reads/busco_downloads/lineages/mammalia_odb10 --offline"; done
+
+```
