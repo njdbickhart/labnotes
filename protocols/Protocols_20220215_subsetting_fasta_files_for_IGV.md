@@ -61,4 +61,16 @@ samtools faidx flye4.contigs.fasta contig_65409 contig_652 > test_subset_largest
 # This one is trickier and required allot of other programs and custom scripts to generate. We need a BED file for all of the predicted ORFs in the contigs
 # We will pull them from Prodigal ORF predictions
 perl -lane '%check = ("contig_65409" => 1, "contig_652" => 1); @j = split(/_/, $F[0]); $name = "$j[0]_$j[1]"; if($check{$name}){print "$name\t$F[1]\t$F[2]\t$F[0]";}' < flye4.prodigal.shortform.tab > test_subset_largest/flye4.largest_two.orfpreds.bed
+
+# Packaging everything up for easy transfer
+tar -czvf test_subset_largest.tar.gz test_subset_largest/
 ```
+
+## Output files and descriptions
+
+Here are the final files in the subset folder:
+
+* flye4.largest_two.ccs.bam	Read alignments to only the two largest contigs
+* flye4.largest_two.ccs.bam.bai	The read alignment file index (important to have in the same directory -- allows fast access to alignment data)
+* flye4.largest_two.fasta	A subset fasta file containing sequence from only the two largest contigs in the assembly
+* flye4.largest_two.orfpreds.bed	A bed file containing the coordinates of all of the predicted ORFs in the two contigs
