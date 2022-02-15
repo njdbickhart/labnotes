@@ -74,3 +74,15 @@ Here are the final files in the subset folder:
 * flye4.largest_two.ccs.bam.bai	The read alignment file index (important to have in the same directory -- allows fast access to alignment data)
 * flye4.largest_two.fasta	A subset fasta file containing sequence from only the two largest contigs in the assembly
 * flye4.largest_two.orfpreds.bed	A bed file containing the coordinates of all of the predicted ORFs in the two contigs
+
+## Generating Fastq files from BAM files
+
+There are specialized tools to do this, but I always forget their arguments and I prefer to use Perl in any case here! Also, note that the alignments do not contain the usual quality scores because I aligned fasta files (not fastq!) to the contigs. In order to generate a suitable FASTQ, I need to generate the quality scores de novo.
+
+```bash
+module load samtools
+
+samtools view test_subset_largest/flye4.largest_two.ccs.bam contig_65409 | perl -lane '$q = "I" x length($F[9]); print "\@$F[0]\n$F[9]\n+\n$q";' > test_subset_largest/contig_65409.fastq
+samtools view test_subset_largest/flye4.largest_two.ccs.bam contig_652 | perl -lane '$q = "I" x length($F[9]); print "\@$F[0]\n$F[9]\n+\n$q";' > test_subset_largest/contig_652.fastq
+
+```
