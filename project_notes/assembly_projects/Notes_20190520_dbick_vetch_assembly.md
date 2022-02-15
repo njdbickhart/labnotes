@@ -397,5 +397,57 @@ I want to generate two distinct datasets for future publication:
 1. A phylogenetic tree that shows the divergence of Vetch from other assembled plant species
 2. A list of unique assembled gene signatures that highlight how interesting Vetch is from a biological perspective
 
-A list of [genome assemblies can be found here](https://www.nature.com/articles/s41598-020-63664-7#Sec2) where a list of [methods to generate a phylogeny can be found here](https://academic.oup.com/gigascience/article/10/10/giab070/6407244?searchresult=1).
+A list of [genome assemblies can be found here](https://www.nature.com/articles/s41598-020-63664-7#Sec2) where a list of [methods to generate a phylogeny can be found here](https://academic.oup.com/gigascience/article/10/10/giab070/6407244?searchresult=1). A great gene-level phylogeny paper [can be found here](https://academic.oup.com/gbe/advance-article/doi/10.1093/gbe/evab262/6443144)
 
+
+OK, I think that I can take the annotation of some of the other legume species and try to remap them on Vetch for a rudimentary method of validation. This will allow me to move forward on the phylogeny portion of the experiment.
+
+
+#### Themis run
+
+> Ceres: /lustre/project/forage_assemblies/analysis/vetch/legume_themis
+
+```bash
+module load python_3/3.6.6 miniconda/3.6
+cp -r /lustre/project/forage_assemblies/assemblies/vetch/busco_downloads/* ./busco_downloads/
+
+sbatch -N 1 -n 2 --mem=6000 -p priority -q msn --wrap='python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/themisASM.py -a /lustre/project/forage_assemblies/assemblies/vetch/vetch_phase.assembly.fasta -n Vvillosa -a /lustre/project/forage_assemblies/assemblies/legume_genomes/Gmax_109.fa -n Gmax -a /lustre/project/forage_assemblies/assemblies/legume_genomes/chickpea.1_ASM33114v1_genomic.fna -n Carietinum -a /lustre/project/forage_assemblies/assemblies/legume_genomes/lotus_japonica_3.pseudomol.fna -n Ljaponica -a /lustre/project/forage_assemblies/assemblies/legume_genomes/MtrunA17r5.0-20161119-ANR.genome.fasta -n Mtruncatulata -a /lustre/project/forage_assemblies/assemblies/legume_genomes/Pisum_sativum_v1a.fa -n Psativum -a /lustre/project/forage_assemblies/assemblies/legume_genomes/Pvulgaris_442_v2.0.fa -n Pvulgaris -a /lustre/project/forage_assemblies/assemblies/legume_genomes/Vunguiculata_469_v1.0.fa -n Vunguiculata -b eudicots_odb10 -f /lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L001-ds.f5daa53646d64f4bac4fc79cf6e436ab/HV30Vetch_S1_L001_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L001-ds.f5daa53646d64f4bac4fc79cf6e436ab/HV30Vetch_S1_L001_R2_001.fastq.gz -s lane1 -f /lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L002-ds.9bf58b47e3d34fbda00e6b36aa27d6a8/HV30Vetch_S1_L002_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L002-ds.9bf58b47e3d34fbda00e6b36aa27d6a8/HV30Vetch_S1_L002_R2_001.fastq.gz -s lane2 -f /lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L003-ds.4ef7347a6fb24caba2038acc5247d3e6/HV30Vetch_S1_L003_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L003-ds.4ef7347a6fb24caba2038acc5247d3e6/HV30Vetch_S1_L003_R2_001.fastq.gz -s lane3 -f /lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L004-ds.19bf16c029ab43d38bb477601fd81a1c/HV30Vetch_S1_L004_R1_001.fastq.gz,/lustre/project/forage_assemblies/sequence_data/vetch_illumina/HV30Vetch_L004-ds.19bf16c029ab43d38bb477601fd81a1c/HV30Vetch_S1_L004_R2_001.fastq.gz -s lane4 -c "sbatch --nodes={cluster.nodes} --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} --partition={cluster.partition} -q {cluster.qos} -o {cluster.stdout}" -j 100 --resume'
+
+# had to redownload busco files
+conda activate .snakemake/conda/6d935029
+busco --in empty.fa --out test --force --mode genome --lineage eudicots_odb10 --update-data
+```
+
+
+#### Repeatmasker run
+
+```bash
+module load repeatmasker/4.0.7
+
+samtools faidx fastas/Vvillosa.fa PGA_scaffold0__626_contigs__length_252325240 PGA_scaffold1__540_contigs__length_230603806 PGA_scaffold2__570_contigs__length_219312922 PGA_scaffold3__557_contigs__length_197438150 PGA_scaffold4__433_contigs__length_174244450 PGA_scaffold5__423_contigs__length_166511264 PGA_scaffold6__322_contigs__length_138135299 PGA_scaffold7__11_contigs__length_3043357 PGA_scaffold8__12_contigs__length_3345628 | perl -ne 'if($_ =~ /^>/){chomp; @s = split(/_/); print "$s[0]_$s[1]\n";}else{print $_;}' > fastas/ReformatedV.fa
+
+mkdir repeat_masker
+perl -lane 'system(qq(sbatch -N 1 -n 30 -p priority -q msn --mem=100000 -t 3-0 --wrap="RepeatMasker -species arabidopsis -pa 30 -q  $F[1]")); sleep(10);' < fasta_locs.tab
+#for i in fastas/*.fa; do name=`basename $i | cut -d'.' -f1`; echo $name; sleep 1m; sbatch -N 1 -n 30 -p priority -q msn --mem=100000 --wrap="RepeatMasker -species arabidopsis -pa 30 -q -dir /lustre/project/forage_assemblies/analysis/vetch/legume_themis/repeat_masker/RM_${name} $i"; done
+
+# NOTE: this version of repeatmasker has a nasty bug that deletes everything if a custom dir is specified and the -debug flag is off!
+```
+
+
+#### Testing circos themis script
+
+```bash
+module load python_3/3.6.6 miniconda/3.6
+
+conda activate /lustre/project/rumen_longread_metagenome_assembly/environments/circos
+
+python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/scripts/pafCircosPlotter.py -p mapped/mapVvillosa_Gmax.paf -q fastas/Gmax.fa -r fastas/Vvillosa.fa -o circos_test -c 10
+```
+
+
+#### Orthofinder run
+
+```bash
+module load python_3/3.6.6 miniconda/3.6
+conda activate /lustre/project/rumen_longread_metagenome_assembly/environments/orthofinder
+```

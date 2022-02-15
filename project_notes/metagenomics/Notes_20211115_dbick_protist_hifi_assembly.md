@@ -47,4 +47,37 @@ conda activate /KEEP/rumen_longread_metagenome_assembly/graph_tools
 sbatch -N 1 -n 70 --mem=300000 -p priority -q msn --wrap="GraphAligner -t 70 -g /lustre/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI/metaflye/assembly_graph.gfa -f /lustre/project/rumen_longread_metagenome_assembly/sequence_data/protist_and_clover/Cow7201_proto_data/Cow7201_total_combined.2019.fastq.gz -a cow7201_protist_hififlye_ontalign.gaf --seeds-mxm-length 30 --seeds-mem-count 1000 -b 15 --multimap-score-fraction 0.99 --precise-clipping 0.85 --min-alignment-score 5000"
 
 python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f cow7201_protist_hififlye_ontalign.gaf -c 5 -d '\t' | perl -ne '$num = () = $_ =~ /edge_/g; if($num > 1){print $_;}' | head -n 100
+
+awk '/^S/{print ">"$2"\n"$3}' /lustre/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI/metaflye/assembly_graph.gfa | fold > protist_graph_edges.fa
+
+# 70% of reads had a seed, but only 1.7% of reads had an alignment! I wonder if starting with the metaflye graph was the problem here. 
 ```
+
+OK, back to the drawing board. Do we need to start from a different assumption, trim the graph some more or contact the developers. I think that I would be violating too many assumptions if I went straight into the MGB approach, so let's try to have a conversation with the assembly experts.
+
+## Gathering assembly stats
+
+> Ceres: /lustre/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI
+
+```bash
+# preparing a set of the top contigs > 100 kb for analysis
+rm metaflye_top_contigs.fasta; perl -lane 'if($F[0] =~ /\#/){next;} if($F[1] > 100000){system("samtools faidx metaflye/assembly.fasta $F[0] >> metaflye_top_contigs.fasta");}' < metaflye/assembly_info.txt
+
+samtools faidx metaflye_top_contigs.fasta
+wc -l metaflye_top_contigs.fasta.fai
+	739 metaflye_top_contigs.fasta.fai
+
+
+module load python_3/3.6.6 miniconda/3.6 samtools
+#OK, let's coopt my downsample snakemake workflow that I used for the previous HIFI manuscript to start gathering as much information as possible here.
+mkdir protist_class_wkflow
+
+mv protist_class_wkflow/Downsample protist_class_wkflow/Snakefile
+mkdir protist_class_wkflow/logs
+
+sbatch -N 1 -n 2 --mem=10000 -p priority -q msn snakemake -s ./protist_class_wkflow/Snakefile --cluster-config ~/python_toolchain/snakeMake/hifiMAGManuscript/cluster.json --cluster "sbatch -N 1 --ntasks-per-node={cluster.ntasks-per-node} --mem={cluster.mem} -p priority -q msn -o {cluster.stdout}" -p --use-conda --jobs 250 --verbose --latency-wait 40
+```
+
+## Working notes
+
+Attempted to characterize potential mitochondrial/hydrogenosome sequence. Best hit was to contig_22275, but hits were of dubious quality (27% divergence to other protist mitochondria). 
