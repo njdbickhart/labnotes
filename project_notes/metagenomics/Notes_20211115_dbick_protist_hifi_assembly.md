@@ -81,3 +81,72 @@ sbatch -N 1 -n 2 --mem=10000 -p priority -q msn snakemake -s ./protist_class_wkf
 ## Working notes
 
 Attempted to characterize potential mitochondrial/hydrogenosome sequence. Best hit was to contig_22275, but hits were of dubious quality (27% divergence to other protist mitochondria). 
+
+## Minimizer graph construction
+
+OK, so I have a metaFlye assembly that was only "OK" and managed to assemble more bacteria in higher contigs. I suspect that a different k-value is needed to extend the assembly across highly repetitive sequence in the protists. I will pull only the HiFi reads that mapped to protist "nodes" in the assembly graph and then test out several different values of k in order to optimize the parameters for assembly.
+
+Once I have the new graph, I could try taking the nodes and using them as "seeds" for additional metagenome assembly of the protists. 
+
+Validation data could include some of Sharon Huws' [cDNA RNA-seq](https://www.ncbi.nlm.nih.gov/sra/?term=SAMN13506237). 
+
+Let's pull reads from the nodes first and then characterize them.
+
+> Ceres: /project/rumen_longread_metagenome_assembly/assembly/protist
+
+```bash
+module load python_3/3.6.6 miniconda/3.6 samtools minimap2 r/4.1.2
+cat nodes.txt | perl -lane 'foreach $f (@F){$f =~ s/,//; $f =~ s/edge_//; print "$f";}' > protist_nodes.list
+
+perl -e 'chomp(@ARGV); %h = {}; open(IN, "< $ARGV[0]"); while(<IN>){chomp; $h{$_} = 1;} close IN; open(IN, "< $ARGV[1]"); <IN>; while(<IN>){chomp; @s = split(/\t/); @j = split(/,/, $s[-1]); foreach $j (@j){if(exists($h{$j})){print "$s[0]\n"; last;}}} close IN;' protist_nodes.list /OLD/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI/metaflye/assembly_info.txt > protist_contigs.list
+
+samtools faidx -r protist_contigs.list /OLD/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI/metaflye/assembly.fasta > protist_contigs.fasta
+
+mkdir /90daydata/rumen_longread_metagenome_assembly/analysis/protist
+mkdir /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_aligns
+for i in /OLD/project/rumen_longread_metagenome_assembly/sequence_data/protist_ccs/*fastq*; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="minimap2 -x map-hifi -t 5 -o /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_aligns/$name.alignments.paf protist_contigs.fasta $i"; done;
+
+mkdir /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_rlists
+for i in /OLD/project/rumen_longread_metagenome_assembly/sequence_data/protist_ccs/*fastq*; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="python3 filterHifiRDNAByQPafsF.py /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_aligns/$name.alignments.paf /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_rlists/$name.reads.list"; done;
+
+conda activate /project/rumen_longread_metagenome_assembly/environments/seaborn/
+mkdir /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_reads
+for i in /OLD/project/rumen_longread_metagenome_assembly/sequence_data/protist_ccs/*fastq*; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=25000 --wrap="python3 ~/python_toolchain/sequenceData/filterFastaqFromList.py -q $i -l /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_rlists/$name.reads.list -o /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_reads/$name.rdna.fastq; gzip /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_reads/$name.rdna.fastq"; done
+```
+
+OK, I've kept only 20-35% of the total number of HiFi reads this time. I don't know how lengthy the repeat segments will be, so let's try a couple kmer histogram plots to try to suss things out.
+
+> Ceres: /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_reads/
+
+```bash
+module load jellyfish2/2.2.9
+
+# Ugh, need to unzip these first
+for i in *.fastq.gz; do sbatch -N 1 -n 2 --mem=5000 -p priority -q msn --wrap="gunzip $i"; done
+
+for i in *.fastq; do echo -n "$i "; done; echo
+
+for i in 14 21 28; do echo $i; sbatch --nodes=1 --mem=100000 --ntasks-per-node=15 --wrap="jellyfish count -m $i -s 90G -t 15 -o protist_reads_${i}.jf -C m54337U_210722_195630.rdna.fastq m54337U_210802_201210.rdna.fastq m54337U_210809_182434.rdna.fastq m54337U_211013_163649.rdna.fastq m54337U_211015_151518.rdna.fastq m54337U_211017_003233.rdna.fastq"; done
+```
+
+Let's queue up some preliminary graphs.
+
+> Ceres: /90daydata/rumen_longread_metagenome_assembly/analysis/protist
+
+```bash
+module load python_3/3.6.6 miniconda/3.6 samtools minimap2 r/4.1.2
+conda activate /project/rumen_longread_metagenome_assembly/environments/verkko
+mkdir protist_mbg
+
+for i in protist_contig_reads/*.fastq; do echo -n "-i $i "; done; echo
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_2001_1500.slurm.out --wrap="MBG -t 35 -k 2001 -w 1500 -r 15000 --output-sequence-paths protist_mbg/protist_2001_1500_paths.gaf  --out protist_mbg/protist_2001_1500_graph.gfa -i protist_contig_reads/m54337U_210722_195630.rdna.fastq -i protist_contig_reads/m54337U_210802_201210.rdna.fastq -i protist_contig_reads/m54337U_210809_182434.rdna.fastq -i protist_contig_reads/m54337U_211013_163649.rdna.fastq -i protist_contig_reads/m54337U_211015_151518.rdna.fastq -i protist_contig_reads/m54337U_211017_003233.rdna.fastq"
+
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_3501_3000.slurm.out --wrap="MBG -t 35 -k 3501 -w 3000 -r 15000 --output-sequence-paths protist_mbg/protist_3501_3000_paths.gaf  --out protist_mbg/protist_3501_3000_graph.gfa -i protist_contig_reads/m54337U_210722_195630.rdna.fastq -i protist_contig_reads/m54337U_210802_201210.rdna.fastq -i protist_contig_reads/m54337U_210809_182434.rdna.fastq -i protist_contig_reads/m54337U_211013_163649.rdna.fastq -i protist_contig_reads/m54337U_211015_151518.rdna.fastq -i protist_contig_reads/m54337U_211017_003233.rdna.fastq"
+```
+
+Testing a run of HiFiasm-Meta on the reads just for giggles.
+
+```bash
+module load python_3/3.6.6 miniconda/3.6 samtools minimap2 r/4.1.2
+sbatch -N 1 -n 70 --mem=1000000 -p priority-mem -q msn-mem --wrap="/project/rumen_longread_metagenome_assembly/binaries/hifiasm-meta/hifiasm_meta -o protist_hifiasm -t 70 protist_contig_reads/m54337U_210722_195630.rdna.fastq protist_contig_reads/m54337U_210802_201210.rdna.fastq protist_contig_reads/m54337U_210809_182434.rdna.fastq protist_contig_reads/m54337U_211013_163649.rdna.fastq protist_contig_reads/m54337U_211015_151518.rdna.fastq protist_contig_reads/m54337U_211017_003233.rdna.fastq"
+```

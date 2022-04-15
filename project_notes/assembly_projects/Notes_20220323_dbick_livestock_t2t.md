@@ -100,15 +100,15 @@ Running through distributions of length, divergence and count, I think that I ha
 
 #### LSU
 
-|Chrom	|Type	|count	|lenAvg	|lenMax	| divAvg	| divMin |
-|:--- | :--- | :--- | :--- | :--- | :--- | :--- |
-|unused_utig4-1265_len_158503	| LSU-rRNA_Hsa	| 5	|4906.2	|4908	|5.14	|5.1|
-|unused_utig4-1757_len_59982	|LSU-rRNA_Hsa	|3	|4908.333333	|4910	|5.2	|5.2|
-|unused_utig4-1947_len_47983	| LSU-rRNA_Hsa	| 3	| 4910.333333	| 4916	| 5.2	| 5.2|
-|unused_utig4-729_len_81941	|LSU-rRNA_Hsa	|3	|4909	|4911	|5.266666667	|5.2|
-|unused_utig4-731_len_119185	|LSU-rRNA_Hsa	|4	|4908.75	|4911	|5.275	|5.2|
-|unused_utig4-732_len_89511	|LSU-rRNA_Hsa	|3	|4909	|4911	|5.266666667	|5.2|
-
+|Chrom							|Type			|count	|lenAvg	|lenMax	| divAvg| divMin |
+|:--- 							| :--- 			| :--- 	| :--- | :--- | :--- | :--- |
+|unused_utig4-1265_len_158503	|LSU-rRNA_Hsa	|5		|4906.2	|4908	|5.14	|5.1|
+|unused_utig4-1757_len_59982	|LSU-rRNA_Hsa	|3		|4908.3	|4910	|5.2	|5.2|
+|unused_utig4-1947_len_47983	|LSU-rRNA_Hsa	|3		|4910.3	| 4916	|5.2	|5.2|
+|unused_utig4-729_len_81941		|LSU-rRNA_Hsa	|3		|4909	|4911	|5.26	|5.2|
+|unused_utig4-731_len_119185	|LSU-rRNA_Hsa	|4		|4908.7	|4911	|5.275	|5.2|
+|unused_utig4-732_len_89511		|LSU-rRNA_Hsa	|3		|4909	|4911	|5.26	|5.2|
+	
 #### SSU
 
 | Chrom                        | Type         | count | lenAvg      | lenMax | divAvg      | divMin |
@@ -193,6 +193,8 @@ dev.off()
 
 It looks like the sweet spot that contains most of the alignments is between a Length ratio of 90-100% and a map ratio of 80-100%. I will filter the reads and then I will try to set up three different MBG runs with different kmer values. First will be 2001, then 3501 (the paper), and then 5001. Window sizes will be (k-1)/10 and max kmer sizes will be 15000 uniformly.
 
+> Ceres: /90daydata/rumen_longread_metagenome_assembly/analysis/rdna
+
 ```bash
 module load python_3/3.6.6 miniconda/3.6 samtools minimap2 r/4.1.2
 
@@ -225,5 +227,80 @@ sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_5001_500.slurm.out --wr
 
 # Damn, they're too lengthy. The repeat structure is too big. Let's just pull the reads that map exclusively to rDNA sequences.
 mkdir hifi_paragon_fastqs
+# The consensus 45S sequence is here: 45s_array_consensus.fasta
+mkdir hifi_paragon_aligns
 
+for i in /90daydata/sheep_genome_assemblies/sergek/hifi/*.fastq.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="minimap2 -x map-hifi -t 5 -o hifi_paragon_aligns/$name.alignments.paf 45s_array_consensus.fasta $i"; done
+
+perl -e 'print "LenRatio\tMapRatio\tMaxMQ\n"; %data; while(<>){chomp; @s = split(/\t/); $lr = $s[10] / $s[1]; $mr = $s[9] / $s[10]; if(exists($data{$s[0]})){if($data{$s[0]}->[0] < $lr){$data{$s[0]}->[0] = $lr; $data{$s[0]}->[1] = $mr; $data{$s[0]}->[2] = $s[11];}}else{$data{$s[0]} = [$lr, $mr, $s[11]];}} foreach my $k (keys(%data)){print "$data{$k}->[0]\t$data{$k}->[1]\t$data{$k}->[2]\n";}' < hifi_paragon_aligns/m54337U_211106_060943.alignments.paf > paragon_test_aligns.tab
+
+mkdir hifi_paragon_lists
+for i in /90daydata/sheep_genome_assemblies/sergek/hifi/*.fastq.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="python3 filterHifiRDNAByQPafs.py hifi_paragon_aligns/$name.alignments.paf hifi_paragon_lists/$name.reads.list"; done
+
+mkdir hifi_paragon_flists
+for i in /90daydata/sheep_genome_assemblies/sergek/hifi/*.fastq.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="python3 filterHifiRDNAByQPafsF.py hifi_paragon_aligns/$name.alignments.paf hifi_paragon_flists/$name.reads.list"; done
+
+conda activate /project/rumen_longread_metagenome_assembly/environments/seaborn/
+mkdir hifi_paragon_fastqs
+for i in /90daydata/sheep_genome_assemblies/sergek/hifi/*.fastq.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=25000 --wrap="python3 ~/python_toolchain/sequenceData/filterFastaqFromList.py -q $i -l hifi_paragon_lists/$name.reads.list -o hifi_paragon_fastqs/$name.rdna.fastq; gzip hifi_paragon_fastqs/$name.rdna.fastq"; done
+
+conda activate /project/rumen_longread_metagenome_assembly/environments/seaborn/
+mkdir hifi_paragon_ffastqs
+for i in /90daydata/sheep_genome_assemblies/sergek/hifi/*.fastq.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=25000 --wrap="python3 ~/python_toolchain/sequenceData/filterFastaqFromList.py -q $i -l hifi_paragon_flists/$name.reads.list -o hifi_paragon_ffastqs/$name.rdna.fastq; gzip hifi_paragon_ffastqs/$name.rdna.fastq"; done
+
+mkdir hifi_paragon_mbg
+conda activate /project/rumen_longread_metagenome_assembly/environments/verkko
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_paragon_3501_350.slurm.out --wrap="MBG -t 35 -k 3501 -w 350 -r 15000 --output-sequence-paths hifi_paragon_mbg/sheep_rdna_3501_350_paths.gaf  --out hifi_paragon_mbg/sheep_rdna_3501_350_graph.gfa -i hifi_paragon_fastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_paragon_fastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_paragon_fastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_paragon_fastqs/m64015e_211120_120456.rdna.fastq.gz"
+
+mkdir hifi_fparagon_mbg
+conda activate /project/rumen_longread_metagenome_assembly/environments/verkko
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_2501_250.slurm.out --wrap="MBG -t 35 -k 2501 -w 250 -r 15000 --output-sequence-paths hifi_fparagon_mbg/sheep_rdna_2501_250_paths.gaf  --out hifi_fparagon_mbg/sheep_rdna_2501_250_graph.gfa -i hifi_paragon_ffastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_paragon_ffastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_paragon_ffastqs/m64015e_211120_120456.rdna.fastq.gz"
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_5000_500.slurm.out --wrap="MBG -t 35 -k 5001 -w 500 -r 15000 --output-sequence-paths hifi_fparagon_mbg/sheep_rdna_5001_500_paths.gaf  --out hifi_fparagon_mbg/sheep_rdna_5001_500_graph.gfa -i hifi_paragon_ffastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_paragon_ffastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_paragon_ffastqs/m64015e_211120_120456.rdna.fastq.gz"
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_3501_350.slurm.out --wrap="MBG -t 35 -k 3501 -w 350 -r 15000 --output-sequence-paths hifi_fparagon_mbg/sheep_rdna_3501_350_paths.gaf  --out hifi_fparagon_mbg/sheep_rdna_3501_350_graph.gfa -i hifi_paragon_ffastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_paragon_ffastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_paragon_ffastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_paragon_ffastqs/m64015e_211120_120456.rdna.fastq.gz"
 ```
+
+OK, finally found a filtration method that worked and graphs that appear normal. There are supposedly 5 45S arrays in sheep, but only two clear ones appear in the lower k value graphs. Let's pull reads and see if there are similarities between the graphs in the two lowest k values
+
+```bash
+sbatch -N 1 -n 2 --mem=8000 -p priority -q msn -o hifi_fparagon_mbg/2501_250_cluster_read_assigns.tab --wrap="python3 pull_reads_from_gaf.py hifi_fparagon_mbg/2501_250_cluster1_nodes.list hifi_fparagon_mbg/2501_250_cluster2_nodes.list hifi_fparagon_mbg/2501_250_cluster3_nodes.list hifi_fparagon_mbg/2501_250_cluster4_nodes.list hifi_fparagon_mbg/sheep_rdna_2501_250_paths.gaf"
+
+sbatch -N 1 -n 2 --mem=8000 -p priority -q msn -o hifi_fparagon_mbg/3501_350_cluster_read_assigns.tab --wrap="python3 pull_reads_from_gaf.py hifi_fparagon_mbg/3501_350_cluster1_nodes.list hifi_fparagon_mbg/3501_350_cluster2_nodes.list hifi_fparagon_mbg/3501_350_cluster3_nodes.list hifi_fparagon_mbg/3501_350_cluster4_nodes.list hifi_fparagon_mbg/sheep_rdna_3501_350_paths.gaf"
+
+mkdir read_lists
+for i in 0 1 2 3; do echo $i; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] == $ARGV[1]){print "$s[0]\n";}} close IN;' hifi_fparagon_mbg/3501_350_cluster_read_assigns.tab $i > read_lists/3501_350_cluster_${i}.list; done
+for i in 0 1 2 3; do echo $i; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] == $ARGV[1]){print "$s[0]\n";}} close IN;' hifi_fparagon_mbg/2501_250_cluster_read_assigns.tab $i > read_lists/2501_250_cluster_${i}.list; done
+
+for i in 0 1 2 3; do for j in 0 1 2 3; do echo "ITERATION: $i $j"; perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl read_lists/2501_250_cluster_${i}.list read_lists/3501_350_cluster_${j}.list; done; done
+```
+
+| cluster | 1 | 2 | 3 |  4|
+|---------|---|---|---|---|
+| 1		  | 50| 25|  0|  1|
+| 2		  |  1| 10| 25| 25|
+| 3		  |  0| 25|  0|  0|
+| 4 	  |  0|  0|  0|  1|
+
+Based on graph visualization, there are a couple anomalous nodes that could serve as breakpoints for separating clusters into distinct fragments. Cluster 4 in the k=3501 graph appears completely unique -- maybe add a different smaller cluster to compare as well? 
+
+```bash
+mkdir cluster_lists_two
+mkdir cluster_lists_two/read_lists
+
+sbatch -N 1 -n 2 --mem=8000 -p priority -q msn -o cluster_lists_two/read_lists/2501_250_cluster_read_assigns.tab --wrap="python3 pull_reads_from_gaf.py cluster_lists_two/2501_250_cluster1_nodes.list cluster_lists_two/2501_250_cluster2_nodes.list cluster_lists_two/2501_250_cluster3_nodes.list cluster_lists_two/2501_250_cluster4_nodes.list cluster_lists_two/2501_250_cluster5_nodes.list cluster_lists_two/2501_250_cluster6_nodes.list hifi_fparagon_mbg/sheep_rdna_2501_250_paths.gaf"
+
+sbatch -N 1 -n 2 --mem=8000 -p priority -q msn -o cluster_lists_two/read_lists/3501_350_cluster_read_assigns.tab --wrap="python3 pull_reads_from_gaf.py cluster_lists_two/3501_350_cluster1_nodes.list cluster_lists_two/3501_350_cluster2_nodes.list cluster_lists_two/3501_350_cluster3_nodes.list cluster_lists_two/3501_350_cluster4_nodes.list cluster_lists_two/3501_350_cluster5_nodes.list cluster_lists_two/3501_350_cluster6_nodes.list hifi_fparagon_mbg/sheep_rdna_3501_350_paths.gaf"
+
+for i in 0 1 2 3 4 5; do echo $i; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] == $ARGV[1]){print "$s[0]\n";}} close IN;' cluster_lists_two/read_lists/2501_250_cluster_read_assigns.tab $i > cluster_lists_two/read_lists/2501_250_cluster_${i}.list; done
+for i in 0 1 2 3 4 5; do echo $i; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] == $ARGV[1]){print "$s[0]\n";}} close IN;' cluster_lists_two/read_lists/3501_350_cluster_read_assigns.tab $i > cluster_lists_two/read_lists/3501_350_cluster_${i}.list; done
+
+for i in 0 1 2 3 4 5; do for j in 0 1 2 3 4 5; do echo "ITERATION: $i $j"; perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl cluster_lists_two/read_lists/2501_250_cluster_${i}.list cluster_lists_two/read_lists/3501_350_cluster_${j}.list; done; done 
+```
+
+| cluster | 1 | 2 | 3 |  4|  5|  6|
+|---------|---|---|---|---|---|---|
+| 1		  | 30| 50|  5|  0|  0|  1|
+| 2		  |  0|  0|  0| 10|  0|  0|
+| 3		  |  0|  0|  1| 25| 60|  0|
+| 4 	  |  0|  1|  1|  1|  0| 75|
+| 5 	  |  0|  0|  1| 60|  0|  0|
+| 6 	  |  0|  0|  0|  0|  0|  1|

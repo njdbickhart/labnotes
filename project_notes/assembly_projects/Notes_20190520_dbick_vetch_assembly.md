@@ -433,6 +433,21 @@ perl -lane 'system(qq(sbatch -N 1 -n 30 -p priority -q msn --mem=100000 -t 3-0 -
 # NOTE: this version of repeatmasker has a nasty bug that deletes everything if a custom dir is specified and the -debug flag is off!
 ```
 
+> Ceres: /90daydata/forage_assemblies/analysis/repeatmasker
+
+```bash
+PERL5LIB=''
+conda activate EDTA
+perl -lane 'chdir($F[0]); print qq(sbatch -N 1 -n 70 -p priority -q msn --mem=300000 --wrap="perl /project/rumen_longread_metagenome_assembly/binaries/EDTA/EDTA.pl --sensitive 1 --genome $F[1] -t 70") . "\n"; system(qq(sbatch -N 1 -n 70 -p priority -q msn --mem=300000 --wrap="perl /project/rumen_longread_metagenome_assembly/binaries/EDTA/EDTA.pl --sensitive 1 --genome $F[1] -t 70")); chdir("..");' < fasta_locs.tab
+
+module load repeatmasker/4.1.0
+
+# Might need to use -libdir /project/software/7/apps/repeatmasker/4.0.6/RepeatMasker/Libraries/ if the repeat counts are low
+perl -lane 'mkdir($F[0]) or $!{EEXIST}; chdir($F[0]); system(qq(sbatch -N 1 -n 30 -p priority -q msn --mem=100000 -t 3-0 --wrap="RepeatMasker -species arabidopsis -no_is -libdir /project/software/7/apps/repeatmasker/4.0.6/RepeatMasker/Libraries/  -pa 30 -q  $F[1]")); chdir(".."); sleep(10);' < fasta_locs.tab
+
+
+```
+
 
 #### Testing circos themis script
 
