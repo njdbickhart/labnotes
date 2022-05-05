@@ -106,6 +106,10 @@ mkdir /90daydata/rumen_longread_metagenome_assembly/analysis/protist
 mkdir /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_aligns
 for i in /OLD/project/rumen_longread_metagenome_assembly/sequence_data/protist_ccs/*fastq*; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="minimap2 -x map-hifi -t 5 -o /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_aligns/$name.alignments.paf protist_contigs.fasta $i"; done;
 
+mkdir protist_fastq_stats
+conda activate /project/rumen_longread_metagenome_assembly/environments/seaborn/
+for i in /OLD/project/rumen_longread_metagenome_assembly/sequence_data/protist_ccs/*fastq*; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=30000 --wrap="python3 ~/python_toolchain/sequenceData/fastqStats.py -f $i -o protist_fastq_stats/$name"; done
+
 mkdir /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_rlists
 for i in /OLD/project/rumen_longread_metagenome_assembly/sequence_data/protist_ccs/*fastq*; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="python3 filterHifiRDNAByQPafsF.py /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_aligns/$name.alignments.paf /90daydata/rumen_longread_metagenome_assembly/analysis/protist/protist_contig_rlists/$name.reads.list"; done;
 
@@ -142,6 +146,9 @@ for i in protist_contig_reads/*.fastq; do echo -n "-i $i "; done; echo
 sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_2001_1500.slurm.out --wrap="MBG -t 35 -k 2001 -w 1500 -r 15000 --output-sequence-paths protist_mbg/protist_2001_1500_paths.gaf  --out protist_mbg/protist_2001_1500_graph.gfa -i protist_contig_reads/m54337U_210722_195630.rdna.fastq -i protist_contig_reads/m54337U_210802_201210.rdna.fastq -i protist_contig_reads/m54337U_210809_182434.rdna.fastq -i protist_contig_reads/m54337U_211013_163649.rdna.fastq -i protist_contig_reads/m54337U_211015_151518.rdna.fastq -i protist_contig_reads/m54337U_211017_003233.rdna.fastq"
 
 sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_3501_3000.slurm.out --wrap="MBG -t 35 -k 3501 -w 3000 -r 15000 --output-sequence-paths protist_mbg/protist_3501_3000_paths.gaf  --out protist_mbg/protist_3501_3000_graph.gfa -i protist_contig_reads/m54337U_210722_195630.rdna.fastq -i protist_contig_reads/m54337U_210802_201210.rdna.fastq -i protist_contig_reads/m54337U_210809_182434.rdna.fastq -i protist_contig_reads/m54337U_211013_163649.rdna.fastq -i protist_contig_reads/m54337U_211015_151518.rdna.fastq -i protist_contig_reads/m54337U_211017_003233.rdna.fastq"
+
+# Let's try some different of k as the 3501 graph was resolved, but a bit too separate in nodes!
+for i in 501 1001 2501 4001 4501 5001; do j=`echo $i | perl -lane '$F[0] = int($F[0] / 2); print $F[0];'`; echo "$i $j"; sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_${i}_${j}.slurm.out --wrap="MBG -t 35 -k $i -w $j -r 15000 --output-sequence-paths protist_mbg/protist_${i}_${j}_paths.gaf  --out protist_mbg/protist_${i}_${j}_graph.gfa -i protist_contig_reads/m54337U_210722_195630.rdna.fastq -i protist_contig_reads/m54337U_210802_201210.rdna.fastq -i protist_contig_reads/m54337U_210809_182434.rdna.fastq -i protist_contig_reads/m54337U_211013_163649.rdna.fastq -i protist_contig_reads/m54337U_211015_151518.rdna.fastq -i protist_contig_reads/m54337U_211017_003233.rdna.fastq"; done 
 ```
 
 Testing a run of HiFiasm-Meta on the reads just for giggles.

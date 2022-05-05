@@ -445,7 +445,41 @@ module load repeatmasker/4.1.0
 # Might need to use -libdir /project/software/7/apps/repeatmasker/4.0.6/RepeatMasker/Libraries/ if the repeat counts are low
 perl -lane 'mkdir($F[0]) or $!{EEXIST}; chdir($F[0]); system(qq(sbatch -N 1 -n 30 -p priority -q msn --mem=100000 -t 3-0 --wrap="RepeatMasker -species arabidopsis -no_is -libdir /project/software/7/apps/repeatmasker/4.0.6/RepeatMasker/Libraries/  -pa 30 -q  $F[1]")); chdir(".."); sleep(10);' < fasta_locs.tab
 
+# Using custom libraries from EDTA
+for i in CommonBean CommonVetch CowPea RedClover Vvillosa; do echo $i; grep $i fasta_locs.tab | perl -lane 'use File::Basename; mkdir($F[0]) or $!{EEXIST}; chdir($F[0]); $lib = basename($F[1]) . qq(.mod.EDTA.TElib.fa); print qq(sbatch -N 1 -n 30 -p priority -q msn --mem=100000 -t 3-0 --wrap="RepeatMasker -lib $lib -no_is -libdir /project/software/7/apps/repeatmasker/4.0.6/RepeatMasker/Libraries/  -pa 30 -q  $F[1]"\n); system(qq(sbatch -N 1 -n 30 -p priority -q msn --mem=100000 -t 3-0 --wrap="RepeatMasker -lib $lib -no_is -libdir /project/software/7/apps/repeatmasker/4.0.6/RepeatMasker/Libraries/  -pa 30 -q  $F[1]")); chdir(".."); sleep(10);'; done
 
+# Now to convert to bed format and run analyses on these
+mkdir vetch_repeats
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; @q = ($s[11],$s[12], $s[13]); foreach $l (@q){$l =~ s/[\(\)]//g;} $qlen = ($s[8] eq "+")? $q[1] - $q[0] : $q[1] - $q[2];  print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < /project/forage_assemblies/assemblies/legume_comparison/V > vetch_repeats/ReformatedV.repeatmask.bed
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < /project/forage_assemblies/assemblies/legume_comparison/Vicia_sativa_reorg.fa.out > vetch_repeats/ViciaSativa.repeatmask.bed
+
+perl -lane '$l = $F[2] - $F[1]; $F[5] =~ s/\//_/g; print "$l\t$F[5]\tVvillosa";' < vetch_repeats/ReformatedV.repeatmask.bed > vetch_repeats/ReformatedV.repeatmask.tab
+perl -lane '$l = $F[2] - $F[1]; $F[5] =~ s/\//_/g; print "$l\t$F[5]\tVsativa";' < vetch_repeats/ViciaSativa.repeatmask.bed > vetch_repeats/ViciaSativa.repeatmask.tab
+
+cat vetch_repeats/ViciaSativa.repeatmask.tab vetch_repeats/ReformatedV.repeatmask.tab > vetch_repeats/total.repeatmask.tab
+```
+
+```R
+library(ggplot2)
+data <- read.delim("vetch_repeats/total.repeatmask.tab", header=FALSE)
+colnames(data) <- c("Len", "Repeat", "Assembly")
+
+pdf(file="vetch_repeats/length_histogram.pdf", useDingbats=FALSE)
+ggplot(data, aes(x=Len, color=Assembly)) + geom_histogram(fill="white", position="dodge") + scale_color_brewer(palette="Dark2") + theme_bw() + facet_wrap(~Repeat, ncol=4, scales= "free")
+dev.off()
+
+data.reduced <- data[!(data$Repeat %in% c("DNA_DTM", "DNA_DTC", "DNA_Helitron", "Low_complexity", "LTR_unknown", "Simple_repeat", "Unknown")),]
+pdf(file="vetch_repeats/length_histogram.reduced.pdf", useDingbats=FALSE)
+ggplot(data.reduced, aes(x=Len, color=Assembly)) + geom_histogram(fill="white", position="dodge", alpha=0.5) + scale_color_brewer(palette="Dark2") + theme_bw() + facet_wrap(~Repeat, ncol=3, scales= "free")
+dev.off()
+
+for (x in unique(data.reduced$Repeat)){
+d <- data.reduced[data.reduced$Repeat %in% x,]
+pdf(file=paste0("vetch_repeats/", x, "_histogram.pdf"), useDingbats=FALSE)
+p <- ggplot(d, aes(x=Len, color=Assembly)) + geom_histogram(fill="white", position="dodge", alpha=0.5) + theme_bw()
+print(p)
+dev.off()
+}
 ```
 
 

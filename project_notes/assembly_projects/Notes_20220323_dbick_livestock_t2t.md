@@ -232,6 +232,12 @@ mkdir hifi_paragon_aligns
 
 for i in /90daydata/sheep_genome_assemblies/sergek/hifi/*.fastq.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="minimap2 -x map-hifi -t 5 -o hifi_paragon_aligns/$name.alignments.paf 45s_array_consensus.fasta $i"; done
 
+# Separate sam run for read depth estimation
+mkdir hifi_sam_aligns
+for i in /90daydata/sheep_genome_assemblies/sergek/hifi/*.fastq.gz; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 --wrap="minimap2 -ax map-hifi -t 5 -o hifi_sam_aligns/$name.alignments.sam 45s_array_consensus.fasta $i"; done
+
+for i in hifi_sam_aligns/*.sam; do echo $i; name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 5 -p priority -q msn --mem=22000 -t 1-0 --wrap="samtools sort --reference 45s_array_consensus.fasta -o hifi_sam_aligns/$name.bam --threads 5 -T $name $i"; done 
+
 perl -e 'print "LenRatio\tMapRatio\tMaxMQ\n"; %data; while(<>){chomp; @s = split(/\t/); $lr = $s[10] / $s[1]; $mr = $s[9] / $s[10]; if(exists($data{$s[0]})){if($data{$s[0]}->[0] < $lr){$data{$s[0]}->[0] = $lr; $data{$s[0]}->[1] = $mr; $data{$s[0]}->[2] = $s[11];}}else{$data{$s[0]} = [$lr, $mr, $s[11]];}} foreach my $k (keys(%data)){print "$data{$k}->[0]\t$data{$k}->[1]\t$data{$k}->[2]\n";}' < hifi_paragon_aligns/m54337U_211106_060943.alignments.paf > paragon_test_aligns.tab
 
 mkdir hifi_paragon_lists

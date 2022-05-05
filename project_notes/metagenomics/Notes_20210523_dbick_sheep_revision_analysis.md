@@ -3,6 +3,7 @@
 *05/21/2021*
 
 ## Table of Contents
+* [Kaiju analysis](#kaiju)
 
 ## SCAPP on CLR datasets
 
@@ -323,7 +324,7 @@ conda activate /KEEP/rumen_longread_metagenome_assembly/quast
 sbatch -N 1 -n 70 --mem=300000 -p priority -q msn --wrap="metaquast flye4.contigs.fasta clr1.contigs.fasta clr2.contigs.fasta clr3_rerun/assembly/clr3.contigs.fa --max-ref-number 150 -o metaquast --no-check -t 70"
 ```
 
-
+<a name="kaiju"></a>
 ### Centrifuge analysis
 
 > Ceres: /lustre/project/rumen_longread_metagenome_assembly/analysis/sheep
@@ -502,6 +503,19 @@ for i in asm10 asm20 asm30 asm40 asm50 asm60 asm70 asm80 asm90 asm00 clr1 clr2 c
 
 ## get the full set of HQ MAGs
 for i in asm10 asm20 asm30 asm40 asm50 asm60 asm70 asm80 asm90 asm00 clr1 clr2 clr3 flye4; do echo $i; perl -e '%data; chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] >= 3){$data{$s[0]} += 1;}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] >= 18){$data{$s[0]} += 1;}} close IN; open(IN, "< $ARGV[2]"); <IN>; while(<IN>){$_ =~ s/^\s+//; @s = split(/\s+/); $s[0] =~ s/\./_/; if($s[-2] >= 90 && $s[-1] <= 5){$data{$s[0]} += 1;}} close IN; foreach $k (keys(%data)){if($data{$k} == 3){print "$k\n";}}' rrna/$i.rrna.count trnas/$i.trna.counts.tab binning/DASTool/$i.full_DASTool_summary.txt | wc -l; done
+```
+
+#### Making list of Bowers et al MAGs
+
+> Ceres: /project/rumen_longread_metagenome_assembly/analysis/sheep
+
+```bash
+wd=/OLD/project/rumen_longread_metagenome_assembly/analysis/sheep
+for i in asm10 asm20 asm30 asm40 asm50 asm60 asm70 asm80 asm90 asm00 clr1 clr2 clr3 flye4; do echo $i; perl -e '%data; chomp(@ARGV); open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] >= 3){$data{$s[0]} += 1;}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); if($s[1] >= 18){$data{$s[0]} += 1;}} close IN; open(IN, "< $ARGV[2]"); <IN>; while(<IN>){$_ =~ s/^\s+//; @s = split(/\s+/); $s[0] =~ s/\./_/; if($s[-2] >= 90 && $s[-1] <= 5){$data{$s[0]} += 1;}} close IN; foreach $k (keys(%data)){if($data{$k} == 3){print "$k\n";}}' $wd/rrna/$i.rrna.count $wd/trnas/$i.trna.counts.tab $wd/binning/DASTool/$i.full_DASTool_summary.txt > $i.mimag.tab; done
+
+# Just for flye4
+for i in flye4; do echo $i; perl -e '%data; chomp(@ARGV); open(IN, "< $ARGV[0]"); %values; print "MAG\tRRNA\tTRNA\tCOMP\tCON\n"; while(<IN>){chomp; @s = split(/\t/); push(@{$values{$s[0]}}, $s[1]); if($s[1] >= 3){$data{$s[0]} += 1;}} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); push(@{$values{$s[0]}}, $s[1]); if($s[1] >= 18){$data{$s[0]} += 1;}} close IN; open(IN, "< $ARGV[2]"); <IN>; while(<IN>){$_ =~ s/^\s+//; @s = split(/\s+/); $s[0] =~ s/\./_/; push(@{$values{$s[0]}}, ($s[-2], $s[-1])); if($s[-2] >= 90 && $s[-1] <= 5){$data{$s[0]} += 1;}} close IN; foreach $k (keys(%data)){if($data{$k} == 3){print "$k\t" . join("\t", @{$values{$k}}) . "\n";}}' $wd/rrna/$i.rrna.count $wd/trnas/$i.trna.counts.tab $i.contigs.full_DASTool_summary.txt > $i.mimag.tab; done
+flye4
 ```
 
 
