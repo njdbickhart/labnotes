@@ -157,3 +157,61 @@ Testing a run of HiFiasm-Meta on the reads just for giggles.
 module load python_3/3.6.6 miniconda/3.6 samtools minimap2 r/4.1.2
 sbatch -N 1 -n 70 --mem=1000000 -p priority-mem -q msn-mem --wrap="/project/rumen_longread_metagenome_assembly/binaries/hifiasm-meta/hifiasm_meta -o protist_hifiasm -t 70 protist_contig_reads/m54337U_210722_195630.rdna.fastq protist_contig_reads/m54337U_210802_201210.rdna.fastq protist_contig_reads/m54337U_210809_182434.rdna.fastq protist_contig_reads/m54337U_211013_163649.rdna.fastq protist_contig_reads/m54337U_211015_151518.rdna.fastq protist_contig_reads/m54337U_211017_003233.rdna.fastq"
 ```
+
+#### Alignment of E caudatum genome assembly to the protist graph
+
+I'm interested to see if Zhontang's assembly aligns to ours. Also, it would be interesting to see how many of our contigs have the terminal telomeric repeats like he found. Let's start out by seeing how many of the reads map to the graph of the protist metagenome graphs we've already generated. 
+
+> Ceres: /90daydata/rumen_longread_metagenome_assembly/analysis/protist/ecaudatum_analysis
+
+```bash
+module load minimap2 miniconda
+conda activate /project/rumen_longread_metagenome_assembly/environments/graphaligner
+
+sbatch -N 1 -n 32 --mem=180000 -p priority -q msn --wrap="GraphAligner --graph /OLD/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI/metaflye/assembly_graph.gfa --reads GCA_002087855.3_ASM208785v3_genomic.fna --alignments-out ecaudatum_aligns_metaflye_7201.gaf -x vg"
+
+sbatch -N 1 -n 3 --mem=32000 -p priority -q msn --wrap='minimap2 -x asm20 /OLD/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI/metaflye/assembly.fasta GCA_002087855.3_ASM208785v3_genomic.fna > ecaudatum_aligns_metaflye_7201.paf'
+
+# contigs from our assembly
+perl -lane 'if($F[11] == 0){next;}else{print $F[5];}' < ecaudatum_aligns_metaflye_7201.paf | sort | uniq | wc -l
+2216
+# contigs from their assembly
+perl -lane 'if($F[11] == 0){next;}else{print $F[0];}' < ecaudatum_aligns_metaflye_7201.paf | sort | uniq | wc -l
+4293
+
+
+# Telomere check
+python3 check_telomeres.py /OLD/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI/metaflye/assembly.fasta metaflye_telomere_check.tab
+perl -lane 'print "$F[1]-$F[2]";' < metaflye_telomere_check.tab | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -d '\t' -c 0 -m
+|Entry       | Value|
+|:-----------|-----:|
+|False-False | 37295|
+|True-False  |  9738|
+|False-True  |  5074|
+|True-True   |  1979|
+
+# This is the eCaudatum assembly. They must have been far more lenient in their check for telomeric repeats!
+perl -ne 'chomp; @F = split(/\t/); print "$F[1]-$F[2]\n";' < ecaudatum_check.tab | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -d '\t' -c 0 -m
+|Entry       | Value|
+|:-----------|-----:|
+|False-False | 12309|
+|False-True  |    22|
+|True-False  |    16|
+
+# plotting
+perl -e 'chomp(@ARGV); print "Contig\tLen\tCat\n"; %data; open(IN, "< $ARGV[0]"); while(<IN>){chomp; @s = split(/\t/); $data{$s[0]} = [$s[1]];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $type = "None"; if($s[1] eq "True" && $s[2] eq "True"){$type = "Both";}elsif($s[1] eq "True" || $s[2] eq "True"){$type = "One";} push(@{$data{$s[0]}}, $type);} close IN; foreach $k (keys(%data)){print "$k\t" . $data{$k}->[0] . "\t" . $data{$k}->[1] . "\n";}' /OLD/project/rumen_longread_metagenome_assembly/analysis/buccal/test_juliana/Genome_Assembly/HIFI/metaflye/assembly.fasta.fai metaflye_telomere_check.tab > metaflye_telomere_check.ext.tab
+```
+
+
+## 100 micron filter assembly
+
+Tim generated HiFi reads from the > 100 micron fraction of his protist prep. I'm going to assemble them and compare to our other assembly.
+
+> Ceres: /project/rumen_longread_metagenome_assembly/assembly/protist
+
+```bash
+module load miniconda
+
+conda activate /project/rumen_longread_metagenome_assembly/environments/flye
+sbatch --nodes=1 --mem=320000 --ntasks-per-node=70 -p priority-mem -q msn-mem flye -g 1.0g -t 70 --meta -o protist_100um --pacbio-hifi /project/rumen_longread_metagenome_assembly/sequence/protist_100um/m54337U_220516_161449.hifi_reads.fastq.gz --pacbio-hifi /project/rumen_longread_metagenome_assembly/sequence/protist_100um/m54337U_220707_160608.hifi_reads.fastq.gz
+```

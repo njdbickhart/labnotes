@@ -1480,3 +1480,21 @@ bedtools bamtobed -bed12 -i ARS_RC_1.1.v2.transcript.bam > ARS_RC_1.1.v2.transcr
 /lustre/project/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/bedToGenePred ARS_RC_1.1.v2.transcript.bed ARS_RC_1.1.v2.transcript.genepred
 /lustre/project/rumen_longread_metagenome_assembly/binaries/kentUtils/bin/linux.x86_64/genePredToGtf 'file' ARS_RC_1.1.v2.transcript.genepred ARS_RC_1.1.transcript.gtf
 ```
+
+
+#### Checking a gene duplication
+
+> Ceres: /90daydata/forage_assemblies/analysis/red_clover
+
+```bash
+module load samtools minimap2
+
+samtools view -b /OLD/project/rumen_longread_metagenome_assembly/assemblies/clover_ccs/manuscript_themis/mapped/ARSDFRC1/merged.bam LG3:43800000-45900000 > arsdfrc1.short_reads.bam
+samtools index arsdfrc1.short_reads.bam
+
+sbatch -N 1 -n 40 --mem=100000 -p priority -q msn -t 1-0 --wrap='minimap2 -ax map-hifi -t 30 ARS_DFRC_1.1.fasta m54337U_200929_165102.Q20.fastq m54337U_201002_155306.Q20.fastq | samtools sort -T rctemp -o arsdfrc1.hifi_reads.bam -@ 10 -'
+
+samtools index arsdfrc1.hifi_reads.bam
+samtools view -b  arsdfrc1.hifi_reads.bam LG3:43800000-45900000 > arsdfrc1.hifi_subset.bam
+samtools index arsdfrc1.hifi_subset.bam
+```

@@ -310,3 +310,96 @@ for i in 0 1 2 3 4 5; do for j in 0 1 2 3 4 5; do echo "ITERATION: $i $j"; perl 
 | 4 	  |  0|  1|  1|  1|  0| 75|
 | 5 	  |  0|  0|  1| 60|  0|  0|
 | 6 	  |  0|  0|  0|  0|  0|  1|
+
+
+## Retry with read mappings to the graph
+
+OK, my previous attempt probably filtered away too many reads. I need to find the rDNA tigs in the graph and pull reads that were used in their construction. Then I can create the sub graph separately and try to tease it apart as done in the T2T manuscript.
+
+The TIG to ID files are likely faulty because of naming conversion changes throughout the verkko cycle. Let's list where these files are located:
+
+* /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/8-trio/packages.tigName_to_ID.map
+* /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/7-consensus/packages.tigName_to_ID.map
+
+
+And the graph that I am using is here:
+
+* /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/8-trio/unitig-popped-unitig-normal-connected-tip.noseq.gfa
+
+
+First, let's see where my current crop of reads align:
+
+> Ceres: /90daydata/rumen_longread_metagenome_assembly/analysis/rdna/graph_analysis
+
+```bash
+# preparing files
+perl -e '<>; <>; while(<>){$_ =~ s/^\s+//; chomp; @s = split(/\s+/); print join("\t", @s) . "\n";}' < /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/7-consensus/packages.readName_to_ID.map > cons.readname_to_id.tab
+
+perl -e '<>; <>; while(<>){$_ =~ s/^\s+//; chomp; @s = split(/\s+/); print join("\t", @s) . "\n";}' < /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/7-consensus/packages.tigName_to_ID.map > cons.tigname_to_id.tab
+
+# grepping the read names
+cat ../hifi_paragon_flists/*.list > combined_align_read_lists.list
+wc -l combined_align_read_lists.list
+21377 combined_align_read_lists.list
+
+# These are the reads that are guaranteed to be in the rDNA regions. Let's use them as seeds for tig identification
+module load miniconda samtools
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f cons.readname_to_id.tab -c 2 -l combined_align_read_lists.list -d '\t' | perl -lane 'print $F[1];' | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -o contig_counts.tab
+
+perl -e '<>; while(<>){print $_;}' < contig_counts.tab > contig_counts.fmt.tab
+perl -lane 'print $F[0];' < contig_counts.fmt.tab > contig_counts.fmt.list
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f cons.tigname_to_id.tab -l contig_counts.fmt.list -c 0 -d '\t' -o cons.tigname_to_id.grepped.tab
+
+python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -f cons.tigname_to_id.grepped.tab -f contig_counts.fmt.tab -c 0 -m 1 -o rdna_contigs_grepped.tab
+perl -lane 'print "$F[1]\t$F[0]\t$F[2]";' < rdna_contigs_grepped.tab > rdna_contigs_grepped.fmt.tab
+python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -f /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/7-consensus/unitig-popped.fasta.fai -f rdna_contigs_grepped.fmt.tab -c 0 -m 1 -m 2 -o rdna_contigs_grepped.fmt.plslen.tab
+perl -lane 'if($F[3] eq "-"){next;}else{print "$F[0]\t$F[1]\t$F[3]\t$F[4]";}' < rdna_contigs_grepped.fmt.plslen.tab | sort -k4nr > rdna_contigs_grepped.fmt.plslen.fixed.tab
+
+# This may miss quite a few potential connections, but let's run with a criteria of a unitig less than 100kb and having at least 2 candidate conservative rRNA reads mapping
+perl -lane 'if($F[1] < 160000 && $F[3] > 1){print $F[0];}' < rdna_contigs_grepped.fmt.plslen.fixed.tab > candidate_rdna_unitigs.list  #<- ~ 1/3rd of the total
+
+# Now let's pull all of the reads that were used to construct these nodes
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f cons.tigname_to_id.tab -c 1 -l candidate_rdna_unitigs.list | perl -lane 'print $F[0];' > candidate_rdna_unitigs.ids.list
+
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f cons.readname_to_id.tab -l candidate_rdna_unitigs.ids.list -c 1 | perl -lane 'print $F[2];' | sort | uniq > candidate_rdna_reads.list
+
+wc -l combined_align_read_lists.list candidate_rdna_reads.list
+  21377 combined_align_read_lists.list
+   9105 candidate_rdna_reads.list
+  30482 total
+ 
+perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/nameListVennCount.pl combined_align_read_lists.list candidate_rdna_reads.list
+File Number 1: combined_align_read_lists.list
+File Number 2: candidate_rdna_reads.list
+Set     Count
+1       16699
+1;2     4678
+2       4427
+
+# Creating read association list with the main assembly:
+python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f cons.readname_to_id.tab -l candidate_rdna_unitigs.ids.list -c 1 | perl -lane 'print "$F[1]\t$F[2]";' > candidate_rdna_reads.plusctgids.tab
+python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -f candidate_rdna_reads.plusctgids.tab -f cons.tigname_to_id.tab -c 0 -m 1 -o candidate_rdna_reads.plusctgnames.tab
+perl -lane 'print "$F[1]\t$F[2]";' < candidate_rdna_reads.plusctgnames.tab > candidate_rdna_reads.plusctgnames.filt.tab
+for i in hifi_rdna_mbg/*.gaf; do name=`basename $i | cut -d'_' -f1,2,3,4`; echo $name; perl -lane '@s = split(/[<>]/, $F[5]); print "$F[0]\t$s[1]";' < $i > ${name}.rnameassoc.tab; done
+
+for i in hifi_rdna_mbg/*.gaf; do name=`basename $i | cut -d'_' -f1,2,3,4`; echo $name; python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -f ${name}.rnameassoc.tab -f candidate_rdna_reads.plusctgnames.filt.tab -c 0 -m 1 -o ${name}.allassoc.tab; done
+```
+
+Hmm, that's a very small amount of constitutive reads and I'm very surprised to see more unique reads in the candidate dataset. Lets try to assemble only with the candidate read set, and then with the superset to see if that resolves the graph.
+
+
+```bash
+module load miniconda samtools minimap2
+conda activate /project/rumen_longread_metagenome_assembly/environments/seaborn/
+
+mkdir hifi_rdna_fastqs
+for i in `ls /90daydata/sheep_genome_assemblies/Churro_x_Friesian/hifi/*.gz`; do name=`basename $i | cut -d'.' -f1`; echo $name; sbatch -N 1 -n 2 -p priority -q msn --mem=25000 --wrap="python3 ~/python_toolchain/sequenceData/filterFastaqFromList.py -q $i -l candidate_rdna_reads.list -o hifi_rdna_fastqs/$name.rdna.fastq; gzip hifi_rdna_fastqs/$name.rdna.fastq"; done
+
+# OK, now time to try to make the graphs again
+mkdir hifi_rdna_mbg
+conda activate /project/rumen_longread_metagenome_assembly/environments/verkko
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_2501_250.slurm.out --wrap="MBG -t 35 -k 2501 -w 250 -r 15000 --output-sequence-paths hifi_rdna_mbg/sheep_rdna_2501_250_paths.gaf  --out hifi_rdna_mbg/sheep_rdna_2501_250_graph.gfa -i hifi_rdna_fastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211120_120456.rdna.fastq.gz"
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_5000_500.slurm.out --wrap="MBG -t 35 -k 5001 -w 500 -r 15000 --output-sequence-paths hifi_rdna_mbg/sheep_rdna_5001_500_paths.gaf  --out hifi_rdna_mbg/sheep_rdna_5001_500_graph.gfa -i hifi_rdna_fastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211120_120456.rdna.fastq.gz"
+sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_3501_350.slurm.out --wrap="MBG -t 35 -k 3501 -w 350 -r 15000 --output-sequence-paths hifi_rdna_mbg/sheep_rdna_3501_350_paths.gaf  --out hifi_rdna_mbg/sheep_rdna_3501_350_graph.gfa -i hifi_rdna_fastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211120_120456.rdna.fastq.gz"
+```

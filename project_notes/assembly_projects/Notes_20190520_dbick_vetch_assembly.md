@@ -465,21 +465,26 @@ data <- read.delim("vetch_repeats/total.repeatmask.tab", header=FALSE)
 colnames(data) <- c("Len", "Repeat", "Assembly")
 
 pdf(file="vetch_repeats/length_histogram.pdf", useDingbats=FALSE)
-ggplot(data, aes(x=Len, color=Assembly)) + geom_histogram(fill="white", position="dodge") + scale_color_brewer(palette="Dark2") + theme_bw() + facet_wrap(~Repeat, ncol=4, scales= "free")
+ggplot(data, aes(x=Len, color=Assembly, fill=Assembly)) + geom_histogram(position="dodge") + scale_color_brewer(palette="Dark2") + theme_bw() + facet_wrap(~Repeat, ncol=4, scales= "free")
 dev.off()
 
 data.reduced <- data[!(data$Repeat %in% c("DNA_DTM", "DNA_DTC", "DNA_Helitron", "Low_complexity", "LTR_unknown", "Simple_repeat", "Unknown")),]
 pdf(file="vetch_repeats/length_histogram.reduced.pdf", useDingbats=FALSE)
-ggplot(data.reduced, aes(x=Len, color=Assembly)) + geom_histogram(fill="white", position="dodge", alpha=0.5) + scale_color_brewer(palette="Dark2") + theme_bw() + facet_wrap(~Repeat, ncol=3, scales= "free")
+ggplot(data.reduced, aes(x=Len, color=Assembly, fill=Assembly)) + geom_histogram(position="dodge", alpha=0.5) + scale_color_brewer(palette="Dark2") + theme_bw() + facet_wrap(~Repeat, ncol=3, scales= "free")
 dev.off()
 
 for (x in unique(data.reduced$Repeat)){
 d <- data.reduced[data.reduced$Repeat %in% x,]
 pdf(file=paste0("vetch_repeats/", x, "_histogram.pdf"), useDingbats=FALSE)
-p <- ggplot(d, aes(x=Len, color=Assembly)) + geom_histogram(fill="white", position="dodge", alpha=0.5) + theme_bw()
+p <- ggplot(d, aes(x=Len, color=Assembly, fill=Assembly)) + geom_histogram(position="dodge", alpha=0.5) + theme_bw()
 print(p)
 dev.off()
 }
+
+data.further <- data.reduced[!(data.reduced$Repeat %in% c("DNA_DTA", "DNA_DTH", "DNA_DTT", "LINE_unknown", "LTR_Copia", "LTR_Gypsy", "pararetrovirus")),]
+pdf(file="vetch_repeats/length_histogram.MITE.pdf", useDingbats=FALSE)
+ggplot(data.further, aes(x=Len, fill=Assembly, color=Assembly)) + geom_histogram(position="dodge", alpha=0.5) + scale_color_brewer(palette="Dark2") + theme_bw() + facet_wrap(~Repeat, ncol=3, scales= "free")
+dev.off()
 ```
 
 
@@ -496,7 +501,145 @@ python3 ~/rumen_longread_metagenome_assembly/binaries/Themis-ASM/scripts/pafCirc
 
 #### Orthofinder run
 
+First I need to pull all transcript information in order to run Orthofinder on this dataset.
+
+> Ceres: /90daydata/forage_assemblies/analysis/gene_phylogeny
+
+```bash
+module load python_3/3.6.6 miniconda/3.6 emboss/6.6.0
+
+getorf -sequence /project/forage_assemblies/assemblies/vetch_transcripts/sahv.transcripts.fasta -outseq gene_fastas/vvillosia_translated_orf.faa -find 2
+
+# That didn't work. Let's go with genemark-es
+conda activate /project/rumen_longread_metagenome_assembly/environments/braker2
+PERL5LIB='/project/rumen_longread_metagenome_assembly/environments/braker2/lib/site_perl/5.26.2/'
+
+# Ugh, the version of genemark used doesn't work on transcripts! I had to use their webportal
+
+transeq -sequence gene_fastas/Lens_culinaris_2.0.cds.fasta -outseq gene_fastas/Lens_culinaris_2.0.protein.faa -trim
+transeq -sequence gene_fastas/Lens_ervoides_1.0.cds.fasta -outseq gene_fastas/Lens_ervoides_1.0.protein.faa -trim
+
+# Redoing transcripts
+module load miniconda star/2.7.9a bedtools/2.30.0
+
+sbatch -N 1 -n 32 -p priority -q msn --mem=150000 --wrap="STAR --runThreadN 32 --runMode genomeGenerate --genomeDir vVillosa --genomeFastaFiles /project/forage_assemblies/assemblies/legume_comparison/ReformatedV.fa"
+
+mkdir mixed_star_aligns
+for i in `ls /90daydata/forage_assemblies/sequence_data/vetch_transcripts/*.gz | xargs -I {} basename {} | cut -d'_' -f1 | sort | uniq`; do echo $i; r1="/90daydata/forage_assemblies/sequence_data/vetch_transcripts/"${i}"_1.fq.gz"; r2="/90daydata/forage_assemblies/sequence_data/vetch_transcripts/"${i}"_2.fq.gz"; sbatch -N 1 -n 6 --mem=20000 -p priority -q msn --wrap="STAR --genomeDir vVillosa --runThreadN 6 --readFilesIn ${r1} ${r2} --readFilesCommand zcat --outFileNamePrefix ./mixed_star_aligns/${i} --outSAMtype BAM SortedByCoordinate --outSAMunmapped Within --outSAMattributes Standard"; done
+
+perl -e '<>; <>; <>; while(<>){$_ =~ s/^\s+//; chomp($_); @s = split(/\s+/, $_); print "$s[4]\t$s[5]\t$s[6]\n";}' < /project/forage_assemblies/assemblies/legume_comparison/ReformatedV.fa.out > ReformattedV.repeats.bed
+sbatch -N 1 -n 1 --mem=6000 -p priority -q msn --wrap="bedtools maskfasta -fi /project/forage_assemblies/assemblies/legume_comparison/ReformatedV.fa -fo ReformatedV.softmask.fa -bed ReformattedV.repeats.bed -soft"
+
+PERL5LIB=''
+export GENEMARK_PATH=/project/rumen_longread_metagenome_assembly/binaries/gmes_linux_64_4/
+conda activate /project/rumen_longread_metagenome_assembly/environments/braker2/
+sbatch -N 1 -n 32 --mem=200000 -p priority -q msn --dependency=afterok:7733180:7733181:7733182 --wrap="braker.pl --species=vVillosa --genome=ReformatedV.softmask.fa --softmasking --cores=32 --bam=mixed_star_aligns/AU7HDFlowerR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDFlowerR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDFlowerR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDLeafR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDLeafR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDLeafR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDPodR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDPodR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDPodR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDSCoatR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDSCoatR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDSCoatR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDSeedR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDSeedR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7HDSeedR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STFlowerR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STFlowerR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STFlowerR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STLeafR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STLeafR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STLeafR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STPodR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STPodR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STPodR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STSCoatR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STSCoatR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STSCoatR3Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STSeedR1Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STSeedR2Aligned.sortedByCoord.out.bam,mixed_star_aligns/AU7STSeedR3Aligned.sortedByCoord.out.bam"
+
+sbatch -N 1 -n 32 --mem=150000 -p priority -q msn --wrap="samtools merge --threads 32 -r vetch_combined_staraligns.bam mixed_star_aligns/*.bam"
+
+
+# New strategy without the virtual environment
+module load miniconda braker/2.1.5 samtools
+cp -Rp /software/7/apps/augustus/3.4.0/config/ ./AUGUSTUS_CONFIG
+export AUGUSTUS_CONFIG_PATH=/90daydata/forage_assemblies/analysis/gene_phylogeny/AUGUSTUS_CONFIG
+PERL5LIB=''
+sbatch -N 1 -n 32 --mem=200000 -p priority -q msn  --wrap="braker.pl --species=vVillosa --genome=ReformatedV.softmask.fa --softmasking --cores=32 --bam=vetch_combined_staraligns.bam"
+
+sbatch -N 1 -n 32 --mem=200000 -p priority -q msn --wrap="singularity exec -B $GENEMARK_PATH /reference/containers/braker/2.1.5/braker-2.1.5.sif braker.pl --species=vVillosa --useexisting --genome=ReformatedV.softmask.fa --softmasking --cores=32 --bam=vetch_combined_staraligns.bam"
+
+
+# That produced some genemark calls. Maybe I can restart my virtual env with this headstart?
+cp braker/GeneMark-ET/genemark.gtf prev_genemark.gtf
+PERL5LIB=''
+export GENEMARK_PATH=/project/rumen_longread_metagenome_assembly/binaries/gmes_linux_64_4/
+conda activate /project/rumen_longread_metagenome_assembly/environments/braker2/
+rm /90daydata/forage_assemblies/analysis/gene_phylogeny/braker/GeneMark-ET/genemark.gtf
+export PATH=/project/rumen_longread_metagenome_assembly/environments/braker2/bin:/software/7/apps/miniconda/4.11.0/bin:/software/7/apps/gcc/8.1.0/bin:/software/7/apps/miniconda/3.6/condabin:/home/derek.bickharhth/perl5/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/home/derek.bickharhth/bin
+sbatch -N 1 -n 32 --mem=200000 -p priority -q msn --wrap="braker.pl --species=vVillosa --genome=ReformatedV.softmask.fa --softmasking --cores=32 --useexisting --bam=vetch_combined_staraligns.bam --skipGeneMark-ET --geneMarkGtf=prev_genemark.gtf"
+
+# OK, the braker.gtf file is broken and I get no augustus hits. Let me try to rerun with UTR training for Augustus
+sbatch -N 1 -n 32 --mem=200000 -p priority -q msn --wrap="braker.pl --species=vVillosa --genome=ReformatedV.softmask.fa --softmasking --cores=32 --useexisting --bam=vetch_combined_staraligns.bam --UTR=on --skipGeneMark-ET --geneMarkGtf=prev_genemark.gtf --AUGUSTUS_ab_initio"
+
+# None of the ab initio jobs submitted! Ugh, trying Yash's solution now.
+module load miniconda braker/2.1.6 samtools augustus/3.4.0
+cp -Rp /software/7/apps/augustus/3.4.0/config/ ./AUGUSTUS_CONFIG
+export AUGUSTUS_CONFIG_PATH=/90daydata/forage_assemblies/analysis/gene_phylogeny/AUGUSTUS_CONFIG
+PERL5LIB=''
+sbatch -N 1 -n 32 --mem=200000 -p priority -q msn  --wrap="singularity exec -B $GENEMARK_PATH /reference/containers/braker/2.1.6/braker-2.1.6.sif braker.pl --species=vVillosa --genome=ReformatedV.softmask.fa --softmasking --cores=32 --bam=vetch_combined_staraligns.bam --useexisting --skipGeneMark-ET --geneMarkGtf=prev_genemark.gtf --AUGUSTUS_ab_initio --UTR=on"
+
+# rerunning with hints to try to diagnose augustus issues
+sbatch -N 1 -n 32 --mem=200000 -p priority -q msn  --wrap="singularity exec -B $GENEMARK_PATH /reference/containers/braker/2.1.6/braker-2.1.6.sif braker.pl --species=vVillosa --genome=ReformatedV.softmask.fa --softmasking --cores=32 --hints=rerun_hintsfile.gff --skipGeneMark-ET --geneMarkGtf=prev_genemark.gtf --AUGUSTUS_ab_initio"
+
+
+# OK, going to try to run Orthofinder again with the results from that last run. Let's copy the previous data first so that I don't lose it.
+cp gene_fastas/hairy_vetch.faa ./transcript_aligned_vvillosa.faa
+cp braker/augustus.hints.aa ./gene_fastas/hairy_vetch.faa
+
+# Note, the augustus.hints.gtf file was used for gene level statistics for the manuscript table.
+# Exons per gene:
+perl -e '%h; while(<>){chomp; @s = split(/\t/); if($s[2] eq "exon"){$h{$s[8]} += 1;}} foreach my $k (keys(%h)){print "$h{$k}\n";}' < braker/augustus.hints.gtf | perl ~/rumen_longread_metagenome_assembly/binaries/perl_toolchain/bed_cnv_fig_table_pipeline/statStd.pl
+total   53312
+Sum:    243057
+Minimum 1
+Maximum 78
+Average 4.559142
+Median  3
+Standard Deviation      4.578264
+Mode(Highest Distributed Value) 1
+```
+
+[Genemark-S webportal](http://topaz.gatech.edu/GeneMark/genemarks.cgi)
+
 ```bash
 module load python_3/3.6.6 miniconda/3.6
 conda activate /lustre/project/rumen_longread_metagenome_assembly/environments/orthofinder
+
+mkdir orthofinder_temp
+sbatch -N 1 -n 72 --mem=320000 -p priority -q msn --wrap="orthofinder -t 30 -a 42 -p orthofinder_temp -o orthofinder_results -f gene_fastas"
+
+# Rerun with new results from braker pipeline
+module load miniconda
+conda activate /project/rumen_longread_metagenome_assembly/environments/orthofinder
+
+sbatch -N 1 -n 72 --mem=320000 -p priority -q msn --wrap="orthofinder -t 30 -a 42 -p orthofinder_temp -o orthofinder_secondresults -f gene_fastas"
+
+```
+
+
+#### K-mer counting for genome size estimation
+
+> Ceres: /project/forage_assemblies/analysis/vetch
+
+```bash
+module load miniconda jellyfish2/2.2.9
+
+ls /project/forage_assemblies/sequence/vetch_illumina/*.gz | perl -lane 'print "gunzip -c $F[0]";' > vetch_generators
+
+sbatch --nodes=1 --mem=300000 --ntasks-per-node=60 -q msn -p priority --wrap="jellyfish count -C -m 21 -s 100M -t 60 --bf-size 50G -g vetch_generators -o vetch_21mer_illumina"
+
+sbatch --nodes=1 --mem=20000 --ntasks-per-node=2 -q msn -p priority -t 1-0 --wrap='jellyfish histo vetch_21mer_illumina > vetch_21mer_illumina.hist'
+```
+
+#### Linkage map probe realignment
+
+> Ceres: /project/forage_assemblies/tfuller/Themis-ASM
+
+```bash
+module load bwa samtools
+
+for i in LG1 LG2 LG3 LG4 LG5 LG6 LG7; do echo $i; perl -e 'chomp(@ARGV); open(IN, "< $ARGV[1]"); $c = 0; while($h = <IN>){$s = <IN>; $q = <IN>; chomp $h; $h .= ".$ARGV[0].$c\n"; print "$h$s$q";} close IN;' $i ${i}_probe.fa >> LG_rfmt_probes.fa; done
+
+mkdir rfmt_probemap
+perl alignAndOrderSnpProbes.pl -a fastas/reformatted_vetch.fa -p LG_rfmt_probes.fa -o rfmt_probemap/vvillosa
+
+perl alignAndOrderSnpProbes.pl -a fastas/CommonVetch.fa -p LG_rfmt_probes.fa -o rfmt_probemap/vsativa
+
+# The data suggest that A) Vsativa doesn't match up with the linkage map either and B) there are problems with LG1 and LG3 in Vvillosa
+
+# Let's map the probes to the full assembly (reformatted_vetch is only the first 7 scaffolds)
+perl -ne 'if($_ =~ /^>/){ chomp; $_ =~ s/>//; @s = split(/_/); if($s[0] =~/PGA/){print ">$s[0]\_$s[1]\n";}else{$t = (length($s[5]) > 1)? "$s[5]$s[6]" : "unscaffolded"; print ">$s[0]\_$t\n";}}else{print $_;}' < fastas/Vvillosa.fa > fastas/reformatted_vetch_full.fa
+
+bwa index fastas/reformatted_vetch_full.fa
+
+perl alignAndOrderSnpProbes.pl -a fastas/reformatted_vetch_full.fa -p LG_rfmt_probes.fa -o rfmt_probemap/vvillosa_rfmt
 ```

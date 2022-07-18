@@ -18,6 +18,8 @@ conda activate /project/rumen_longread_metagenome_assembly/environments/primrose
 
 for i in `seq  1 10`; do echo $i; sbatch -N 1 -n 30 --mem=100000 -p priority -q msn --wrap="primrose -j 30 m54337U_211106_060943.hifikin.${i}.bam m54337U_211106_060943.primrose.${i}.bam"; done
 
+sbatch -N 1 -n 8 --mem=10000 -p priority -q msn --wrap="samtools merge -@ 8 m54337U_211106_060943.primrose.bam m54337U_211106_060943.primrose.*.bam"
+
 # Now to align to the reference genome
 sbatch -N 1 -n 25 --mem=150000 -p priority -q msn --wrap="pbmm2 align -j 18 -J 7 --sort --log-level INFO --preset HIFI /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/8-trio/gapped/renamed_gapped.fasta m54337U_211106_060943.primrose.bam sheept2t_test.primrose.bam"
 
@@ -56,4 +58,13 @@ pyGenomeTracks --BED test_plot.bed --tracks primrose_pygenometracks.ini --outFil
 # Testing multiple plots from haplotigs
 echo -e "path_from_utig4-1746\t67251409\t67415759\npath_from_utig4-1000\t64647559\t64811972" > test_plot.bed
 pyGenomeTracks --BED test_plot.bed --tracks primrose_pygenometracks.ini --outFileName haplotig_test.png
+
+
+# MEST plot
+echo -e "path_from_utig4-268\t102833690\t102893153\npath_from_utig4-269\t98319763\t98349226" > mest_region.bed
+pyGenomeTracks --BED mest_region.bed --tracks primrose_pygenometracks.ini --outFileName mest.png
+
+# DLK1 plot
+echo -e "path_from_utig4-1868\t71776520\t71784575\npath_from_utig4-1869\t75653573\t75661631" > dlk1_region.bed
+pyGenomeTracks --BED dlk1_region.bed --tracks primrose_pygenometracks.ini --outFileName dlk1.png
 ```
