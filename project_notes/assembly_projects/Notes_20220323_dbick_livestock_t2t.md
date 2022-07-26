@@ -379,11 +379,12 @@ Set     Count
 
 # Creating read association list with the main assembly:
 python3 ~/python_toolchain/utils/tabFileColumnGrep.py -f cons.readname_to_id.tab -l candidate_rdna_unitigs.ids.list -c 1 | perl -lane 'print "$F[1]\t$F[2]";' > candidate_rdna_reads.plusctgids.tab
-python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -f candidate_rdna_reads.plusctgids.tab -f cons.tigname_to_id.tab -c 0 -m 1 -o candidate_rdna_reads.plusctgnames.tab
-perl -lane 'print "$F[1]\t$F[2]";' < candidate_rdna_reads.plusctgnames.tab > candidate_rdna_reads.plusctgnames.filt.tab
+
+perl -e 'chomp(@ARGV); open(IN, "< $ARGV[0]"); %h; while(<IN>){chomp; @s = split(/\t/); $h{$s[0]} = $s[1];} close IN; open(IN, "< $ARGV[1]"); while(<IN>){chomp; @s = split(/\t/); $n = $h{$s[0]}; print "$s[1]\t$n\n";} close IN;' cons.tigname_to_id.tab candidate_rdna_reads.plusctgids.tab > candidate_rdna_reads.plusctgnames.tab
+
 for i in hifi_rdna_mbg/*.gaf; do name=`basename $i | cut -d'_' -f1,2,3,4`; echo $name; perl -lane '@s = split(/[<>]/, $F[5]); print "$F[0]\t$s[1]";' < $i > ${name}.rnameassoc.tab; done
 
-for i in hifi_rdna_mbg/*.gaf; do name=`basename $i | cut -d'_' -f1,2,3,4`; echo $name; python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -f ${name}.rnameassoc.tab -f candidate_rdna_reads.plusctgnames.filt.tab -c 0 -m 1 -o ${name}.allassoc.tab; done
+for i in hifi_rdna_mbg/*.gaf; do name=`basename $i | cut -d'_' -f1,2,3,4`; echo $name; python3 ~/python_toolchain/utils/tabFileLeftJoinTable.py -f ${name}.rnameassoc.tab -f candidate_rdna_reads.plusctgnames.tab -c 0 -m 1 -o ${name}.allassoc.tab; done
 ```
 
 Hmm, that's a very small amount of constitutive reads and I'm very surprised to see more unique reads in the candidate dataset. Lets try to assemble only with the candidate read set, and then with the superset to see if that resolves the graph.
