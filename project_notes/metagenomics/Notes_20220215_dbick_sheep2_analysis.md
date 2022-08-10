@@ -60,3 +60,13 @@ for i in /project/rumen_longread_metagenome_assembly/assembly/sheep2/microbial_g
 
 sbatch -N 1 -n 2 --mem=9000 -p priority -q msn -t 8-0 snakemake -rp -s MAGpy --use-conda all --cluster "sbatch -N 1 --ntasks-per-node=16 --mem=100000 -p priority -q msn -t 8-0" --jobs 100
 ```
+
+## Running blobtools on the full original sheep datast
+
+> Ceres: /project/rumen_longread_metagenome_assembly/assembly/sheep1
+
+```bash
+conda activate /project/rumen_longread_metagenome_assembly/environments/blobtools
+
+sbatch -N 1 -n 72 --mem=300000 -p priority -q msn --wrap="diamond blastx --threads 72 --query edges.fasta --max-target-seqs 1 --db /project/rumen_longread_metagenome_assembly/binaries/blobtools/data/uniprot_referenceproteomes_202202.dmnd --evalue 1e-25 --outfmt 6 --tmpdir /project/rumen_longread_metagenome_assembly/assembly/sheep1/temp  --out edges.vs.uniprot.out"
+```

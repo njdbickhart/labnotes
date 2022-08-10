@@ -605,6 +605,16 @@ sbatch -N 1 -n 72 --mem=320000 -p priority -q msn --wrap="orthofinder -t 30 -a 4
 
 ```
 
+#### upset plot
+
+```R
+library(UpSetR)
+setwd("C:/SharedFolders/sequencing_projects/vetch_assembly/")
+setwd("orthofinder/")
+data <- read.delim("Orthogroups.GeneCount.mat", header=TRUE)
+upset(data, order.by= "freq", sets=c("common_bean", "common_vetch", "cow_pea", "grass_pea", "hairy_vetch", "lentil", "med_tr", "pea", "red_clover"))
+```
+
 
 #### K-mer counting for genome size estimation
 

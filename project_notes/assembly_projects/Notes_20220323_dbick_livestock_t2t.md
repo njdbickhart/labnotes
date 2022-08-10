@@ -404,3 +404,88 @@ sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_2501_250.slurm
 sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_5000_500.slurm.out --wrap="MBG -t 35 -k 5001 -w 500 -r 15000 --output-sequence-paths hifi_rdna_mbg/sheep_rdna_5001_500_paths.gaf  --out hifi_rdna_mbg/sheep_rdna_5001_500_graph.gfa -i hifi_rdna_fastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211120_120456.rdna.fastq.gz"
 sbatch -N 1 -n 35 --mem=300000 -p priority -q msn -o mbg_fparagon_3501_350.slurm.out --wrap="MBG -t 35 -k 3501 -w 350 -r 15000 --output-sequence-paths hifi_rdna_mbg/sheep_rdna_3501_350_paths.gaf  --out hifi_rdna_mbg/sheep_rdna_3501_350_graph.gfa -i hifi_rdna_fastqs/m54337U_210601_165737.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210610_143100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210611_233100.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210621_195743.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210623_154734.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210716_180058.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210718_025906.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210726_175325.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_210728_025148.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211026_163028.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211028_032534.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211104_191436.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211106_060943.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211118_170215.rdna.fastq.gz -i hifi_rdna_fastqs/m54337U_211120_035803.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211119_011043.rdna.fastq.gz -i hifi_rdna_fastqs/m64015e_211120_120456.rdna.fastq.gz"
 ```
+
+
+### Gaur Pied analysis
+
+> Ceres: /90daydata/gaur_genome_assembly/Gaur_x_Pied/verkko_DC_test3
+
+```bash
+module load repeatmasker/4.1.0 java/8 minimap2
+for i in haplotype1 haplotype2; do echo $i; sbatch -N 1 -n 50 --mem=55000 -p priority -q msn --wrap="RepeatMasker -pa 50 -q -species cattle -no_is -gff assembly.$i.fasta"; done
+
+for i in haplotype1 haplotype2; do echo $i; sbatch -N 1 -n 3 -p priority -q msn --mem=45000 --wrap="java -Xmx45g -jar /project/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f assembly.$i.fasta -o $i.gaps.bed -s $i.gaps.stats"; done
+
+for i in assembly.haplotype?.fasta.out; do echo $i; perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < $i > $i.bed; done
+
+python3 ~/python_toolchain/sequenceData/checkTelomereFromRMOutput.py -b assembly.haplotype1.fasta.out.bed -f assembly.haplotype1.fasta.fai -o assembly.haplotype1.fasta.out.telomeres
+python3 ~/python_toolchain/sequenceData/checkTelomereFromRMOutput.py -b assembly.haplotype2.fasta.out.bed -f assembly.haplotype2.fasta.fai -o assembly.haplotype2.fasta.out.telomeres
+
+for i in haplotype1 haplotype2; do echo $i; perl -lane 'if($F[1] > 20000000){print "$F[2];$F[3]";}' < assembly.$i.fasta.out.telomeres | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -m; done
+haplotype1
+|Entry       | Value|
+|:-----------|-----:|
+|True;False  |    19|
+|False;False |     4|
+|True;True   |     4|
+|False;True  |     3|
+haplotype2
+|Entry       | Value|
+|:-----------|-----:|
+|False;False |    14|
+|True;False  |     8|
+|False;True  |     7|
+|True;True   |     1|
+
+for i in haplotype1 haplotype2; do echo $i; sbatch -N 1 -n 3 --mem=9000 -p priority -q msn --wrap="minimap2 -x asm20 cattle_centromere.fa assembly.$i.fasta > centromere.$i.paf"; done
+```
+
+### Churro x Friesian analysis
+
+> Ceres: /90daydata/sheep_genome_assemblies/Churro_x_Friesian/ 
+
+```bash
+module load repeatmasker/4.1.0 java/8
+sbatch -N 1 -n 50 --mem=55000 -p priority -q msn --wrap="RepeatMasker -pa 50 -q -species sheep -no_is -gff assembly.fasta"
+
+sbatch -N 1 -n 3 -p priority -q msn --mem=45000 --wrap="java -Xmx45g -jar /project/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f assembly.fasta -o assembly.gaps.bed -s assembly.gaps.stats"
+
+perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < assembly.fasta.out > assembly.fasta.out.bed
+python3 ~/python_toolchain/sequenceData/checkTelomereFromRMOutput.py -b assembly.fasta.out.bed -f assembly.fasta.fai -o assembly.fasta.out.telomeres
+
+perl -lane 'if($F[1] > 20000000){print "$F[2];$F[3]";}' < assembly.fasta.out.telomeres | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -m
+|Entry       | Value|
+|:-----------|-----:|
+|False;False |    91|
+|True;False  |     7|
+|False;True  |     2|
+|True;True   |     1|
+```
+
+### Kiko x Saanen analysis
+
+> Ceres: /90daydata/sheep_genome_assemblies/Kiko_x_Saanen/verkko_DCken4
+
+```bash
+module load repeatmasker/4.1.0 java/8
+for i in haplotype1 haplotype2; do echo $i; sbatch -N 1 -n 50 --mem=55000 -p priority -q msn --wrap="RepeatMasker -pa 50 -q -species goat -no_is -gff assembly.$i.fasta"; done
+
+for i in haplotype1 haplotype2; do echo $i; sbatch -N 1 -n 3 -p priority -q msn --mem=45000 --wrap="java -Xmx45g -jar /project/rumen_longread_metagenome_assembly/binaries/GetMaskBedFasta/store/GetMaskBedFasta.jar -f assembly.$i.fasta -o $i.gaps.bed -s $i.gaps.stats"; done
+
+for i in assembly.haplotype?.fasta.out; do echo $i; perl -e '<>; <>; <>; while(<>){ $_ =~ s/^\s+//; @s = split(/\s+/); $orient = ($s[8] eq "+")? "+" : "-"; $qlen = $s[12] - $s[11]; print "$s[4]\t$s[5]\t$s[6]\t$orient\t$s[9]\t$s[10]\t$qlen\n";}' < $i > $i.bed; done
+
+for i in haplotype1 haplotype2; do echo $i; samtools faidx assembly.$i.fasta; python3 ~/python_toolchain/sequenceData/checkTelomereFromRMOutput.py -b assembly.$i.fasta.out.bed -f assembly.$i.fasta.fai -o assembly.$i.fasta.out.telomeres; perl -lane 'if($F[1] > 20000000){print "$F[2];$F[3]";}' < assembly.$i.fasta.out.telomeres | python3 ~/python_toolchain/utils/tabFileColumnCounter.py -f stdin -c 0 -m; done
+haplotype1
+|Entry       | Value|
+|:-----------|-----:|
+|True;False  |    19|
+|False;False |     7|
+|True;True   |     4|
+|False;True  |     1|
+haplotype2
+|Entry       | Value|
+|:-----------|-----:|
+|True;False  |    24|
+|False;False |     6|
+|True;True   |     1|
+```
