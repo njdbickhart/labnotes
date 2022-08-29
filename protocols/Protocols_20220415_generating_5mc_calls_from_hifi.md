@@ -8,7 +8,7 @@
 
 ## Trial run on Ceres
 
-> Ceres: /90daydata/project/sheep_genome_assemblies/Churro_x_Friesian/HiFi_data/subreads.bam
+> Ceres: /project/sheep_genome_assemblies/Churro_x_Friesian/HiFi_data/subreads.bam/
 
 ```bash
 module load python_3/3.6.6 miniconda/3.6 samtools minimap2
@@ -23,8 +23,12 @@ sbatch -N 1 -n 8 --mem=10000 -p priority -q msn --wrap="samtools merge -@ 8 m543
 # Now to align to the reference genome
 sbatch -N 1 -n 25 --mem=150000 -p priority -q msn --wrap="pbmm2 align -j 18 -J 7 --sort --log-level INFO --preset HIFI /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/8-trio/gapped/renamed_gapped.fasta m54337U_211106_060943.primrose.bam sheept2t_test.primrose.bam"
 
+sbatch -N 1 -n 25 --mem=150000 -p priority -q msn --wrap="pbmm2 align -j 18 -J 7 --sort --log-level INFO --preset HIFI assembly.haplotype1.fasta m54337U_211106_060943.primrose.bam friesian.primrose.bam"
+
 conda activate /project/rumen_longread_metagenome_assembly/environments/pb_cpg_tools
 for i in count model; do echo $i; sbatch -N 1 -n 36 --mem=150000 -p priority -q msn --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/pb-CpG-tools/aligned_bam_to_cpg_scores.py -b sheept2t_test.primrose.bam -f /90daydata/sheep_genome_assemblies/sergek/verkko_beta2/8-trio/gapped/renamed_gapped.fasta -o m54337U_211106_060943.pbcpg.${i} -p $i -d /project/rumen_longread_metagenome_assembly/binaries/pb-CpG-tools/pileup_calling_model -t 36"; done
+
+for i in count model; do echo $i; sbatch -N 1 -n 36 --mem=150000 -p priority -q msn --wrap="python3 ~/rumen_longread_metagenome_assembly/binaries/pb-CpG-tools/aligned_bam_to_cpg_scores.py -b friesian.primrose.bam -f assembly.haplotype1.fasta -o friesian.pbcpg.${i} -p $i -d /project/rumen_longread_metagenome_assembly/binaries/pb-CpG-tools/pileup_calling_model -t 36"; done
 ```
 
 I have some options for visualization to compare methylation predicted near gene regulatory regions. First I will need to generate some annotation tracks for genes and then plot windows containing clusters of those tracks in a wider area.
