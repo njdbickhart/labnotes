@@ -1,6 +1,6 @@
 # Metagenome assembly and classification
 ---
-**6/20/1982**
+**6/20/2018**
 
 These are my notes for generating an RNA-seq de novo assembly from Wenli's data and running classification on it.
 
