@@ -570,6 +570,9 @@ sbatch -N 1 -n 32 --mem=200000 -p priority -q msn  --wrap="singularity exec -B $
 # rerunning with hints to try to diagnose augustus issues
 sbatch -N 1 -n 32 --mem=200000 -p priority -q msn  --wrap="singularity exec -B $GENEMARK_PATH /reference/containers/braker/2.1.6/braker-2.1.6.sif braker.pl --species=vVillosa --genome=ReformatedV.softmask.fa --softmasking --cores=32 --hints=rerun_hintsfile.gff --skipGeneMark-ET --geneMarkGtf=prev_genemark.gtf --AUGUSTUS_ab_initio"
 
+#sbatch -N 1 -n 48 --mem=300000 -p priority -q msn --wrap="braker.pl --species=vVillosa --genome=ReformatedV.softmask.fa --softmasking --cores=48 --useexisting ----UTR=on --skipGeneMark-ET --geneMarkGtf=prev_genemark.2.gtf --hints=hintsfile.gff --AUGUSTUS_ab_initio"
+
+cp prev_genemark.gtf /project/forage_assemblies/assemblies/legume_comparison/
 
 # OK, going to try to run Orthofinder again with the results from that last run. Let's copy the previous data first so that I don't lose it.
 cp gene_fastas/hairy_vetch.faa ./transcript_aligned_vvillosa.faa
@@ -652,4 +655,33 @@ perl -ne 'if($_ =~ /^>/){ chomp; $_ =~ s/>//; @s = split(/_/); if($s[0] =~/PGA/)
 bwa index fastas/reformatted_vetch_full.fa
 
 perl alignAndOrderSnpProbes.pl -a fastas/reformatted_vetch_full.fa -p LG_rfmt_probes.fa -o rfmt_probemap/vvillosa_rfmt
+```
+
+#### ltr_retriever
+
+> Ceres: /90daydata/forage_assemblies/analysis/lai_analysis
+
+```bash
+conda activate /project/rumen_longread_metagenome_assembly/environments/ltr_retriever
+
+sbatch -N 1 -n 10 -p priority -q msn --mem=100000 --wrap="./gt-1.6.2-Linux_x86_64-64bit-complete/bin/gt suffixerator -db ReformatedV.fa -indexname ReformatedV.fa -tis -suf -lcp -des -ssp -sds -dna; ./gt-1.6.2-Linux_x86_64-64bit-complete/bin/gt ltrharvest -index ReformatedV.fa -minlenltr 100 -maxlenltr 7000 -mintsd 4 -maxtsd 6 -motif TGCA -motifmis 1 -similar 85 -vic 10 -seed 20 -seqids yes > ReformatedV.fa.harvest.scn; LTR_FINDER_parallel/LTR_FINDER_parallel -seq ReformatedV.fa -threads 10 -harvest_out -size 1000000 -time 300; cat ReformatedV.fa.harvest.scn ReformatedV.fa.finder.combine.scn > ReformatedV.fa.rawLTR.scn"
+
+sbatch -N 1 -n 60 -p priority -q msn --mem=100000 --wrap="./LTR_retriever/LTR_retriever -genome /project/forage_assemblies/assemblies/legume_comparison/ReformatedV.fa -inharvest ReformatedV.fa.rawLTR.scn -threads 60"
+```
+
+Plotting the data in R:
+
+```R
+library(ggplot2)
+library(dplyr)
+setwd("C:/Users/Derek.Bickhart/OneDrive - Hendrix Genetics/Documents/work_data/manuscripts/plant_sequencing/hairy_vetch/")
+setwd("./lai_analysis/")
+
+
+data <- read.delim("ReformatedV.fa.out.LAI.rfmt", header=TRUE, sep="\t")
+
+data <- mutate(data, Pos = paste0(Chr, "_", From))
+scaffoldstarts = which(data$Chr[-1] != data$Chr[-length(data$Chr)])
+
+ggplot(data=data, aes(x=Pos, y=LAI)) + geom_point(aes(color=Chr)) +  geom_vline(xintercept=scaffoldstarts, linetype='dashed') + theme_bw() + ggtitle("LAI Sliding Window Values (3 Mbp length)") + xlab("Scaffold Position") + ylab("adjusted LAI value") + theme(axis.text.x=element_blank())
 ```

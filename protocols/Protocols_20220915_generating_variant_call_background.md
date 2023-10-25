@@ -47,4 +47,21 @@ module load gatk/4.2.6.1
 
 # Dry run test:
 snakemake -s ~/python_toolchain/snakeMake/sraGeneticBackground/sraGeneticBackground.snk -n -r
+
+sbatch -N 1 -n 2 --mem=5000 -p main -q std --wrap="picard CreateSequenceDictionary R=/scratch/HG/bickha01/chicken_background/GalGal1.mat.broiler.renamed.kary.fasta O=/scratch/HG/bickha01/chicken_background/GalGal1.mat.broiler.renamed.kary.dict"
+
+sbatch -N 1 -n 1 --mem=5000 -p main -q std -t 5-0 --wrap='snakemake -s ~/python_toolchain/snakeMake/sraGeneticBackground/sraGeneticBackground.snk --cluster-config ~/python_toolchain/snakeMake/sraGeneticBackground/cluster.json --cluster "sbatch -N 1 -n {cluster.ntasks-per-node} --mem={cluster.mem} -p main -q std -J {cluster.jobname} -o logs/{cluster.output} -t {cluster.time}" -p --jobs 25 --verbose --latency-wait 40 -T 1 freebayes_only'
+```
+
+## Use of a new snpcalling workflow
+
+> Anunna: /scratch/HG/bickha01/side_projects/turkey_eye
+
+```bash
+# to format all of the samples for inclusion in the default.json file
+ls /scratch/HG/bickha01/side_projects/turkey_eye/raw_files/*.gz | perl -e 'use File::Basename; %samples; while($f = <STDIN>){chomp $f; $b = basename($f); @bsegs = split(/_/, $b); push(@{$samples{$bsegs[0]}}, $f);} foreach $k (keys(%samples)){print "    \"$k\" : [\n"; print "      [\"" . join("\",\n      \"", @{$samples{$k}}) . "\"],\n    ],\n";}'
+
+conda activate /lustre/backup/HG/bickha01/conda_envs/sraGeneticBackground/
+
+sbatch -N 1 -n 1 -p main -q std --mem=6000 -t 5-0 snakemake -s ~/python_toolchain/snakeMake/snpCalling/snpCalling --cluster-config ~/python_toolchain/snakeMake/snpCalling/cluster.json --cluster "sbatch -N 1 -n {cluster.ntasks-per-node} --mem={cluster.mem} -p main -q std -J {cluster.jobname} -o logs/{cluster.output} -t {cluster.time}" -p --jobs 20 --verbose --latency-wait 40
 ```
